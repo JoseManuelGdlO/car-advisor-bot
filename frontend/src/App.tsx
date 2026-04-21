@@ -16,6 +16,7 @@ import ConfigFaqs from "./pages/ConfigFaqs.tsx";
 import ConfigFinanciamiento from "./pages/ConfigFinanciamiento.tsx";
 import ConfigProductos from "./pages/ConfigProductos.tsx";
 import ConfigPromos from "./pages/ConfigPromos.tsx";
+import ConfigBot from "./pages/ConfigBot.tsx";
 import Perfil from "./pages/Perfil.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import { AuthProvider } from "@/context/AuthContext";
@@ -44,6 +45,7 @@ const App = () => (
               <Route path="/config/financiamiento" element={<RequireAuth><ConfigFinanciamiento /></RequireAuth>} />
               <Route path="/config/productos" element={<RequireAuth><ConfigProductos /></RequireAuth>} />
               <Route path="/config/promociones" element={<RequireAuth><ConfigPromos /></RequireAuth>} />
+              <Route path="/config/bot" element={<RequireAuth><ConfigBot /></RequireAuth>} />
               <Route path="/perfil" element={<RequireAuth><Perfil /></RequireAuth>} />
               <Route path="*" element={<NotFound />} />
             </Routes>

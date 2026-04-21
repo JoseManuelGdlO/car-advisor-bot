@@ -13,6 +13,7 @@ import {
   getClient,
   getConversationMessages,
   getDashboard,
+  getBotSettings,
   listClients,
   listConversations,
   listFaqs,
@@ -21,6 +22,7 @@ import {
   togglePromotion,
   uploadVehicleImages,
   updateFaq,
+  upsertBotSettings,
   updatePromotion,
   updateVehicle,
 } from "../controllers/crmController.js";
@@ -59,5 +61,7 @@ crmRoutes.get("/promotions", requireUserAuth, listPromotions);
 crmRoutes.post("/promotions", requireUserAuth, createPromotion);
 crmRoutes.patch("/promotions/:id", requireUserAuth, updatePromotion);
 crmRoutes.post("/promotions/:id/toggle", requireUserAuth, togglePromotion);
+crmRoutes.get("/bot/settings", requireUserAuth, getBotSettings);
+crmRoutes.patch("/bot/settings", requireUserAuth, upsertBotSettings);
 
 crmRoutes.post("/bot/conversation-events", requireServiceToken, botUpsertConversation);

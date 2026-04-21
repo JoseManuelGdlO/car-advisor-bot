@@ -21,6 +21,14 @@ export const ServiceToken = sequelize.define("service_tokens", {
   lastUsedAt: { type: DataTypes.DATE, field: "last_used_at" },
 });
 
+export const BotSetting = sequelize.define("bot_settings", {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  ownerUserId: { type: DataTypes.UUID, allowNull: false, unique: true, field: "owner_user_id" },
+  isEnabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true, field: "is_enabled" },
+  timezone: { type: DataTypes.STRING(120), allowNull: false, defaultValue: "America/Bogota" },
+  weeklySchedule: { type: DataTypes.JSON, allowNull: false, defaultValue: {}, field: "weekly_schedule" },
+});
+
 export const Vehicle = sequelize.define("vehicles", {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   ownerUserId: { type: DataTypes.UUID, allowNull: false, field: "owner_user_id" },
@@ -156,6 +164,20 @@ User.hasMany(ServiceToken, {
   onUpdate: "CASCADE",
 });
 ServiceToken.belongsTo(User, {
+  foreignKey: { name: "ownerUserId", field: "owner_user_id", allowNull: false },
+  targetKey: "id",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+
+User.hasOne(BotSetting, {
+  foreignKey: { name: "ownerUserId", field: "owner_user_id", allowNull: false },
+  sourceKey: "id",
+  as: "botSetting",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+BotSetting.belongsTo(User, {
   foreignKey: { name: "ownerUserId", field: "owner_user_id", allowNull: false },
   targetKey: "id",
   onDelete: "CASCADE",

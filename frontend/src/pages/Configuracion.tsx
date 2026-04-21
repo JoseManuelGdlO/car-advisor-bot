@@ -1,9 +1,10 @@
 import { useNavigate } from "react-router-dom";
-import { HelpCircle, Car, Tag, ChevronRight, Bot, Zap, Landmark } from "lucide-react";
+import { HelpCircle, Car, Tag, ChevronRight, Bot, Zap, Landmark, Clock3 } from "lucide-react";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { useAuth } from "@/context/AuthContext";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { crmApi } from "@/services/crm";
+import { Switch } from "@/components/ui/switch";
 
 const sections = [
   {
@@ -31,6 +32,14 @@ const sections = [
     countLabel: (n: number) => `${n} planes`,
   },
   {
+    to: "/config/bot",
+    icon: Clock3,
+    title: "Horario del bot",
+    desc: "Disponibilidad y zona horaria",
+    color: "bg-secondary text-secondary-foreground",
+    countLabel: () => "Configura horarios por día",
+  },
+  {
     to: "/config/promociones",
     icon: Tag,
     title: "Promociones",
@@ -43,15 +52,24 @@ const sections = [
 export default function Configuracion() {
   const navigate = useNavigate();
   const { token } = useAuth();
+  const queryClient = useQueryClient();
   const { data: faqs = [] } = useQuery({ queryKey: ["faqs"], queryFn: () => crmApi.getFaqs(token!), enabled: Boolean(token) });
   const { data: cars = [] } = useQuery({ queryKey: ["vehicles"], queryFn: () => crmApi.getVehicles(token!), enabled: Boolean(token) });
   const { data: promos = [] } = useQuery({ queryKey: ["promotions"], queryFn: () => crmApi.getPromotions(token!), enabled: Boolean(token) });
+  const { data: botSettings } = useQuery({ queryKey: ["bot-settings"], queryFn: () => crmApi.getBotSettings(token!), enabled: Boolean(token) });
+  const botEnabled = botSettings?.isEnabled ?? true;
+  const toggleBotMutation = useMutation({
+    mutationFn: async (nextEnabled: boolean) => crmApi.updateBotSettings(token!, { isEnabled: nextEnabled }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["bot-settings"] });
+    },
+  });
   const { data: financingPlans = [] } = useQuery({
     queryKey: ["financing-plans"],
     queryFn: () => crmApi.getFinancingPlans(token!),
     enabled: Boolean(token),
   });
-  const counts = [faqs.length, cars.length, financingPlans.length, promos.filter((p: any) => p.active).length];
+  const counts = [faqs.length, cars.length, financingPlans.length, 0, promos.filter((p: any) => p.active).length];
 
   return (
     <>
@@ -66,16 +84,24 @@ export default function Configuracion() {
           <div className="flex-1">
             <div className="flex items-center gap-2">
               <p className="font-bold text-sm">AutoBot</p>
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-success bg-success/10 px-2 py-0.5 rounded-full">
-                <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
-                ACTIVO
+              <span
+                className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                  botEnabled ? "text-success bg-success/10" : "text-muted-foreground bg-muted"
+                }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${botEnabled ? "bg-success animate-pulse" : "bg-muted-foreground"}`} />
+                {botEnabled ? "ACTIVO" : "APAGADO"}
               </span>
             </div>
-            <p className="text-xs text-muted-foreground">Respondiendo en WhatsApp y Facebook</p>
+            <p className="text-xs text-muted-foreground">
+              {botEnabled ? "Respondiendo en WhatsApp y Facebook" : "Sin respuestas automáticas"}
+            </p>
           </div>
-          <button className="w-12 h-7 rounded-full bg-primary relative shadow-soft">
-            <span className="absolute top-0.5 right-0.5 w-6 h-6 rounded-full bg-white shadow-soft" />
-          </button>
+          <Switch
+            checked={botEnabled}
+            disabled={toggleBotMutation.isPending || !token}
+            onCheckedChange={(checked) => toggleBotMutation.mutate(checked)}
+          />
         </div>
 
         {/* Sections */}

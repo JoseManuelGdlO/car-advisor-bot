@@ -1,8 +1,30 @@
 import { Op, fn, col } from "sequelize";
-import { ClientLead, Conversation, Faq, Message, Promotion, Vehicle, FinancingPlan } from "../models/index.js";
+import { ClientLead, Conversation, Faq, Message, Promotion, Vehicle, FinancingPlan, BotSetting } from "../models/index.js";
 import { ApiError } from "../utils/errors.js";
+import { isWithinBotSchedule, normalizeBotSettingsPayload, normalizeWeeklySchedule, toBotSettingsDto } from "../utils/botSettings.js";
 
 const ownerWhere = (userId) => ({ ownerUserId: userId });
+const DEFAULT_BOT_SETTINGS = {
+  isEnabled: true,
+  timezone: "America/Bogota",
+  weeklySchedule: normalizeWeeklySchedule({
+    monday: [{ start: "08:00", end: "18:00" }],
+    tuesday: [{ start: "08:00", end: "18:00" }],
+    wednesday: [{ start: "08:00", end: "18:00" }],
+    thursday: [{ start: "08:00", end: "18:00" }],
+    friday: [{ start: "08:00", end: "18:00" }],
+    saturday: [],
+    sunday: [],
+  }),
+};
+
+const getOrCreateBotSettings = async (ownerUserId) => {
+  const [row] = await BotSetting.findOrCreate({
+    where: { ownerUserId },
+    defaults: { ownerUserId, ...DEFAULT_BOT_SETTINGS },
+  });
+  return row;
+};
 
 export const getDashboard = async (req, res) => {
   const userId = req.auth.userId;
@@ -111,9 +133,29 @@ export const togglePromotion = async (req, res, next) => {
   return res.json(p);
 };
 
+export const getBotSettings = async (req, res) => {
+  const row = await getOrCreateBotSettings(req.auth.userId);
+  return res.json(toBotSettingsDto(row));
+};
+
+export const upsertBotSettings = async (req, res) => {
+  const row = await getOrCreateBotSettings(req.auth.userId);
+  const updates = normalizeBotSettingsPayload(req.body || {});
+  if (Object.keys(updates).length) {
+    await row.update(updates);
+  }
+  return res.json(toBotSettingsDto(row));
+};
+
 export const botUpsertConversation = async (req, res) => {
   const ownerUserId = req.auth.userId;
   const { user_id, platform, message, selected_car, customer_info } = req.body;
+  const botSettings = await getOrCreateBotSettings(ownerUserId);
+  const shouldAutoReply = isWithinBotSchedule({
+    isEnabled: botSettings.isEnabled,
+    timezone: botSettings.timezone,
+    weeklySchedule: botSettings.weeklySchedule,
+  });
   const [lead] = await ClientLead.findOrCreate({
     where: { ownerUserId, phone: customer_info?.telefono || user_id },
     defaults: {
@@ -137,7 +179,7 @@ export const botUpsertConversation = async (req, res) => {
     where: { ownerUserId, clientLeadId: lead.id },
     defaults: { ownerUserId, clientLeadId: lead.id, channel: platform || "api", lastMessage: message || "", lastTime: new Date(), unread: 0 },
   });
-  if (message) {
+  if (message && shouldAutoReply) {
     await Message.create({
       ownerUserId,
       conversationId: conv.id,
@@ -146,5 +188,5 @@ export const botUpsertConversation = async (req, res) => {
       time: new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }),
     });
   }
-  return res.status(201).json({ ok: true, conversationId: conv.id, clientId: lead.id });
+  return res.status(201).json({ ok: true, conversationId: conv.id, clientId: lead.id, botSuppressed: !shouldAutoReply });
 };

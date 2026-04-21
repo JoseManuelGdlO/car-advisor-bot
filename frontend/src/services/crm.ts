@@ -37,12 +37,35 @@ export type VehicleDto = {
   financingPlans?: (FinancingPlanDto & { vehicle_financing_plans?: { customRate: number | null } })[];
 };
 
+export type BotScheduleRangeDto = {
+  start: string;
+  end: string;
+};
+
+export type BotWeeklyScheduleDto = {
+  monday: BotScheduleRangeDto[];
+  tuesday: BotScheduleRangeDto[];
+  wednesday: BotScheduleRangeDto[];
+  thursday: BotScheduleRangeDto[];
+  friday: BotScheduleRangeDto[];
+  saturday: BotScheduleRangeDto[];
+  sunday: BotScheduleRangeDto[];
+};
+
+export type BotSettingsDto = {
+  isEnabled: boolean;
+  timezone: string;
+  weeklySchedule: BotWeeklyScheduleDto;
+};
+
 export const crmApi = {
   getKpis: (token: string) => apiRequest("/dashboard/kpis", "GET", undefined, token),
   getClients: (token: string) => apiRequest("/clients", "GET", undefined, token),
   getClient: (token: string, id: string) => apiRequest(`/clients/${id}`, "GET", undefined, token),
   getConversations: (token: string) => apiRequest("/conversations", "GET", undefined, token),
   getConversationMessages: (token: string, id: string) => apiRequest(`/conversations/${id}/messages`, "GET", undefined, token),
+  getBotSettings: (token: string) => apiRequest<BotSettingsDto>("/bot/settings", "GET", undefined, token),
+  updateBotSettings: (token: string, payload: Partial<BotSettingsDto>) => apiRequest<BotSettingsDto>("/bot/settings", "PATCH", payload, token),
   getVehicles: (token: string) => apiRequest("/vehicles", "GET", undefined, token),
   createVehicle: (
     token: string,
