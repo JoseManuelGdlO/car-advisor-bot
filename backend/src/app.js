@@ -10,7 +10,19 @@ import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.js";
 
 export const app = express();
 app.use(helmet());
-app.use(cors({ origin: env.corsOrigin, credentials: true }));
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || env.corsOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error("Not allowed by CORS"), false);
+    },
+    credentials: true,
+  })
+);
 app.use(express.json({ limit: "1mb" }));
 app.use(morgan("dev"));
 app.use(`${env.apiPrefix}/auth`, rateLimit({ windowMs: 60_000, limit: 30 }), authRoutes);
