@@ -3,6 +3,11 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const must = (key, fallback = "") => process.env[key] || fallback;
+const parseCsv = (value) =>
+  value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 
 export const env = {
   nodeEnv: must("NODE_ENV", "development"),
