@@ -13,6 +13,17 @@ from mysql.connector.connection import MySQLConnection
 from mysql.connector.errors import Error as MySQLError
 
 
+def _normalize_uuid(value: Any) -> str | None:
+    """Convierte UUID devuelto por MySQL (str/bytes/...) a string estandar."""
+
+    if value is None:
+        return None
+    if isinstance(value, bytes):
+        return value.decode("utf-8")
+    text = str(value).strip()
+    return text or None
+
+
 def _backend_headers() -> dict[str, str]:
     token = os.getenv("BACKEND_SERVICE_TOKEN", "").strip()
     return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"} if token else {}
@@ -53,46 +64,87 @@ def _is_missing_table_error(exc: Exception) -> bool:
     return isinstance(exc, MySQLError) and getattr(exc, "errno", None) == 1146
 
 
-def fetch_active_bot_session(user_id: str, platform: str = "web") -> dict[str, Any] | None:
-    """Recupera sesion activa y deserializa `state_payload` desde `bot_sessions`.
+def fetch_active_bot_session(phone: str, platform: str = "web") -> tuple[dict[str, Any] | None, str | None]:
+    """Recupera sesion activa: estado del grafo y `conversation_id` del CRM.
 
-    La consulta ignora `company_id` por requerimiento del MVP.
+    Retorna `(estado, conversation_id)` o `(None, None)` si no hay fila activa.
+    El `conversation_id` viene de la columna homonima (no del JSON interno),
+    para enlazar `messages` y `bot_sessions` sin pasar datos por el grafo.
     """
 
     connection = get_connection()
     try:
         query = """
-            SELECT state_payload
+            SELECT conversation_id, state_payload
             FROM bot_sessions
-            WHERE user_identifier = %s
+            WHERE phone = %s
               AND platform = %s
               AND expires_at > UTC_TIMESTAMP()
             ORDER BY expires_at DESC
             LIMIT 1
         """
         with connection.cursor() as cursor:
-            cursor.execute(query, (user_id, platform))
+            cursor.execute(query, (phone, platform))
             row = cursor.fetchone()
             if not row:
-                return None
+                return (None, None)
 
-            payload = row[0]
+            conv_raw, payload = row[0], row[1]
+            conversation_id = _normalize_uuid(conv_raw)
             if isinstance(payload, (dict, list)):
-                return payload
+                return (payload, conversation_id)
             if isinstance(payload, str):
-                return json.loads(payload)
-            return None
+                return (json.loads(payload), conversation_id)
+            return (None, conversation_id)
     except Exception as exc:
         # Permite operar sin persistencia si la tabla aun no fue creada.
         if _is_missing_table_error(exc):
-            return None
+            return (None, None)
         raise
     finally:
         connection.close()
 
 
+def ensure_crm_conversation(phone: str, platform: str = "web") -> dict[str, str] | None:
+    """Garantiza lead+conversacion en el backend antes de escribir `messages`.
+
+    POST a `/bot/conversation-events` con `message` vacio: el controlador
+    hace findOrCreate sin insertar fila en `messages` (solo actualiza lead),
+    pero devuelve `conversationId` y `ownerUserId` necesarios para el INSERT
+    directo desde el bot hacia MySQL.
+    """
+
+    url = _backend_api_url("/bot/conversation-events")
+    headers = _backend_headers()
+    if not url or "Authorization" not in headers:
+        return None
+    try:
+        response = requests.post(
+            url,
+            json={
+                "user_id": phone,
+                "platform": platform,
+                "message": "",
+                "selected_car": "",
+                "customer_info": {},
+            },
+            headers=headers,
+            timeout=8,
+        )
+        if response.status_code != 201:
+            return None
+        data = response.json()
+        conv = _normalize_uuid(data.get("conversationId"))
+        owner = _normalize_uuid(data.get("ownerUserId"))
+        if not conv or not owner:
+            return None
+        return {"conversation_id": conv, "owner_user_id": owner}
+    except Exception:
+        return None
+
+
 def upsert_bot_session_state(
-    user_id: str,
+    phone: str,
     state_dict: dict[str, Any],
     platform: str = "web",
     conversation_id: str | None = None,
@@ -100,7 +152,7 @@ def upsert_bot_session_state(
 ) -> None:
     """Inserta o actualiza el estado serializado del usuario en `bot_sessions`.
 
-    Requiere un indice unico por (`user_identifier`, `platform`) para que
+    Requiere un indice unico por (`phone`, `platform`) para que
     `ON DUPLICATE KEY UPDATE` funcione correctamente.
     """
 
@@ -111,7 +163,7 @@ def upsert_bot_session_state(
         query = """
             INSERT INTO bot_sessions (
                 session_id,
-                user_identifier,
+                phone,
                 platform,
                 conversation_id,
                 state_payload,
@@ -129,7 +181,7 @@ def upsert_bot_session_state(
             cursor.execute(
                 query,
                 (
-                    user_id,
+                    phone,
                     platform,
                     conversation_id,
                     state_payload_json,
@@ -148,35 +200,54 @@ def upsert_bot_session_state(
 
 
 def save_message(
-    user_id: str,
+    phone: str,
     role: str,
     content: str,
     platform: str = "web",
     conversation_id: str | None = None,
+    owner_user_id: str | None = None,
 ) -> None:
     """Guarda historial/auditoria en tabla `messages`.
 
-    Nota: esta tabla no participa en las decisiones del grafo; el contexto
-    operativo vive en `state_payload.messages`.
+    Requiere `conversation_id` y `owner_user_id` validos (mismo CRM que el
+    backend); si faltan, se omite el INSERT para no violar NOT NULL/FK.
+    Igual se envia el evento HTTP al CRM (mismo contrato que antes).
     """
 
     connection = get_connection()
     try:
-        query = """
-            INSERT INTO messages (
-                id,
-                user_identifier,
-                platform,
-                conversation_id,
-                role,
-                content,
-                created_at
-            )
-            VALUES (UUID(), %s, %s, %s, %s, %s, UTC_TIMESTAMP())
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(query, (user_id, platform, conversation_id, role, content))
-        connection.commit()
+        # Sin claves de negocio no intentamos INSERT: el esquema las exige.
+        if conversation_id and owner_user_id:
+            time_label = datetime.now().strftime("%H:%M")
+            query = """
+                INSERT INTO messages (
+                    id,
+                    owner_user_id,
+                    phone,
+                    platform,
+                    conversation_id,
+                    `from`,
+                    text,
+                    time,
+                    created_at,
+                    updated_at
+                )
+                VALUES (UUID(), %s, %s, %s, %s, %s, %s, %s, UTC_TIMESTAMP(), UTC_TIMESTAMP())
+            """
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    query,
+                    (
+                        owner_user_id,
+                        phone,
+                        platform,
+                        conversation_id,
+                        role,
+                        content,
+                        time_label,
+                    ),
+                )
+            connection.commit()
     except Exception as exc:
         # Historial es opcional; no tumbar chat por tabla ausente.
         if _is_missing_table_error(exc):
@@ -187,7 +258,7 @@ def save_message(
 
     push_event_to_backend(
         {
-            "user_id": user_id,
+            "user_id": phone,
             "platform": platform,
             "message": content,
             "selected_car": "",

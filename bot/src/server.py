@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from src.graph import build_graph
 from src.tools.database import (
+    ensure_crm_conversation,
     fetch_active_bot_session,
     save_message,
     upsert_bot_session_state,
@@ -113,7 +114,23 @@ def chat(payload: ChatRequest) -> ChatResponse:
     """Procesa un turno de chat y devuelve mensaje + opciones de UI."""
 
     try:
-        state = fetch_active_bot_session(payload.user_id, payload.platform) or _build_initial_state()
+        # 1) Estado del grafo + conversacion ya vinculada en `bot_sessions`, si existe.
+        loaded_state, conv_from_session = fetch_active_bot_session(payload.user_id, payload.platform)
+        state = loaded_state or _build_initial_state()
+        # 2) Sin UUID persistido, crear/obtener conversacion en CRM *antes* de `messages`.
+        conversation_id = conv_from_session
+        owner_user_id = os.getenv("BOT_CRM_OWNER_USER_ID", "").strip() or None
+        if not conversation_id:
+            crm = ensure_crm_conversation(payload.user_id, payload.platform)
+            if crm:
+                conversation_id = crm["conversation_id"]
+                owner_user_id = crm["owner_user_id"]
+        # Turnos posteriores: ya hay `conversation_id` en fila pero el proceso no
+        # guarda `owner_user_id`; se reobtiene del mismo endpoint (idempotente).
+        elif not owner_user_id:
+            crm = ensure_crm_conversation(payload.user_id, payload.platform)
+            if crm:
+                owner_user_id = crm["owner_user_id"]
         messages = list(state.get("messages", []))
         messages.append({"role": "user", "content": payload.message, "type": "HumanMessage"})
         # Evita crecimiento ilimitado del estado persistido.
@@ -125,7 +142,14 @@ def chat(payload: ChatRequest) -> ChatResponse:
 
         # Capa 2: auditoria en tabla `messages` (separada del contexto operativo).
         try:
-            save_message(payload.user_id, "user", payload.message, platform=payload.platform)
+            save_message(
+                payload.user_id,
+                "user",
+                payload.message,
+                platform=payload.platform,
+                conversation_id=conversation_id,
+                owner_user_id=owner_user_id,
+            )
 
             # Persiste solo los assistant nuevos generados en este turno.
             for message in updated_messages[previous_len:]:
@@ -135,11 +159,18 @@ def chat(payload: ChatRequest) -> ChatResponse:
                         "assistant",
                         str(message.get("content", "")),
                         platform=payload.platform,
+                        conversation_id=conversation_id,
+                        owner_user_id=owner_user_id,
                     )
         except Exception:
             logger.exception("No se pudo guardar historial en tabla messages")
 
-        upsert_bot_session_state(payload.user_id, updated_state, platform=payload.platform)
+        upsert_bot_session_state(
+            payload.user_id,
+            updated_state,
+            platform=payload.platform,
+            conversation_id=conversation_id,
+        )
 
         tail_ai_messages = _collect_tail_ai_messages(updated_messages)
         reply = "\n".join(

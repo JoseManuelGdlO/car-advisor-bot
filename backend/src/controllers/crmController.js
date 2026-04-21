@@ -188,5 +188,11 @@ export const botUpsertConversation = async (req, res) => {
       time: new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }),
     });
   }
-  return res.status(201).json({ ok: true, conversationId: conv.id, clientId: lead.id, botSuppressed: !shouldAutoReply });
+  return res.status(201).json({
+    ok: true,
+    conversationId: conv.id,
+    clientId: lead.id,
+    botSuppressed: !shouldAutoReply,
+    ownerUserId,
+  });
 };
