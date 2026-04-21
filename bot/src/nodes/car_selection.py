@@ -13,6 +13,7 @@ from src.nodes.common import (
 def car_selection(state: clientState) -> clientState:
     """Muestra modelos segun categoria elegida."""
 
+    state["current_node"] = "car_selection"
     selected_category = state.get("selected_category", "")
     if state.get("skip_car_prompt"):
         state["skip_car_prompt"] = False
@@ -26,5 +27,4 @@ def car_selection(state: clientState) -> clientState:
     car_options = CAR_OPTIONS_BY_CATEGORY[selected_category]
     base_text = f"Excelente. Estos son los modelos disponibles en {selected_category}."
     message = safe_llm_format(base_text, car_options)
-    state["current_node"] = "car_selection"
     return append_assistant_message(state, message, car_options)

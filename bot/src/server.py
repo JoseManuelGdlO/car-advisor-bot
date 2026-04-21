@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 from dotenv import load_dotenv
@@ -163,3 +164,10 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+if __name__ == "__main__":
+    import uvicorn
+
+    port = int(os.getenv("API_PORT", 8000))
+    host = os.getenv("API_HOST", "0.0.0.0")
+    print(f"Starting server on {host}:{port}")
+    uvicorn.run(app, host=host, port=port)

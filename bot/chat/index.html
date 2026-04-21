@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Car Advisor Bot - Chat</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="chat-container">
+            <div class="chat-header">
+                <div class="header-content">
+                    <div class="avatar">🚗</div>
+                    <div class="header-text">
+                        <h1>Asesor de Autos</h1>
+                        <p class="status" id="status">En línea</p>
+                    </div>
+                </div>
+                <div class="header-actions">
+                    <button id="reset-btn" class="btn-icon" title="Nueva conversación">
+                        <span>🔄</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="chat-messages" id="chat-messages"></div>
+
+            <div class="typing-indicator" id="typing-indicator" style="display: none;">
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+            </div>
+
+            <div class="quick-options" id="quick-options"></div>
+
+            <div class="chat-input">
+                <div class="input-container">
+                    <textarea
+                        id="user-input"
+                        placeholder="Escribe tu mensaje..."
+                        rows="1"
+                        maxlength="500"
+                    ></textarea>
+                    <button id="send-btn" class="btn-send" title="Enviar">
+                        <span>➤</span>
+                    </button>
+                </div>
+                <div class="input-footer">
+                    <span class="char-count" id="char-count">0/500</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="sidebar">
+            <div class="sidebar-section">
+                <h3>ℹ️ Información</h3>
+                <p>Este bot te ayuda a descubrir categorías y modelos de autos, y a dejar tus datos para seguimiento.</p>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>📋 Funciones</h3>
+                <ul>
+                    <li>✅ Elegir categoría (SUV, Sedan, Pickup)</li>
+                    <li>✅ Explorar modelos recomendados</li>
+                    <li>✅ Capturar tus datos de contacto</li>
+                </ul>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>⚙️ Configuración</h3>
+                <label for="user-id">ID de Usuario:</label>
+                <input type="text" id="user-id" placeholder="6185555454" value="6185555454">
+
+                <label for="api-url">API URL:</label>
+                <select id="api-url" title="Entorno del bot">
+                    <option value="http://127.0.0.1:8000">Local (127.0.0.1:8000)</option>
+                    <option value="http://0.0.0.0:8000">Local (0.0.0.0:8000)</option>
+                    <option value="">Mismo host (ruta relativa)</option>
+                </select>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>📊 Estado de Sesión</h3>
+                <div id="session-info">
+                    <p class="session-item">
+                        <span class="label">Nodo actual:</span>
+                        <span id="current-node">-</span>
+                    </p>
+                    <p class="session-item">
+                        <span class="label">Categoría:</span>
+                        <span id="selected-category">-</span>
+                    </p>
+                    <p class="session-item">
+                        <span class="label">Auto:</span>
+                        <span id="selected-car">-</span>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -16,10 +16,19 @@ def lead_capture(state: clientState) -> clientState:
     """Solicita y confirma datos de contacto del lead."""
 
     state["current_node"] = "lead_capture"
+    selected_car = state.get("selected_car", "")
     if state.get("skip_lead_prompt"):
         state["skip_lead_prompt"] = False
-        return state
-    selected_car = state.get("selected_car", "")
+        if not selected_car:
+            base_text = "Primero debes elegir un vehiculo para continuar."
+            message = safe_llm_format(base_text, [])
+            return append_assistant_message(state, message, [])
+        base_text = (
+            f"Continuamos con {selected_car}. "
+            "Comparte tus datos en formato nombre:..., telefono:..., email:...."
+        )
+        message = safe_llm_format(base_text, [])
+        return append_assistant_message(state, message, [])
     if not selected_car:
         base_text = "Primero debes elegir un vehiculo para continuar."
         message = safe_llm_format(base_text, [])
