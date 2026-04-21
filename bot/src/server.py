@@ -8,6 +8,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 
 from src.graph import build_graph
@@ -24,6 +25,16 @@ graph = build_graph()
 logger = logging.getLogger(__name__)
 ALLOWED_PLATFORMS = {"web", "whatsapp", "telegram", "facebook", "api"}
 MAX_MESSAGES_HISTORY = 50
+
+raw_cors_origins = os.getenv("CORS_ORIGINS") or os.getenv("CORS_ORIGIN") or ""
+allowed_cors_origins = [origin.strip() for origin in raw_cors_origins.split(",") if origin.strip()]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_cors_origins,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class ChatRequest(BaseModel):
