@@ -202,5 +202,6 @@ export const botUpsertConversation = async (req, res) => {
     clientId: lead.id,
     botSuppressed: !shouldAutoReply,
     suppressedReason,
+    ownerUserId,
   });
 };
