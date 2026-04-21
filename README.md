@@ -52,6 +52,21 @@ Usa `bot/.env.example`:
    - Configurar entorno Python e instalar `requirements.txt`
    - Ejecutar FastAPI del bot como normalmente lo hacias
 
+4. Mobile (Ionic + Capacitor wrapper)
+   - `cd mobile`
+   - `npm install`
+   - `npm run sync` (hace build de `frontend`, copia a `mobile/www` y ejecuta `cap sync`)
+   - Requisito Android: usar Gradle JDK 21+ (si falla con `invalid source release: 21`, cambia `JAVA_HOME` o el Gradle JDK de Android Studio)
+   - Android: `npm run android`
+   - iOS: `npm run ios`
+
+## Flujo web -> app mobile
+
+- La UI sigue viviendo en `frontend/` (React + Vite).
+- `mobile/` no reimplementa pantallas; solo embebe el resultado de `frontend/dist` en WebView nativa.
+- El script `mobile/scripts/sync-web.mjs` limpia y sincroniza `frontend/dist` hacia `mobile/www`.
+- Capacitor carga `mobile/www` mediante `mobile/capacitor.config.ts` (`webDir: "www"`).
+
 ## Flujo de autenticacion
 
 1. Registro/login de usuario:

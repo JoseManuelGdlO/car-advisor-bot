@@ -85,8 +85,43 @@ export const Promotion = sequelize.define("promotions", {
   appliesTo: { type: DataTypes.STRING(160), field: "applies_to" },
 });
 
-User.hasMany(ServiceToken, { foreignKey: "owner_user_id", sourceKey: "id" });
-ClientLead.hasMany(Conversation, { foreignKey: "client_lead_id", sourceKey: "id", as: "conversations" });
-Conversation.belongsTo(ClientLead, { foreignKey: "client_lead_id", targetKey: "id", as: "client" });
-Conversation.hasMany(Message, { foreignKey: "conversation_id", sourceKey: "id", as: "messages" });
-Message.belongsTo(Conversation, { foreignKey: "conversation_id", targetKey: "id" });
+User.hasMany(ServiceToken, {
+  foreignKey: { name: "ownerUserId", field: "owner_user_id", allowNull: false },
+  sourceKey: "id",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+ServiceToken.belongsTo(User, {
+  foreignKey: { name: "ownerUserId", field: "owner_user_id", allowNull: false },
+  targetKey: "id",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+
+ClientLead.hasMany(Conversation, {
+  foreignKey: { name: "clientLeadId", field: "client_lead_id", allowNull: false },
+  sourceKey: "id",
+  as: "conversations",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+Conversation.belongsTo(ClientLead, {
+  foreignKey: { name: "clientLeadId", field: "client_lead_id", allowNull: false },
+  targetKey: "id",
+  as: "client",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+Conversation.hasMany(Message, {
+  foreignKey: { name: "conversationId", field: "conversation_id", allowNull: false },
+  sourceKey: "id",
+  as: "messages",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+Message.belongsTo(Conversation, {
+  foreignKey: { name: "conversationId", field: "conversation_id", allowNull: false },
+  targetKey: "id",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});

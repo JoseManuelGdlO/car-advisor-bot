@@ -8,7 +8,10 @@ export const env = {
   nodeEnv: must("NODE_ENV", "development"),
   port: Number(must("PORT", "4000")),
   apiPrefix: must("API_PREFIX", "/api"),
-  corsOrigin: must("CORS_ORIGIN", "http://localhost:5173"),
+  corsOrigins: must("CORS_ORIGIN", "http://localhost:5173,http://localhost:8080")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean),
   db: {
     host: must("DB_HOST"),
     port: Number(must("DB_PORT", "3306")),
