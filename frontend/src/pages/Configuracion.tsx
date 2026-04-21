@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { HelpCircle, Car, Tag, ChevronRight, Bot, Zap } from "lucide-react";
+import { HelpCircle, Car, Tag, ChevronRight, Bot, Zap, Landmark } from "lucide-react";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { useAuth } from "@/context/AuthContext";
 import { useQuery } from "@tanstack/react-query";
@@ -23,6 +23,14 @@ const sections = [
     countLabel: (n: number) => `${n} autos en catálogo`,
   },
   {
+    to: "/config/financiamiento",
+    icon: Landmark,
+    title: "Financiamiento",
+    desc: "Planes, tasas y requisitos",
+    color: "bg-success/10 text-success",
+    countLabel: (n: number) => `${n} planes`,
+  },
+  {
     to: "/config/promociones",
     icon: Tag,
     title: "Promociones",
@@ -38,7 +46,12 @@ export default function Configuracion() {
   const { data: faqs = [] } = useQuery({ queryKey: ["faqs"], queryFn: () => crmApi.getFaqs(token!), enabled: Boolean(token) });
   const { data: cars = [] } = useQuery({ queryKey: ["vehicles"], queryFn: () => crmApi.getVehicles(token!), enabled: Boolean(token) });
   const { data: promos = [] } = useQuery({ queryKey: ["promotions"], queryFn: () => crmApi.getPromotions(token!), enabled: Boolean(token) });
-  const counts = [faqs.length, cars.length, promos.filter((p: any) => p.active).length];
+  const { data: financingPlans = [] } = useQuery({
+    queryKey: ["financing-plans"],
+    queryFn: () => crmApi.getFinancingPlans(token!),
+    enabled: Boolean(token),
+  });
+  const counts = [faqs.length, cars.length, financingPlans.length, promos.filter((p: any) => p.active).length];
 
   return (
     <>

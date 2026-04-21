@@ -1,13 +1,22 @@
 import { useState, useMemo } from "react";
-import { Plus, Search } from "lucide-react";
+import { Check, Plus, Search } from "lucide-react";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
 import { CarStatus } from "@/data/mockData";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
-import { useQuery } from "@tanstack/react-query";
-import { crmApi } from "@/services/crm";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { crmApi, FinancingPlanDto, VehicleDto } from "@/services/crm";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 
 const filters: { key: "all" | CarStatus; label: string }[] = [
   { key: "all", label: "Todos" },
@@ -21,10 +30,18 @@ const formatPrice = (n: number) =>
 
 export default function ConfigProductos() {
   const { token } = useAuth();
+  const queryClient = useQueryClient();
   const { data } = useQuery({ queryKey: ["vehicles"], queryFn: () => crmApi.getVehicles(token!), enabled: Boolean(token) });
-  const cars = (data || []) as any[];
+  const { data: plansData = [] } = useQuery({
+    queryKey: ["financing-plans"],
+    queryFn: () => crmApi.getFinancingPlans(token!),
+    enabled: Boolean(token),
+  });
+  const cars = (data || []) as VehicleDto[];
+  const plans = plansData as FinancingPlanDto[];
   const [filter, setFilter] = useState<"all" | CarStatus>("all");
   const [q, setQ] = useState("");
+  const [updating, setUpdating] = useState<string>("");
 
   const list = useMemo(() => {
     return cars.filter((c) => {
@@ -33,6 +50,19 @@ export default function ConfigProductos() {
       return okF && okQ;
     });
   }, [filter, q]);
+
+  const togglePlanForVehicle = async (vehicleId: string, planId: string, selected: boolean) => {
+    if (!token) return;
+    setUpdating(`${vehicleId}-${planId}`);
+    if (selected) {
+      await crmApi.removePlanFromVehicle(token, vehicleId, planId);
+    } else {
+      await crmApi.assignPlanToVehicle(token, vehicleId, planId);
+    }
+    await queryClient.invalidateQueries({ queryKey: ["vehicles"] });
+    await queryClient.invalidateQueries({ queryKey: ["financing-plans"] });
+    setUpdating("");
+  };
 
   return (
     <>
@@ -86,8 +116,54 @@ export default function ConfigProductos() {
               <p className="font-bold text-sm leading-tight">{c.model}</p>
               <p className="text-xs text-muted-foreground">{c.year} · {c.km.toLocaleString("es-MX")} km</p>
               <p className="font-extrabold text-primary-dark text-sm mt-1.5">{formatPrice(c.price)}</p>
+              {c.financingPlans?.length ? (
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  {c.financingPlans[0].showRate
+                    ? `Financiamiento desde ${Number(c.financingPlans[0].rate).toFixed(2)}%`
+                    : "Financiamiento disponible"}
+                </p>
+              ) : (
+                <p className="text-[11px] text-muted-foreground mt-1">Sin plan asignado</p>
+              )}
               <div className="mt-2">
                 <StatusBadge status={c.status} />
+              </div>
+              <div className="mt-2">
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button size="sm" variant="outline" className="h-8 px-2 rounded-lg text-[11px]">
+                      Asignar financiamiento
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Asignar planes</DialogTitle>
+                      <DialogDescription>
+                        {c.brand} {c.model} {c.year}
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-2 max-h-[320px] overflow-auto">
+                      {plans.map((plan) => {
+                        const selected = Boolean(c.financingPlans?.some((x) => x.id === plan.id));
+                        const key = `${c.id}-${plan.id}`;
+                        return (
+                          <label key={plan.id} className="flex items-start gap-2 rounded-lg border border-border p-2">
+                            <Checkbox
+                              checked={selected}
+                              disabled={updating === key}
+                              onCheckedChange={() => togglePlanForVehicle(c.id, plan.id, selected)}
+                            />
+                            <span className="text-xs">
+                              <span className="font-semibold">{plan.name}</span> · {plan.lender} ·{" "}
+                              {plan.showRate ? `${Number(plan.rate).toFixed(2)}%` : "Tasa oculta"}
+                            </span>
+                            {updating === key ? <Check className="w-3.5 h-3.5 ml-auto text-success" /> : null}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </DialogContent>
+                </Dialog>
               </div>
             </div>
           </div>

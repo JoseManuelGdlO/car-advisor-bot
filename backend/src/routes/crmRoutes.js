@@ -6,6 +6,7 @@ import {
   createFaq,
   createPromotion,
   createVehicle,
+  deleteFaq,
   getClient,
   getConversationMessages,
   getDashboard,
@@ -15,6 +16,7 @@ import {
   listPromotions,
   listVehicles,
   togglePromotion,
+  updateFaq,
 } from "../controllers/crmController.js";
 
 export const crmRoutes = Router();
@@ -32,6 +34,8 @@ crmRoutes.post("/vehicles", requireUserAuth, createVehicle);
 
 crmRoutes.get("/faqs", requireUserAuth, listFaqs);
 crmRoutes.post("/faqs", requireUserAuth, createFaq);
+crmRoutes.patch("/faqs/:id", requireUserAuth, updateFaq);
+crmRoutes.delete("/faqs/:id", requireUserAuth, deleteFaq);
 
 crmRoutes.get("/promotions", requireUserAuth, listPromotions);
 crmRoutes.post("/promotions", requireUserAuth, createPromotion);

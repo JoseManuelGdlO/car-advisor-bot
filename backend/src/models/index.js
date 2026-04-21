@@ -85,6 +85,51 @@ export const Promotion = sequelize.define("promotions", {
   appliesTo: { type: DataTypes.STRING(160), field: "applies_to" },
 });
 
+export const FinancingPlan = sequelize.define("financing_plans", {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  ownerUserId: { type: DataTypes.UUID, allowNull: false, field: "owner_user_id" },
+  name: { type: DataTypes.STRING(160), allowNull: false },
+  lender: { type: DataTypes.STRING(120), allowNull: false },
+  rate: { type: DataTypes.DECIMAL(5, 2), allowNull: false },
+  maxTermMonths: { type: DataTypes.INTEGER, allowNull: false, field: "max_term_months" },
+  active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+  showRate: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true, field: "show_rate" },
+});
+
+export const FinancingRequirement = sequelize.define("financing_requirements", {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  ownerUserId: { type: DataTypes.UUID, allowNull: false, field: "owner_user_id" },
+  title: { type: DataTypes.STRING(160), allowNull: false },
+  description: { type: DataTypes.TEXT, allowNull: false },
+});
+
+export const VehicleFinancingPlan = sequelize.define(
+  "vehicle_financing_plans",
+  {
+    id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    ownerUserId: { type: DataTypes.UUID, allowNull: false, field: "owner_user_id" },
+    vehicleId: { type: DataTypes.UUID, allowNull: false, field: "vehicle_id" },
+    financingPlanId: { type: DataTypes.UUID, allowNull: false, field: "financing_plan_id" },
+    customRate: { type: DataTypes.DECIMAL(5, 2), field: "custom_rate" },
+  },
+  {
+    indexes: [{ name: "uniq_vehicle_plan", unique: true, fields: ["vehicle_id", "financing_plan_id"] }],
+  }
+);
+
+export const FinancingPlanRequirement = sequelize.define(
+  "financing_plan_requirements",
+  {
+    id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    ownerUserId: { type: DataTypes.UUID, allowNull: false, field: "owner_user_id" },
+    financingPlanId: { type: DataTypes.UUID, allowNull: false, field: "financing_plan_id" },
+    financingRequirementId: { type: DataTypes.UUID, allowNull: false, field: "financing_requirement_id" },
+  },
+  {
+    indexes: [{ name: "uniq_plan_req", unique: true, fields: ["financing_plan_id", "financing_requirement_id"] }],
+  }
+);
+
 User.hasMany(ServiceToken, {
   foreignKey: { name: "ownerUserId", field: "owner_user_id", allowNull: false },
   sourceKey: "id",
@@ -124,4 +169,30 @@ Message.belongsTo(Conversation, {
   targetKey: "id",
   onDelete: "CASCADE",
   onUpdate: "CASCADE",
+});
+
+Vehicle.belongsToMany(FinancingPlan, {
+  through: VehicleFinancingPlan,
+  foreignKey: { name: "vehicleId", field: "vehicle_id", allowNull: false },
+  otherKey: { name: "financingPlanId", field: "financing_plan_id", allowNull: false },
+  as: "financingPlans",
+});
+FinancingPlan.belongsToMany(Vehicle, {
+  through: VehicleFinancingPlan,
+  foreignKey: { name: "financingPlanId", field: "financing_plan_id", allowNull: false },
+  otherKey: { name: "vehicleId", field: "vehicle_id", allowNull: false },
+  as: "vehicles",
+});
+
+FinancingPlan.belongsToMany(FinancingRequirement, {
+  through: FinancingPlanRequirement,
+  foreignKey: { name: "financingPlanId", field: "financing_plan_id", allowNull: false },
+  otherKey: { name: "financingRequirementId", field: "financing_requirement_id", allowNull: false },
+  as: "requirements",
+});
+FinancingRequirement.belongsToMany(FinancingPlan, {
+  through: FinancingPlanRequirement,
+  foreignKey: { name: "financingRequirementId", field: "financing_requirement_id", allowNull: false },
+  otherKey: { name: "financingPlanId", field: "financing_plan_id", allowNull: false },
+  as: "plans",
 });

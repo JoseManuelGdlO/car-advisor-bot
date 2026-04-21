@@ -13,6 +13,7 @@ import Conversaciones from "./pages/Conversaciones.tsx";
 import ChatDetalle from "./pages/ChatDetalle.tsx";
 import Configuracion from "./pages/Configuracion.tsx";
 import ConfigFaqs from "./pages/ConfigFaqs.tsx";
+import ConfigFinanciamiento from "./pages/ConfigFinanciamiento.tsx";
 import ConfigProductos from "./pages/ConfigProductos.tsx";
 import ConfigPromos from "./pages/ConfigPromos.tsx";
 import Perfil from "./pages/Perfil.tsx";
@@ -40,6 +41,7 @@ const App = () => (
               <Route path="/chat/:id" element={<RequireAuth><ChatDetalle /></RequireAuth>} />
               <Route path="/config" element={<RequireAuth><Configuracion /></RequireAuth>} />
               <Route path="/config/faqs" element={<RequireAuth><ConfigFaqs /></RequireAuth>} />
+              <Route path="/config/financiamiento" element={<RequireAuth><ConfigFinanciamiento /></RequireAuth>} />
               <Route path="/config/productos" element={<RequireAuth><ConfigProductos /></RequireAuth>} />
               <Route path="/config/promociones" element={<RequireAuth><ConfigPromos /></RequireAuth>} />
               <Route path="/perfil" element={<RequireAuth><Perfil /></RequireAuth>} />
