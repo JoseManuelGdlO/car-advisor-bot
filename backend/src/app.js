@@ -1,4 +1,5 @@
 import express from "express";
+import path from "path";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
@@ -10,7 +11,11 @@ import { financingRoutes } from "./routes/financingRoutes.js";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.js";
 
 export const app = express();
-app.use(helmet());
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  })
+);
 app.use(
   cors({
     origin(origin, cb) {
@@ -26,6 +31,7 @@ app.use(
   })
 );
 app.use(express.json({ limit: "1mb" }));
+app.use("/uploads/autobot", express.static(path.resolve(process.cwd(), "autobot")));
 app.use(morgan("dev"));
 app.use(`${env.apiPrefix}/auth`, rateLimit({ windowMs: 60_000, limit: 30 }), authRoutes);
 app.use(`${env.apiPrefix}`, crmRoutes);

@@ -1,4 +1,4 @@
-import { apiRequest } from "@/lib/api";
+import { apiRequest, apiRequestFormData } from "@/lib/api";
 
 export type FinancingRequirementDto = {
   id: string;
@@ -31,6 +31,9 @@ export type VehicleDto = {
   color: string;
   status: "available" | "reserved" | "sold";
   image: string;
+  imageUrls?: string[];
+  metadata?: Record<string, string | number | boolean>;
+  outboundPriority?: number;
   financingPlans?: (FinancingPlanDto & { vehicle_financing_plans?: { customRate: number | null } })[];
 };
 
@@ -41,12 +44,65 @@ export const crmApi = {
   getConversations: (token: string) => apiRequest("/conversations", "GET", undefined, token),
   getConversationMessages: (token: string, id: string) => apiRequest(`/conversations/${id}/messages`, "GET", undefined, token),
   getVehicles: (token: string) => apiRequest("/vehicles", "GET", undefined, token),
+  createVehicle: (
+    token: string,
+    payload: {
+      brand: string;
+      model: string;
+      year: number;
+      price: number;
+      km: number;
+      transmission: string;
+      engine: string;
+      color: string;
+      status?: "available" | "reserved" | "sold";
+      description?: string;
+      image?: string;
+      imageUrls?: string[];
+      metadata?: Record<string, string | number | boolean>;
+      outboundPriority?: number;
+    }
+  ) => apiRequest("/vehicles", "POST", payload, token),
+  updateVehicle: (
+    token: string,
+    id: string,
+    payload: {
+      brand: string;
+      model: string;
+      year: number;
+      price: number;
+      km: number;
+      transmission: string;
+      engine: string;
+      color: string;
+      status?: "available" | "reserved" | "sold";
+      description?: string;
+      image?: string;
+      imageUrls?: string[];
+      metadata?: Record<string, string | number | boolean>;
+      outboundPriority?: number;
+    }
+  ) => apiRequest(`/vehicles/${id}`, "PATCH", payload, token),
+  uploadVehicleImages: async (token: string, files: File[]) => {
+    const formData = new FormData();
+    files.forEach((file) => formData.append("images", file));
+    return apiRequestFormData<{ imageUrls: string[] }>("/vehicles/images/upload", formData, token);
+  },
   getFaqs: (token: string) => apiRequest("/faqs", "GET", undefined, token),
   createFaq: (token: string, payload: { question: string; answer: string }) => apiRequest("/faqs", "POST", payload, token),
   updateFaq: (token: string, id: string, payload: { question: string; answer: string }) =>
     apiRequest(`/faqs/${id}`, "PATCH", payload, token),
   deleteFaq: (token: string, id: string) => apiRequest(`/faqs/${id}`, "DELETE", undefined, token),
   getPromotions: (token: string) => apiRequest("/promotions", "GET", undefined, token),
+  createPromotion: (
+    token: string,
+    payload: { title: string; description: string; validUntil?: string; appliesTo?: string; active?: boolean; vehicleIds?: string[] }
+  ) => apiRequest("/promotions", "POST", payload, token),
+  updatePromotion: (
+    token: string,
+    id: string,
+    payload: { title: string; description: string; validUntil?: string; appliesTo?: string; active?: boolean; vehicleIds?: string[] }
+  ) => apiRequest(`/promotions/${id}`, "PATCH", payload, token),
   togglePromotion: (token: string, id: string) => apiRequest(`/promotions/${id}/toggle`, "POST", {}, token),
   getFinancingPlans: (token: string) => apiRequest("/financing-plans", "GET", undefined, token),
   createFinancingPlan: (token: string, payload: Partial<FinancingPlanDto>) =>

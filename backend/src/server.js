@@ -4,9 +4,9 @@ import { sequelize } from "./config/database.js";
 
 const start = async () => {
   await sequelize.authenticate();
-  // In development we auto-align tables with models to avoid
-  // runtime failures when schema is partially migrated.
-  await sequelize.sync({ alter: env.nodeEnv !== "production" });
+  // Keep schema changes strictly in migrations to avoid
+  // destructive/invalid ALTER operations at runtime.
+  await sequelize.sync();
   app.listen(env.port, () => {
     console.log(`Backend listening on http://localhost:${env.port}`);
   });

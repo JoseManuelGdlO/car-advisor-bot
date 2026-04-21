@@ -35,6 +35,9 @@ export const Vehicle = sequelize.define("vehicles", {
   status: { type: DataTypes.ENUM("available", "reserved", "sold"), allowNull: false, defaultValue: "available" },
   description: { type: DataTypes.TEXT },
   image: { type: DataTypes.STRING(20), defaultValue: "🚗" },
+  imageUrls: { type: DataTypes.JSON, allowNull: false, defaultValue: [], field: "image_urls" },
+  metadata: { type: DataTypes.JSON, allowNull: false, defaultValue: {} },
+  outboundPriority: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0, field: "outbound_priority" },
 });
 
 export const ClientLead = sequelize.define("client_leads", {
@@ -98,6 +101,7 @@ export const Promotion = sequelize.define("promotions", {
   validUntil: { type: DataTypes.STRING(40), field: "valid_until" },
   active: { type: DataTypes.BOOLEAN, defaultValue: true },
   appliesTo: { type: DataTypes.STRING(160), field: "applies_to" },
+  vehicleIds: { type: DataTypes.JSON, allowNull: false, defaultValue: [], field: "vehicle_ids" },
 });
 
 export const FinancingPlan = sequelize.define("financing_plans", {

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useAuth } from "@/context/AuthContext";
 import { FinancingPlanDto, FinancingRequirementDto, crmApi } from "@/services/crm";
 
@@ -34,6 +35,9 @@ export default function ConfigFinanciamiento() {
   const [form, setForm] = useState<PlanFormState>(emptyForm);
   const [requirementTitle, setRequirementTitle] = useState("");
   const [requirementDescription, setRequirementDescription] = useState("");
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletingPlan, setDeletingPlan] = useState<FinancingPlanDto | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const { data: plansData = [] } = useQuery({
     queryKey: ["financing-plans"],
@@ -71,10 +75,19 @@ export default function ConfigFinanciamiento() {
     resetForm();
   };
 
-  const deletePlan = async (id: string) => {
-    if (!token) return;
-    await crmApi.deleteFinancingPlan(token, id);
+  const openDeletePlan = (plan: FinancingPlanDto) => {
+    setDeletingPlan(plan);
+    setDeleteOpen(true);
+  };
+
+  const deletePlan = async () => {
+    if (!token || !deletingPlan) return;
+    setDeleting(true);
+    await crmApi.deleteFinancingPlan(token, deletingPlan.id);
     await queryClient.invalidateQueries({ queryKey: ["financing-plans"] });
+    setDeleting(false);
+    setDeleteOpen(false);
+    setDeletingPlan(null);
   };
 
   const createRequirement = async (event: FormEvent) => {
@@ -193,7 +206,7 @@ export default function ConfigFinanciamiento() {
                   >
                     <Pencil className="w-4 h-4" />
                   </button>
-                  <button className="p-1.5 rounded-lg hover:bg-muted text-destructive" onClick={() => deletePlan(plan.id)}>
+                  <button className="p-1.5 rounded-lg hover:bg-muted text-destructive" onClick={() => openDeletePlan(plan)}>
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
@@ -217,6 +230,26 @@ export default function ConfigFinanciamiento() {
           ))}
         </ul>
       </div>
+
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Eliminar plan de financiamiento</DialogTitle>
+            <DialogDescription>Esta acción no se puede deshacer.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm font-semibold">{deletingPlan?.name}</p>
+            <div className="flex gap-2">
+              <Button variant="outline" className="w-full" onClick={() => setDeleteOpen(false)} disabled={deleting}>
+                Cancelar
+              </Button>
+              <Button variant="destructive" className="w-full" onClick={deletePlan} disabled={deleting}>
+                {deleting ? "Eliminando..." : "Si, eliminar"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
