@@ -29,6 +29,44 @@ export const BotSetting = sequelize.define("bot_settings", {
   weeklySchedule: { type: DataTypes.JSON, allowNull: false, defaultValue: {}, field: "weekly_schedule" },
 });
 
+export const BusinessProfile = sequelize.define("business_profiles", {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  ownerUserId: { type: DataTypes.UUID, allowNull: false, unique: true, field: "owner_user_id" },
+  tradeName: { type: DataTypes.STRING(200), field: "trade_name" },
+  legalName: { type: DataTypes.STRING(200), field: "legal_name" },
+  taxId: { type: DataTypes.STRING(64), field: "tax_id" },
+  businessPhone: { type: DataTypes.STRING(40), field: "business_phone" },
+  businessEmail: { type: DataTypes.STRING(190), field: "business_email" },
+  website: { type: DataTypes.STRING(500) },
+  addressLine: { type: DataTypes.STRING(255), field: "address_line" },
+  city: { type: DataTypes.STRING(120) },
+  state: { type: DataTypes.STRING(120) },
+  country: { type: DataTypes.STRING(120) },
+  description: { type: DataTypes.TEXT },
+  logoUrl: { type: DataTypes.STRING(500), field: "logo_url" },
+});
+
+export const ChannelIntegration = sequelize.define("channel_integrations", {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  ownerUserId: { type: DataTypes.UUID, allowNull: false, field: "owner_user_id" },
+  channel: { type: DataTypes.STRING(32), allowNull: false },
+  provider: { type: DataTypes.STRING(60), allowNull: false, defaultValue: "meta" },
+  displayName: { type: DataTypes.STRING(160), field: "display_name" },
+  status: { type: DataTypes.ENUM("draft", "active", "error", "disabled"), allowNull: false, defaultValue: "draft" },
+  webhookUrl: { type: DataTypes.STRING(500), field: "webhook_url" },
+  lastHealthcheckAt: { type: DataTypes.DATE, field: "last_healthcheck_at" },
+  lastError: { type: DataTypes.TEXT, field: "last_error" },
+});
+
+export const ChannelCredential = sequelize.define("channel_credentials", {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  ownerUserId: { type: DataTypes.UUID, allowNull: false, field: "owner_user_id" },
+  channelIntegrationId: { type: DataTypes.UUID, allowNull: false, field: "channel_integration_id" },
+  credentialType: { type: DataTypes.STRING(40), allowNull: false, defaultValue: "json_secrets", field: "credential_type" },
+  cipherText: { type: DataTypes.TEXT("long"), allowNull: false, field: "cipher_text" },
+  isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true, field: "is_active" },
+});
+
 export const Vehicle = sequelize.define("vehicles", {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   ownerUserId: { type: DataTypes.UUID, allowNull: false, field: "owner_user_id" },
@@ -180,6 +218,49 @@ User.hasOne(BotSetting, {
 BotSetting.belongsTo(User, {
   foreignKey: { name: "ownerUserId", field: "owner_user_id", allowNull: false },
   targetKey: "id",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+
+User.hasOne(BusinessProfile, {
+  foreignKey: { name: "ownerUserId", field: "owner_user_id", allowNull: false },
+  sourceKey: "id",
+  as: "businessProfile",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+BusinessProfile.belongsTo(User, {
+  foreignKey: { name: "ownerUserId", field: "owner_user_id", allowNull: false },
+  targetKey: "id",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+
+User.hasMany(ChannelIntegration, {
+  foreignKey: { name: "ownerUserId", field: "owner_user_id", allowNull: false },
+  sourceKey: "id",
+  as: "channelIntegrations",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+ChannelIntegration.belongsTo(User, {
+  foreignKey: { name: "ownerUserId", field: "owner_user_id", allowNull: false },
+  targetKey: "id",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+
+ChannelIntegration.hasMany(ChannelCredential, {
+  foreignKey: { name: "channelIntegrationId", field: "channel_integration_id", allowNull: false },
+  sourceKey: "id",
+  as: "credentials",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+ChannelCredential.belongsTo(ChannelIntegration, {
+  foreignKey: { name: "channelIntegrationId", field: "channel_integration_id", allowNull: false },
+  targetKey: "id",
+  as: "integration",
   onDelete: "CASCADE",
   onUpdate: "CASCADE",
 });

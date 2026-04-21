@@ -64,3 +64,16 @@ export const revokeServiceToken = async (req, res, next) => {
     return next(err);
   }
 };
+
+export const listServiceTokens = async (req, res, next) => {
+  try {
+    const rows = await ServiceToken.findAll({
+      where: { ownerUserId: req.auth.userId },
+      attributes: ["id", "name", "scopes", "revokedAt", "lastUsedAt", "createdAt"],
+      order: [["createdAt", "DESC"]],
+    });
+    return res.json(rows);
+  } catch (err) {
+    return next(err);
+  }
+};

@@ -1,13 +1,22 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api";
+import { accountApi } from "@/services/account";
 
-type AuthUser = { id: string; email: string; name: string };
+export type AuthUser = {
+  id: string;
+  email: string;
+  name: string;
+  phone?: string | null;
+  defaultPlatform?: string | null;
+};
+
 type AuthContextType = {
   token: string | null;
   user: AuthUser | null;
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => void;
+  refreshProfile: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -28,6 +37,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     else localStorage.removeItem("auth_user");
   }, [user]);
 
+  const refreshProfile = useCallback(async () => {
+    if (!token) return;
+    const profile = await accountApi.getProfile(token);
+    setUser({
+      id: profile.user.id,
+      email: profile.user.email,
+      name: profile.user.name,
+      phone: profile.user.phone,
+      defaultPlatform: profile.user.defaultPlatform,
+    });
+  }, [token]);
+
   const value = useMemo<AuthContextType>(
     () => ({
       token,
@@ -35,7 +56,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       async login(email, password) {
         const res = await apiRequest<{ token: string; user: AuthUser }>("/auth/login", "POST", { email, password });
         setToken(res.token);
-        setUser(res.user);
+        try {
+          const profile = await accountApi.getProfile(res.token);
+          setUser({
+            id: profile.user.id,
+            email: profile.user.email,
+            name: profile.user.name,
+            phone: profile.user.phone,
+            defaultPlatform: profile.user.defaultPlatform,
+          });
+        } catch {
+          setUser(res.user);
+        }
       },
       async register(name, email, password) {
         await apiRequest("/auth/register", "POST", { name, email, password });
@@ -44,8 +76,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setToken(null);
         setUser(null);
       },
+      refreshProfile,
     }),
-    [token, user]
+    [token, user, refreshProfile]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -2,6 +2,7 @@ import { Op, fn, col } from "sequelize";
 import { ClientLead, Conversation, Faq, Message, Promotion, Vehicle, FinancingPlan, BotSetting } from "../models/index.js";
 import { ApiError } from "../utils/errors.js";
 import { isWithinBotSchedule, normalizeBotSettingsPayload, normalizeWeeklySchedule, toBotSettingsDto } from "../utils/botSettings.js";
+import { channelAllowsAutoReply } from "../utils/integrationChannel.js";
 
 const ownerWhere = (userId) => ({ ownerUserId: userId });
 const DEFAULT_BOT_SETTINGS = {
@@ -151,11 +152,13 @@ export const botUpsertConversation = async (req, res) => {
   const ownerUserId = req.auth.userId;
   const { user_id, platform, message, selected_car, customer_info } = req.body;
   const botSettings = await getOrCreateBotSettings(ownerUserId);
-  const shouldAutoReply = isWithinBotSchedule({
+  const scheduleOk = isWithinBotSchedule({
     isEnabled: botSettings.isEnabled,
     timezone: botSettings.timezone,
     weeklySchedule: botSettings.weeklySchedule,
   });
+  const integrationOk = await channelAllowsAutoReply(ownerUserId, platform);
+  const shouldAutoReply = scheduleOk && integrationOk;
   const [lead] = await ClientLead.findOrCreate({
     where: { ownerUserId, phone: customer_info?.telefono || user_id },
     defaults: {
@@ -188,5 +191,16 @@ export const botUpsertConversation = async (req, res) => {
       time: new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }),
     });
   }
-  return res.status(201).json({ ok: true, conversationId: conv.id, clientId: lead.id, botSuppressed: !shouldAutoReply });
+  let suppressedReason;
+  if (!shouldAutoReply) {
+    if (!scheduleOk) suppressedReason = "schedule_or_disabled";
+    else if (!integrationOk) suppressedReason = "integration";
+  }
+  return res.status(201).json({
+    ok: true,
+    conversationId: conv.id,
+    clientId: lead.id,
+    botSuppressed: !shouldAutoReply,
+    suppressedReason,
+  });
 };

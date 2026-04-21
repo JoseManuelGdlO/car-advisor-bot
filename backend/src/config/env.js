@@ -28,4 +28,6 @@ export const env = {
     secret: must("JWT_SECRET", "dev-secret"),
     expiresIn: must("JWT_EXPIRES_IN", "8h"),
   },
+  /** 32+ chars recommended; falls back to JWT_SECRET for dev only */
+  credentialsEncryptionKey: must("CREDENTIALS_ENCRYPTION_KEY", ""),
 };
