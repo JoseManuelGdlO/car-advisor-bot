@@ -6,6 +6,8 @@ export const User = sequelize.define("users", {
   email: { type: DataTypes.STRING(190), allowNull: false, unique: true },
   passwordHash: { type: DataTypes.STRING(255), allowNull: false, field: "password_hash" },
   name: { type: DataTypes.STRING(120), allowNull: false },
+  phone: { type: DataTypes.STRING(32) },
+  defaultPlatform: { type: DataTypes.STRING(20), field: "default_platform" },
   active: { type: DataTypes.BOOLEAN, defaultValue: true },
 });
 
@@ -63,9 +65,22 @@ export const Message = sequelize.define("messages", {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   ownerUserId: { type: DataTypes.UUID, allowNull: false, field: "owner_user_id" },
   conversationId: { type: DataTypes.UUID, allowNull: false, field: "conversation_id" },
-  from: { type: DataTypes.ENUM("client", "bot", "seller"), allowNull: false, defaultValue: "client" },
+  // "from" is also used as the bot sender role (user/assistant/system).
+  from: { type: DataTypes.ENUM("client", "bot", "seller", "user", "assistant", "system"), allowNull: false, defaultValue: "client" },
   text: { type: DataTypes.TEXT, allowNull: false },
   time: { type: DataTypes.STRING(20), allowNull: false, defaultValue: "" },
+  phone: { type: DataTypes.STRING(32) },
+  platform: { type: DataTypes.STRING(20) },
+});
+
+export const BotSession = sequelize.define("bot_sessions", {
+  sessionId: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true, field: "session_id" },
+  phone: { type: DataTypes.STRING(32), allowNull: false },
+  platform: { type: DataTypes.STRING(20), allowNull: false, defaultValue: "web" },
+  conversationId: { type: DataTypes.UUID, field: "conversation_id" },
+  statePayload: { type: DataTypes.TEXT("long"), allowNull: false, field: "state_payload" },
+  payloadVersion: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1, field: "payload_version" },
+  expiresAt: { type: DataTypes.DATE, allowNull: false, field: "expires_at" },
 });
 
 export const Faq = sequelize.define("faqs", {
