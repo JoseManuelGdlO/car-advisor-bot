@@ -10,6 +10,7 @@ from typing import Any
 import mysql.connector
 import requests
 from mysql.connector.connection import MySQLConnection
+from mysql.connector.errors import Error as MySQLError
 
 
 def _backend_headers() -> dict[str, str]:
@@ -46,6 +47,12 @@ def get_connection() -> MySQLConnection:
     )
 
 
+def _is_missing_table_error(exc: Exception) -> bool:
+    """Detecta errores de tabla inexistente en MySQL (1146)."""
+
+    return isinstance(exc, MySQLError) and getattr(exc, "errno", None) == 1146
+
+
 def fetch_active_bot_session(user_id: str, platform: str = "web") -> dict[str, Any] | None:
     """Recupera sesion activa y deserializa `state_payload` desde `bot_sessions`.
 
@@ -75,6 +82,11 @@ def fetch_active_bot_session(user_id: str, platform: str = "web") -> dict[str, A
             if isinstance(payload, str):
                 return json.loads(payload)
             return None
+    except Exception as exc:
+        # Permite operar sin persistencia si la tabla aun no fue creada.
+        if _is_missing_table_error(exc):
+            return None
+        raise
     finally:
         connection.close()
 
@@ -126,6 +138,11 @@ def upsert_bot_session_state(
                 ),
             )
         connection.commit()
+    except Exception as exc:
+        # Evita romper el flujo del chat si falta tabla de sesion.
+        if _is_missing_table_error(exc):
+            return
+        raise
     finally:
         connection.close()
 
@@ -160,6 +177,11 @@ def save_message(
         with connection.cursor() as cursor:
             cursor.execute(query, (user_id, platform, conversation_id, role, content))
         connection.commit()
+    except Exception as exc:
+        # Historial es opcional; no tumbar chat por tabla ausente.
+        if _is_missing_table_error(exc):
+            return
+        raise
     finally:
         connection.close()
 
