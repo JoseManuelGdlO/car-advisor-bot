@@ -1,0 +1,55 @@
+"""Nodo para captura de datos del lead."""
+
+from src.state import clientState
+
+from src.nodes.common import (
+    append_assistant_message,
+    latest_user_message,
+    notify_advisor,
+    parse_customer_info,
+    safe_llm_format,
+)
+
+
+def lead_capture(state: clientState) -> clientState:
+    """Solicita y confirma datos de contacto del lead."""
+
+    state["current_node"] = "lead_capture"
+    if state.get("skip_lead_prompt"):
+        state["skip_lead_prompt"] = False
+        return state
+    selected_car = state.get("selected_car", "")
+    if not selected_car:
+        base_text = "Primero debes elegir un vehiculo para continuar."
+        message = safe_llm_format(base_text, [])
+        return append_assistant_message(state, message, [])
+
+    latest_user_text = latest_user_message(state)
+    new_info = parse_customer_info(latest_user_text)
+    current_info = dict(state.get("customer_info", {}))
+    current_info.update(new_info)
+    state["customer_info"] = current_info
+
+    required_fields = ["nombre", "telefono", "email"]
+    missing_fields = [field for field in required_fields if not current_info.get(field)]
+
+    if missing_fields:
+        hint = ", ".join(missing_fields)
+        base_text = (
+            f"Para apartar {selected_car}, comparte tus datos en formato "
+            f"nombre:..., telefono:..., email:.... Faltan: {hint}."
+        )
+        message = safe_llm_format(base_text, [])
+        return append_assistant_message(state, message, [])
+
+    try:
+        notify_advisor(selected_car, current_info)
+        base_text = f"Listo. Recibi tus datos para {selected_car} y ya notifique a un asesor."
+    except Exception:
+        base_text = (
+            f"Recibi tus datos para {selected_car}. "
+            "Hubo un problema temporal al notificar, pero un asesor te contactara."
+        )
+
+    message = safe_llm_format(base_text, [])
+    return append_assistant_message(state, message, [])
