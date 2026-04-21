@@ -9,6 +9,7 @@ from src.nodes.common import (
     parse_customer_info,
     safe_llm_format,
 )
+from src.tools.database import push_event_to_backend
 
 
 def lead_capture(state: clientState) -> clientState:
@@ -44,6 +45,15 @@ def lead_capture(state: clientState) -> clientState:
 
     try:
         notify_advisor(selected_car, current_info)
+        push_event_to_backend(
+            {
+                "user_id": current_info.get("telefono", current_info.get("email", "lead")),
+                "platform": "api",
+                "message": "lead_capture_completed",
+                "selected_car": selected_car,
+                "customer_info": current_info,
+            }
+        )
         base_text = f"Listo. Recibi tus datos para {selected_car} y ya notifique a un asesor."
     except Exception:
         base_text = (

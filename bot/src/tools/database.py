@@ -8,7 +8,30 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import mysql.connector
+import requests
 from mysql.connector.connection import MySQLConnection
+
+
+def _backend_headers() -> dict[str, str]:
+    token = os.getenv("BACKEND_SERVICE_TOKEN", "").strip()
+    return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"} if token else {}
+
+
+def _backend_api_url(path: str) -> str:
+    base = os.getenv("BACKEND_API_URL", "").rstrip("/")
+    return f"{base}{path}" if base else ""
+
+
+def push_event_to_backend(payload: dict[str, Any]) -> None:
+    """Envia eventos del bot al backend Node cuando existe configuracion."""
+    url = _backend_api_url("/bot/conversation-events")
+    headers = _backend_headers()
+    if not url or "Authorization" not in headers:
+        return
+    try:
+        requests.post(url, json=payload, headers=headers, timeout=5)
+    except Exception:
+        return
 
 
 def get_connection() -> MySQLConnection:
@@ -139,6 +162,16 @@ def save_message(
         connection.commit()
     finally:
         connection.close()
+
+    push_event_to_backend(
+        {
+            "user_id": user_id,
+            "platform": platform,
+            "message": content,
+            "selected_car": "",
+            "customer_info": {"source_role": role},
+        }
+    )
 
 
 def fetch_faq_candidates(question: str, limit: int = 3) -> list[str]:

@@ -1,0 +1,130 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Chatbot Manager — WhatsApp-friendly design system. All colors HSL. */
+
+@layer base {
+  :root {
+    --background: 150 20% 97%;
+    --foreground: 160 20% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 160 20% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 160 20% 12%;
+
+    /* WhatsApp green */
+    --primary: 142 70% 49%;
+    --primary-foreground: 0 0% 100%;
+    --primary-dark: 162 75% 30%;
+    --primary-glow: 142 70% 60%;
+
+    --secondary: 150 25% 94%;
+    --secondary-foreground: 162 75% 25%;
+
+    --muted: 150 15% 94%;
+    --muted-foreground: 160 10% 45%;
+
+    --accent: 142 70% 95%;
+    --accent-foreground: 162 75% 25%;
+
+    --destructive: 0 75% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 142 70% 49%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --info: 210 90% 55%;
+    --info-foreground: 0 0% 100%;
+
+    --border: 150 15% 88%;
+    --input: 150 15% 90%;
+    --ring: 142 70% 49%;
+
+    --radius: 1rem;
+
+    /* WhatsApp chat surfaces */
+    --chat-bg: 90 20% 92%;
+    --chat-bubble-out: 142 60% 88%;
+    --chat-bubble-in: 0 0% 100%;
+    --chat-bot: 210 90% 95%;
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(142 70% 49%), hsl(162 75% 30%));
+    --gradient-soft: linear-gradient(180deg, hsl(150 30% 97%), hsl(150 25% 94%));
+    --gradient-hero: linear-gradient(135deg, hsl(162 75% 30%), hsl(142 70% 49%));
+
+    /* Shadows */
+    --shadow-soft: 0 2px 8px -2px hsl(160 30% 20% / 0.08);
+    --shadow-card: 0 4px 16px -4px hsl(160 30% 20% / 0.1);
+    --shadow-elevated: 0 12px 40px -12px hsl(160 30% 20% / 0.18);
+    --shadow-green: 0 8px 24px -8px hsl(142 70% 49% / 0.4);
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 160 20% 8%;
+    --foreground: 150 20% 95%;
+    --card: 160 20% 12%;
+    --card-foreground: 150 20% 95%;
+    --popover: 160 20% 12%;
+    --popover-foreground: 150 20% 95%;
+    --primary: 142 70% 49%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 160 15% 18%;
+    --secondary-foreground: 150 20% 95%;
+    --muted: 160 15% 18%;
+    --muted-foreground: 150 10% 65%;
+    --accent: 162 50% 20%;
+    --accent-foreground: 150 20% 95%;
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 160 15% 20%;
+    --input: 160 15% 20%;
+    --ring: 142 70% 49%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html, body, #root {
+    @apply h-full;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .bg-chat-pattern {
+    background-color: hsl(var(--chat-bg));
+    background-image:
+      radial-gradient(hsl(160 20% 12% / 0.04) 1px, transparent 1px),
+      radial-gradient(hsl(160 20% 12% / 0.04) 1px, transparent 1px);
+    background-size: 24px 24px;
+    background-position: 0 0, 12px 12px;
+  }
+}
