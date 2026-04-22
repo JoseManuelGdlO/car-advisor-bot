@@ -28,6 +28,9 @@ export const getDashboard = async (req, res) => {
     conversions,
     conversionsChange: 0,
     weeklyChats: [0, 0, 0, 0, 0, 0, activeChats],
-    topProducts: topRows.map((x) => ({ name: x.interestedIn || "Sin dato", queries: Number(x.queries || 0) })),
+    topProducts: topRows.map((x) => ({
+      name: x.interested_in || x.interestedIn || "Sin dato",
+      queries: Number(x.queries || 0),
+    })),
   });
 };
