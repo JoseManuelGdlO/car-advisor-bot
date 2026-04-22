@@ -204,11 +204,18 @@ export const botUpsertConversation = async (req, res) => {
   });
   const [conv] = await Conversation.findOrCreate({
     where: { ownerUserId, clientLeadId: lead.id },
-    defaults: { ownerUserId, clientLeadId: lead.id, channel: inboundChannel, lastMessage: normalizedMessage, lastTime: new Date(), unread: 0 },
+    defaults: {
+      ownerUserId,
+      clientLeadId: lead.id,
+      channel: inboundChannel,
+      lastMessage: isInboundClientMessage ? normalizedMessage : "",
+      lastTime: isInboundClientMessage ? new Date() : null,
+      unread: 0,
+    },
   });
   await conv.update({
-    lastMessage: normalizedMessage,
-    lastTime: new Date(),
+    lastMessage: isInboundClientMessage ? normalizedMessage : conv.lastMessage,
+    lastTime: isInboundClientMessage ? new Date() : conv.lastTime,
   });
   await Message.create({
     ownerUserId,
