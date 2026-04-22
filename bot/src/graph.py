@@ -13,26 +13,47 @@ from src.nodes.router import router
 from src.state import clientState
 
 
+def _log_transition(origin: str, destination: str, details: str | None = None) -> None:
+    """Imprime transiciones del grafo para debug de cada invoke."""
+
+    if details:
+        print(f"[GRAPH] {origin} -> {destination} ({details})")
+        return
+    print(f"[GRAPH] {origin} -> {destination}")
+
+
 def _route_from_router(state: clientState) -> str:
     """Devuelve el nombre del siguiente nodo luego de `router`."""
 
     node = state.get("current_node", "router")
+    intent = state.get("intent", "unknown")
+    print(f"[GRAPH] route_from_router: current_node='{node}', intent='{intent}'")
     if node == "faq":
+        _log_transition("router", "faq")
         return "faq"
     if node == "brand_selection":
+        _log_transition("router", "brand_selection")
         return "brand_selection"
     if node == "car_selection":
+        _log_transition("router", "car_selection")
         return "car_selection"
     if node == "lead_capture":
+        _log_transition("router", "lead_capture")
         return "lead_capture"
+    _log_transition("router", "end", "sin nodo valido")
     return "end"
 
 
 def _route_after_intent_checker(state: clientState) -> str:
     """Define si se continua flujo o se enruta a FAQ interruptiva."""
 
-    if state.get("current_node") == "faq":
+    node = state.get("current_node", "router")
+    if node == "faq":
+        print("[GRAPH] route_after_intent_checker: FAQ detectada, redirigiendo a faq")
+        _log_transition("intent_checker", "faq", "faq interruptiva")
         return "faq"
+    print(f"[GRAPH] route_after_intent_checker: sin FAQ, continuando flujo (current_node='{node}')")
+    _log_transition("intent_checker", "router")
     return "router"
 
 
