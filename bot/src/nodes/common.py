@@ -11,13 +11,6 @@ from langchain_openai import ChatOpenAI
 
 from src.state import clientState
 
-CATEGORY_OPTIONS = ["SUV", "Sedan", "Pickup"]
-CAR_OPTIONS_BY_CATEGORY = {
-    "SUV": ["Toyota RAV4", "Mazda CX-5", "Kia Sportage"],
-    "Sedan": ["Toyota Corolla", "Mazda 3", "Nissan Sentra"],
-    "Pickup": ["Toyota Hilux", "Ford Ranger", "Chevrolet Colorado"],
-}
-
 
 def safe_llm_format(text: str, options: list[str]) -> str:
     """Usa ChatOpenAI para dar formato, con fallback seguro al texto base."""
@@ -88,6 +81,79 @@ def is_faq_intent(text: str) -> bool:
         "ubicacion",
     ]
     return any(term in normalized for term in faq_terms)
+
+
+def _vehicles_api_base_url() -> str:
+    """Retorna base URL del backend para consultar catalogo de vehiculos."""
+
+    return os.getenv("VEHICLES_API_BASE_URL", "http://localhost:4000").rstrip("/")
+
+
+def _vehicles_api_headers() -> dict[str, str]:
+    """Retorna headers para endpoint protegido si existe token."""
+
+    token = os.getenv("BACKEND_SERVICE_TOKEN", "").strip()
+    if not token:
+        return {}
+    return {"Authorization": f"Bearer {token}"}
+
+
+def fetch_vehicles_catalog() -> list[dict[str, Any]]:
+    """Obtiene catalogo de vehiculos desde el backend Node."""
+
+    url = f"{_vehicles_api_base_url()}/api/vehicles"
+    response = requests.get(url, headers=_vehicles_api_headers(), timeout=5)
+    response.raise_for_status()
+    payload = response.json()
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if isinstance(payload, dict):
+        data = payload.get("data")
+        if isinstance(data, list):
+            return [item for item in data if isinstance(item, dict)]
+    return []
+
+
+def available_brands() -> list[str]:
+    """Retorna marcas disponibles unicas desde el catalogo real."""
+
+    vehicles = fetch_vehicles_catalog()
+    seen: set[str] = set()
+    brands: list[str] = []
+    for item in vehicles:
+        brand = str(item.get("brand", "")).strip()
+        if not brand:
+            continue
+        key = brand.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        brands.append(brand)
+    return brands
+
+
+def available_models_by_brand(brand: str) -> list[str]:
+    """Retorna modelos disponibles para una marca especifica."""
+
+    normalized_brand = brand.strip().lower()
+    if not normalized_brand:
+        return []
+    vehicles = fetch_vehicles_catalog()
+    seen: set[str] = set()
+    models: list[str] = []
+    for item in vehicles:
+        item_brand = str(item.get("brand", "")).strip().lower()
+        if item_brand != normalized_brand:
+            continue
+        model = str(item.get("model", "")).strip()
+        if not model:
+            continue
+        key = model.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        models.append(model)
+    return models
 
 
 def parse_customer_info(raw_text: str) -> dict[str, Any]:

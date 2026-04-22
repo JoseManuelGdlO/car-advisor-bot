@@ -76,6 +76,7 @@ class ChatResponse(BaseModel):
     reply: str
     options: list[str]
     current_node: str
+    selected_brand: str
     selected_category: str
     selected_car: str
 
@@ -86,12 +87,13 @@ def _build_initial_state() -> dict[str, Any]:
     return {
         "messages": [],
         "current_node": "start",
-        "selected_category": "",
+        "intent": "",
+        "selected_brand": "",
         "selected_car": "",
         "customer_info": {},
         "last_bot_message": "",
         "options": [],
-        "skip_category_prompt": False,
+        "skip_brand_prompt": False,
         "skip_car_prompt": False,
         "skip_lead_prompt": False,
         "resume_to_step": "",
@@ -171,6 +173,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
             reply=reply,
             options=options or list(updated_state.get("options", [])),
             current_node=str(updated_state.get("current_node", "router")),
+            selected_brand=str(updated_state.get("selected_brand", "")),
             selected_category=str(updated_state.get("selected_category", "")),
             selected_car=str(updated_state.get("selected_car", "")),
         )

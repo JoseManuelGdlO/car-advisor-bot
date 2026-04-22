@@ -11,9 +11,9 @@ def intent_checker(state: clientState) -> clientState:
     last_user, _last_ai = latest_human_ai_pair(state)
     if is_faq_intent(last_user):
         state["is_faq_interrupt"] = True
-        state["resume_to_step"] = state.get("current_node", "category_selection")
+        state["resume_to_step"] = state.get("current_node", "brand_selection")
         state["current_node"] = "faq"
-        state["skip_category_prompt"] = True
+        state["skip_brand_prompt"] = True
         state["skip_car_prompt"] = True
         state["skip_lead_prompt"] = True
         return state

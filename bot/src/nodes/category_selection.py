@@ -1,18 +1,11 @@
-"""Nodo para seleccion de categoria de vehiculo."""
+"""Compatibilidad temporal hacia brand_selection."""
 
 from src.state import clientState
 
-from src.nodes.common import CATEGORY_OPTIONS, append_assistant_message, safe_llm_format
+from src.nodes.brand_selection import brand_selection
 
 
 def category_selection(state: clientState) -> clientState:
-    """Solicita al usuario elegir una categoria principal."""
+    """Alias legado para mantener compatibilidad externa."""
 
-    state["current_node"] = "category_selection"
-    if not state.get("skip_category_prompt"):
-        state["selected_category"] = ""
-        state["selected_car"] = ""
-    base_text = "Perfecto, para comenzar elige una categoria de vehiculo."
-    message = safe_llm_format(base_text, CATEGORY_OPTIONS)
-    state["skip_category_prompt"] = False
-    return append_assistant_message(state, message, CATEGORY_OPTIONS)
+    return brand_selection(state)
