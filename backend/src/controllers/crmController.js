@@ -152,11 +152,12 @@ export const upsertBotSettings = async (req, res) => {
 export const botUpsertConversation = async (req, res) => {
   const { user_id, platform, message, selected_car, customer_info } = req.body;
   const ownerUserId = env.bot.defaultOwnerUserId || req.auth.userId;
-  const inboundChannel = normalizeInboundChannel(platform || env.bot.defaultInboundChannel || "web");
+  const resolvedChannel = normalizeInboundChannel(platform || env.bot.defaultInboundChannel || "web");
+  const inboundChannel = resolvedChannel;
   const messageFrom = String(req.body.from || "client").trim().toLowerCase();
   const normalizedUserId = String(user_id || "").trim();
   const normalizedMessage = String(message || "").trim();
-  const normalizedPlatform = normalizeInboundChannel(platform || "web");
+  const normalizedPlatform = resolvedChannel;
   const normalizedFrom = ["client", "bot", "seller", "user", "assistant", "system"].includes(messageFrom) ? messageFrom : "client";
   const isInboundClientMessage = normalizedFrom === "client" || normalizedFrom === "user";
   console.log("[botUpsertConversation] inbound event", {
