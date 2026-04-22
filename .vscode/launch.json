@@ -1,0 +1,16 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Bot API (src.server)",
+      "type": "debugpy",
+      "request": "launch",
+      "python": "${workspaceFolder}/bot/.venv/bin/python",
+      "module": "src.server",
+      "cwd": "${workspaceFolder}/bot",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/bot/.env",
+      "justMyCode": true
+    }
+  ]
+}
