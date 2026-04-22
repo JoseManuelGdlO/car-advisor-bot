@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -11,6 +12,8 @@ import mysql.connector
 import requests
 from mysql.connector.connection import MySQLConnection
 from mysql.connector.errors import Error as MySQLError
+
+logger = logging.getLogger(__name__)
 
 
 def _normalize_uuid(value: Any) -> str | None:
@@ -44,6 +47,115 @@ def push_event_to_backend(payload: dict[str, Any]) -> None:
         requests.post(url, json=payload, headers=headers, timeout=5)
     except Exception:
         return
+
+
+def upsert_inbound_user_message(phone: str, message: str, platform: str = "web") -> dict[str, str] | None:
+    """Registra mensaje entrante en backend y retorna IDs CRM normalizados."""
+
+    normalized_phone = str(phone).strip()
+    normalized_message = str(message).strip()
+    default_platform = str(os.getenv("BOT_DEFAULT_INBOUND_CHANNEL", "web")).strip().lower() or "web"
+    normalized_platform = str(platform or default_platform).strip().lower() or default_platform
+    if not normalized_phone or not normalized_message:
+        logger.warning("Skipping backend upsert: missing phone/message")
+        return None
+
+    url = _backend_api_url("/bot/conversation-events")
+    headers = _backend_headers()
+    if not url or "Authorization" not in headers:
+        logger.error("Skipping backend upsert: BACKEND_API_URL or BACKEND_SERVICE_TOKEN missing")
+        return None
+    try:
+        response = requests.post(
+            url,
+            json={
+                "user_id": normalized_phone,
+                "platform": normalized_platform,
+                "message": normalized_message,
+                "from": "client",
+                "selected_car": "",
+                "customer_info": {},
+            },
+            headers=headers,
+            timeout=8,
+        )
+        if response.status_code != 201:
+            logger.error(
+                "Backend inbound upsert failed status=%s body=%s",
+                response.status_code,
+                response.text[:300],
+            )
+            return None
+        try:
+            data = response.json()
+        except ValueError:
+            logger.error("Backend inbound upsert returned invalid JSON")
+            return None
+        conv = _normalize_uuid(data.get("conversationId"))
+        owner = _normalize_uuid(data.get("ownerUserId"))
+        lead = _normalize_uuid(data.get("clientId"))
+        if not conv or not owner:
+            logger.error("Backend inbound upsert missing ids conversationId/ownerUserId")
+            return None
+        result = {"conversation_id": conv, "owner_user_id": owner}
+        if lead:
+            result["lead_id"] = lead
+        return result
+    except requests.Timeout:
+        logger.exception("Backend inbound upsert timeout")
+        return None
+    except requests.RequestException:
+        logger.exception("Backend inbound upsert network error")
+        return None
+    except Exception:
+        logger.exception("Backend inbound upsert unexpected error")
+        return None
+
+
+def push_assistant_message_to_backend(
+    phone: str,
+    content: str,
+    platform: str = "web",
+) -> None:
+    """Persiste un mensaje del assistant/bot en el backend (fuente de verdad)."""
+
+    normalized_phone = str(phone).strip()
+    normalized_content = str(content).strip()
+    if not normalized_phone or not normalized_content:
+        return
+    default_platform = str(os.getenv("BOT_DEFAULT_INBOUND_CHANNEL", "web")).strip().lower() or "web"
+    normalized_platform = str(platform or default_platform).strip().lower() or default_platform
+    url = _backend_api_url("/bot/conversation-events")
+    headers = _backend_headers()
+    if not url or "Authorization" not in headers:
+        logger.error("Skipping assistant backend write: BACKEND_API_URL or BACKEND_SERVICE_TOKEN missing")
+        return
+    try:
+        response = requests.post(
+            url,
+            json={
+                "user_id": normalized_phone,
+                "platform": normalized_platform,
+                "message": normalized_content,
+                "from": "assistant",
+                "selected_car": "",
+                "customer_info": {},
+            },
+            headers=headers,
+            timeout=8,
+        )
+        if response.status_code != 201:
+            logger.error(
+                "Assistant backend write failed status=%s body=%s",
+                response.status_code,
+                response.text[:300],
+            )
+    except requests.Timeout:
+        logger.exception("Assistant backend write timeout")
+    except requests.RequestException:
+        logger.exception("Assistant backend write network error")
+    except Exception:
+        logger.exception("Assistant backend write unexpected error")
 
 
 def get_connection() -> MySQLConnection:
@@ -104,45 +216,6 @@ def fetch_active_bot_session(phone: str, platform: str = "web") -> tuple[dict[st
     finally:
         connection.close()
 
-
-def ensure_crm_conversation(phone: str, platform: str = "web") -> dict[str, str] | None:
-    """Garantiza lead+conversacion en el backend antes de escribir `messages`.
-
-    POST a `/bot/conversation-events` con `message` vacio: el controlador
-    hace findOrCreate sin insertar fila en `messages` (solo actualiza lead),
-    pero devuelve `conversationId` y `ownerUserId` necesarios para el INSERT
-    directo desde el bot hacia MySQL.
-    """
-
-    url = _backend_api_url("/bot/conversation-events")
-    headers = _backend_headers()
-    if not url or "Authorization" not in headers:
-        return None
-    try:
-        response = requests.post(
-            url,
-            json={
-                "user_id": phone,
-                "platform": platform,
-                "message": "",
-                "selected_car": "",
-                "customer_info": {},
-            },
-            headers=headers,
-            timeout=8,
-        )
-        if response.status_code != 201:
-            return None
-        data = response.json()
-        conv = _normalize_uuid(data.get("conversationId"))
-        owner = _normalize_uuid(data.get("ownerUserId"))
-        if not conv or not owner:
-            return None
-        return {"conversation_id": conv, "owner_user_id": owner}
-    except Exception:
-        return None
-
-
 def upsert_bot_session_state(
     phone: str,
     state_dict: dict[str, Any],
@@ -197,74 +270,6 @@ def upsert_bot_session_state(
         raise
     finally:
         connection.close()
-
-
-def save_message(
-    phone: str,
-    role: str,
-    content: str,
-    platform: str = "web",
-    conversation_id: str | None = None,
-    owner_user_id: str | None = None,
-) -> None:
-    """Guarda historial/auditoria en tabla `messages`.
-
-    Requiere `conversation_id` y `owner_user_id` validos (mismo CRM que el
-    backend); si faltan, se omite el INSERT para no violar NOT NULL/FK.
-    Igual se envia el evento HTTP al CRM (mismo contrato que antes).
-    """
-
-    connection = get_connection()
-    try:
-        # Sin claves de negocio no intentamos INSERT: el esquema las exige.
-        if conversation_id and owner_user_id:
-            time_label = datetime.now().strftime("%H:%M")
-            query = """
-                INSERT INTO messages (
-                    id,
-                    owner_user_id,
-                    phone,
-                    platform,
-                    conversation_id,
-                    `from`,
-                    text,
-                    time,
-                    created_at,
-                    updated_at
-                )
-                VALUES (UUID(), %s, %s, %s, %s, %s, %s, %s, UTC_TIMESTAMP(), UTC_TIMESTAMP())
-            """
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    query,
-                    (
-                        owner_user_id,
-                        phone,
-                        platform,
-                        conversation_id,
-                        role,
-                        content,
-                        time_label,
-                    ),
-                )
-            connection.commit()
-    except Exception as exc:
-        # Historial es opcional; no tumbar chat por tabla ausente.
-        if _is_missing_table_error(exc):
-            return
-        raise
-    finally:
-        connection.close()
-
-    push_event_to_backend(
-        {
-            "user_id": phone,
-            "platform": platform,
-            "message": content,
-            "selected_car": "",
-            "customer_info": {"source_role": role},
-        }
-    )
 
 
 def fetch_faq_candidates(question: str, limit: int = 3) -> list[str]:

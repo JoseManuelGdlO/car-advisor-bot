@@ -13,9 +13,9 @@ from pydantic import BaseModel, Field, field_validator
 
 from src.graph import build_graph
 from src.tools.database import (
-    ensure_crm_conversation,
     fetch_active_bot_session,
-    save_message,
+    push_assistant_message_to_backend,
+    upsert_inbound_user_message,
     upsert_bot_session_state,
 )
 
@@ -26,6 +26,8 @@ graph = build_graph()
 logger = logging.getLogger(__name__)
 ALLOWED_PLATFORMS = {"web", "whatsapp", "telegram", "facebook", "api"}
 MAX_MESSAGES_HISTORY = 50
+_default_platform_candidate = (os.getenv("BOT_DEFAULT_INBOUND_CHANNEL", "web") or "web").strip().lower()
+DEFAULT_INBOUND_PLATFORM = _default_platform_candidate if _default_platform_candidate in ALLOWED_PLATFORMS else "web"
 
 raw_cors_origins = os.getenv("CORS_ORIGINS") or os.getenv("CORS_ORIGIN") or ""
 allowed_cors_origins = [origin.strip() for origin in raw_cors_origins.split(",") if origin.strip()]
@@ -43,7 +45,7 @@ class ChatRequest(BaseModel):
 
     user_id: str = Field(..., min_length=1, max_length=255)
     message: str = Field(..., min_length=1)
-    platform: str = Field(default="web")
+    platform: str = Field(default=DEFAULT_INBOUND_PLATFORM)
 
     @field_validator("user_id", "message")
     @classmethod
@@ -117,20 +119,11 @@ def chat(payload: ChatRequest) -> ChatResponse:
         # 1) Estado del grafo + conversacion ya vinculada en `bot_sessions`, si existe.
         loaded_state, conv_from_session = fetch_active_bot_session(payload.user_id, payload.platform)
         state = loaded_state or _build_initial_state()
-        # 2) Sin UUID persistido, crear/obtener conversacion en CRM *antes* de `messages`.
+        # 2) Registrar mensaje entrante en backend CRM y obtener IDs de relacion.
         conversation_id = conv_from_session
-        owner_user_id = os.getenv("BOT_CRM_OWNER_USER_ID", "").strip() or None
-        if not conversation_id:
-            crm = ensure_crm_conversation(payload.user_id, payload.platform)
-            if crm:
-                conversation_id = crm["conversation_id"]
-                owner_user_id = crm["owner_user_id"]
-        # Turnos posteriores: ya hay `conversation_id` en fila pero el proceso no
-        # guarda `owner_user_id`; se reobtiene del mismo endpoint (idempotente).
-        elif not owner_user_id:
-            crm = ensure_crm_conversation(payload.user_id, payload.platform)
-            if crm:
-                owner_user_id = crm["owner_user_id"]
+        crm = upsert_inbound_user_message(payload.user_id, payload.message, payload.platform)
+        if crm:
+            conversation_id = crm["conversation_id"]
         messages = list(state.get("messages", []))
         messages.append({"role": "user", "content": payload.message, "type": "HumanMessage"})
         # Evita crecimiento ilimitado del estado persistido.
@@ -140,30 +133,17 @@ def chat(payload: ChatRequest) -> ChatResponse:
         updated_state = graph.invoke(state)
         updated_messages = list(updated_state.get("messages", []))
 
-        # Capa 2: auditoria en tabla `messages` (separada del contexto operativo).
+        # Capa 2: persistir mensajes assistant en backend (fuente de verdad).
         try:
-            save_message(
-                payload.user_id,
-                "user",
-                payload.message,
-                platform=payload.platform,
-                conversation_id=conversation_id,
-                owner_user_id=owner_user_id,
-            )
-
-            # Persiste solo los assistant nuevos generados en este turno.
             for message in updated_messages[previous_len:]:
                 if message.get("role") == "assistant":
-                    save_message(
+                    push_assistant_message_to_backend(
                         payload.user_id,
-                        "assistant",
                         str(message.get("content", "")),
                         platform=payload.platform,
-                        conversation_id=conversation_id,
-                        owner_user_id=owner_user_id,
                     )
         except Exception:
-            logger.exception("No se pudo guardar historial en tabla messages")
+            logger.exception("No se pudo persistir mensaje assistant en backend")
 
         upsert_bot_session_state(
             payload.user_id,

@@ -25,4 +25,8 @@ export const env = {
   },
   /** 32+ chars recommended; falls back to JWT_SECRET for dev only */
   credentialsEncryptionKey: must("CREDENTIALS_ENCRYPTION_KEY", ""),
+  bot: {
+    defaultOwnerUserId: must("BOT_DEFAULT_OWNER_USER_ID", ""),
+    defaultInboundChannel: must("BOT_DEFAULT_INBOUND_CHANNEL", "web"),
+  },
 };
