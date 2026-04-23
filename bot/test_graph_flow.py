@@ -24,6 +24,9 @@ def _initial_state() -> dict:
         "is_faq_interrupt": False,
         "awaiting_purchase_confirmation": False,
         "platform": "web",
+        "vehicle_images_cursor": 0,
+        "vehicle_images_has_more": False,
+        "vehicle_images_last_batch": [],
     }
 
 
@@ -68,6 +71,15 @@ class GraphFlowTests(unittest.TestCase):
                 "src.nodes.car_selection.generate_vehicle_purchase_question",
                 return_value="Te interesa comprarlo? Responde si o no.",
             ),
+            patch(
+                "src.nodes.car_selection.fetch_vehicle_images",
+                return_value={
+                    "images": ["/img/1.jpg", "/img/2.jpg"],
+                    "nextCursor": 2,
+                    "hasMore": True,
+                    "mode": "top",
+                },
+            ),
         ):
             updated = self.graph.invoke(state)
 
@@ -77,6 +89,8 @@ class GraphFlowTests(unittest.TestCase):
         last_msg = updated["messages"][-1]["content"]
         self.assertIn("Detalle del vehiculo:", last_msg)
         self.assertIn("**Marca**: Nissan", last_msg)
+        self.assertIn("/img/1.jpg", last_msg)
+        self.assertIn("/img/2.jpg", last_msg)
 
     def test_whatsapp_uses_single_asterisk_for_vehicle_detail(self) -> None:
         vehicles = [
@@ -107,6 +121,15 @@ class GraphFlowTests(unittest.TestCase):
             patch(
                 "src.nodes.car_selection.generate_vehicle_purchase_question",
                 return_value="Te interesa comprarlo? Responde si o no.",
+            ),
+            patch(
+                "src.nodes.car_selection.fetch_vehicle_images",
+                return_value={
+                    "images": ["/img/1.jpg", "/img/2.jpg"],
+                    "nextCursor": 2,
+                    "hasMore": True,
+                    "mode": "top",
+                },
             ),
         ):
             updated = self.graph.invoke(state)
@@ -190,6 +213,68 @@ class GraphFlowTests(unittest.TestCase):
 
         self.assertEqual(resumed.get("current_node"), "lead_capture")
         self.assertIn("Faltan: telefono, email.", resumed["messages"][-1]["content"])
+
+    def test_purchase_classifier_more_images_fetches_next_batch(self) -> None:
+        state = _initial_state()
+        state["current_node"] = "car_selection"
+        state["intent"] = "vehicle_catalog"
+        state["selected_car"] = "Nissan Versa 2004"
+        state["selected_vehicle_id"] = "veh-1"
+        state["awaiting_purchase_confirmation"] = True
+        state["vehicle_images_cursor"] = 2
+        state["vehicle_images_has_more"] = True
+        state["last_bot_message"] = "Te interesa comprar este vehiculo? Responde si o no."
+        state = _with_user_message(state, "muestrame mas imagenes")
+
+        vehicles = [{"id": "veh-1", "brand": "Nissan", "model": "Versa", "year": 2004, "status": "available"}]
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_intent", return_value="FLOW_RESPONSE"),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.classify_purchase_confirmation_intent", return_value="VER_MAS_IMAGENES"),
+            patch(
+                "src.nodes.car_selection.fetch_vehicle_images",
+                return_value={
+                    "images": ["/img/3.jpg", "/img/4.jpg", "/img/5.jpg"],
+                    "nextCursor": 5,
+                    "hasMore": False,
+                    "mode": "next",
+                },
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertEqual(updated.get("current_node"), "car_selection")
+        self.assertTrue(updated.get("awaiting_purchase_confirmation"))
+        self.assertEqual(updated.get("vehicle_images_cursor"), 5)
+        self.assertFalse(updated.get("vehicle_images_has_more"))
+        self.assertEqual(updated.get("vehicle_images_last_batch"), ["/img/3.jpg", "/img/4.jpg", "/img/5.jpg"])
+        last_msg = updated["messages"][-1]["content"]
+        self.assertIn("/img/3.jpg", last_msg)
+        self.assertNotIn("/img/1.jpg", last_msg)
+
+    def test_purchase_classifier_more_images_without_more_stock(self) -> None:
+        state = _initial_state()
+        state["current_node"] = "car_selection"
+        state["intent"] = "vehicle_catalog"
+        state["selected_car"] = "Nissan Versa 2004"
+        state["selected_vehicle_id"] = "veh-1"
+        state["awaiting_purchase_confirmation"] = True
+        state["vehicle_images_cursor"] = 7
+        state["vehicle_images_has_more"] = False
+        state["last_bot_message"] = "Te interesa comprar este vehiculo? Responde si o no."
+        state = _with_user_message(state, "quiero ver mas imagenes")
+
+        vehicles = [{"id": "veh-1", "brand": "Nissan", "model": "Versa", "year": 2004, "status": "available"}]
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_intent", return_value="FLOW_RESPONSE"),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.classify_purchase_confirmation_intent", return_value="VER_MAS_IMAGENES"),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertEqual(updated.get("current_node"), "car_selection")
+        self.assertTrue(updated.get("awaiting_purchase_confirmation"))
+        self.assertIn("Ya no hay mas imagenes", updated["messages"][-1]["content"])
 
 
 if __name__ == "__main__":

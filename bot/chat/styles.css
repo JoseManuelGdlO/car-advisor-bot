@@ -167,6 +167,17 @@ body {
     margin-top: 5px;
 }
 
+.chat-inline-image {
+    display: block;
+    max-width: min(100%, 360px);
+    width: 100%;
+    height: auto;
+    border-radius: 10px;
+    border: 1px solid var(--gray-200);
+    margin: 8px 0;
+    object-fit: cover;
+}
+
 .typing-indicator {
     padding: 10px 20px;
     display: flex;

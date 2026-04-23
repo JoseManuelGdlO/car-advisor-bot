@@ -1,4 +1,5 @@
 class ChatInterface {
+  static BOT_MESSAGE_SEPARATOR = "<<BOT_MSG_BREAK>>";
   constructor() {
     this.messagesContainer = document.getElementById("chat-messages");
     this.userInput = document.getElementById("user-input");
@@ -110,7 +111,7 @@ class ChatInterface {
       const response = await this.sendToAPI(text, userId);
       this.hideTyping();
 
-      this.addMessage(response.reply || "Sin respuesta.", "bot");
+      this.addBotReplyBlocks(response.reply || "Sin respuesta.");
       this.updateSessionInfo(response);
 
       this.setStatus("En línea", "#d1fae5");
@@ -253,12 +254,44 @@ class ChatInterface {
     this.scrollToBottom();
   }
 
+  addBotReplyBlocks(rawReply) {
+    const normalized = String(rawReply || "").trim();
+    if (!normalized) {
+      this.addMessage("Sin respuesta.", "bot");
+      return;
+    }
+    const blocks = normalized
+      .split(ChatInterface.BOT_MESSAGE_SEPARATOR)
+      .map((block) => block.trim())
+      .filter(Boolean);
+    if (!blocks.length) {
+      this.addMessage(normalized, "bot");
+      return;
+    }
+    blocks.forEach((block) => this.addMessage(block, "bot"));
+  }
+
   formatText(text) {
     let formatted = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     formatted = formatted.replace(/\n/g, "<br>");
     formatted = formatted.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
     formatted = formatted.replace(/_(.+?)_/g, "<em>$1</em>");
+    formatted = this.renderInlineImages(formatted);
     return formatted;
+  }
+
+  renderInlineImages(formattedText) {
+    const lines = String(formattedText || "").split("<br>");
+    const imageLineRegex = /^\s*-?\s*((?:https?:\/\/[^\s<]+|\/uploads\/autobot\/[^\s<]+)\.(?:png|jpg|jpeg|gif|webp))\s*$/i;
+    const processed = lines.map((line) => {
+      const match = line.match(imageLineRegex);
+      if (!match) return line;
+      const rawPath = match[1];
+      const baseUrl = this.getApiBase();
+      const src = rawPath.startsWith("/") && baseUrl ? `${baseUrl}${rawPath}` : rawPath;
+      return `<img src="${src}" alt="Imagen del vehiculo" class="chat-inline-image" loading="lazy">`;
+    });
+    return processed.join("<br>");
   }
 
   showTyping() {

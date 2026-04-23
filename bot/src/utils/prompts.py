@@ -148,9 +148,9 @@ def build_vehicle_purchase_question_prompt(bot_settings: dict[str, Any] | None) 
     return (
         f"{system_prompt}\n\n"
         "PREGUNTA_COMPRA_VEHICULO:\n"
-        "Redacta una sola pregunta breve para confirmar si el usuario desea comprar el vehiculo. "
-        "Debe pedir responder con si o no. No agregues saltos de linea.\n\n"
-        "Mensaje base: Te interesa comprar este vehiculo? Responde con un si o un no."
+        "Redacta una sola pregunta breve para confirmar si el usuario desea comprar el vehiculo o ver mas imagenes. "
+        "Incluye 1 o 2 emojis maximo y no agregues saltos de linea.\n\n"
+        "Mensaje base: Te interesa comprar este vehiculo o quieres ver mas imagenes del mismo?"
     )
 
 
@@ -172,7 +172,8 @@ def build_purchase_confirmation_classifier_prompt(
         "- SI: el usuario confirma compra o quiere avanzar con apartar/comprar.\n"
         "- NO: el usuario rechaza compra.\n"
         "- VER_MODELO: el usuario quiere seguir viendo opciones, otros modelos, o cambiar de vehiculo.\n"
-        "Responde SOLO con una de estas etiquetas exactas: SI, NO, VER_MODELO.\n\n"
+        "- VER_MAS_IMAGENES: el usuario pide ver mas fotos/imagenes del vehiculo actual.\n"
+        "Responde SOLO con una de estas etiquetas exactas: SI, NO, VER_MODELO, VER_MAS_IMAGENES.\n\n"
         f"Mensaje previo del bot: {previous}\n"
         f"Mensaje del usuario: {current}\n"
     )

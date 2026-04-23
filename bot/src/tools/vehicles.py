@@ -77,6 +77,78 @@ def fetch_vehicle_by_id(vehicle_id: str) -> dict[str, Any] | None:
     return None
 
 
+def _normalize_vehicle_images_payload(payload: Any) -> dict[str, Any]:
+    """Normaliza respuesta de imagenes del backend a una estructura consistente."""
+
+    if not isinstance(payload, dict):
+        return {
+            "images": [],
+            "nextCursor": None,
+            "hasMore": False,
+            "total": 0,
+            "limit": 0,
+            "cursor": 0,
+            "mode": "top",
+        }
+
+    raw_images = payload.get("images")
+    images = [str(item).strip() for item in raw_images if str(item).strip()] if isinstance(raw_images, list) else []
+
+    raw_next_cursor = payload.get("nextCursor")
+    next_cursor = raw_next_cursor if isinstance(raw_next_cursor, int) and raw_next_cursor >= 0 else None
+    has_more = bool(payload.get("hasMore", next_cursor is not None))
+
+    raw_total = payload.get("total")
+    total = raw_total if isinstance(raw_total, int) and raw_total >= 0 else len(images)
+
+    raw_limit = payload.get("limit")
+    limit = raw_limit if isinstance(raw_limit, int) and raw_limit >= 0 else len(images)
+
+    raw_cursor = payload.get("cursor")
+    cursor = raw_cursor if isinstance(raw_cursor, int) and raw_cursor >= 0 else 0
+
+    mode = str(payload.get("mode", "top")).strip().lower() or "top"
+    if mode not in {"top", "next"}:
+        mode = "top"
+
+    return {
+        "images": images,
+        "nextCursor": next_cursor,
+        "hasMore": has_more,
+        "total": total,
+        "limit": limit,
+        "cursor": cursor,
+        "mode": mode,
+    }
+
+
+def fetch_vehicle_images(
+    vehicle_id: str,
+    mode: str = "top",
+    limit: int | None = None,
+    cursor: int | None = None,
+) -> dict[str, Any]:
+    """Obtiene imagenes paginadas de un vehiculo por ID."""
+
+    cleaned_id = str(vehicle_id or "").strip()
+    normalized_mode = "next" if str(mode).strip().lower() == "next" else "top"
+    if not cleaned_id:
+        return _normalize_vehicle_images_payload({"mode": normalized_mode})
+
+    params: dict[str, Any] = {"mode": normalized_mode}
+    if isinstance(limit, int) and limit > 0:
+        params["limit"] = limit
+    if normalized_mode == "next" and isinstance(cursor, int) and cursor >= 0:
+        params["cursor"] = cursor
+
+    url = f"{_vehicles_api_base_url()}/api/vehicles/{cleaned_id}/images"
+    response = requests.get(url, headers=_vehicles_api_headers(), params=params, timeout=6)
+    if response.status_code == 404:
+        return _normalize_vehicle_images_payload({"mode": normalized_mode})
+    response.raise_for_status()
+    return _normalize_vehicle_images_payload(response.json())
+
+
 def fetch_vehicles_catalog() -> list[dict[str, Any]]:
     """Compatibilidad: alias de fetch_vehicles."""
 

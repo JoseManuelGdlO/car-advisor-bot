@@ -93,7 +93,7 @@ def generate_vehicle_purchase_question() -> str:
     """Genera pregunta embellecida para confirmar compra."""
 
     model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
-    fallback = "Te interesa comprar este vehiculo? Responde con un si o un no."
+    fallback = "Te interesa comprar este vehiculo o quieres ver mas imagenes del mismo? 🚗🖼️ "
     try:
         settings = get_bot_settings()
         llm = ChatOpenAI(model=model_name, temperature=0.5)
@@ -108,7 +108,7 @@ def generate_vehicle_purchase_question() -> str:
 
 
 def classify_purchase_confirmation_intent(previous_bot_message: str, user_message: str) -> str:
-    """Clasifica intencion de confirmacion de compra: SI, NO o VER_MODELO."""
+    """Clasifica confirmacion de compra: SI, NO, VER_MODELO o VER_MAS_IMAGENES."""
 
     model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
     try:
@@ -117,7 +117,7 @@ def classify_purchase_confirmation_intent(previous_bot_message: str, user_messag
         prompt = build_purchase_confirmation_classifier_prompt(previous_bot_message, user_message, settings)
         content = llm.invoke(prompt).content
         normalized = str(content).strip().upper()
-        if normalized in {"SI", "NO", "VER_MODELO"}:
+        if normalized in {"SI", "NO", "VER_MODELO", "VER_MAS_IMAGENES"}:
             return normalized
         return "UNKNOWN"
     except Exception:

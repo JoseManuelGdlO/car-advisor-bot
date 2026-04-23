@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from typing import Any
 
@@ -11,13 +12,13 @@ from src.services.llm_responses import (
     classify_purchase_confirmation_intent,
     generate_available_models_intro,
     generate_vehicle_detail_intro,
-    generate_vehicle_purchase_question,
     safe_llm_format,
 )
 from src.tools.vehicles import (
     canonicalize_with_typo_support,
     detect_vehicle_filters,
     fetch_vehicle_by_id,
+    fetch_vehicle_images,
     fetch_vehicles,
     normalize_user_text,
     search_vehicles,
@@ -55,6 +56,22 @@ _FEATURE_SIGNALS = {
     "blanco",
     "gris",
 }
+_MORE_IMAGES_SIGNALS = {
+    "ver mas imagenes",
+    "ver más imagenes",
+    "ver mas fotos",
+    "ver más fotos",
+    "mas imagenes",
+    "más imagenes",
+    "mas fotos",
+    "más fotos",
+    "siguientes imagenes",
+    "siguientes fotos",
+}
+_PURCHASE_WITH_IMAGES_QUESTION = (
+    "¿Te interesa comprar este vehículo o quieres ver más imágenes del mismo? 🚗✨ "
+    "Responde con sí, no o ver más imágenes."
+)
 
 
 def _normalize_signal_set(values: set[str]) -> set[str]:
@@ -65,6 +82,7 @@ def _normalize_signal_set(values: set[str]) -> set[str]:
 
 _GENERAL_SIGNALS_NORMALIZED = _normalize_signal_set(_GENERAL_SIGNALS)
 _FEATURE_SIGNALS_NORMALIZED = _normalize_signal_set(_FEATURE_SIGNALS)
+_MORE_IMAGES_SIGNALS_NORMALIZED = _normalize_signal_set(_MORE_IMAGES_SIGNALS)
 
 
 def _debug(event: str, **payload: Any) -> None:
@@ -88,6 +106,13 @@ def _looks_like_feature_request(user_text: str) -> bool:
     normalized = normalize_user_text(user_text)
     has_year = bool(re.search(r"\b(?:19|20)\d{2}\b", normalized))
     return has_year or any(signal in normalized for signal in _FEATURE_SIGNALS_NORMALIZED)
+
+
+def _is_more_images_request(user_text: str) -> bool:
+    normalized = normalize_user_text(user_text)
+    if not normalized:
+        return False
+    return any(signal in normalized for signal in _MORE_IMAGES_SIGNALS_NORMALIZED)
 
 
 def _format_vehicle_name(item: dict[str, Any]) -> str:
@@ -125,6 +150,101 @@ def _find_candidate_from_pending(state: clientState, user_text: str) -> dict[str
     return None
 
 
+def _format_images_block(images: list[str]) -> str:
+    if not images:
+        return "Imagenes: No hay imagenes disponibles para este vehiculo."
+    formatted = "\n".join(f"- {_image_url_for_chat(url)}" for url in images)
+    return f"Imagenes del vehiculo:\n{formatted}"
+
+
+def _append_assistant_blocks(state: clientState, blocks: list[str]) -> clientState:
+    for block in blocks:
+        cleaned = str(block or "").strip()
+        if cleaned:
+            append_assistant_message(state, cleaned)
+    return state
+
+
+def _image_url_for_chat(raw_url: str) -> str:
+    cleaned = str(raw_url or "").strip()
+    if not cleaned:
+        return ""
+    if cleaned.startswith("http://") or cleaned.startswith("https://"):
+        return cleaned
+    base = os.getenv("VEHICLES_API_BASE_URL", "http://localhost:4000").rstrip("/")
+    if cleaned.startswith("/"):
+        return f"{base}{cleaned}"
+    return f"{base}/{cleaned}"
+
+
+def _reset_vehicle_images_state(state: clientState) -> None:
+    state["vehicle_images_cursor"] = 0
+    state["vehicle_images_has_more"] = False
+    state["vehicle_images_last_batch"] = []
+
+
+def _fetch_top_images_for_selected_vehicle(state: clientState, vehicle_id: str) -> list[str]:
+    try:
+        payload = fetch_vehicle_images(vehicle_id, mode="top", limit=2)
+        images = payload.get("images", [])
+        state["vehicle_images_last_batch"] = images if isinstance(images, list) else []
+        state["vehicle_images_has_more"] = bool(payload.get("hasMore"))
+        next_cursor = payload.get("nextCursor")
+        if isinstance(next_cursor, int) and next_cursor >= 0:
+            state["vehicle_images_cursor"] = next_cursor
+        else:
+            state["vehicle_images_cursor"] = len(state["vehicle_images_last_batch"])
+        return state["vehicle_images_last_batch"]
+    except Exception:
+        _debug("top_images_fetch_error", vehicle_id=vehicle_id)
+        _reset_vehicle_images_state(state)
+        return []
+
+
+def _respond_with_more_images(state: clientState) -> clientState:
+    vehicle_id = str(state.get("selected_vehicle_id", "")).strip()
+    if not vehicle_id:
+        return append_assistant_message(state, "Primero selecciona un vehiculo para poder mostrarte imagenes.")
+
+    if not state.get("vehicle_images_has_more"):
+        return append_assistant_message(
+            state,
+            "Ya no hay mas imagenes de este vehiculo. Si quieres, te ayudo con otro modelo o continuamos con la compra.",
+        )
+
+    cursor = state.get("vehicle_images_cursor", 2)
+    if not isinstance(cursor, int) or cursor < 0:
+        cursor = 2
+    try:
+        payload = fetch_vehicle_images(vehicle_id, mode="next", cursor=cursor, limit=5)
+    except Exception:
+        _debug("next_images_fetch_error", vehicle_id=vehicle_id, cursor=cursor)
+        return append_assistant_message(state, "No pude obtener mas imagenes en este momento. Intenta nuevamente.")
+
+    images = payload.get("images", [])
+    images = images if isinstance(images, list) else []
+    state["vehicle_images_last_batch"] = images
+    state["vehicle_images_has_more"] = bool(payload.get("hasMore"))
+    next_cursor = payload.get("nextCursor")
+    if isinstance(next_cursor, int) and next_cursor >= 0:
+        state["vehicle_images_cursor"] = next_cursor
+    else:
+        state["vehicle_images_cursor"] = cursor + len(images)
+
+    if not images:
+        return append_assistant_message(
+            state,
+            "No encontre mas imagenes para este vehiculo. Si quieres, continuamos con la compra o vemos otro modelo.",
+        )
+
+    message = _format_images_block(images)
+    if state.get("vehicle_images_has_more"):
+        message = f"{message}\n\nSi quieres ver mas imagenes, dímelo."
+    else:
+        message = f"{message}\n\nEstas son todas las imagenes disponibles de este vehiculo."
+    return append_assistant_message(state, message)
+
+
 def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, Any]) -> clientState:
     vehicle_id = str(vehicle_summary.get("id", "")).strip()
     _debug("vehicle_detail_requested", vehicle_id=vehicle_id, summary=_format_vehicle_name(vehicle_summary))
@@ -148,6 +268,7 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
     state["selected_car"] = _format_vehicle_name(detail)
     state["last_vehicle_candidates"] = []
     state["awaiting_purchase_confirmation"] = True
+    top_images = _fetch_top_images_for_selected_vehicle(state, vehicle_id)
     _debug(
         "vehicle_selected",
         selected_vehicle_id=state["selected_vehicle_id"],
@@ -158,9 +279,12 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
     detail_intro = generate_vehicle_detail_intro(state["selected_car"])
     platform = str(state.get("platform", "web")).strip().lower() or "web"
     detail_text = format_vehicle_detail(detail, platform=platform)
-    purchase_question = generate_vehicle_purchase_question()
-    final_text = f"{detail_intro}\n{detail_text}\n\n{purchase_question}"
-    return append_assistant_message(state, final_text)
+    images_block = _format_images_block(top_images)
+    if state.get("vehicle_images_has_more"):
+        images_block = f"{images_block}\nSi quieres ver mas imagenes, dímelo."
+    purchase_question = _PURCHASE_WITH_IMAGES_QUESTION
+    first_block = f"{detail_intro}\n{detail_text}"
+    return _append_assistant_blocks(state, [first_block, images_block, purchase_question])
 
 
 def _respond_available_list(state: clientState, vehicles: list[dict[str, Any]]) -> clientState:
@@ -172,6 +296,7 @@ def _respond_available_list(state: clientState, vehicles: list[dict[str, Any]]) 
     ][:8]
     state["selected_vehicle_id"] = ""
     state["selected_car"] = ""
+    _reset_vehicle_images_state(state)
     available_count = sum(1 for item in vehicles if str(item.get("status", "")).strip().lower() == "available")
     _debug(
         "showing_available_list",
@@ -225,6 +350,8 @@ def car_selection(state: clientState) -> clientState:
             decision=decision,
             selected_car=state.get("selected_car", ""),
         )
+        if decision == "VER_MAS_IMAGENES" or _is_more_images_request(user_text):
+            return _respond_with_more_images(state)
         if decision in {"NO", "VER_MODELO"}:
             return _respond_available_list(state, vehicles)
         if decision == "SI":
@@ -233,7 +360,7 @@ def car_selection(state: clientState) -> clientState:
             _debug("route_change", next_node="lead_capture")
             return state
         _debug("purchase_confirmation_unknown", user_text=user_text)
-        question = generate_vehicle_purchase_question()
+        question = _PURCHASE_WITH_IMAGES_QUESTION
         return append_assistant_message(state, question)
 
     selected_pending = _find_candidate_from_pending(state, user_text)

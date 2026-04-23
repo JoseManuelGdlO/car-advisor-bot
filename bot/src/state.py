@@ -25,6 +25,9 @@ class clientState(TypedDict, total=False):
     - is_faq_interrupt: indica si FAQ interrumpio el flujo principal.
     - awaiting_purchase_confirmation: espera una respuesta si/no tras mostrar detalle.
     - last_vehicle_candidates: candidatos previos para desambiguar seleccion.
+    - vehicle_images_cursor: cursor para paginacion de imagenes del vehiculo seleccionado.
+    - vehicle_images_has_more: indica si hay mas imagenes por pedir al backend.
+    - vehicle_images_last_batch: ultimo lote de URLs de imagenes enviado al usuario.
     """
 
     messages: list[dict[str, Any]]
@@ -41,3 +44,6 @@ class clientState(TypedDict, total=False):
     is_faq_interrupt: bool
     awaiting_purchase_confirmation: bool
     platform: str
+    vehicle_images_cursor: int
+    vehicle_images_has_more: bool
+    vehicle_images_last_batch: list[str]

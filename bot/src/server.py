@@ -27,6 +27,7 @@ graph = build_graph()
 logger = logging.getLogger(__name__)
 ALLOWED_PLATFORMS = {"web", "whatsapp", "telegram", "facebook", "api"}
 MAX_MESSAGES_HISTORY = 50
+BOT_MESSAGE_SEPARATOR = "\n\n<<BOT_MSG_BREAK>>\n\n"
 _default_platform_candidate = (os.getenv("BOT_DEFAULT_INBOUND_CHANNEL", "web") or "web").strip().lower()
 DEFAULT_INBOUND_PLATFORM = _default_platform_candidate if _default_platform_candidate in ALLOWED_PLATFORMS else "web"
 
@@ -131,6 +132,9 @@ def _build_initial_state() -> dict[str, Any]:
         "is_faq_interrupt": False,
         "awaiting_purchase_confirmation": False,
         "platform": DEFAULT_INBOUND_PLATFORM,
+        "vehicle_images_cursor": 0,
+        "vehicle_images_has_more": False,
+        "vehicle_images_last_batch": [],
     }
 
 
@@ -189,7 +193,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
         )
 
         tail_ai_messages = _collect_tail_ai_messages(updated_messages)
-        reply = "\n".join(
+        reply = BOT_MESSAGE_SEPARATOR.join(
             str(message.get("content", "")).strip()
             for message in tail_ai_messages
             if str(message.get("content", "")).strip()
