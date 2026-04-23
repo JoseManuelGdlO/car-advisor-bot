@@ -33,14 +33,13 @@ def latest_human_ai_pair(state: clientState) -> tuple[str, str]:
     return last_user, last_ai
 
 
-def append_assistant_message(state: clientState, text: str, options: list[str]) -> clientState:
+def append_assistant_message(state: clientState, text: str) -> clientState:
     """Agrega respuesta al historial y actualiza campos de salida API."""
 
     messages = list(state.get("messages", []))
-    messages.append({"role": "assistant", "content": text, "options": options, "type": "AIMessage"})
+    messages.append({"role": "assistant", "content": text, "type": "AIMessage"})
     state["messages"] = messages
     state["last_bot_message"] = text
-    state["options"] = options
     return state
 
 

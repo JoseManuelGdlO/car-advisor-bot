@@ -3,7 +3,7 @@
 ## Objetivo
 
 Este MVP implementa un bot conversacional asesor de carros con flujo guiado por estados
-deterministas para que el frontend pueda renderizar botones de forma predecible.
+deterministas para mantener respuestas consistentes y trazables.
 
 ## Stack
 
@@ -36,12 +36,12 @@ flowchart TD
 3. Inserta el mensaje de usuario en `state.messages`.
 4. Ejecuta `graph.invoke(state)`.
 5. Persiste nuevo `state_payload` con expiracion de 24h.
-6. Responde con `reply`, `options` y estado actual.
+6. Responde con `reply` y estado actual.
 
 ## Principios de diseno
 
 - Transiciones deterministas: la ruta depende del estado y texto actual, no de decisiones del LLM.
-- Salida estructurada: `options` siempre se retorna para facilitar UI basada en botones.
+- Interaccion conversacional pura: el bot responde en texto, sin botones de opcion en la UI.
 - Aislamiento de responsabilidades:
   - `src/nodes`: logica conversacional por nodo.
   - `src/graph`: routing y wiring del grafo.

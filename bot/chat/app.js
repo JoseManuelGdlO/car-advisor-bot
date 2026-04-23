@@ -7,13 +7,11 @@ class ChatInterface {
     this.typingIndicator = document.getElementById("typing-indicator");
     this.statusElement = document.getElementById("status");
     this.charCount = document.getElementById("char-count");
-    this.quickOptions = document.getElementById("quick-options");
 
     this.userIdInput = document.getElementById("user-id");
     this.apiUrlInput = document.getElementById("api-url");
 
     this.currentNodeElement = document.getElementById("current-node");
-    this.selectedCategoryElement = document.getElementById("selected-category");
     this.selectedCarElement = document.getElementById("selected-car");
 
     this.init();
@@ -105,7 +103,6 @@ class ChatInterface {
       this.hideTyping();
 
       this.addMessage(response.reply || "Sin respuesta.", "bot");
-      this.renderQuickOptions(Array.isArray(response.options) ? response.options : []);
       this.updateSessionInfo(response);
 
       this.statusElement.textContent = "En línea";
@@ -154,7 +151,6 @@ class ChatInterface {
 
   updateSessionInfo(data) {
     this.currentNodeElement.textContent = data.current_node || "-";
-    this.selectedCategoryElement.textContent = data.selected_category || "-";
     this.selectedCarElement.textContent = data.selected_car || "-";
   }
 
@@ -199,9 +195,7 @@ class ChatInterface {
       }
 
       this.renderWelcomeMessage();
-      this.quickOptions.innerHTML = "";
       this.currentNodeElement.textContent = "-";
-      this.selectedCategoryElement.textContent = "-";
       this.selectedCarElement.textContent = "-";
       this.userInput.value = "";
       this.updateCharCount();
@@ -245,23 +239,6 @@ class ChatInterface {
 
     this.messagesContainer.appendChild(messageDiv);
     this.scrollToBottom();
-  }
-
-  renderQuickOptions(options) {
-    this.quickOptions.innerHTML = "";
-
-    if (!options.length) {
-      return;
-    }
-
-    options.forEach((optionText) => {
-      const button = document.createElement("button");
-      button.className = "option-btn";
-      button.type = "button";
-      button.textContent = optionText;
-      button.addEventListener("click", () => this.sendMessage(optionText));
-      this.quickOptions.appendChild(button);
-    });
   }
 
   formatText(text) {

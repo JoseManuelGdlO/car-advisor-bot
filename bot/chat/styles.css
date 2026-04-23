@@ -194,23 +194,6 @@ body {
     30% { transform: translateY(-10px); }
 }
 
-.quick-options {
-    padding: 0 20px 10px;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-}
-
-.option-btn {
-    border: 1px solid #c6d8f7;
-    background: #eef4ff;
-    color: #1c3f72;
-    border-radius: 999px;
-    padding: 7px 12px;
-    font-size: 13px;
-    cursor: pointer;
-}
-
 .chat-input {
     border-top: 1px solid var(--gray-200);
     padding: 15px 20px;

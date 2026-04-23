@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from langgraph.graph import END, START, StateGraph
 
-from src.nodes.brand_selection import brand_selection
 from src.nodes.car_selection import car_selection
 from src.nodes.faq import faq
 from src.nodes.intent_checker import intent_checker
@@ -31,9 +30,6 @@ def _route_from_router(state: clientState) -> str:
     if node == "faq":
         _log_transition("router", "faq")
         return "faq"
-    if node == "brand_selection":
-        _log_transition("router", "brand_selection")
-        return "brand_selection"
     if node == "car_selection":
         _log_transition("router", "car_selection")
         return "car_selection"
@@ -63,7 +59,6 @@ def build_graph():
     graph = StateGraph(clientState)
     graph.add_node("router", router)
     graph.add_node("intent_checker", intent_checker)
-    graph.add_node("brand_selection", brand_selection)
     graph.add_node("car_selection", car_selection)
     graph.add_node("lead_capture", lead_capture)
     graph.add_node("faq", faq)
@@ -81,7 +76,6 @@ def build_graph():
         "router",
         _route_from_router,
         {
-            "brand_selection": "brand_selection",
             "car_selection": "car_selection",
             "lead_capture": "lead_capture",
             "faq": "faq",
@@ -89,7 +83,6 @@ def build_graph():
         },
     )
 
-    graph.add_edge("brand_selection", END)
     graph.add_edge("car_selection", END)
     graph.add_edge("lead_capture", END)
     graph.add_edge("faq", END)

@@ -107,9 +107,9 @@ def router(state: clientState) -> clientState:
         state["intent"] = "other"
         message = generate_other_response(user_text)
         _debug_router("route_to_other", reason="greeting_or_empty")
-        return append_assistant_message(state, message, [])
+        return append_assistant_message(state, message)
 
     state["intent"] = "other"
     message = generate_other_response(user_text)
     _debug_router("route_to_other", reason="fallback")
-    return append_assistant_message(state, message, [])
+    return append_assistant_message(state, message)

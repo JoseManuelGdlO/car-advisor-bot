@@ -10,14 +10,14 @@ from src.tools.database import get_bot_settings
 from src.utils.prompts import build_other_response_prompt, build_rewrite_prompt
 
 
-def safe_llm_format(text: str, options: list[str]) -> str:
+def safe_llm_format(text: str) -> str:
     """Usa ChatOpenAI para dar formato, con fallback seguro al texto base."""
 
     model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
     try:
         settings = get_bot_settings()
         llm = ChatOpenAI(model=model_name, temperature=0)
-        prompt = build_rewrite_prompt(text, options, settings)
+        prompt = build_rewrite_prompt(text, settings)
         return llm.invoke(prompt).content.strip()
     except Exception:
         return text

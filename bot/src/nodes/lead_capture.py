@@ -17,18 +17,18 @@ def lead_capture(state: clientState) -> clientState:
         state["skip_lead_prompt"] = False
         if not selected_car:
             base_text = "Primero debes elegir un vehiculo para continuar."
-            message = safe_llm_format(base_text, [])
-            return append_assistant_message(state, message, [])
+            message = safe_llm_format(base_text)
+            return append_assistant_message(state, message)
         base_text = (
             f"Continuamos con {selected_car}. "
             "Comparte tus datos en formato nombre:..., telefono:..., email:...."
         )
-        message = safe_llm_format(base_text, [])
-        return append_assistant_message(state, message, [])
+        message = safe_llm_format(base_text)
+        return append_assistant_message(state, message)
     if not selected_car:
         base_text = "Primero debes elegir un vehiculo para continuar."
-        message = safe_llm_format(base_text, [])
-        return append_assistant_message(state, message, [])
+        message = safe_llm_format(base_text)
+        return append_assistant_message(state, message)
 
     latest_user_text = latest_user_message(state)
     new_info = parse_customer_info(latest_user_text)
@@ -45,8 +45,8 @@ def lead_capture(state: clientState) -> clientState:
             f"Para apartar {selected_car}, comparte tus datos en formato "
             f"nombre:..., telefono:..., email:.... Faltan: {hint}."
         )
-        message = safe_llm_format(base_text, [])
-        return append_assistant_message(state, message, [])
+        message = safe_llm_format(base_text)
+        return append_assistant_message(state, message)
 
     try:
         notify_advisor(selected_car, current_info)
@@ -66,5 +66,5 @@ def lead_capture(state: clientState) -> clientState:
             "Hubo un problema temporal al notificar, pero un asesor te contactara."
         )
 
-    message = safe_llm_format(base_text, [])
-    return append_assistant_message(state, message, [])
+    message = safe_llm_format(base_text)
+    return append_assistant_message(state, message)

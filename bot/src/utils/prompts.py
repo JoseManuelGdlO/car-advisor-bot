@@ -18,20 +18,17 @@ _SYSTEM_RULES_BLOCK = (
 
 ROUTER_OTHER_REPLY_PROMPT = (
     "Genera una respuesta breve para orientar al usuario.\n"
-    "Mensaje base: {base_text}\n"
-    "Opciones sugeridas: {options}"
+    "Mensaje base: {base_text}"
 )
 
 CATALOG_REPLY_PROMPT = (
     "Redacta un mensaje claro para presentar opciones de catalogo.\n"
-    "Mensaje base: {base_text}\n"
-    "Opciones: {options}"
+    "Mensaje base: {base_text}"
 )
 
 LEAD_CAPTURE_REPLY_PROMPT = (
     "Genera un mensaje corto para capturar o confirmar datos del cliente.\n"
-    "Mensaje base: {base_text}\n"
-    "Opciones: {options}"
+    "Mensaje base: {base_text}"
 )
 
 
@@ -89,7 +86,7 @@ def build_system_prompt(bot_settings: dict[str, Any] | None, fallback_response: 
     return "\n\n".join([base_prompt, _SYSTEM_RULES_BLOCK, build_settings_block(bot_settings)])
 
 
-def build_rewrite_prompt(base_text: str, options: list[str], bot_settings: dict[str, Any] | None) -> str:
+def build_rewrite_prompt(base_text: str, bot_settings: dict[str, Any] | None) -> str:
     """Prompt final para reformular una respuesta manteniendo su significado."""
 
     system_prompt = build_system_prompt(bot_settings)
@@ -97,10 +94,8 @@ def build_rewrite_prompt(base_text: str, options: list[str], bot_settings: dict[
         f"{system_prompt}\n\n"
         "REESCRITURA:\n"
         "Reescribe el siguiente mensaje en espanol claro y breve. "
-        "No cambies el significado ni agregues informacion nueva. "
-        "Si hay opciones, mantenlas al final como lista.\n\n"
+        "No cambies el significado ni agregues informacion nueva.\n\n"
         f"Mensaje base: {base_text}\n"
-        f"Opciones: {options}"
     )
 
 

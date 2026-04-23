@@ -9,26 +9,17 @@ Incluye historial de mensajes, nodo actual, selecciones del usuario y salida par
 
 La carpeta de nodos ahora esta separada por responsabilidad:
 
-- `category_selection`: solicita categoria (`SUV`, `Sedan`, `Pickup`).
-- `car_selection`: muestra modelos segun categoria elegida.
+- `car_selection`: unifica catalogo, filtros y detalle de vehiculos.
 - `lead_capture`: captura datos del cliente y notifica a asesor.
 - `faq`: respuesta corta para preguntas generales.
 - `intent_checker`: detecta interrupciones FAQ y marca reanudacion.
-
-Helpers y constantes compartidas:
-
-- `nodes/common.py` centraliza:
-  - `safe_llm_format`: usa `ChatOpenAI` solo para mejorar redaccion.
-  - `parse_customer_info`: parsea datos en formato JSON o `clave:valor`.
-  - `append_assistant_message`: estandariza escritura de respuesta y botones.
-  - `CATEGORY_OPTIONS` y `CAR_OPTIONS_BY_CATEGORY`.
 
 ## `bot/src/graph.py`
 
 Declara y compila el `StateGraph(clientState)`:
 
 - Nodo `router` decide la siguiente etapa segun estado y ultimo mensaje.
-- Edges condicionales conectan hacia `category_selection`, `car_selection`, `lead_capture` o `faq`.
+- Edges condicionales conectan hacia `car_selection`, `lead_capture` o `faq`.
 - Cada nodo de negocio termina el turno en `END`.
 
 ## `bot/src/tools/database.py`
@@ -50,7 +41,7 @@ API principal:
 Modelos Pydantic:
 
 - `ChatRequest`: `user_id`, `message`, `platform`.
-- `ChatResponse`: `reply`, `options`, `current_node`, `selected_category`, `selected_car`.
+- `ChatResponse`: `reply`, `current_node`, `selected_car`.
 
 ## Archivos legacy en `bot/`
 

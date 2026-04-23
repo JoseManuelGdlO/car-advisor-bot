@@ -115,13 +115,6 @@ def _format_vehicle_name(item: dict[str, Any]) -> str:
     return f"{brand} {model}{suffix}".strip()
 
 
-def _build_candidate_options(candidates: list[dict[str, Any]]) -> list[str]:
-    options: list[str] = []
-    for item in candidates[:8]:
-        options.append(_format_vehicle_name(item))
-    return options
-
-
 def _find_candidate_from_pending(state: clientState, user_text: str) -> dict[str, Any] | None:
     pending = state.get("last_vehicle_candidates", [])
     if not isinstance(pending, list) or not pending:
@@ -154,20 +147,19 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
     _debug("vehicle_detail_requested", vehicle_id=vehicle_id, summary=_format_vehicle_name(vehicle_summary))
     if not vehicle_id:
         _debug("vehicle_detail_missing_id")
-        message = safe_llm_format("No pude identificar ese vehiculo. Te muestro disponibles.", [])
+        message = safe_llm_format("No pude identificar ese vehiculo. Te muestro disponibles.")
         state["awaiting_purchase_confirmation"] = False
         state["last_vehicle_candidates"] = []
-        return append_assistant_message(state, message, [])
+        return append_assistant_message(state, message)
     detail = fetch_vehicle_by_id(vehicle_id)
     if not detail:
         _debug("vehicle_detail_not_found", vehicle_id=vehicle_id)
         message = safe_llm_format(
             "No pude obtener el detalle de ese carro en este momento. Te muestro otras opciones disponibles.",
-            [],
         )
         state["awaiting_purchase_confirmation"] = False
         state["last_vehicle_candidates"] = []
-        return append_assistant_message(state, message, [])
+        return append_assistant_message(state, message)
 
     state["selected_vehicle_id"] = vehicle_id
     state["selected_car"] = _format_vehicle_name(detail)
@@ -181,12 +173,9 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
     )
 
     detail_text = format_vehicle_detail(detail)
-    purchase_question = safe_llm_format(
-        "Te interesa comprar este vehiculo? Responde si o no.",
-        ["Si", "No"],
-    )
+    purchase_question = safe_llm_format("Te interesa comprar este vehiculo? Responde si o no.")
     final_text = f"{detail_text}\n\n{purchase_question}"
-    return append_assistant_message(state, final_text, ["Si", "No"])
+    return append_assistant_message(state, final_text)
 
 
 def _respond_available_list(state: clientState, vehicles: list[dict[str, Any]]) -> clientState:
@@ -206,7 +195,7 @@ def _respond_available_list(state: clientState, vehicles: list[dict[str, Any]]) 
         pending_candidates=len(state["last_vehicle_candidates"]),
     )
     message = format_available_vehicles_grouped(vehicles)
-    return append_assistant_message(state, message, [])
+    return append_assistant_message(state, message)
 
 
 def car_selection(state: clientState) -> clientState:
@@ -235,9 +224,8 @@ def car_selection(state: clientState) -> clientState:
         _debug("catalog_fetch_error")
         message = safe_llm_format(
             "No pude consultar el catalogo en este momento. Intenta nuevamente en unos segundos.",
-            [],
         )
-        return append_assistant_message(state, message, [])
+        return append_assistant_message(state, message)
 
     if state.get("awaiting_purchase_confirmation"):
         if _is_affirmative(user_text):
@@ -250,11 +238,8 @@ def car_selection(state: clientState) -> clientState:
             _debug("purchase_confirmation_no_or_more", selected_car=state.get("selected_car", ""))
             return _respond_available_list(state, vehicles)
         _debug("purchase_confirmation_unclear", user_text=user_text)
-        question = safe_llm_format(
-            "Solo para confirmar, te interesa comprar este vehiculo? Responde si o no.",
-            ["Si", "No"],
-        )
-        return append_assistant_message(state, question, ["Si", "No"])
+        question = safe_llm_format("Solo para confirmar, te interesa comprar este vehiculo? Responde si o no.")
+        return append_assistant_message(state, question)
 
     selected_pending = _find_candidate_from_pending(state, user_text)
     if selected_pending:
@@ -278,9 +263,8 @@ def car_selection(state: clientState) -> clientState:
             _debug("search_empty", filters=filters)
             message = safe_llm_format(
                 "No encontre carros con esas caracteristicas. Quieres que te muestre todos los disponibles?",
-                ["Ver disponibles"],
             )
-            return append_assistant_message(state, message, ["Ver disponibles"])
+            return append_assistant_message(state, message)
         if len(filtered) == 1:
             _debug("search_single_match", match=_format_vehicle_name(filtered[0]))
             return _respond_with_vehicle_detail(state, filtered[0])
@@ -292,11 +276,10 @@ def car_selection(state: clientState) -> clientState:
             _debug("search_multiple_specific_request", count=len(filtered))
             message = safe_llm_format(
                 "Encontre varios carros parecidos. Cual te interesa? Puedes responder con el nombre o numero.",
-                _build_candidate_options(filtered),
             )
         state["last_vehicle_candidates"] = filtered[:8]
         _debug("pending_candidates_saved", count=len(state["last_vehicle_candidates"]))
-        return append_assistant_message(state, message, _build_candidate_options(filtered))
+        return append_assistant_message(state, message)
 
     _debug("no_filters_detected_fallback_to_available")
     return _respond_available_list(state, vehicles)

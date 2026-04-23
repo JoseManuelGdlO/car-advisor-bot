@@ -75,10 +75,7 @@ class ChatResponse(BaseModel):
     """Contrato de salida para frontend."""
 
     reply: str
-    options: list[str]
     current_node: str
-    selected_brand: str
-    selected_category: str
     selected_car: str
 
 
@@ -123,14 +120,11 @@ def _build_initial_state() -> dict[str, Any]:
         "messages": [],
         "current_node": "start",
         "intent": "",
-        "selected_brand": "",
         "selected_car": "",
         "selected_vehicle_id": "",
         "customer_info": {},
         "last_vehicle_candidates": [],
         "last_bot_message": "",
-        "options": [],
-        "skip_brand_prompt": False,
         "skip_car_prompt": False,
         "skip_lead_prompt": False,
         "resume_to_step": "",
@@ -201,18 +195,9 @@ def chat(payload: ChatRequest) -> ChatResponse:
         if not reply:
             reply = "No pude generar una respuesta en este turno."
 
-        options: list[str] = []
-        if tail_ai_messages:
-            last_options = tail_ai_messages[-1].get("options", [])
-            if isinstance(last_options, list):
-                options = [str(option) for option in last_options]
-
         return ChatResponse(
             reply=reply,
-            options=options or list(updated_state.get("options", [])),
             current_node=str(updated_state.get("current_node", "router")),
-            selected_brand=str(updated_state.get("selected_brand", "")),
-            selected_category=str(updated_state.get("selected_category", "")),
             selected_car=str(updated_state.get("selected_car", "")),
         )
     except Exception as exc:
