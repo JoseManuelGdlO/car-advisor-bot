@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from src.graph import build_graph
 from src.tools.database import (
+    delete_bot_session,
     fetch_active_bot_session,
     push_assistant_message_to_backend,
     upsert_inbound_user_message,
@@ -79,6 +80,40 @@ class ChatResponse(BaseModel):
     selected_brand: str
     selected_category: str
     selected_car: str
+
+
+class ResetRequest(BaseModel):
+    """Payload para reiniciar sesión del bot (estado en `bot_sessions`)."""
+
+    user_id: str = Field(..., min_length=1, max_length=255)
+    platform: str = Field(default=DEFAULT_INBOUND_PLATFORM)
+
+    @field_validator("user_id")
+    @classmethod
+    def strip_user_id(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("El campo no puede estar vacio.")
+        return normalized
+
+    @field_validator("platform")
+    @classmethod
+    def normalize_platform_reset(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in ALLOWED_PLATFORMS:
+            raise ValueError(
+                "Plataforma invalida. Usa: web, whatsapp, telegram, facebook o api."
+            )
+        return normalized
+
+
+class ResetResponse(BaseModel):
+    """Respuesta del reinicio de sesión."""
+
+    status: str
+    user_id: str
+    platform: str
+    deleted_rows: int
 
 
 def _build_initial_state() -> dict[str, Any]:
@@ -180,6 +215,27 @@ def chat(payload: ChatRequest) -> ChatResponse:
     except Exception as exc:
         logger.exception("Error procesando /chat")
         raise HTTPException(status_code=500, detail="Error interno procesando chat.") from exc
+
+
+@app.post("/reset", response_model=ResetResponse)
+def reset_session(payload: ResetRequest) -> ResetResponse:
+    """Elimina la sesión persistida para que el próximo mensaje arranque desde cero."""
+
+    print(
+        f"[RESET] POST /reset user_id={payload.user_id!r} platform={payload.platform!r}"
+    )
+    try:
+        deleted = delete_bot_session(payload.user_id, payload.platform)
+        print(f"[RESET] delete_bot_session deleted_rows={deleted}")
+        return ResetResponse(
+            status="session reset",
+            user_id=payload.user_id,
+            platform=payload.platform,
+            deleted_rows=deleted,
+        )
+    except Exception as exc:
+        logger.exception("Error procesando /reset")
+        raise HTTPException(status_code=500, detail="Error interno al reiniciar sesion.") from exc
 
 
 @app.get("/health")

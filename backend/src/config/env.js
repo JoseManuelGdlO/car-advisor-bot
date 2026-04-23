@@ -28,5 +28,7 @@ export const env = {
   bot: {
     defaultOwnerUserId: must("BOT_DEFAULT_OWNER_USER_ID", ""),
     defaultInboundChannel: must("BOT_DEFAULT_INBOUND_CHANNEL", "web"),
+    /** URL base del servicio FastAPI del bot (sin slash final). */
+    engineUrl: must("BOT_ENGINE_URL", "http://localhost:8000"),
   },
 };

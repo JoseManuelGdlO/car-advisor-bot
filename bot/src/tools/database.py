@@ -216,6 +216,45 @@ def fetch_active_bot_session(phone: str, platform: str = "web") -> tuple[dict[st
     finally:
         connection.close()
 
+
+def delete_bot_session(phone: str, platform: str = "web") -> int:
+    """Elimina la sesión persistida en `bot_sessions` para el usuario y canal.
+
+    Idempotente: si no hay fila, devuelve 0. Reutilizable desde el endpoint
+    `/reset` o desde nodos internos del grafo.
+    """
+
+    normalized_phone = str(phone).strip()
+    default_platform = str(os.getenv("BOT_DEFAULT_INBOUND_CHANNEL", "web")).strip().lower() or "web"
+    normalized_platform = str(platform or default_platform).strip().lower() or default_platform
+    if not normalized_phone:
+        return 0
+
+    connection = get_connection()
+    try:
+        query = """
+            DELETE FROM bot_sessions
+            WHERE phone = %s AND platform = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(query, (normalized_phone, normalized_platform))
+            deleted = cursor.rowcount or 0
+        connection.commit()
+        return int(deleted)
+    except Exception as exc:
+        if _is_missing_table_error(exc):
+            return 0
+        raise
+    finally:
+        connection.close()
+
+
+def reset_bot_session_state(phone: str, platform: str = "web") -> int:
+    """Alias explícito para reiniciar estado persistido (borra la fila de sesión)."""
+
+    return delete_bot_session(phone, platform)
+
+
 def upsert_bot_session_state(
     phone: str,
     state_dict: dict[str, Any],
