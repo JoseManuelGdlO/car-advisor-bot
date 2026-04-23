@@ -40,3 +40,4 @@ class clientState(TypedDict, total=False):
     resume_to_step: str
     is_faq_interrupt: bool
     awaiting_purchase_confirmation: bool
+    platform: str

@@ -23,6 +23,7 @@ def _initial_state() -> dict:
         "resume_to_step": "",
         "is_faq_interrupt": False,
         "awaiting_purchase_confirmation": False,
+        "platform": "web",
     }
 
 
@@ -75,7 +76,44 @@ class GraphFlowTests(unittest.TestCase):
         self.assertTrue(updated.get("awaiting_purchase_confirmation"))
         last_msg = updated["messages"][-1]["content"]
         self.assertIn("Detalle del vehiculo:", last_msg)
+        self.assertIn("**Marca**: Nissan", last_msg)
+
+    def test_whatsapp_uses_single_asterisk_for_vehicle_detail(self) -> None:
+        vehicles = [
+            {
+                "id": "veh-1",
+                "brand": "Nissan",
+                "model": "Versa",
+                "year": 2004,
+                "status": "available",
+                "price": 350000,
+                "km": 200000,
+                "transmission": "automatica",
+                "engine": "v8 hemi",
+                "color": "blanco",
+                "description": "",
+            }
+        ]
+        state = _with_user_message(_initial_state(), "hola tienen nissan versa")
+        state["platform"] = "whatsapp"
+
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_intent", return_value="FLOW_RESPONSE"),
+            patch("src.nodes.router.classify_router_intent", return_value="VEHICLE_CATALOG"),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.search_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=vehicles[0]),
+            patch("src.nodes.car_selection.generate_vehicle_detail_intro", return_value="Detalle del vehiculo:"),
+            patch(
+                "src.nodes.car_selection.generate_vehicle_purchase_question",
+                return_value="Te interesa comprarlo? Responde si o no.",
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        last_msg = updated["messages"][-1]["content"]
         self.assertIn("*Marca*: Nissan", last_msg)
+        self.assertNotIn("**Marca**: Nissan", last_msg)
 
     def test_faq_message_routes_to_faq_node(self) -> None:
         state = _with_user_message(_initial_state(), "hola donde se encuentran ubicados?")

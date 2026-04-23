@@ -45,6 +45,12 @@ def _status_label(status: Any) -> str:
     return mapping.get(normalized, _title_or_default(status))
 
 
+def _bold_label(text: str, platform: str) -> str:
+    normalized_platform = str(platform or "web").strip().lower()
+    marker = "*" if normalized_platform == "whatsapp" else "**"
+    return f"{marker}{text}{marker}"
+
+
 def format_available_vehicles_grouped(vehicles: list[dict[str, Any]]) -> str:
     """Agrupa disponibles por marca y modelo; agrega año cuando hay repetidos."""
 
@@ -98,7 +104,7 @@ def format_filtered_vehicles(vehicles: list[dict[str, Any]]) -> str:
     return "\n".join(lines).strip()
 
 
-def format_vehicle_detail(vehicle: dict[str, Any]) -> str:
+def format_vehicle_detail(vehicle: dict[str, Any], platform: str = "web") -> str:
     """Construye detalle compacto del vehiculo en dos columnas."""
 
     brand = _title_or_default(vehicle.get("brand"))
@@ -107,11 +113,20 @@ def format_vehicle_detail(vehicle: dict[str, Any]) -> str:
     description = str(vehicle.get("description", "")).strip() or "Sin descripcion disponible"
 
     rows = [
-        (f"*Marca*: {brand}", f"*Modelo*: {model}"),
-        (f"*Ano*: {year if isinstance(year, int) else 'N/D'}", f"*Precio*: {_format_currency(vehicle.get('price'))}"),
-        (f"*Kilometraje*: {_format_int(vehicle.get('km'), 'km')}", f"*Transmision*: {_title_or_default(vehicle.get('transmission'))}"),
-        (f"*Motor*: {_title_or_default(vehicle.get('engine'))}", f"*Color*: {_title_or_default(vehicle.get('color'))}"),
-        (f"*Descripcion*: {description}", ""),
+        (_bold_label("Marca", platform) + f": {brand}", _bold_label("Modelo", platform) + f": {model}"),
+        (
+            _bold_label("Ano", platform) + f": {year if isinstance(year, int) else 'N/D'}",
+            _bold_label("Precio", platform) + f": {_format_currency(vehicle.get('price'))}",
+        ),
+        (
+            _bold_label("Kilometraje", platform) + f": {_format_int(vehicle.get('km'), 'km')}",
+            _bold_label("Transmision", platform) + f": {_title_or_default(vehicle.get('transmission'))}",
+        ),
+        (
+            _bold_label("Motor", platform) + f": {_title_or_default(vehicle.get('engine'))}",
+            _bold_label("Color", platform) + f": {_title_or_default(vehicle.get('color'))}",
+        ),
+        (_bold_label("Descripcion", platform) + f": {description}", ""),
     ]
     left_width = max(len(left) for left, _ in rows) + 2
     lines = [f"{left.ljust(left_width)}{right}".rstrip() for left, right in rows]

@@ -156,7 +156,8 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
     )
 
     detail_intro = generate_vehicle_detail_intro(state["selected_car"])
-    detail_text = format_vehicle_detail(detail)
+    platform = str(state.get("platform", "web")).strip().lower() or "web"
+    detail_text = format_vehicle_detail(detail, platform=platform)
     purchase_question = generate_vehicle_purchase_question()
     final_text = f"{detail_intro}\n{detail_text}\n\n{purchase_question}"
     return append_assistant_message(state, final_text)

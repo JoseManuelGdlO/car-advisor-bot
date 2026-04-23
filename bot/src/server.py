@@ -130,6 +130,7 @@ def _build_initial_state() -> dict[str, Any]:
         "resume_to_step": "",
         "is_faq_interrupt": False,
         "awaiting_purchase_confirmation": False,
+        "platform": DEFAULT_INBOUND_PLATFORM,
     }
 
 
@@ -153,6 +154,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
         # 1) Estado del grafo + conversacion ya vinculada en `bot_sessions`, si existe.
         loaded_state, conv_from_session = fetch_active_bot_session(payload.user_id, payload.platform)
         state = loaded_state or _build_initial_state()
+        state["platform"] = payload.platform
         # 2) Registrar mensaje entrante en backend CRM y obtener IDs de relacion.
         conversation_id = conv_from_session
         crm = upsert_inbound_user_message(payload.user_id, payload.message, payload.platform)
