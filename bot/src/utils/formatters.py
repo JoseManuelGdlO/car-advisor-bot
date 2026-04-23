@@ -62,7 +62,7 @@ def format_available_vehicles_grouped(vehicles: list[dict[str, Any]]) -> str:
         if isinstance(year, int):
             grouped[brand][model].append(year)
 
-    lines = ["Estos son los modelos disponibles, te interesa saber mas de alguno?"]
+    lines: list[str] = []
     for brand in sorted(grouped):
         models_lines: list[str] = []
         for model in sorted(grouped[brand]):
@@ -73,7 +73,8 @@ def format_available_vehicles_grouped(vehicles: list[dict[str, Any]]) -> str:
             else:
                 models_lines.append(model)
         if models_lines:
-            lines.append(f"{brand}: {', '.join(models_lines)}")
+            emoji = "🚗"
+            lines.append(f"{emoji} {brand}: {', '.join(models_lines)}")
 
     return "\n".join(lines)
 
@@ -98,23 +99,20 @@ def format_filtered_vehicles(vehicles: list[dict[str, Any]]) -> str:
 
 
 def format_vehicle_detail(vehicle: dict[str, Any]) -> str:
-    """Construye detalle completo del vehiculo (sin plan de financiamiento)."""
+    """Construye detalle compacto del vehiculo en dos columnas."""
 
     brand = _title_or_default(vehicle.get("brand"))
     model = _title_or_default(vehicle.get("model"))
     year = vehicle.get("year")
-    full_name = f"{brand} {model}".strip()
-
-    lines = [f"Esta es la informacion completa de {full_name}:"]
-    lines.append(f"Marca: {brand}")
-    lines.append(f"Modelo: {model}")
-    lines.append(f"Ano: {year if isinstance(year, int) else 'N/D'}")
-    lines.append(f"Precio: {_format_currency(vehicle.get('price'))}")
-    lines.append(f"Kilometraje: {_format_int(vehicle.get('km'), 'km')}")
-    lines.append(f"Transmision: {_title_or_default(vehicle.get('transmission'))}")
-    lines.append(f"Motor: {_title_or_default(vehicle.get('engine'))}")
-    lines.append(f"Color: {_title_or_default(vehicle.get('color'))}")
-    lines.append(f"Estado: {_status_label(vehicle.get('status'))}")
     description = str(vehicle.get("description", "")).strip() or "Sin descripcion disponible"
-    lines.append(f"Descripcion: {description}")
+
+    rows = [
+        (f"*Marca*: {brand}", f"*Modelo*: {model}"),
+        (f"*Ano*: {year if isinstance(year, int) else 'N/D'}", f"*Precio*: {_format_currency(vehicle.get('price'))}"),
+        (f"*Kilometraje*: {_format_int(vehicle.get('km'), 'km')}", f"*Transmision*: {_title_or_default(vehicle.get('transmission'))}"),
+        (f"*Motor*: {_title_or_default(vehicle.get('engine'))}", f"*Color*: {_title_or_default(vehicle.get('color'))}"),
+        (f"*Descripcion*: {description}", ""),
+    ]
+    left_width = max(len(left) for left, _ in rows) + 2
+    lines = [f"{left.ljust(left_width)}{right}".rstrip() for left, right in rows]
     return "\n".join(lines)

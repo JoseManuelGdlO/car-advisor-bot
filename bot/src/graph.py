@@ -48,9 +48,28 @@ def _route_after_intent_checker(state: clientState) -> str:
         print("[GRAPH] route_after_intent_checker: FAQ detectada, redirigiendo a faq")
         _log_transition("intent_checker", "faq", "faq interruptiva")
         return "faq"
+    if node == "lead_capture":
+        print("[GRAPH] route_after_intent_checker: retomando lead_capture")
+        _log_transition("intent_checker", "lead_capture", "reanudar flujo")
+        return "lead_capture"
+    if node == "car_selection":
+        print("[GRAPH] route_after_intent_checker: retomando car_selection")
+        _log_transition("intent_checker", "car_selection", "reanudar flujo")
+        return "car_selection"
     print(f"[GRAPH] route_after_intent_checker: sin FAQ, continuando flujo (current_node='{node}')")
     _log_transition("intent_checker", "router")
     return "router"
+
+
+def _route_after_car_selection(state: clientState) -> str:
+    """Permite continuar a lead_capture cuando car_selection lo solicite."""
+
+    node = state.get("current_node", "car_selection")
+    if node == "lead_capture":
+        _log_transition("car_selection", "lead_capture", "continuacion de compra")
+        return "lead_capture"
+    _log_transition("car_selection", "end")
+    return "end"
 
 
 def build_graph():
@@ -70,6 +89,8 @@ def build_graph():
         {
             "router": "router",
             "faq": "faq",
+            "lead_capture": "lead_capture",
+            "car_selection": "car_selection",
         },
     )
     graph.add_conditional_edges(
@@ -83,7 +104,14 @@ def build_graph():
         },
     )
 
-    graph.add_edge("car_selection", END)
+    graph.add_conditional_edges(
+        "car_selection",
+        _route_after_car_selection,
+        {
+            "lead_capture": "lead_capture",
+            "end": END,
+        },
+    )
     graph.add_edge("lead_capture", END)
     graph.add_edge("faq", END)
 

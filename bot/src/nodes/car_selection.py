@@ -7,7 +7,13 @@ from typing import Any
 
 from src.state import clientState
 
-from src.services.llm_responses import safe_llm_format
+from src.services.llm_responses import (
+    classify_purchase_confirmation_intent,
+    generate_available_models_intro,
+    generate_vehicle_detail_intro,
+    generate_vehicle_purchase_question,
+    safe_llm_format,
+)
 from src.tools.vehicles import (
     canonicalize_with_typo_support,
     detect_vehicle_filters,
@@ -23,8 +29,6 @@ from src.utils.formatters import (
 )
 from src.utils.state_helpers import append_assistant_message, latest_user_message
 
-_YES_WORDS = {"si", "sí", "claro", "ok", "vale", "me interesa", "quiero", "comprar", "adelante"}
-_NO_WORDS = {"no", "no gracias", "paso", "ver mas", "ver más", "otro", "otra opcion", "otra opción"}
 _GENERAL_SIGNALS = {
     "que carros tienes",
     "que autos tienes",
@@ -59,8 +63,6 @@ def _normalize_signal_set(values: set[str]) -> set[str]:
     return {normalize_user_text(value) for value in values}
 
 
-_YES_WORDS_NORMALIZED = _normalize_signal_set(_YES_WORDS)
-_NO_WORDS_NORMALIZED = _normalize_signal_set(_NO_WORDS)
 _GENERAL_SIGNALS_NORMALIZED = _normalize_signal_set(_GENERAL_SIGNALS)
 _FEATURE_SIGNALS_NORMALIZED = _normalize_signal_set(_FEATURE_SIGNALS)
 
@@ -73,25 +75,6 @@ def _debug(event: str, **payload: Any) -> None:
         print(f"[car_selection] {event} | {pairs}")
         return
     print(f"[car_selection] {event}")
-
-
-def _contains_signal(normalized_text: str, signal: str) -> bool:
-    """Valida señal completa usando límites de palabra."""
-
-    if not normalized_text or not signal:
-        return False
-    pattern = rf"\b{re.escape(signal)}\b"
-    return re.search(pattern, normalized_text) is not None
-
-
-def _is_affirmative(user_text: str) -> bool:
-    normalized = normalize_user_text(user_text)
-    return any(_contains_signal(normalized, word) for word in _YES_WORDS_NORMALIZED)
-
-
-def _is_negative_or_more(user_text: str) -> bool:
-    normalized = normalize_user_text(user_text)
-    return any(_contains_signal(normalized, word) for word in _NO_WORDS_NORMALIZED)
 
 
 def _is_general_request(user_text: str) -> bool:
@@ -172,9 +155,10 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
         next_step="awaiting_purchase_confirmation",
     )
 
+    detail_intro = generate_vehicle_detail_intro(state["selected_car"])
     detail_text = format_vehicle_detail(detail)
-    purchase_question = safe_llm_format("Te interesa comprar este vehiculo? Responde si o no.")
-    final_text = f"{detail_text}\n\n{purchase_question}"
+    purchase_question = generate_vehicle_purchase_question()
+    final_text = f"{detail_intro}\n{detail_text}\n\n{purchase_question}"
     return append_assistant_message(state, final_text)
 
 
@@ -194,7 +178,12 @@ def _respond_available_list(state: clientState, vehicles: list[dict[str, Any]]) 
         available_vehicles=available_count,
         pending_candidates=len(state["last_vehicle_candidates"]),
     )
-    message = format_available_vehicles_grouped(vehicles)
+    available_list = format_available_vehicles_grouped(vehicles)
+    if available_list.startswith("No tengo vehiculos disponibles"):
+        message = available_list
+    else:
+        intro = generate_available_models_intro()
+        message = f"{intro}\n{available_list}"
     return append_assistant_message(state, message)
 
 
@@ -228,17 +217,22 @@ def car_selection(state: clientState) -> clientState:
         return append_assistant_message(state, message)
 
     if state.get("awaiting_purchase_confirmation"):
-        if _is_affirmative(user_text):
-            _debug("purchase_confirmation_yes", selected_car=state.get("selected_car", ""))
+        previous_bot_message = str(state.get("last_bot_message", "")).strip()
+        decision = classify_purchase_confirmation_intent(previous_bot_message, user_text)
+        _debug(
+            "purchase_confirmation_classified",
+            decision=decision,
+            selected_car=state.get("selected_car", ""),
+        )
+        if decision in {"NO", "VER_MODELO"}:
+            return _respond_available_list(state, vehicles)
+        if decision == "SI":
             state["awaiting_purchase_confirmation"] = False
             state["current_node"] = "lead_capture"
             _debug("route_change", next_node="lead_capture")
             return state
-        if _is_negative_or_more(user_text):
-            _debug("purchase_confirmation_no_or_more", selected_car=state.get("selected_car", ""))
-            return _respond_available_list(state, vehicles)
-        _debug("purchase_confirmation_unclear", user_text=user_text)
-        question = safe_llm_format("Solo para confirmar, te interesa comprar este vehiculo? Responde si o no.")
+        _debug("purchase_confirmation_unknown", user_text=user_text)
+        question = generate_vehicle_purchase_question()
         return append_assistant_message(state, question)
 
     selected_pending = _find_candidate_from_pending(state, user_text)

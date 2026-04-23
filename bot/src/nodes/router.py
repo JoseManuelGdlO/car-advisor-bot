@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from src.state import clientState
 
-from src.services.llm_responses import generate_other_response
+from src.services.llm_responses import classify_router_intent, generate_other_response
 from src.tools.vehicles import normalize_user_text
 from src.utils.state_helpers import append_assistant_message, is_faq_intent, latest_user_message
 
@@ -103,13 +103,34 @@ def router(state: clientState) -> clientState:
         _debug_router("route_to_car_selection", reason="vehicle_request_signal")
         return state
 
-    if _is_simple_greeting(text) or not text:
+    if not text:
         state["intent"] = "other"
         message = generate_other_response(user_text)
-        _debug_router("route_to_other", reason="greeting_or_empty")
+        _debug_router("route_to_other", reason="empty")
         return append_assistant_message(state, message)
+
+    if _is_simple_greeting(text):
+        state["intent"] = "other"
+        message = generate_other_response(user_text)
+        _debug_router("route_to_other", reason="simple_greeting")
+        return append_assistant_message(state, message)
+
+    classified_intent = classify_router_intent(user_text, str(state.get("intent", "")))
+    _debug_router("llm_intent_classification", classified_intent=classified_intent)
+
+    if classified_intent == "VEHICLE_CATALOG":
+        state["intent"] = "vehicle_catalog"
+        state["current_node"] = "car_selection"
+        _debug_router("route_to_car_selection", reason="llm_classifier")
+        return state
+
+    if classified_intent == "FAQ":
+        state["intent"] = "faq"
+        state["current_node"] = "faq"
+        _debug_router("route_to_faq", reason="llm_classifier")
+        return state
 
     state["intent"] = "other"
     message = generate_other_response(user_text)
-    _debug_router("route_to_other", reason="fallback")
+    _debug_router("route_to_other", reason="llm_or_fallback")
     return append_assistant_message(state, message)

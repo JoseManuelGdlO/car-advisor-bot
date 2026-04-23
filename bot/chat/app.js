@@ -17,6 +17,14 @@ class ChatInterface {
     this.init();
   }
 
+  setStatus(text, color) {
+    if (!this.statusElement) {
+      return;
+    }
+    this.statusElement.textContent = text;
+    this.statusElement.style.color = color;
+  }
+
   init() {
     this.sendBtn.addEventListener("click", () => this.sendMessage());
     this.userInput.addEventListener("keypress", (event) => {
@@ -105,16 +113,14 @@ class ChatInterface {
       this.addMessage(response.reply || "Sin respuesta.", "bot");
       this.updateSessionInfo(response);
 
-      this.statusElement.textContent = "En línea";
-      this.statusElement.style.color = "#d1fae5";
+      this.setStatus("En línea", "#d1fae5");
     } catch (error) {
       this.hideTyping();
       this.addMessage(
         "No fue posible obtener respuesta del servidor. Verifica la API URL o inténtalo de nuevo.",
         "bot"
       );
-      this.statusElement.textContent = "Desconectado";
-      this.statusElement.style.color = "#fecaca";
+      this.setStatus("Desconectado", "#fecaca");
     } finally {
       this.setInputState(true);
     }
@@ -150,8 +156,12 @@ class ChatInterface {
   }
 
   updateSessionInfo(data) {
-    this.currentNodeElement.textContent = data.current_node || "-";
-    this.selectedCarElement.textContent = data.selected_car || "-";
+    if (this.currentNodeElement) {
+      this.currentNodeElement.textContent = data.current_node || "-";
+    }
+    if (this.selectedCarElement) {
+      this.selectedCarElement.textContent = data.selected_car || "-";
+    }
   }
 
   async resetConversation() {
@@ -195,20 +205,22 @@ class ChatInterface {
       }
 
       this.renderWelcomeMessage();
-      this.currentNodeElement.textContent = "-";
-      this.selectedCarElement.textContent = "-";
+      if (this.currentNodeElement) {
+        this.currentNodeElement.textContent = "-";
+      }
+      if (this.selectedCarElement) {
+        this.selectedCarElement.textContent = "-";
+      }
       this.userInput.value = "";
       this.updateCharCount();
       this.autoResize();
-      this.statusElement.textContent = "Sesión reiniciada";
-      this.statusElement.style.color = "#d1fae5";
+      this.setStatus("Sesión reiniciada", "#d1fae5");
     } catch (error) {
       const msg = error?.message || String(error);
       alert(
         `No se pudo reiniciar la sesión en el servidor: ${msg}. Comprueba la API URL y recarga la página (el navegador puede estar usando un app.js en caché).`
       );
-      this.statusElement.textContent = "Error al reiniciar";
-      this.statusElement.style.color = "#fecaca";
+      this.setStatus("Error al reiniciar", "#fecaca");
     } finally {
       this.setInputState(true);
     }

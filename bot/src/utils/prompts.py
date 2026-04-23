@@ -111,3 +111,117 @@ def build_other_response_prompt(user_message: str, bot_settings: dict[str, Any] 
         "Cierra ofreciendo resolver dudas.\n\n"
         f"Mensaje del usuario: {user_message}"
     )
+
+
+def build_available_models_intro_prompt(bot_settings: dict[str, Any] | None) -> str:
+    """Prompt para la introduccion del listado de modelos disponibles."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    return (
+        f"{system_prompt}\n\n"
+        "INTRO_MODELOS_DISPONIBLES:\n"
+        "Redacta una sola frase breve y natural para presentar una lista de modelos disponibles. "
+        "Debe invitar al usuario a elegir uno para conocer mas detalles. "
+        "No inventes datos, no incluyas lista ni saltos de linea.\n\n"
+        "Mensaje base: Aqui tienes los modelos disponibles. Te gustaria saber mas sobre alguno?"
+    )
+
+
+def build_vehicle_detail_intro_prompt(vehicle_name: str, bot_settings: dict[str, Any] | None) -> str:
+    """Prompt para la introduccion del bloque de detalle de un vehiculo."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    normalized_name = vehicle_name.strip() or "este vehiculo"
+    return (
+        f"{system_prompt}\n\n"
+        "INTRO_DETALLE_VEHICULO:\n"
+        "Redacta una sola frase breve y natural para introducir el detalle tecnico del vehiculo. "
+        "No inventes datos, no agregues lista ni saltos de linea.\n\n"
+        f"Mensaje base: Aqui tienes la informacion completa de {normalized_name}."
+    )
+
+
+def build_vehicle_purchase_question_prompt(bot_settings: dict[str, Any] | None) -> str:
+    """Prompt para la pregunta de cierre de compra."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    return (
+        f"{system_prompt}\n\n"
+        "PREGUNTA_COMPRA_VEHICULO:\n"
+        "Redacta una sola pregunta breve para confirmar si el usuario desea comprar el vehiculo. "
+        "Debe pedir responder con si o no. No agregues saltos de linea.\n\n"
+        "Mensaje base: Te interesa comprar este vehiculo? Responde con un si o un no."
+    )
+
+
+def build_purchase_confirmation_classifier_prompt(
+    previous_bot_message: str,
+    user_message: str,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Prompt clasificador para intencion de confirmacion de compra."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    previous = previous_bot_message.strip() or "(sin mensaje previo)"
+    current = user_message.strip() or "(mensaje vacio)"
+    return (
+        f"{system_prompt}\n\n"
+        "CLASIFICADOR_CONFIRMACION_COMPRA:\n"
+        "Clasifica la intencion del usuario con base en el mensaje previo del bot y la respuesta del usuario.\n"
+        "Categorias validas:\n"
+        "- SI: el usuario confirma compra o quiere avanzar con apartar/comprar.\n"
+        "- NO: el usuario rechaza compra.\n"
+        "- VER_MODELO: el usuario quiere seguir viendo opciones, otros modelos, o cambiar de vehiculo.\n"
+        "Responde SOLO con una de estas etiquetas exactas: SI, NO, VER_MODELO.\n\n"
+        f"Mensaje previo del bot: {previous}\n"
+        f"Mensaje del usuario: {current}\n"
+    )
+
+
+def build_router_intent_classifier_prompt(
+    user_message: str,
+    previous_intent: str,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Prompt clasificador de intencion para router principal."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    message = user_message.strip() or "(mensaje vacio)"
+    previous = previous_intent.strip() or "(sin intent previo)"
+    return (
+        f"{system_prompt}\n\n"
+        "CLASIFICADOR_ROUTER_INTENT:\n"
+        "Clasifica la intencion principal del usuario en una sola etiqueta.\n"
+        "Etiquetas validas:\n"
+        "- VEHICLE_CATALOG: pide ver, buscar o comparar carros/modelos/marcas, o menciona un modelo especifico.\n"
+        "- FAQ: pregunta informacion general del negocio (ubicacion, horarios, financiamiento, garantias, contacto).\n"
+        "- OTHER: saludo, agradecimiento o mensaje fuera del alcance.\n"
+        "Responde SOLO con una etiqueta exacta: VEHICLE_CATALOG, FAQ, OTHER.\n\n"
+        f"Intent previo: {previous}\n"
+        f"Mensaje del usuario: {message}\n"
+    )
+
+
+def build_faq_interrupt_classifier_prompt(
+    current_node: str,
+    last_bot_message: str,
+    user_message: str,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Prompt para decidir si un mensaje es FAQ interruptiva o respuesta al flujo."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    node = current_node.strip() or "(sin nodo actual)"
+    bot_msg = last_bot_message.strip() or "(sin mensaje previo del bot)"
+    user_msg = user_message.strip() or "(mensaje vacio)"
+    return (
+        f"{system_prompt}\n\n"
+        "CLASIFICADOR_FAQ_INTERRUPT:\n"
+        "Dado el nodo actual, el ultimo mensaje del bot y la respuesta del usuario, decide si el usuario:\n"
+        "- FAQ: interrumpe para preguntar algo general del negocio.\n"
+        "- FLOW_RESPONSE: esta respondiendo al flujo actual.\n"
+        "Responde SOLO con una etiqueta exacta: FAQ o FLOW_RESPONSE.\n\n"
+        f"Nodo actual: {node}\n"
+        f"Ultimo mensaje del bot: {bot_msg}\n"
+        f"Mensaje del usuario: {user_msg}\n"
+    )
