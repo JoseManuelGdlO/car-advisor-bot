@@ -1,22 +1,24 @@
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, Users, MessageCircle, Settings, User } from "lucide-react";
+import { LayoutDashboard, Users, MessageCircle, Settings, User, Car } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const items = [
   { to: "/dashboard", label: "Inicio", icon: LayoutDashboard },
   { to: "/clientes", label: "Clientes", icon: Users },
   { to: "/chats", label: "Chats", icon: MessageCircle },
+  { to: "/vehiculos", label: "Vehículos", icon: Car },
   { to: "/config", label: "Config", icon: Settings },
   { to: "/perfil", label: "Perfil", icon: User },
 ];
 
 export const BottomNav = () => {
   return (
-    <nav className="absolute bottom-0 left-0 right-0 h-[72px] bg-card/95 backdrop-blur border-t border-border z-30 flex items-stretch px-2 pb-2 pt-1">
+    <nav className="absolute bottom-0 left-0 right-0 h-[72px] bg-card/95 backdrop-blur border-t border-border z-30 flex items-stretch px-1 pb-2 pt-1">
       {items.map(({ to, label, icon: Icon }) => (
         <NavLink
           key={to}
           to={to}
+          end={to === "/dashboard"}
           className={({ isActive }) =>
             cn(
               "flex-1 flex flex-col items-center justify-center gap-1 rounded-xl transition-colors",
@@ -34,7 +36,7 @@ export const BottomNav = () => {
               >
                 <Icon className="w-5 h-5" strokeWidth={isActive ? 2.4 : 2} />
               </div>
-              <span className={cn("text-[10px] font-medium", isActive && "font-semibold")}>
+              <span className={cn("text-[9px] font-medium leading-tight text-center", isActive && "font-semibold")}>
                 {label}
               </span>
             </>

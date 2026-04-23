@@ -30,5 +30,28 @@ export default function BotSettingModel(sequelize) {
       defaultValue: {},
       field: "weekly_schedule",
     },
+    tone: {
+      type: DataTypes.STRING(20),
+      allowNull: false,
+      defaultValue: "cercano",
+    },
+    emojiStyle: {
+      type: DataTypes.STRING(20),
+      allowNull: false,
+      defaultValue: "pocos",
+      field: "emoji_style",
+    },
+    salesProactivity: {
+      type: DataTypes.STRING(20),
+      allowNull: false,
+      defaultValue: "medio",
+      field: "sales_proactivity",
+    },
+    customInstructions: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+      defaultValue: "",
+      field: "custom_instructions",
+    },
   });
 }

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -17,6 +17,8 @@ import ConfigFinanciamiento from "./pages/ConfigFinanciamiento.tsx";
 import ConfigProductos from "./pages/ConfigProductos.tsx";
 import ConfigPromos from "./pages/ConfigPromos.tsx";
 import ConfigBot from "./pages/ConfigBot.tsx";
+import ConfigComportamientoBot from "./pages/ConfigComportamientoBot.tsx";
+import Vehiculos from "./pages/Vehiculos.tsx";
 import Perfil from "./pages/Perfil.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import { AuthProvider } from "@/context/AuthContext";
@@ -42,10 +44,15 @@ const App = () => (
               <Route path="/chat/:id" element={<RequireAuth><ChatDetalle /></RequireAuth>} />
               <Route path="/config" element={<RequireAuth><Configuracion /></RequireAuth>} />
               <Route path="/config/faqs" element={<RequireAuth><ConfigFaqs /></RequireAuth>} />
-              <Route path="/config/financiamiento" element={<RequireAuth><ConfigFinanciamiento /></RequireAuth>} />
-              <Route path="/config/productos" element={<RequireAuth><ConfigProductos /></RequireAuth>} />
-              <Route path="/config/promociones" element={<RequireAuth><ConfigPromos /></RequireAuth>} />
               <Route path="/config/bot" element={<RequireAuth><ConfigBot /></RequireAuth>} />
+              <Route path="/config/comportamiento-bot" element={<RequireAuth><ConfigComportamientoBot /></RequireAuth>} />
+              <Route path="/vehiculos" element={<RequireAuth><Vehiculos /></RequireAuth>} />
+              <Route path="/vehiculos/productos" element={<RequireAuth><ConfigProductos /></RequireAuth>} />
+              <Route path="/vehiculos/financiamiento" element={<RequireAuth><ConfigFinanciamiento /></RequireAuth>} />
+              <Route path="/vehiculos/promociones" element={<RequireAuth><ConfigPromos /></RequireAuth>} />
+              <Route path="/config/productos" element={<RequireAuth><Navigate to="/vehiculos/productos" replace /></RequireAuth>} />
+              <Route path="/config/financiamiento" element={<RequireAuth><Navigate to="/vehiculos/financiamiento" replace /></RequireAuth>} />
+              <Route path="/config/promociones" element={<RequireAuth><Navigate to="/vehiculos/promociones" replace /></RequireAuth>} />
               <Route path="/perfil" element={<RequireAuth><Perfil /></RequireAuth>} />
               <Route path="*" element={<NotFound />} />
             </Routes>

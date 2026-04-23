@@ -56,6 +56,10 @@ export type BotSettingsDto = {
   isEnabled: boolean;
   timezone: string;
   weeklySchedule: BotWeeklyScheduleDto;
+  tone: "formal" | "cercano" | "vendedor" | "tecnico";
+  emojiStyle: "nunca" | "pocos" | "frecuentes";
+  salesProactivity: "bajo" | "medio" | "alto";
+  customInstructions: string;
 };
 
 export const crmApi = {

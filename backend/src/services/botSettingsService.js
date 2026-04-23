@@ -4,6 +4,10 @@ import { normalizeWeeklySchedule } from "../utils/botSettings.js";
 export const DEFAULT_BOT_SETTINGS = {
   isEnabled: true,
   timezone: "America/Bogota",
+  tone: "cercano",
+  emojiStyle: "pocos",
+  salesProactivity: "medio",
+  customInstructions: "",
   weeklySchedule: normalizeWeeklySchedule({
     monday: [{ start: "08:00", end: "18:00" }],
     tuesday: [{ start: "08:00", end: "18:00" }],

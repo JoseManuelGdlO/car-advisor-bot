@@ -14,6 +14,7 @@ import {
   Save,
   Plus,
   FlaskConical,
+  Car,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ScreenHeader } from "@/components/ScreenHeader";
@@ -442,6 +443,15 @@ export default function Perfil() {
                 <Clock3 className="w-4 h-4" />
               </div>
               <span className="flex-1 text-sm font-medium">Horario del bot</span>
+              <ChevronRight className="w-4 h-4 text-muted-foreground" />
+            </button>
+          </li>
+          <li className="border-t border-border">
+            <button type="button" onClick={() => navigate("/vehiculos")} className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-muted/40">
+              <div className="w-9 h-9 rounded-xl bg-primary/10 grid place-items-center text-primary-dark">
+                <Car className="w-4 h-4" />
+              </div>
+              <span className="flex-1 text-sm font-medium">Vehículos y ventas</span>
               <ChevronRight className="w-4 h-4 text-muted-foreground" />
             </button>
           </li>
