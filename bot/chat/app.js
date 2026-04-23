@@ -33,7 +33,11 @@ class ChatInterface {
       this.autoResize();
     });
 
-    this.resetBtn.addEventListener("click", () => this.resetConversation());
+    this.resetBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      void this.resetConversation();
+    });
 
     this.renderWelcomeMessage();
   }
@@ -58,9 +62,21 @@ class ChatInterface {
     this.userInput.style.height = `${this.userInput.scrollHeight}px`;
   }
 
+  getApiBase() {
+    if (!this.apiUrlInput) {
+      return "";
+    }
+    return String(this.apiUrlInput.value || "").trim();
+  }
+
   getChatEndpoint() {
-    const baseUrl = this.apiUrlInput.value.trim();
+    const baseUrl = this.getApiBase();
     return baseUrl ? `${baseUrl}/chat` : "/chat";
+  }
+
+  getResetEndpoint() {
+    const baseUrl = this.getApiBase();
+    return baseUrl ? `${baseUrl}/reset` : "/reset";
   }
 
   async sendMessage(prefilledMessage = null) {
@@ -142,19 +158,66 @@ class ChatInterface {
     this.selectedCarElement.textContent = data.selected_car || "-";
   }
 
-  resetConversation() {
+  async resetConversation() {
     if (!confirm("¿Quieres limpiar la conversación actual?")) {
       return;
     }
 
-    this.renderWelcomeMessage();
-    this.quickOptions.innerHTML = "";
-    this.currentNodeElement.textContent = "-";
-    this.selectedCategoryElement.textContent = "-";
-    this.selectedCarElement.textContent = "-";
-    this.userInput.value = "";
-    this.updateCharCount();
-    this.autoResize();
+    const userId = (this.userIdInput?.value || "").trim();
+    if (!userId) {
+      alert("Ingresa un ID de usuario para reiniciar la sesión en el servidor.");
+      return;
+    }
+
+    const resetUrl = this.getResetEndpoint();
+    this.setInputState(false);
+    try {
+      const response = await fetch(resetUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          platform: "web",
+        }),
+      });
+
+      if (!response.ok) {
+        let detail = `HTTP ${response.status}`;
+        try {
+          const errorPayload = await response.json();
+          if (errorPayload?.detail) {
+            detail = String(errorPayload.detail);
+          } else if (errorPayload?.message) {
+            detail = String(errorPayload.message);
+          }
+        } catch {
+          // Ignora parseo y usa detail por defecto.
+        }
+        throw new Error(detail);
+      }
+
+      this.renderWelcomeMessage();
+      this.quickOptions.innerHTML = "";
+      this.currentNodeElement.textContent = "-";
+      this.selectedCategoryElement.textContent = "-";
+      this.selectedCarElement.textContent = "-";
+      this.userInput.value = "";
+      this.updateCharCount();
+      this.autoResize();
+      this.statusElement.textContent = "Sesión reiniciada";
+      this.statusElement.style.color = "#d1fae5";
+    } catch (error) {
+      const msg = error?.message || String(error);
+      alert(
+        `No se pudo reiniciar la sesión en el servidor: ${msg}. Comprueba la API URL y recarga la página (el navegador puede estar usando un app.js en caché).`
+      );
+      this.statusElement.textContent = "Error al reiniciar";
+      this.statusElement.style.color = "#fecaca";
+    } finally {
+      this.setInputState(true);
+    }
   }
 
   addMessage(text, sender) {
