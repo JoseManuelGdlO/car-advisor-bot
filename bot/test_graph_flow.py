@@ -1,0 +1,158 @@
+"""Tests unitarios del flujo principal del grafo conversacional."""
+
+from __future__ import annotations
+
+import unittest
+from unittest.mock import patch
+
+from src.graph import build_graph
+
+
+def _initial_state() -> dict:
+    return {
+        "messages": [],
+        "current_node": "start",
+        "intent": "",
+        "selected_car": "",
+        "selected_vehicle_id": "",
+        "customer_info": {},
+        "last_vehicle_candidates": [],
+        "last_bot_message": "",
+        "skip_car_prompt": False,
+        "skip_lead_prompt": False,
+        "resume_to_step": "",
+        "is_faq_interrupt": False,
+        "awaiting_purchase_confirmation": False,
+    }
+
+
+def _with_user_message(state: dict, message: str) -> dict:
+    updated = dict(state)
+    messages = list(updated.get("messages", []))
+    messages.append({"role": "user", "content": message, "type": "HumanMessage"})
+    updated["messages"] = messages
+    return updated
+
+
+class GraphFlowTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.graph = build_graph()
+
+    def test_vehicle_request_routes_to_car_selection_and_shows_detail(self) -> None:
+        vehicles = [
+            {
+                "id": "veh-1",
+                "brand": "Nissan",
+                "model": "Versa",
+                "year": 2004,
+                "status": "available",
+                "price": 350000,
+                "km": 200000,
+                "transmission": "automatica",
+                "engine": "v8 hemi",
+                "color": "blanco",
+                "description": "",
+            }
+        ]
+
+        state = _with_user_message(_initial_state(), "hola tienen nissan versa")
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_intent", return_value="FLOW_RESPONSE"),
+            patch("src.nodes.router.classify_router_intent", return_value="VEHICLE_CATALOG"),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.search_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=vehicles[0]),
+            patch("src.nodes.car_selection.generate_vehicle_detail_intro", return_value="Detalle del vehiculo:"),
+            patch(
+                "src.nodes.car_selection.generate_vehicle_purchase_question",
+                return_value="Te interesa comprarlo? Responde si o no.",
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertEqual(updated.get("current_node"), "car_selection")
+        self.assertEqual(updated.get("selected_vehicle_id"), "veh-1")
+        self.assertTrue(updated.get("awaiting_purchase_confirmation"))
+        last_msg = updated["messages"][-1]["content"]
+        self.assertIn("Detalle del vehiculo:", last_msg)
+        self.assertIn("*Marca*: Nissan", last_msg)
+
+    def test_faq_message_routes_to_faq_node(self) -> None:
+        state = _with_user_message(_initial_state(), "hola donde se encuentran ubicados?")
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_intent", return_value="FAQ"),
+            patch("src.nodes.faq.fetch_faq_candidates", return_value=["Estamos en Av. Siempre Viva 123."]),
+            patch("src.nodes.faq.safe_llm_format", return_value="Estamos en Av. Siempre Viva 123."),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertEqual(updated.get("current_node"), "start")
+        self.assertFalse(updated.get("is_faq_interrupt"))
+        self.assertIn("Siempre Viva 123", updated["messages"][-1]["content"])
+
+    def test_purchase_yes_continues_to_lead_capture_same_turn(self) -> None:
+        state = _initial_state()
+        state["current_node"] = "car_selection"
+        state["intent"] = "vehicle_catalog"
+        state["selected_car"] = "Nissan Versa 2004"
+        state["selected_vehicle_id"] = "veh-1"
+        state["awaiting_purchase_confirmation"] = True
+        state["last_bot_message"] = "Te interesa comprar este vehiculo? Responde si o no."
+        state = _with_user_message(state, "si")
+
+        vehicles = [{"id": "veh-1", "brand": "Nissan", "model": "Versa", "year": 2004, "status": "available"}]
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_intent", return_value="FLOW_RESPONSE"),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.classify_purchase_confirmation_intent", return_value="SI"),
+            patch(
+                "src.nodes.lead_capture.safe_llm_format",
+                side_effect=lambda text: text,
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertEqual(updated.get("current_node"), "lead_capture")
+        self.assertFalse(updated.get("awaiting_purchase_confirmation"))
+        self.assertIn("Para apartar Nissan Versa 2004", updated["messages"][-1]["content"])
+
+    def test_faq_interrupt_resumes_lead_capture_next_turn(self) -> None:
+        state = _initial_state()
+        state["messages"] = [
+            {
+                "role": "assistant",
+                "content": "Para apartar Nissan Versa 2004, comparte tus datos en formato nombre:..., telefono:..., email:....",
+                "type": "AIMessage",
+            }
+        ]
+        state["current_node"] = "lead_capture"
+        state["intent"] = "vehicle_catalog"
+        state["selected_car"] = "Nissan Versa 2004"
+        state["selected_vehicle_id"] = "veh-1"
+        state["last_bot_message"] = state["messages"][-1]["content"]
+
+        faq_turn = _with_user_message(state, "donde se ubican?")
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_intent", return_value="FAQ"),
+            patch("src.nodes.faq.fetch_faq_candidates", return_value=["Estamos en Centro."]),
+            patch("src.nodes.faq.safe_llm_format", return_value="Estamos en Centro."),
+        ):
+            after_faq = self.graph.invoke(faq_turn)
+
+        self.assertEqual(after_faq.get("current_node"), "lead_capture")
+        self.assertFalse(after_faq.get("is_faq_interrupt"))
+        self.assertFalse(after_faq.get("skip_lead_prompt"))
+
+        resume_turn = _with_user_message(after_faq, "nombre: Juan")
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_intent", return_value="FLOW_RESPONSE"),
+            patch("src.nodes.lead_capture.safe_llm_format", side_effect=lambda text: text),
+        ):
+            resumed = self.graph.invoke(resume_turn)
+
+        self.assertEqual(resumed.get("current_node"), "lead_capture")
+        self.assertIn("Faltan: telefono, email.", resumed["messages"][-1]["content"])
+
+
+if __name__ == "__main__":
+    unittest.main()
