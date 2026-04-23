@@ -125,7 +125,9 @@ def _build_initial_state() -> dict[str, Any]:
         "intent": "",
         "selected_brand": "",
         "selected_car": "",
+        "selected_vehicle_id": "",
         "customer_info": {},
+        "last_vehicle_candidates": [],
         "last_bot_message": "",
         "options": [],
         "skip_brand_prompt": False,
@@ -133,6 +135,7 @@ def _build_initial_state() -> dict[str, Any]:
         "skip_lead_prompt": False,
         "resume_to_step": "",
         "is_faq_interrupt": False,
+        "awaiting_purchase_confirmation": False,
     }
 
 

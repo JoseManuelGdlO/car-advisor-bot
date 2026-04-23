@@ -3,7 +3,9 @@
 from src.state import clientState
 from src.tools.database import fetch_faq_candidates
 
-from src.nodes.common import append_assistant_message, available_brands, latest_user_message, safe_llm_format
+from src.services.llm_responses import safe_llm_format
+from src.tools.vehicles import available_brands
+from src.utils.state_helpers import append_assistant_message, latest_user_message
 
 
 def faq(state: clientState) -> clientState:

@@ -2,7 +2,9 @@
 
 from src.state import clientState
 
-from src.nodes.common import append_assistant_message, available_brands, safe_llm_format
+from src.services.llm_responses import safe_llm_format
+from src.tools.vehicles import available_brands
+from src.utils.state_helpers import append_assistant_message
 
 
 def brand_selection(state: clientState) -> clientState:

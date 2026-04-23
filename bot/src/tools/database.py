@@ -15,6 +15,13 @@ from mysql.connector.errors import Error as MySQLError
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_BOT_SETTINGS = {
+    "tone": "cercano",
+    "emojiStyle": "frecuentes",
+    "salesProactivity": "alto",
+    "customInstructions": "Eres una persona muy amable y autentica",
+}
+
 
 def _normalize_uuid(value: Any) -> str | None:
     """Convierte UUID devuelto por MySQL (str/bytes/...) a string estandar."""
@@ -35,6 +42,51 @@ def _backend_headers() -> dict[str, str]:
 def _backend_api_url(path: str) -> str:
     base = os.getenv("BACKEND_API_URL", "").rstrip("/")
     return f"{base}{path}" if base else ""
+
+
+def _clean_setting(value: Any, default: str) -> str:
+    """Normaliza setting remoto con fallback robusto ante null/None."""
+
+    if value is None:
+        return default
+    text = str(value).strip()
+    if not text:
+        return default
+    if text.lower() in {"none", "null", "undefined"}:
+        return default
+    return text
+
+
+def get_bot_settings() -> dict[str, str]:
+    """Obtiene bot settings desde backend con fallback seguro."""
+
+    url = _backend_api_url("/bot/settings")
+    headers = _backend_headers()
+    if not url or "Authorization" not in headers:
+        return dict(DEFAULT_BOT_SETTINGS)
+    try:
+        response = requests.get(url, headers=headers, timeout=6)
+        if response.status_code != 200:
+            logger.warning("Bot settings fetch failed status=%s", response.status_code)
+            return dict(DEFAULT_BOT_SETTINGS)
+        payload = response.json()
+        if not isinstance(payload, dict):
+            return dict(DEFAULT_BOT_SETTINGS)
+        return {
+            "tone": _clean_setting(payload.get("tone"), DEFAULT_BOT_SETTINGS["tone"]),
+            "emojiStyle": _clean_setting(payload.get("emojiStyle"), DEFAULT_BOT_SETTINGS["emojiStyle"]),
+            "salesProactivity": _clean_setting(
+                payload.get("salesProactivity"),
+                DEFAULT_BOT_SETTINGS["salesProactivity"],
+            ),
+            "customInstructions": _clean_setting(
+                payload.get("customInstructions"),
+                DEFAULT_BOT_SETTINGS["customInstructions"],
+            ),
+        }
+    except Exception:
+        logger.exception("Bot settings fetch failed unexpectedly")
+        return dict(DEFAULT_BOT_SETTINGS)
 
 
 def push_event_to_backend(payload: dict[str, Any]) -> None:

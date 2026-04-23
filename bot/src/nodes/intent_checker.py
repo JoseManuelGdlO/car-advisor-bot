@@ -2,7 +2,7 @@
 
 from src.state import clientState
 
-from src.nodes.common import is_faq_intent, latest_human_ai_pair
+from src.utils.state_helpers import is_faq_intent, latest_human_ai_pair
 
 
 def intent_checker(state: clientState) -> clientState:

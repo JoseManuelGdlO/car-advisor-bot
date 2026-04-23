@@ -4,18 +4,23 @@ from __future__ import annotations
 
 from src.state import clientState
 
-from src.nodes.common import (
-    append_assistant_message,
-    available_brands,
-    available_models_by_brand,
-    is_faq_intent,
-    latest_user_message,
-    safe_llm_format,
-)
+from src.services.llm_responses import generate_other_response
+from src.tools.vehicles import normalize_user_text
+from src.utils.state_helpers import append_assistant_message, is_faq_intent, latest_user_message
 
 
-def _is_brand_request(text: str) -> bool:
-    normalized = text.strip().lower()
+def _debug_router(event: str, **payload: object) -> None:
+    """Trazas de decisión del router para seguir en consola."""
+
+    if payload:
+        pairs = ", ".join(f"{key}={value!r}" for key, value in payload.items())
+        print(f"[router] {event} | {pairs}")
+        return
+    print(f"[router] {event}")
+
+
+def _is_vehicle_request(text: str) -> bool:
+    normalized = normalize_user_text(text)
     if not normalized:
         return False
     signals = [
@@ -29,21 +34,28 @@ def _is_brand_request(text: str) -> bool:
         "modelos",
         "vehiculo",
         "vehiculos",
-        "catálogo",
+        "catalogo",
+        "disponible",
+        "disponibles",
+        "color",
+        "ano",
+        "año",
+        "precio",
+        "camioneta",
+        "pickup",
         "catalogo",
     ]
     return any(signal in normalized for signal in signals)
 
 
 def _is_simple_greeting(text: str) -> bool:
-    normalized = text.strip().lower()
+    normalized = normalize_user_text(text)
     if not normalized:
         return False
     greetings = {
         "hola",
         "buenas",
         "buenos dias",
-        "buen día",
         "buen dia",
         "buenas tardes",
         "buenas noches",
@@ -58,62 +70,46 @@ def router(state: clientState) -> clientState:
 
     state["current_node"] = "router"
     user_text = latest_user_message(state)
-    text = user_text.strip().lower()
+    text = normalize_user_text(user_text)
+    _debug_router(
+        "entry",
+        user_text=user_text,
+        normalized_text=text,
+        previous_intent=state.get("intent", ""),
+        awaiting_purchase_confirmation=bool(state.get("awaiting_purchase_confirmation")),
+        pending_candidates=bool(state.get("last_vehicle_candidates")),
+    )
 
     if is_faq_intent(text):
         state["intent"] = "faq"
         state["current_node"] = "faq"
+        _debug_router("route_to_faq")
         return state
 
-    brand_options: list[str] = []
-    try:
-        brand_options = available_brands()
-    except Exception:
-        brand_options = []
-
-    if text and text in [brand.lower() for brand in brand_options]:
-        selected = next(brand for brand in brand_options if brand.lower() == text)
-        state["selected_brand"] = selected
+    if state.get("awaiting_purchase_confirmation") or state.get("last_vehicle_candidates"):
         state["intent"] = "vehicle_catalog"
         state["current_node"] = "car_selection"
+        _debug_router("route_to_car_selection", reason="state_flags")
         return state
 
-    selected_brand = state.get("selected_brand", "")
-    if selected_brand:
-        try:
-            model_options = available_models_by_brand(selected_brand)
-        except Exception:
-            model_options = []
-        if text and text in [model.lower() for model in model_options]:
-            selected_model = next(model for model in model_options if model.lower() == text)
-            state["selected_car"] = selected_model
-            state["intent"] = "vehicle_catalog"
-            state["current_node"] = "lead_capture"
-            return state
+    if state.get("intent") == "vehicle_catalog" and text and not _is_simple_greeting(text):
+        state["current_node"] = "car_selection"
+        _debug_router("route_to_car_selection", reason="vehicle_catalog_context")
+        return state
 
-    if state.get("selected_brand"):
+    if _is_vehicle_request(text):
         state["intent"] = "vehicle_catalog"
         state["current_node"] = "car_selection"
-        return state
-
-    if _is_brand_request(text):
-        state["intent"] = "vehicle_catalog"
-        state["current_node"] = "brand_selection"
+        _debug_router("route_to_car_selection", reason="vehicle_request_signal")
         return state
 
     if _is_simple_greeting(text) or not text:
         state["intent"] = "other"
-        message = safe_llm_format(
-            "Hola, te puedo ayudar a encontrar un carro. "
-            "Si quieres, puedes preguntarme por un carro o ver las marcas disponibles.",
-            [],
-        )
+        message = generate_other_response(user_text)
+        _debug_router("route_to_other", reason="greeting_or_empty")
         return append_assistant_message(state, message, [])
 
     state["intent"] = "other"
-    message = safe_llm_format(
-        "Te puedo ayudar con carros disponibles. "
-        "Dime si quieres ver marcas o si buscas un modelo en particular.",
-        [],
-    )
+    message = generate_other_response(user_text)
+    _debug_router("route_to_other", reason="fallback")
     return append_assistant_message(state, message, [])

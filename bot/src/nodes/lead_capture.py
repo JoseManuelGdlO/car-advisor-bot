@@ -2,14 +2,10 @@
 
 from src.state import clientState
 
-from src.nodes.common import (
-    append_assistant_message,
-    latest_user_message,
-    notify_advisor,
-    parse_customer_info,
-    safe_llm_format,
-)
 from src.tools.database import push_event_to_backend
+from src.tools.vehicles import notify_advisor
+from src.services.llm_responses import safe_llm_format
+from src.utils.state_helpers import append_assistant_message, latest_user_message, parse_customer_info
 
 
 def lead_capture(state: clientState) -> clientState:
