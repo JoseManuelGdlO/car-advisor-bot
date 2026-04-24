@@ -53,7 +53,6 @@ def is_faq_intent(text: str) -> bool:
         "informacion",
         "info",
         "horario",
-        "financiamiento",
         "garantia",
         "ubicacion",
     ]

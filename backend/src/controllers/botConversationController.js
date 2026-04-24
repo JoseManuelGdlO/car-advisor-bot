@@ -57,7 +57,7 @@ export const botResetConversation = async (req, res) => {
 };
 
 export const botUpsertConversation = async (req, res) => {
-  const { user_id, platform, message, selected_car, customer_info } = req.body;
+  const { user_id, platform, message, selected_car, customer_info, financing_selection } = req.body;
   const ownerUserId = env.bot.defaultOwnerUserId || req.auth.userId;
   const resolvedChannel = normalizeInboundChannel(platform || env.bot.defaultInboundChannel || "web");
   const inboundChannel = resolvedChannel;
@@ -103,11 +103,22 @@ export const botUpsertConversation = async (req, res) => {
       lastMessageAt: isInboundClientMessage ? new Date() : null,
     },
   });
+  let currentNotes = {};
+  try {
+    currentNotes = lead.notes ? JSON.parse(String(lead.notes)) : {};
+  } catch {
+    currentNotes = {};
+  }
+  const mergedNotes = {
+    ...currentNotes,
+    ...(customer_info ? { customer_info } : {}),
+    ...(financing_selection && Object.keys(financing_selection).length ? { financing_selection } : {}),
+  };
   await lead.update({
     interestedIn: selected_car || lead.interestedIn,
     lastMessage: isInboundClientMessage ? normalizedMessage : lead.lastMessage,
     lastMessageAt: isInboundClientMessage ? new Date() : lead.lastMessageAt,
-    notes: customer_info ? JSON.stringify(customer_info) : lead.notes,
+    notes: Object.keys(mergedNotes).length ? JSON.stringify(mergedNotes) : lead.notes,
   });
   const [conv] = await Conversation.findOrCreate({
     where: { ownerUserId, clientLeadId: lead.id },

@@ -31,6 +31,10 @@ class clientState(TypedDict, total=False):
     - user_id: identificador de conversacion (en web/whatsapp suele ser el telefono).
     - lead_phone_attempts: reintentos al validar telefono en plataformas que lo piden.
     - lead_capture_done: True cuando ya se notifico y persistio el lead en esta conversacion.
+    - selected_financing_plan_*: datos del plan seleccionado por el usuario.
+    - financing_plan_candidates: lista temporal de planes para seleccion.
+    - financing_vehicle_candidates: lista temporal de vehiculos dentro del plan.
+    - awaiting_financing_plan_selection / awaiting_financing_vehicle_selection: banderas de paso.
     """
 
     messages: list[dict[str, Any]]
@@ -53,3 +57,10 @@ class clientState(TypedDict, total=False):
     vehicle_images_cursor: int
     vehicle_images_has_more: bool
     vehicle_images_last_batch: list[str]
+    selected_financing_plan_id: str
+    selected_financing_plan_name: str
+    selected_financing_plan_lender: str
+    financing_plan_candidates: list[dict[str, Any]]
+    financing_vehicle_candidates: list[dict[str, Any]]
+    awaiting_financing_plan_selection: bool
+    awaiting_financing_vehicle_selection: bool

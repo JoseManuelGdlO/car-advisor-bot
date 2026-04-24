@@ -138,6 +138,13 @@ def _build_initial_state() -> dict[str, Any]:
         "vehicle_images_cursor": 0,
         "vehicle_images_has_more": False,
         "vehicle_images_last_batch": [],
+        "selected_financing_plan_id": "",
+        "selected_financing_plan_name": "",
+        "selected_financing_plan_lender": "",
+        "financing_plan_candidates": [],
+        "financing_vehicle_candidates": [],
+        "awaiting_financing_plan_selection": False,
+        "awaiting_financing_vehicle_selection": False,
     }
 
 

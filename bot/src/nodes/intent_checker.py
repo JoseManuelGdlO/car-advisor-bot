@@ -45,11 +45,55 @@ def _looks_like_more_images_reply(user_text: str) -> bool:
     return any(signal in normalized for signal in signals)
 
 
+def _looks_like_financing_request(user_text: str) -> bool:
+    """Evita enviar a FAQ cuando el mensaje trata de financiamiento."""
+
+    normalized = normalize_user_text(user_text)
+    if not normalized:
+        return False
+    signals = {
+        "financiamiento",
+        "financiar",
+        "financiado",
+        "credito",
+        "credito automotriz",
+        "mensualidad",
+        "mensualidades",
+        "enganche",
+        "tasa",
+        "interes",
+        "plazo",
+        "plan financiero",
+        "planes financieros",
+        "plan de financiamiento",
+        "planes de financiamiento",
+        "pagos",
+        "plan de pagos",
+        "planes de pagos",
+    }
+    return any(signal in normalized for signal in signals)
+
+
 def intent_checker(state: clientState) -> clientState:
     """Evalua ultimo par Human/AI para decidir continuidad o interrupcion FAQ."""
 
     last_user, last_ai = latest_human_ai_pair(state)
     if not last_user:
+        return state
+
+    current_node = str(state.get("current_node", "router"))
+    # El intent_checker corre antes del router: fuera de flujo no debe marcar FAQ interruptiva.
+    if current_node in {"", "start", "router", "faq"}:
+        state["is_faq_interrupt"] = False
+        return state
+
+    # Si no hay mensaje previo del bot, no existe interrupcion de flujo.
+    if not last_ai:
+        state["is_faq_interrupt"] = False
+        return state
+
+    if _looks_like_financing_request(last_user):
+        state["is_faq_interrupt"] = False
         return state
 
     if state.get("awaiting_purchase_confirmation") and _looks_like_flow_short_reply(last_user):
@@ -64,8 +108,7 @@ def intent_checker(state: clientState) -> clientState:
         state["is_faq_interrupt"] = False
         return state
 
-    current_node = str(state.get("current_node", "router"))
-    if current_node in {"car_selection", "lead_capture"} and _looks_like_flow_short_reply(last_user):
+    if current_node in {"car_selection", "lead_capture", "financing"} and _looks_like_flow_short_reply(last_user):
         state["is_faq_interrupt"] = False
         return state
 

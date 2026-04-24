@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -99,6 +100,49 @@ def push_event_to_backend(payload: dict[str, Any]) -> None:
         requests.post(url, json=payload, headers=headers, timeout=5)
     except Exception:
         return
+
+
+def _normalize_financing_plans_payload(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if isinstance(payload, dict):
+        data = payload.get("data")
+        if isinstance(data, list):
+            return [item for item in data if isinstance(item, dict)]
+        if isinstance(payload.get("rows"), list):
+            return [item for item in payload["rows"] if isinstance(item, dict)]
+    return []
+
+
+def fetch_financing_plans() -> list[dict[str, Any]]:
+    """Obtiene todos los planes de financiamiento disponibles del backend."""
+
+    url = _backend_api_url("/financing-plans")
+    headers = _backend_headers()
+    if not url:
+        return []
+    response = requests.get(url, headers=headers, timeout=6)
+    if response.status_code == 404:
+        return []
+    response.raise_for_status()
+    return _normalize_financing_plans_payload(response.json())
+
+
+def fetch_financing_plans_by_vehicle(vehicle_id: str) -> list[dict[str, Any]]:
+    """Obtiene planes de financiamiento para un vehiculo puntual."""
+
+    normalized_id = str(vehicle_id or "").strip()
+    if not normalized_id:
+        return []
+    url = _backend_api_url(f"/vehicles/{normalized_id}/financing-plans")
+    headers = _backend_headers()
+    if not url:
+        return []
+    response = requests.get(url, headers=headers, timeout=6)
+    if response.status_code == 404:
+        return []
+    response.raise_for_status()
+    return _normalize_financing_plans_payload(response.json())
 
 
 def upsert_inbound_user_message(phone: str, message: str, platform: str = "web") -> dict[str, str] | None:
@@ -366,23 +410,48 @@ def upsert_bot_session_state(
 def fetch_faq_candidates(question: str, limit: int = 3) -> list[str]:
     """Obtiene respuestas FAQ candidatas desde BD para preguntas generales."""
 
-    if not question.strip():
+    normalized_question = str(question or "").strip()
+    if not normalized_question:
         return []
+
+    # Busca por palabras clave en question/answer para evitar dependencia de match exacto.
+    terms = [
+        term
+        for term in re.findall(r"[a-zA-Z0-9áéíóúñÁÉÍÓÚÑ]{3,}", normalized_question.lower())
+        if term not in {"que", "como", "cual", "cuales", "para", "con", "por", "una", "unos", "unas"}
+    ][:5]
+    if not terms:
+        terms = [normalized_question.lower()]
 
     connection = get_connection()
     try:
-        query = """
-            SELECT answer
+        where_clause = " OR ".join(["LOWER(question) LIKE %s OR LOWER(answer) LIKE %s" for _ in terms])
+        query = f"""
+            SELECT question, answer
             FROM faqs
-            WHERE question LIKE %s
+            WHERE {where_clause}
             ORDER BY updated_at DESC
             LIMIT %s
         """
-        like_term = f"%{question.strip()}%"
+        params: list[Any] = []
+        for term in terms:
+            like_term = f"%{term}%"
+            params.extend([like_term, like_term])
+        params.append(limit)
         with connection.cursor() as cursor:
-            cursor.execute(query, (like_term, limit))
+            cursor.execute(query, tuple(params))
             rows = cursor.fetchall() or []
-        return [str(row[0]).strip() for row in rows if row and row[0]]
+        candidates: list[str] = []
+        for row in rows:
+            if not row:
+                continue
+            q = str(row[0] if len(row) > 0 else "").strip()
+            a = str(row[1] if len(row) > 1 else "").strip()
+            if q and a:
+                candidates.append(f"P: {q}\nR: {a}")
+            elif a:
+                candidates.append(a)
+        return candidates
     except Exception:
         # FAQ DB es opcional para el MVP.
         return []

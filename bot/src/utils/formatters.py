@@ -51,6 +51,12 @@ def _bold_label(text: str, platform: str) -> str:
     return f"{marker}{text}{marker}"
 
 
+def _bold_labels(labels: list[str], platform: str = "web") -> dict[str, str]:
+    """Devuelve un mapa etiqueta->etiqueta en negritas para reutilizar formateo."""
+
+    return {label: _bold_label(label, platform) for label in labels}
+
+
 def format_available_vehicles_grouped(vehicles: list[dict[str, Any]]) -> str:
     """Agrupa disponibles por marca y modelo; agrega año cuando hay repetidos."""
 
@@ -130,4 +136,147 @@ def format_vehicle_detail(vehicle: dict[str, Any], platform: str = "web") -> str
     ]
     left_width = max(len(left) for left, _ in rows) + 2
     lines = [f"{left.ljust(left_width)}{right}".rstrip() for left, right in rows]
+    return "\n".join(lines)
+
+
+def _format_rate(rate: Any, show_rate: bool = True) -> str:
+    if not show_rate:
+        return "Tasa sujeta a evaluacion"
+    raw = str(rate or "").strip()
+    if not raw:
+        return "N/D"
+    try:
+        parsed = Decimal(raw)
+    except (InvalidOperation, ValueError):
+        return raw
+    return f"{parsed:.2f}%"
+
+
+def _vehicle_label(vehicle: dict[str, Any]) -> str:
+    brand = _title_or_default(vehicle.get("brand"))
+    model = _title_or_default(vehicle.get("model"))
+    year = vehicle.get("year")
+    if isinstance(year, int):
+        return f"{brand} {model} {year}"
+    return f"{brand} {model}".strip()
+
+
+def _available_plan_vehicles(plan: dict[str, Any]) -> list[dict[str, Any]]:
+    vehicles = plan.get("vehicles")
+    raw_items = [item for item in vehicles if isinstance(item, dict)] if isinstance(vehicles, list) else []
+    filtered: list[dict[str, Any]] = []
+    for item in raw_items:
+        status = str(item.get("status", "")).strip().lower()
+        if status and status != "available":
+            continue
+        filtered.append(item)
+    return filtered
+
+
+def format_financing_plans(plans: list[dict[str, Any]], platform: str = "web") -> str:
+    """Formatea planes de financiamiento con requisitos y vehiculos asociados."""
+
+    active_plans = [item for item in plans if isinstance(item, dict) and bool(item.get("active", True))]
+    if not active_plans:
+        return "No hay planes de financiamiento disponibles en este momento."
+
+    bold_labels = _bold_labels(
+        ["Tasa", "Plazo maximo", "Requisitos", "Vehiculos disponibles", "Vehiculos"],
+        platform,
+    )
+    lines = ["Estos son los planes de financiamiento disponibles:", ""]
+    printed = 0
+    for idx, plan in enumerate(active_plans, start=1):
+        available_vehicles = _available_plan_vehicles(plan)
+        if not available_vehicles:
+            continue
+        printed += 1
+        name = str(plan.get("name", "")).strip() or f"Plan {idx}"
+        lender = str(plan.get("lender", "")).strip() or "N/D"
+        max_term = _format_int(plan.get("maxTermMonths"), "meses")
+        rate = _format_rate(plan.get("rate"), bool(plan.get("showRate", True)))
+        lines.append(f"{printed}. {name} ({lender})")
+        lines.append(f"   - {bold_labels['Tasa']}: {rate}")
+        lines.append(f"   - {bold_labels['Plazo maximo']}: {max_term}")
+
+        requirements = plan.get("requirements")
+        req_values = [
+            str(item.get("title", "")).strip()
+            for item in requirements
+            if isinstance(item, dict) and str(item.get("title", "")).strip()
+        ] if isinstance(requirements, list) else []
+        if req_values:
+            lines.append(f"   - {bold_labels['Requisitos']}: {', '.join(req_values)}")
+
+        vehicle_values = [
+            _vehicle_label(item)
+            for item in available_vehicles
+        ]
+        lines.append(f"   - {bold_labels['Vehiculos disponibles']}:")
+        for vehicle in vehicle_values:
+            lines.append(f"     - {vehicle}")
+        lines.append("")
+    if not printed:
+        return "No hay planes de financiamiento con vehiculos disponibles en este momento."
+    return "\n".join(lines).strip()
+
+
+def format_financing_plans_for_vehicle(
+    vehicle_name: str,
+    plans: list[dict[str, Any]],
+    platform: str = "web",
+) -> str:
+    """Formatea planes aplicables a un vehiculo puntual."""
+
+    normalized_vehicle = str(vehicle_name or "").strip() or "este vehiculo"
+    active_plans = [item for item in plans if isinstance(item, dict) and bool(item.get("active", True))]
+    if not active_plans:
+        return f"No encontre planes de financiamiento activos para {normalized_vehicle}."
+
+    bold_labels = _bold_labels(["Tasa", "Plazo maximo", "Requisitos", "Vehiculos disponibles"], platform)
+    lines = [f"Planes de financiamiento para {normalized_vehicle}:", ""]
+    printed = 0
+    for idx, plan in enumerate(active_plans, start=1):
+        available_vehicles = _available_plan_vehicles(plan)
+        if not available_vehicles:
+            continue
+        printed += 1
+        name = str(plan.get("name", "")).strip() or f"Plan {idx}"
+        lender = str(plan.get("lender", "")).strip() or "N/D"
+        max_term = _format_int(plan.get("maxTermMonths"), "meses")
+        rate = _format_rate(plan.get("rate"), bool(plan.get("showRate", True)))
+        lines.append(
+            f"{printed}. {name} ({lender}) - {bold_labels['Tasa']}: {rate} - {bold_labels['Plazo maximo']}: {max_term}"
+        )
+
+        requirements = plan.get("requirements")
+        req_values = [
+            str(item.get("title", "")).strip()
+            for item in requirements
+            if isinstance(item, dict) and str(item.get("title", "")).strip()
+        ] if isinstance(requirements, list) else []
+        if req_values:
+            lines.append(f"   {bold_labels['Requisitos']}: {', '.join(req_values)}")
+        lines.append(f"   {bold_labels['Vehiculos disponibles']}:")
+        for vehicle in available_vehicles:
+            lines.append(f"   - {_vehicle_label(vehicle)}")
+    if not printed:
+        return f"No encontre planes de financiamiento activos para {normalized_vehicle}."
+    return "\n".join(lines).strip()
+
+
+def format_financing_plan_vehicles(plan: dict[str, Any]) -> str:
+    """Lista vehiculos asociados a un plan para forzar seleccion de modelo."""
+
+    vehicles = plan.get("vehicles")
+    valid = [item for item in vehicles if isinstance(item, dict)] if isinstance(vehicles, list) else []
+    if not valid:
+        return (
+            "Este plan no tiene vehiculos vinculados directamente. "
+            "Dime marca y modelo para buscar uno compatible."
+        )
+
+    lines = ["Selecciona el vehiculo que te interesa dentro de este plan:", ""]
+    for idx, vehicle in enumerate(valid, start=1):
+        lines.append(f"{idx}. {_vehicle_label(vehicle)}")
     return "\n".join(lines)

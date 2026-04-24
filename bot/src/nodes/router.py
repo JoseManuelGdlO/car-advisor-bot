@@ -48,6 +48,33 @@ def _is_vehicle_request(text: str) -> bool:
     return any(signal in normalized for signal in signals)
 
 
+def _is_financing_request(text: str) -> bool:
+    normalized = normalize_user_text(text)
+    if not normalized:
+        return False
+    signals = [
+        "financiamiento",
+        "financiar",
+        "financiado",
+        "credito",
+        "credito automotriz",
+        "mensualidad",
+        "mensualidades",
+        "enganche",
+        "tasa",
+        "interes",
+        "plazo",
+        "plan financiero",
+        "planes financieros",
+        "plan de financiamiento",
+        "planes de financiamiento",
+        "pagos",
+        "plan de pagos",
+        "planes de pagos",
+    ]
+    return any(signal in normalized for signal in signals)
+
+
 def _is_simple_greeting(text: str) -> bool:
     normalized = normalize_user_text(text)
     if not normalized:
@@ -80,6 +107,12 @@ def router(state: clientState) -> clientState:
         pending_candidates=bool(state.get("last_vehicle_candidates")),
     )
 
+    if _is_financing_request(text):
+        state["intent"] = "financing"
+        state["current_node"] = "financing"
+        _debug_router("route_to_financing", reason="financing_signal")
+        return state
+
     if is_faq_intent(text):
         state["intent"] = "faq"
         state["current_node"] = "faq"
@@ -95,6 +128,10 @@ def router(state: clientState) -> clientState:
     if state.get("intent") == "vehicle_catalog" and text and not _is_simple_greeting(text):
         state["current_node"] = "car_selection"
         _debug_router("route_to_car_selection", reason="vehicle_catalog_context")
+        return state
+    if state.get("intent") == "financing" and text and not _is_simple_greeting(text):
+        state["current_node"] = "financing"
+        _debug_router("route_to_financing", reason="financing_context")
         return state
 
     if _is_vehicle_request(text):
@@ -128,6 +165,11 @@ def router(state: clientState) -> clientState:
         state["intent"] = "faq"
         state["current_node"] = "faq"
         _debug_router("route_to_faq", reason="llm_classifier")
+        return state
+    if classified_intent == "FINANCING":
+        state["intent"] = "financing"
+        state["current_node"] = "financing"
+        _debug_router("route_to_financing", reason="llm_classifier")
         return state
 
     state["intent"] = "other"

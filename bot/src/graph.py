@@ -6,6 +6,7 @@ from langgraph.graph import END, START, StateGraph
 
 from src.nodes.car_selection import car_selection
 from src.nodes.faq import faq
+from src.nodes.financing import financing
 from src.nodes.intent_checker import intent_checker
 from src.nodes.lead_capture import lead_capture
 from src.nodes.router import router
@@ -36,6 +37,9 @@ def _route_from_router(state: clientState) -> str:
     if node == "lead_capture":
         _log_transition("router", "lead_capture")
         return "lead_capture"
+    if node == "financing":
+        _log_transition("router", "financing")
+        return "financing"
     _log_transition("router", "end", "sin nodo valido")
     return "end"
 
@@ -56,6 +60,10 @@ def _route_after_intent_checker(state: clientState) -> str:
         print("[GRAPH] route_after_intent_checker: retomando car_selection")
         _log_transition("intent_checker", "car_selection", "reanudar flujo")
         return "car_selection"
+    if node == "financing":
+        print("[GRAPH] route_after_intent_checker: retomando financing")
+        _log_transition("intent_checker", "financing", "reanudar flujo")
+        return "financing"
     print(f"[GRAPH] route_after_intent_checker: sin FAQ, continuando flujo (current_node='{node}')")
     _log_transition("intent_checker", "router")
     return "router"
@@ -68,6 +76,9 @@ def _route_after_car_selection(state: clientState) -> str:
     if node == "lead_capture":
         _log_transition("car_selection", "lead_capture", "continuacion de compra")
         return "lead_capture"
+    if node == "financing":
+        _log_transition("car_selection", "financing", "consulta de financiamiento")
+        return "financing"
     _log_transition("car_selection", "end")
     return "end"
 
@@ -81,6 +92,7 @@ def build_graph():
     graph.add_node("car_selection", car_selection)
     graph.add_node("lead_capture", lead_capture)
     graph.add_node("faq", faq)
+    graph.add_node("financing", financing)
 
     graph.add_edge(START, "intent_checker")
     graph.add_conditional_edges(
@@ -91,6 +103,7 @@ def build_graph():
             "faq": "faq",
             "lead_capture": "lead_capture",
             "car_selection": "car_selection",
+            "financing": "financing",
         },
     )
     graph.add_conditional_edges(
@@ -100,6 +113,7 @@ def build_graph():
             "car_selection": "car_selection",
             "lead_capture": "lead_capture",
             "faq": "faq",
+            "financing": "financing",
             "end": END,
         },
     )
@@ -109,10 +123,12 @@ def build_graph():
         _route_after_car_selection,
         {
             "lead_capture": "lead_capture",
+            "financing": "financing",
             "end": END,
         },
     )
     graph.add_edge("lead_capture", END)
     graph.add_edge("faq", END)
+    graph.add_edge("financing", END)
 
     return graph.compile()

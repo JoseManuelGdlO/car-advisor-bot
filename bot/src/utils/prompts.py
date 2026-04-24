@@ -226,9 +226,10 @@ def build_router_intent_classifier_prompt(
         "Clasifica la intencion principal del usuario en una sola etiqueta.\n"
         "Etiquetas validas:\n"
         "- VEHICLE_CATALOG: pide ver, buscar o comparar carros/modelos/marcas, o menciona un modelo especifico.\n"
-        "- FAQ: pregunta informacion general del negocio (ubicacion, horarios, financiamiento, garantias, contacto).\n"
+        "- FINANCING: pregunta por planes de financiamiento, credito, tasas, enganche, mensualidades o plazos.\n"
+        "- FAQ: pregunta informacion general del negocio (ubicacion, horarios, garantias, contacto).\n"
         "- OTHER: saludo, agradecimiento o mensaje fuera del alcance.\n"
-        "Responde SOLO con una etiqueta exacta: VEHICLE_CATALOG, FAQ, OTHER.\n\n"
+        "Responde SOLO con una etiqueta exacta: VEHICLE_CATALOG, FINANCING, FAQ, OTHER.\n\n"
         f"Intent previo: {previous}\n"
         f"Mensaje del usuario: {message}\n"
     )
@@ -256,4 +257,25 @@ def build_faq_interrupt_classifier_prompt(
         f"Nodo actual: {node}\n"
         f"Ultimo mensaje del bot: {bot_msg}\n"
         f"Mensaje del usuario: {user_msg}\n"
+    )
+
+
+def build_faq_response_prompt(
+    user_question: str,
+    faq_context: str,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Prompt para responder FAQ solo con contexto proveniente de BD."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    question = user_question.strip() or "(mensaje vacio)"
+    context = faq_context.strip() or "(sin contexto FAQ disponible)"
+    return (
+        f"{system_prompt}\n\n"
+        "RESPUESTA_FAQ:\n"
+        "Responde la pregunta del usuario usando EXCLUSIVAMENTE la BASE_FAQ provista.\n"
+        "Si la BASE_FAQ no contiene informacion suficiente, dilo de forma clara y breve.\n"
+        "No inventes datos. No saludes. No menciones que eres una IA.\n\n"
+        f"PREGUNTA_USUARIO: {question}\n\n"
+        f"BASE_FAQ:\n{context}\n"
     )

@@ -311,9 +311,17 @@ def available_models_by_brand(brand: str) -> list[str]:
     return models
 
 
-def notify_advisor(selected_car: str, customer_info: dict[str, Any]) -> None:
+def notify_advisor(
+    selected_car: str,
+    customer_info: dict[str, Any],
+    financing_selection: dict[str, Any] | None = None,
+) -> None:
     """Notifica al asesor comercial via endpoint externo configurable."""
 
     endpoint = os.getenv("NOTIFY_ADVISOR_URL", "http://localhost:8000/notificarAsesor")
-    payload = {"selected_car": selected_car, "customer_info": customer_info}
+    payload = {
+        "selected_car": selected_car,
+        "customer_info": customer_info,
+        "financing_selection": financing_selection or {},
+    }
     requests.post(endpoint, json=payload, timeout=5)

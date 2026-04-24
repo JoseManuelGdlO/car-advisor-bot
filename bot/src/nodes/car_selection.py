@@ -68,6 +68,26 @@ _MORE_IMAGES_SIGNALS = {
     "siguientes imagenes",
     "siguientes fotos",
 }
+_FINANCING_SIGNALS = {
+    "financiamiento",
+    "financiar",
+    "financiado",
+    "credito",
+    "credito automotriz",
+    "mensualidad",
+    "mensualidades",
+    "enganche",
+    "tasa",
+    "interes",
+    "plazo",
+    "plan financiero",
+    "planes financieros",
+    "plan de financiamiento",
+    "planes de financiamiento",
+    "pagos",
+    "plan de pagos",
+    "planes de pagos",
+}
 _PURCHASE_WITH_IMAGES_QUESTION = (
     "¿Te interesa comprar este vehículo o quieres ver más imágenes del mismo? 🚗✨ "
 )
@@ -91,6 +111,7 @@ def _normalize_signal_set(values: set[str]) -> set[str]:
 _GENERAL_SIGNALS_NORMALIZED = _normalize_signal_set(_GENERAL_SIGNALS)
 _FEATURE_SIGNALS_NORMALIZED = _normalize_signal_set(_FEATURE_SIGNALS)
 _MORE_IMAGES_SIGNALS_NORMALIZED = _normalize_signal_set(_MORE_IMAGES_SIGNALS)
+_FINANCING_SIGNALS_NORMALIZED = _normalize_signal_set(_FINANCING_SIGNALS)
 
 
 def _debug(event: str, **payload: Any) -> None:
@@ -121,6 +142,13 @@ def _is_more_images_request(user_text: str) -> bool:
     if not normalized:
         return False
     return any(signal in normalized for signal in _MORE_IMAGES_SIGNALS_NORMALIZED)
+
+
+def _is_financing_request(user_text: str) -> bool:
+    normalized = normalize_user_text(user_text)
+    if not normalized:
+        return False
+    return any(signal in normalized for signal in _FINANCING_SIGNALS_NORMALIZED)
 
 
 def _format_vehicle_name(item: dict[str, Any]) -> str:
@@ -399,6 +427,11 @@ def car_selection(state: clientState) -> clientState:
         return append_assistant_message(state, message)
 
     if state.get("awaiting_purchase_confirmation"):
+        if _is_financing_request(user_text):
+            state["awaiting_purchase_confirmation"] = False
+            state["current_node"] = "financing"
+            _debug("route_change", next_node="financing", reason="financing_request")
+            return state
         previous_bot_message = str(state.get("last_bot_message", "")).strip()
         decision = classify_purchase_confirmation_intent(previous_bot_message, user_text)
         _debug(
@@ -433,6 +466,11 @@ def car_selection(state: clientState) -> clientState:
     if _is_general_request(user_text):
         _debug("branch_general_request")
         return _respond_available_list(state, vehicles)
+
+    if _is_financing_request(user_text):
+        state["current_node"] = "financing"
+        _debug("route_change", next_node="financing", reason="mid_selection_financing")
+        return state
 
     filters = detect_vehicle_filters(user_text, vehicles)
     _debug("filters_detected", filters=filters)

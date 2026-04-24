@@ -17,6 +17,7 @@ from src.utils.prompts import (
     build_lead_capture_intro_prompt,
     build_vehicle_detail_intro_prompt,
     build_vehicle_purchase_question_prompt,
+    build_faq_response_prompt,
 )
 
 
@@ -153,7 +154,7 @@ def classify_purchase_confirmation_intent(previous_bot_message: str, user_messag
 
 
 def classify_router_intent(user_message: str, previous_intent: str = "") -> str:
-    """Clasifica intencion general del router: VEHICLE_CATALOG, FAQ u OTHER."""
+    """Clasifica intencion general del router: VEHICLE_CATALOG, FAQ, FINANCING u OTHER."""
 
     model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
     try:
@@ -162,7 +163,7 @@ def classify_router_intent(user_message: str, previous_intent: str = "") -> str:
         prompt = build_router_intent_classifier_prompt(user_message, previous_intent, settings)
         content = llm.invoke(prompt).content
         normalized = str(content).strip().upper()
-        if normalized in {"VEHICLE_CATALOG", "FAQ", "OTHER"}:
+        if normalized in {"VEHICLE_CATALOG", "FAQ", "FINANCING", "OTHER"}:
             return normalized
         return "UNKNOWN"
     except Exception:
@@ -184,3 +185,29 @@ def classify_faq_interrupt_intent(current_node: str, last_bot_message: str, user
         return "UNKNOWN"
     except Exception:
         return "UNKNOWN"
+
+
+def generate_faq_response(user_question: str, faq_candidates: list[str]) -> str:
+    """Responde FAQ usando solo contexto proveniente de base de datos."""
+
+    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
+    normalized_question = str(user_question or "").strip()
+    context = "\n\n".join(str(item).strip() for item in faq_candidates if str(item).strip())
+    fallback_base = (
+        "Lo siento, pero no tengo informacion suficiente para responder esa pregunta. "
+        "Si gustas, puedo orientarte con un asesor para resolver todas tus dudas."
+    )
+    fallback = safe_llm_format(fallback_base)
+    if not normalized_question:
+        return fallback
+    if not context:
+        return fallback
+    try:
+        settings = get_bot_settings()
+        llm = ChatOpenAI(model=model_name, temperature=0)
+        prompt = build_faq_response_prompt(normalized_question, context, settings)
+        content = llm.invoke(prompt).content
+        normalized = str(content).strip()
+        return normalized or fallback
+    except Exception:
+        return fallback

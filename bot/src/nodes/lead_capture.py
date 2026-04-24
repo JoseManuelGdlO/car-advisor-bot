@@ -178,9 +178,18 @@ def lead_capture(state: clientState) -> clientState:
 
     payload_info = _clean_customer_info(state.get("customer_info", {}))
     uid = payload_info.get("telefono") or user_id or "lead"
+    financing_selection = {
+        "plan_id": str(state.get("selected_financing_plan_id", "")).strip(),
+        "plan_name": str(state.get("selected_financing_plan_name", "")).strip(),
+        "lender": str(state.get("selected_financing_plan_lender", "")).strip(),
+        "vehicle_id": str(state.get("selected_vehicle_id", "")).strip(),
+        "vehicle_name": selected_car,
+    }
+    if not any(financing_selection.values()):
+        financing_selection = {}
 
     try:
-        notify_advisor(selected_car, payload_info)
+        notify_advisor(selected_car, payload_info, financing_selection=financing_selection)
         push_event_to_backend(
             {
                 "user_id": uid,
@@ -188,6 +197,7 @@ def lead_capture(state: clientState) -> clientState:
                 "message": "lead_capture_completed",
                 "selected_car": selected_car,
                 "customer_info": payload_info,
+                "financing_selection": financing_selection,
             }
         )
         base_text = f"Listo. Recibi tus datos para {selected_car} y ya notifique a un asesor para que se ponga en contacto contigo 😊🛞.\n"
