@@ -10,6 +10,7 @@ from src.tools.database import get_bot_settings
 from src.utils.prompts import (
     build_available_models_intro_prompt,
     build_faq_interrupt_classifier_prompt,
+    build_financing_plan_selection_classifier_prompt,
     build_other_response_prompt,
     build_purchase_confirmation_classifier_prompt,
     build_router_intent_classifier_prompt,
@@ -147,6 +148,34 @@ def classify_purchase_confirmation_intent(previous_bot_message: str, user_messag
         content = llm.invoke(prompt).content
         normalized = str(content).strip().upper()
         if normalized in {"SI", "NO", "VER_MODELO", "VER_MAS_IMAGENES"}:
+            return normalized
+        return "UNKNOWN"
+    except Exception:
+        return "UNKNOWN"
+
+
+def classify_financing_plan_selection_intent(
+    previous_bot_message: str,
+    user_message: str,
+    plan_count: int,
+    single_plan_name: str = "",
+) -> str:
+    """Clasifica si el usuario confirma plan unico, rechaza o sigue ambiguo."""
+
+    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
+    try:
+        settings = get_bot_settings()
+        llm = ChatOpenAI(model=model_name, temperature=0)
+        prompt = build_financing_plan_selection_classifier_prompt(
+            previous_bot_message=previous_bot_message,
+            user_message=user_message,
+            plan_count=plan_count,
+            single_plan_name=single_plan_name,
+            bot_settings=settings,
+        )
+        content = llm.invoke(prompt).content
+        normalized = str(content).strip().upper()
+        if normalized in {"SELECT_SINGLE_PLAN", "ASK_EXPLICIT_PLAN", "REJECT"}:
             return normalized
         return "UNKNOWN"
     except Exception:

@@ -210,6 +210,38 @@ def build_purchase_confirmation_classifier_prompt(
     )
 
 
+def build_financing_plan_selection_classifier_prompt(
+    previous_bot_message: str,
+    user_message: str,
+    plan_count: int,
+    single_plan_name: str,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Prompt clasificador para seleccion de plan de financiamiento."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    previous = previous_bot_message.strip() or "(sin mensaje previo)"
+    current = user_message.strip() or "(mensaje vacio)"
+    normalized_count = max(plan_count, 0)
+    normalized_name = single_plan_name.strip() or "(sin nombre de plan)"
+    return (
+        f"{system_prompt}\n\n"
+        "CLASIFICADOR_SELECCION_PLAN_FINANCIAMIENTO:\n"
+        "Con base en el mensaje previo del bot y la respuesta del usuario, clasifica la intencion en una etiqueta.\n"
+        "Etiquetas validas:\n"
+        "- SELECT_SINGLE_PLAN: cuando hay un solo plan disponible y el usuario confirma avanzar (ej. si, me interesa, adelante).\n"
+        "- ASK_EXPLICIT_PLAN: cuando falta confirmar plan de forma clara o hay ambiguedad.\n"
+        "- REJECT: cuando el usuario rechaza continuar con ese plan o niega interes.\n"
+        "Reglas:\n"
+        "- Si plan_count != 1, nunca devuelvas SELECT_SINGLE_PLAN.\n"
+        "- Responde SOLO con una etiqueta exacta: SELECT_SINGLE_PLAN, ASK_EXPLICIT_PLAN o REJECT.\n\n"
+        f"plan_count: {normalized_count}\n"
+        f"single_plan_name: {normalized_name}\n"
+        f"Mensaje previo del bot: {previous}\n"
+        f"Mensaje del usuario: {current}\n"
+    )
+
+
 def build_router_intent_classifier_prompt(
     user_message: str,
     previous_intent: str,

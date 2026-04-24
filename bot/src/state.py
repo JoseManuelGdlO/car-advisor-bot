@@ -35,6 +35,7 @@ class clientState(TypedDict, total=False):
     - financing_plan_candidates: lista temporal de planes para seleccion.
     - financing_vehicle_candidates: lista temporal de vehiculos dentro del plan.
     - awaiting_financing_plan_selection / awaiting_financing_vehicle_selection: banderas de paso.
+    - show_selected_vehicle_detail_once: fuerza mostrar detalle del vehiculo ya seleccionado al entrar a car_selection.
     """
 
     messages: list[dict[str, Any]]
@@ -64,3 +65,4 @@ class clientState(TypedDict, total=False):
     financing_vehicle_candidates: list[dict[str, Any]]
     awaiting_financing_plan_selection: bool
     awaiting_financing_vehicle_selection: bool
+    show_selected_vehicle_detail_once: bool

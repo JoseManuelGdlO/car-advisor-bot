@@ -83,6 +83,20 @@ def _route_after_car_selection(state: clientState) -> str:
     return "end"
 
 
+def _route_after_financing(state: clientState) -> str:
+    """Permite continuar flujo cuando financing cambia de nodo destino."""
+
+    node = state.get("current_node", "financing")
+    if node == "car_selection":
+        _log_transition("financing", "car_selection", "continuacion tras seleccionar plan")
+        return "car_selection"
+    if node == "lead_capture":
+        _log_transition("financing", "lead_capture", "continuacion de compra")
+        return "lead_capture"
+    _log_transition("financing", "end")
+    return "end"
+
+
 def build_graph():
     """Construye y compila el grafo principal del bot."""
 
@@ -127,8 +141,16 @@ def build_graph():
             "end": END,
         },
     )
+    graph.add_conditional_edges(
+        "financing",
+        _route_after_financing,
+        {
+            "car_selection": "car_selection",
+            "lead_capture": "lead_capture",
+            "end": END,
+        },
+    )
     graph.add_edge("lead_capture", END)
     graph.add_edge("faq", END)
-    graph.add_edge("financing", END)
 
     return graph.compile()
