@@ -288,25 +288,43 @@ def build_router_intent_classifier_prompt(
     )
 
 
-def build_faq_interrupt_classifier_prompt(
+def build_faq_interrupt_flags_prompt(
     current_node: str,
     last_bot_message: str,
     user_message: str,
+    awaiting_purchase_confirmation: bool,
+    pending_vehicle_count: int,
     bot_settings: dict[str, Any] | None,
 ) -> str:
-    """Prompt para decidir si un mensaje es FAQ interruptiva o respuesta al flujo."""
+    """Clasificador estructurado: flags para FAQ de negocio frente a continuidad de flujo."""
 
     system_prompt = build_system_prompt(bot_settings)
     node = current_node.strip() or "(sin nodo actual)"
     bot_msg = last_bot_message.strip() or "(sin mensaje previo del bot)"
     user_msg = user_message.strip() or "(mensaje vacio)"
+    espera_conf = "si" if awaiting_purchase_confirmation else "no"
+    cands = str(int(max(0, pending_vehicle_count)))
     return (
         f"{system_prompt}\n\n"
-        "CLASIFICADOR_FAQ_INTERRUPT:\n"
-        "Dado el nodo actual, el ultimo mensaje del bot y la respuesta del usuario, decide si el usuario:\n"
-        "- FAQ: interrumpe para preguntar algo general del negocio.\n"
-        "- FLOW_RESPONSE: esta respondiendo al flujo actual.\n"
-        "Responde SOLO con una etiqueta exacta: FAQ o FLOW_RESPONSE.\n\n"
+        "CLASIFICADOR_FAQ_CON_FLAGS:\n"
+        "Evalua el ultimo mensaje del usuario en el contexto del nodo y del asistente.\n"
+        "Responde SOLO con un objeto JSON, sin codigo, sin comentarios, en una sola linea. Formato exacto de claves:\n"
+        "{\n"
+        '  "interrumpir_por_faq": <bool>,\n'
+        '  "tema_vehiculo_inventario": <bool>,\n'
+        '  "tema_financiamiento_credi": <bool>,\n'
+        '  "es_respuesta_o_seguimiento_al_ultimo_bot": <bool>\n'
+        "}\n\n"
+        "Definicion de interrumpir_por_faq (true = debe atenderse con FAQ de negocio, no con catalogo/planes):\n"
+        "- true: pregunta por el negocio, agencia o lote: ubicacion, horarios, garantia o politica del lote, "
+        "contacto de oficina, datos generales de la concesionaria, que metodos de pago aceptan en caja, etc.\n"
+        "- false: todo lo demas, incluido: preguntas sobre un coche, modelo, anio, estado, 'como es' un auto, "
+        "comparaciones de unidades, mas fotos, si/no, respuestas cortas al turno, credito/enganche/plazos concretos al elegir coche, "
+        "cualquier cosa de inventario, catalogo o cierre de paso (confirmacion de compra, datos, etc.)\n"
+        f"Contexto: esperando_confirmacion_compra={espera_conf} | candidatos_vehiculo_listos_para_elegir={cands}.\n"
+        "tema_vehiculo_inventario: el mensaje trata de autos, unidades, modelos, anios, fotos, detalles, comparar.\n"
+        "tema_financiamiento_credi: enganche, plazo, tasa, credito, mensualidad en contexto de plan o coche (no caja del negocio en abstracto si el usuario pide oficina).\n"
+        "es_respuesta_o_seguimiento_al_ultimo_bot: el mensaje responde o reacciona al turno inmediato del bot (si, no, ok, otra, una seleccion, un dato pedido).\n"
         f"Nodo actual: {node}\n"
         f"Ultimo mensaje del bot: {bot_msg}\n"
         f"Mensaje del usuario: {user_msg}\n"

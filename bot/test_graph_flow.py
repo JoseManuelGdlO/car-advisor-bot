@@ -64,7 +64,7 @@ class GraphFlowTests(unittest.TestCase):
 
         state = _with_user_message(_initial_state(), "hola tienen nissan versa")
         with (
-            patch("src.nodes.intent_checker.classify_faq_interrupt_intent", return_value="FLOW_RESPONSE"),
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
             patch("src.nodes.router.classify_router_intent", return_value="VEHICLE_CATALOG"),
             patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
             patch("src.nodes.car_selection.search_vehicles", return_value=vehicles),
@@ -114,7 +114,7 @@ class GraphFlowTests(unittest.TestCase):
         state["platform"] = "whatsapp"
 
         with (
-            patch("src.nodes.intent_checker.classify_faq_interrupt_intent", return_value="FLOW_RESPONSE"),
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
             patch("src.nodes.router.classify_router_intent", return_value="VEHICLE_CATALOG"),
             patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
             patch("src.nodes.car_selection.search_vehicles", return_value=vehicles),
@@ -142,7 +142,7 @@ class GraphFlowTests(unittest.TestCase):
     def test_faq_message_routes_to_faq_node(self) -> None:
         state = _with_user_message(_initial_state(), "hola donde se encuentran ubicados?")
         with (
-            patch("src.nodes.intent_checker.classify_faq_interrupt_intent", return_value="FAQ"),
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": True}),
             patch("src.nodes.faq.fetch_faq_candidates", return_value=["Estamos en Av. Siempre Viva 123."]),
             patch("src.nodes.faq.safe_llm_format", return_value="Estamos en Av. Siempre Viva 123."),
         ):
@@ -164,7 +164,7 @@ class GraphFlowTests(unittest.TestCase):
 
         vehicles = [{"id": "veh-1", "brand": "Nissan", "model": "Versa", "year": 2004, "status": "available"}]
         with (
-            patch("src.nodes.intent_checker.classify_faq_interrupt_intent", return_value="FLOW_RESPONSE"),
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
             patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
             patch("src.nodes.car_selection.classify_purchase_confirmation_intent", return_value="SI"),
             patch(
@@ -200,7 +200,7 @@ class GraphFlowTests(unittest.TestCase):
 
         faq_turn = _with_user_message(state, "donde se ubican?")
         with (
-            patch("src.nodes.intent_checker.classify_faq_interrupt_intent", return_value="FAQ"),
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": True}),
             patch("src.nodes.faq.fetch_faq_candidates", return_value=["Estamos en Centro."]),
             patch("src.nodes.faq.safe_llm_format", return_value="Estamos en Centro."),
         ):
@@ -228,7 +228,7 @@ class GraphFlowTests(unittest.TestCase):
             {"role": "user", "content": "Juan Pérez", "type": "HumanMessage"},
         ]
         with (
-            patch("src.nodes.intent_checker.classify_faq_interrupt_intent", return_value="FLOW_RESPONSE"),
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
             patch("src.nodes.lead_capture.safe_llm_format", side_effect=lambda text: text),
         ):
             resumed = self.graph.invoke(resume_state)
@@ -250,7 +250,7 @@ class GraphFlowTests(unittest.TestCase):
 
         vehicles = [{"id": "veh-1", "brand": "Nissan", "model": "Versa", "year": 2004, "status": "available"}]
         with (
-            patch("src.nodes.intent_checker.classify_faq_interrupt_intent", return_value="FLOW_RESPONSE"),
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
             patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
             patch("src.nodes.car_selection.classify_purchase_confirmation_intent", return_value="VER_MAS_IMAGENES"),
             patch(
@@ -288,7 +288,7 @@ class GraphFlowTests(unittest.TestCase):
 
         vehicles = [{"id": "veh-1", "brand": "Nissan", "model": "Versa", "year": 2004, "status": "available"}]
         with (
-            patch("src.nodes.intent_checker.classify_faq_interrupt_intent", return_value="FLOW_RESPONSE"),
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
             patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
             patch("src.nodes.car_selection.classify_purchase_confirmation_intent", return_value="VER_MAS_IMAGENES"),
         ):
@@ -329,7 +329,7 @@ class GraphFlowTests(unittest.TestCase):
             "description": "",
         }
         with (
-            patch("src.nodes.intent_checker.classify_faq_interrupt_intent", return_value="FLOW_RESPONSE"),
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
             patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
             patch("src.nodes.car_selection.classify_purchase_confirmation_intent", return_value="VER_MODELO"),
             patch("src.nodes.car_selection.search_vehicles", return_value=[versa_detail]),
@@ -378,7 +378,7 @@ class GraphFlowTests(unittest.TestCase):
 
         state = _with_user_message(_initial_state(), "hola tienes un nissan versa")
         with (
-            patch("src.nodes.intent_checker.classify_faq_interrupt_intent", return_value="FLOW_RESPONSE"),
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
             patch("src.nodes.router.classify_router_intent", return_value="VEHICLE_CATALOG"),
             patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
             patch("src.nodes.car_selection.search_vehicles", return_value=vehicles),
@@ -409,7 +409,7 @@ class GraphFlowTests(unittest.TestCase):
 
         vehicles = [{"id": "veh-ram", "brand": "Dodge", "model": "Ram", "year": 2015, "status": "available"}]
         with (
-            patch("src.nodes.intent_checker.classify_faq_interrupt_intent", return_value="FAQ"),
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
             patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
             patch("src.nodes.car_selection.classify_purchase_confirmation_intent", return_value="VER_MAS_IMAGENES"),
         ):
