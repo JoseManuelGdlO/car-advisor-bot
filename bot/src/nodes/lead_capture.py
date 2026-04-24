@@ -190,7 +190,8 @@ def lead_capture(state: clientState) -> clientState:
                 "customer_info": payload_info,
             }
         )
-        base_text = f"Listo. Recibi tus datos para {selected_car} y ya notifique a un asesor."
+        base_text = f"Listo. Recibi tus datos para {selected_car} y ya notifique a un asesor para que se ponga en contacto contigo 😊🛞.\n"
+        "Cualquier duda que tengas, puedo ayudarte con lo que necesites mientras se comunica tu asesor."
     except Exception:
         base_text = (
             f"Recibi tus datos para {selected_car}. "
@@ -198,5 +199,8 @@ def lead_capture(state: clientState) -> clientState:
         )
     else:
         state["lead_capture_done"] = True
+        # Cerramos el turno actual y retomamos en router en el siguiente mensaje.
+        state["current_node"] = "router"
+        state["intent"] = ""
 
     return append_assistant_message(state, safe_llm_format(base_text))

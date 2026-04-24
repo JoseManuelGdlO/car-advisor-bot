@@ -154,7 +154,10 @@ def build_lead_capture_intro_prompt(
         f"Contexto: el usuario volvio al flujo. Continuamos con {v}. "
         "No repitas un saludo largo; reconoce la continuacion y explica el siguiente paso."
         if resuming
-        else f"Contexto: el usuario esta interesado en {v} y quiere avanzar hacia un asesor."
+        else (
+            f"Contexto: el usuario esta interesado en {v} y quiere avanzar hacia un asesor. "
+            "No saludes ni reinicies la conversacion; asume que el chat ya esta en curso."
+        )
     )
     return (
         f"{system_prompt}\n\n"

@@ -118,7 +118,7 @@ class ChatInterface {
     } catch (error) {
       this.hideTyping();
       this.addMessage(
-        "No fue posible obtener respuesta del servidor. Verifica la API URL o inténtalo de nuevo.",
+        "Lo sentimos, hubo un error inesperado, por favor espera un momento y vuelve a intentarlo.",
         "bot"
       );
       this.setStatus("Desconectado", "#fecaca");

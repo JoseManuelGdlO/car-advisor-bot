@@ -99,7 +99,7 @@ def format_filtered_vehicles(vehicles: list[dict[str, Any]]) -> str:
         lines.append(f"Marca: {brand}")
         lines.append(f"Modelo: {model}")
         if isinstance(year, int):
-            lines.append(f"Ano: {year}")
+            lines.append(f"Año: {year}")
         lines.append("")
     return "\n".join(lines).strip()
 
@@ -115,18 +115,18 @@ def format_vehicle_detail(vehicle: dict[str, Any], platform: str = "web") -> str
     rows = [
         (_bold_label("Marca", platform) + f": {brand}", _bold_label("Modelo", platform) + f": {model}"),
         (
-            _bold_label("Ano", platform) + f": {year if isinstance(year, int) else 'N/D'}",
+            _bold_label("Año", platform) + f": {year if isinstance(year, int) else 'N/D'}",
             _bold_label("Precio", platform) + f": {_format_currency(vehicle.get('price'))}",
         ),
         (
             _bold_label("Kilometraje", platform) + f": {_format_int(vehicle.get('km'), 'km')}",
-            _bold_label("Transmision", platform) + f": {_title_or_default(vehicle.get('transmission'))}",
+            _bold_label("Transmisión", platform) + f": {_title_or_default(vehicle.get('transmission'))}",
         ),
         (
             _bold_label("Motor", platform) + f": {_title_or_default(vehicle.get('engine'))}",
             _bold_label("Color", platform) + f": {_title_or_default(vehicle.get('color'))}",
         ),
-        (_bold_label("Descripcion", platform) + f": {description}", ""),
+        (_bold_label("Descripción", platform) + f": {description}", ""),
     ]
     left_width = max(len(left) for left, _ in rows) + 2
     lines = [f"{left.ljust(left_width)}{right}".rstrip() for left, right in rows]

@@ -70,7 +70,6 @@ _MORE_IMAGES_SIGNALS = {
 }
 _PURCHASE_WITH_IMAGES_QUESTION = (
     "¿Te interesa comprar este vehículo o quieres ver más imágenes del mismo? 🚗✨ "
-    "Responde con sí, no o ver más imágenes."
 )
 _PURCHASE_ONLY_QUESTION = "¿Te interesa comprar este vehículo ? 🚗✨"
 _NO_IMAGES_AVAILABLE_MESSAGE = (
