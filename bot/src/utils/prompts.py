@@ -141,6 +141,34 @@ def build_vehicle_detail_intro_prompt(vehicle_name: str, bot_settings: dict[str,
     )
 
 
+def build_lead_capture_intro_prompt(
+    vehicle_name: str,
+    bot_settings: dict[str, Any] | None,
+    resuming: bool = False,
+) -> str:
+    """Prompt para el mensaje inicial de captura de lead (asesor, datos de contacto)."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    v = vehicle_name.strip() or "el vehiculo de interes"
+    resume = (
+        f"Contexto: el usuario volvio al flujo. Continuamos con {v}. "
+        "No repitas un saludo largo; reconoce la continuacion y explica el siguiente paso."
+        if resuming
+        else f"Contexto: el usuario esta interesado en {v} y quiere avanzar hacia un asesor."
+    )
+    return (
+        f"{system_prompt}\n\n"
+        "MENSAJE_INTRO_CAPTURA_LEAD:\n"
+        f"{resume} "
+        "Explica con una o dos frases que necesitamos sus datos de contacto para que un asesor humano "
+        f"pueda comunicarse y ayudarle con la compra de {v}. "
+        "No pidas datos en un solo bloque con formato 'nombre: telefono: email:'. "
+        "Al final, haz una unica pregunta clara pidiendo su NOMBRE COMPLETO (nombre y apellido), "
+        "y usa la palabra 'nombre' en esa pregunta. "
+        "Un solo parrafo corto o dos frases como maximo, sin listas."
+    )
+
+
 def build_vehicle_purchase_question_prompt(bot_settings: dict[str, Any] | None) -> str:
     """Prompt para la pregunta de cierre de compra."""
 

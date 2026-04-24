@@ -28,6 +28,9 @@ class clientState(TypedDict, total=False):
     - vehicle_images_cursor: cursor para paginacion de imagenes del vehiculo seleccionado.
     - vehicle_images_has_more: indica si hay mas imagenes por pedir al backend.
     - vehicle_images_last_batch: ultimo lote de URLs de imagenes enviado al usuario.
+    - user_id: identificador de conversacion (en web/whatsapp suele ser el telefono).
+    - lead_phone_attempts: reintentos al validar telefono en plataformas que lo piden.
+    - lead_capture_done: True cuando ya se notifico y persistio el lead en esta conversacion.
     """
 
     messages: list[dict[str, Any]]
@@ -44,6 +47,9 @@ class clientState(TypedDict, total=False):
     is_faq_interrupt: bool
     awaiting_purchase_confirmation: bool
     platform: str
+    user_id: str
+    lead_phone_attempts: int
+    lead_capture_done: bool
     vehicle_images_cursor: int
     vehicle_images_has_more: bool
     vehicle_images_last_batch: list[str]

@@ -132,6 +132,9 @@ def _build_initial_state() -> dict[str, Any]:
         "is_faq_interrupt": False,
         "awaiting_purchase_confirmation": False,
         "platform": DEFAULT_INBOUND_PLATFORM,
+        "user_id": "",
+        "lead_phone_attempts": 0,
+        "lead_capture_done": False,
         "vehicle_images_cursor": 0,
         "vehicle_images_has_more": False,
         "vehicle_images_last_batch": [],
@@ -159,6 +162,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
         loaded_state, conv_from_session = fetch_active_bot_session(payload.user_id, payload.platform)
         state = loaded_state or _build_initial_state()
         state["platform"] = payload.platform
+        state["user_id"] = payload.user_id
         # 2) Registrar mensaje entrante en backend CRM y obtener IDs de relacion.
         conversation_id = conv_from_session
         crm = upsert_inbound_user_message(payload.user_id, payload.message, payload.platform)

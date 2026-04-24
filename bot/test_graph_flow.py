@@ -24,6 +24,9 @@ def _initial_state() -> dict:
         "is_faq_interrupt": False,
         "awaiting_purchase_confirmation": False,
         "platform": "web",
+        "user_id": "",
+        "lead_phone_attempts": 0,
+        "lead_capture_done": False,
         "vehicle_images_cursor": 0,
         "vehicle_images_has_more": False,
         "vehicle_images_last_batch": [],
@@ -82,11 +85,14 @@ class GraphFlowTests(unittest.TestCase):
         self.assertEqual(updated.get("current_node"), "car_selection")
         self.assertEqual(updated.get("selected_vehicle_id"), "veh-1")
         self.assertTrue(updated.get("awaiting_purchase_confirmation"))
-        last_msg = updated["messages"][-1]["content"]
-        self.assertIn("Detalle del vehiculo:", last_msg)
-        self.assertIn("**Marca**: Nissan", last_msg)
-        self.assertIn("/img/1.jpg", last_msg)
-        self.assertIn("/img/2.jpg", last_msg)
+        assistant_texts = [
+            str(m.get("content", "")) for m in updated.get("messages", []) if m.get("role") == "assistant"
+        ]
+        joined = "\n".join(assistant_texts)
+        self.assertIn("Detalle del vehiculo:", joined)
+        self.assertIn("**Marca**: Nissan", joined)
+        self.assertIn("/img/1.jpg", joined)
+        self.assertIn("/img/2.jpg", joined)
 
     def test_whatsapp_uses_single_asterisk_for_vehicle_detail(self) -> None:
         vehicles = [
@@ -126,9 +132,12 @@ class GraphFlowTests(unittest.TestCase):
         ):
             updated = self.graph.invoke(state)
 
-        last_msg = updated["messages"][-1]["content"]
-        self.assertIn("*Marca*: Nissan", last_msg)
-        self.assertNotIn("**Marca**: Nissan", last_msg)
+        assistant_texts = [
+            str(m.get("content", "")) for m in updated.get("messages", []) if m.get("role") == "assistant"
+        ]
+        joined = "\n".join(assistant_texts)
+        self.assertIn("*Marca*: Nissan", joined)
+        self.assertNotIn("**Marca**: Nissan", joined)
 
     def test_faq_message_routes_to_faq_node(self) -> None:
         state = _with_user_message(_initial_state(), "hola donde se encuentran ubicados?")
@@ -159,6 +168,10 @@ class GraphFlowTests(unittest.TestCase):
             patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
             patch("src.nodes.car_selection.classify_purchase_confirmation_intent", return_value="SI"),
             patch(
+                "src.nodes.lead_capture.generate_lead_capture_intro",
+                return_value="Necesitamos datos para un asesor (Nissan Versa 2004). Cual es tu nombre completo?",
+            ),
+            patch(
                 "src.nodes.lead_capture.safe_llm_format",
                 side_effect=lambda text: text,
             ),
@@ -167,7 +180,8 @@ class GraphFlowTests(unittest.TestCase):
 
         self.assertEqual(updated.get("current_node"), "lead_capture")
         self.assertFalse(updated.get("awaiting_purchase_confirmation"))
-        self.assertIn("Para apartar Nissan Versa 2004", updated["messages"][-1]["content"])
+        self.assertIn("Nissan Versa 2004", updated["messages"][-1]["content"])
+        self.assertIn("nombre", updated["messages"][-1]["content"].lower())
 
     def test_faq_interrupt_resumes_lead_capture_next_turn(self) -> None:
         state = _initial_state()
@@ -196,15 +210,31 @@ class GraphFlowTests(unittest.TestCase):
         self.assertFalse(after_faq.get("is_faq_interrupt"))
         self.assertFalse(after_faq.get("skip_lead_prompt"))
 
-        resume_turn = _with_user_message(after_faq, "nombre: Juan")
+        # Tras FAQ, el bot no pide "nombre" en el mismo turno: se simula un turno donde
+        # ya se pidio nombre y el usuario responde con nombre completo (web + user_id = telefono).
+        resume_state = _initial_state()
+        resume_state["current_node"] = "lead_capture"
+        resume_state["intent"] = "vehicle_catalog"
+        resume_state["selected_car"] = "Nissan Versa 2004"
+        resume_state["selected_vehicle_id"] = "veh-1"
+        resume_state["platform"] = "web"
+        resume_state["user_id"] = "5512345678"
+        resume_state["messages"] = [
+            {
+                "role": "assistant",
+                "content": "Para contactarte con un asesor, cual es tu nombre completo?",
+                "type": "AIMessage",
+            },
+            {"role": "user", "content": "Juan Pérez", "type": "HumanMessage"},
+        ]
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_intent", return_value="FLOW_RESPONSE"),
             patch("src.nodes.lead_capture.safe_llm_format", side_effect=lambda text: text),
         ):
-            resumed = self.graph.invoke(resume_turn)
+            resumed = self.graph.invoke(resume_state)
 
         self.assertEqual(resumed.get("current_node"), "lead_capture")
-        self.assertIn("Faltan: telefono, email.", resumed["messages"][-1]["content"])
+        self.assertIn("correo", resumed["messages"][-1]["content"].lower())
 
     def test_purchase_classifier_more_images_fetches_next_batch(self) -> None:
         state = _initial_state()
@@ -321,10 +351,13 @@ class GraphFlowTests(unittest.TestCase):
         self.assertEqual(updated.get("selected_vehicle_id"), "veh-versa")
         self.assertEqual(updated.get("selected_car"), "Nissan Versa 2004")
         self.assertTrue(updated.get("awaiting_purchase_confirmation"))
-        last_msg = updated["messages"][-1]["content"]
-        self.assertIn("Detalle del vehiculo:", last_msg)
-        self.assertIn("**Marca**: Nissan", last_msg)
-        self.assertIn("/img/versa-1.jpg", last_msg)
+        assistant_texts = [
+            str(m.get("content", "")) for m in updated.get("messages", []) if m.get("role") == "assistant"
+        ]
+        joined = "\n".join(assistant_texts)
+        self.assertIn("Detalle del vehiculo:", joined)
+        self.assertIn("**Marca**: Nissan", joined)
+        self.assertIn("/img/versa-1.jpg", joined)
 
     def test_vehicle_detail_without_images_uses_no_images_copy(self) -> None:
         vehicles = [

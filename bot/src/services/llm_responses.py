@@ -14,6 +14,7 @@ from src.utils.prompts import (
     build_purchase_confirmation_classifier_prompt,
     build_router_intent_classifier_prompt,
     build_rewrite_prompt,
+    build_lead_capture_intro_prompt,
     build_vehicle_detail_intro_prompt,
     build_vehicle_purchase_question_prompt,
 )
@@ -80,6 +81,33 @@ def generate_vehicle_detail_intro(vehicle_name: str) -> str:
         settings = get_bot_settings()
         llm = ChatOpenAI(model=model_name, temperature=0.5)
         prompt = build_vehicle_detail_intro_prompt(normalized_name, settings)
+        content = llm.invoke(prompt).content
+        normalized = str(content).strip()
+        if not normalized:
+            return fallback
+        return normalized.replace("\n", " ").strip()
+    except Exception:
+        return fallback
+
+
+def generate_lead_capture_intro(selected_car: str, resuming: bool = False) -> str:
+    """Mensaje inicial para captura de lead: explicar contacto con asesor y pedir nombre completo."""
+
+    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
+    name = (selected_car or "").strip() or "este vehiculo"
+    fallback = (
+        f"Continuamos con {name}. Necesitamos unos datos para que un asesor te contacte y "
+        f"continuar con la compra de {name}. Cual es tu nombre completo?"
+        if resuming
+        else (
+            f"Para que un asesor pueda comunicarse contigo y ayudarte con la compra de {name}, "
+            f"te pediremos unos datos. Cual es tu nombre completo?"
+        )
+    )
+    try:
+        settings = get_bot_settings()
+        llm = ChatOpenAI(model=model_name, temperature=0.5)
+        prompt = build_lead_capture_intro_prompt(name, settings, resuming=resuming)
         content = llm.invoke(prompt).content
         normalized = str(content).strip()
         if not normalized:
