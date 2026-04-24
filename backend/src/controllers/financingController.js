@@ -56,6 +56,30 @@ export const createFinancingPlan = async (req, res) => {
   return res.status(201).json(created);
 };
 
+// financing plan por id de vehiculo
+export const getFinancingPlanByVehicleId = async (req, res) => {
+  const vehicleId = req.params.vehicleId ?? req.params.id;
+  if (!vehicleId) throw new ApiError(400, "vehicleId is required");
+  const userId = req.auth.userId;
+  const rows = await FinancingPlan.findAll({
+    where: ownerWhere(userId),
+    include: [
+      { model: FinancingRequirement, as: "requirements", through: { attributes: [] } },
+      {
+        model: Vehicle,
+        as: "vehicles",
+        attributes: ["id", "brand", "model", "year"],
+        where: { id: vehicleId, ...ownerWhere(userId) },
+        through: { attributes: ["customRate"] },
+        required: true,
+      },
+    ],
+    order: [["updatedAt", "DESC"]],
+  });
+  if (!rows.length) throw new ApiError(404, "Financing plan not found");
+  return res.json(rows);
+};
+
 export const updateFinancingPlan = async (req, res) => {
   const row = await getOwnedPlan(req.auth.userId, req.params.id);
   const { name, lender, rate, maxTermMonths, active, showRate } = req.body;

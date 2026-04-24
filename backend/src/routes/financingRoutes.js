@@ -1,6 +1,7 @@
 import { Router } from "express";
-import { requireUserAuth } from "../middlewares/auth.js";
+import { requireUserAuth, requireUserOrServiceAuth } from "../middlewares/auth.js";
 import {
+  getFinancingPlanByVehicleId,
   attachPlanToVehicle,
   attachRequirementToPlan,
   createFinancingPlan,
@@ -17,7 +18,9 @@ import {
 
 export const financingRoutes = Router();
 
-financingRoutes.get("/financing-plans", requireUserAuth, listFinancingPlans);
+financingRoutes.get("/financing-plans", requireUserOrServiceAuth, listFinancingPlans);
+financingRoutes.get("/vehicles/:vehicleId/financing-plans", requireUserOrServiceAuth, getFinancingPlanByVehicleId);
+financingRoutes.get("/financing-plans/:id", requireUserOrServiceAuth, getFinancingPlanByVehicleId);
 financingRoutes.post("/financing-plans", requireUserAuth, createFinancingPlan);
 financingRoutes.patch("/financing-plans/:id", requireUserAuth, updateFinancingPlan);
 financingRoutes.delete("/financing-plans/:id", requireUserAuth, deleteFinancingPlan);
