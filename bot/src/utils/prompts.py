@@ -127,6 +127,27 @@ def build_available_models_intro_prompt(bot_settings: dict[str, Any] | None) -> 
     )
 
 
+def build_vehicle_candidates_selection_prompt(
+    options_text: str,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Prompt para redactar mensaje de seleccion cuando hay multiples candidatos."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    normalized_options = options_text.strip()
+    return (
+        f"{system_prompt}\n\n"
+        "SELECCION_MULTIPLES_VEHICULOS:\n"
+        "Redacta una introduccion breve para pedir al usuario que elija un vehiculo de una lista.\n"
+        "Debes mantener EXACTAMENTE la lista de opciones tal como viene en LISTA_OPCIONES "
+        "(mismos numeros, nombres y saltos de linea), sin reordenar ni modificar contenido.\n"
+        "Despues de la lista agrega una instruccion breve para responder con nombre o numero.\n"
+        "Devuelve un solo bloque de texto, solo saluda si el usuario te ha saludado.\n" 
+        "Debes mencionar que estos son los vehiculos disponibles o los que encontraste.\n\n"
+        f"LISTA_OPCIONES:\n{normalized_options}\n"
+    )
+
+
 def build_vehicle_detail_intro_prompt(vehicle_name: str, bot_settings: dict[str, Any] | None) -> str:
     """Prompt para la introduccion del bloque de detalle de un vehiculo."""
 

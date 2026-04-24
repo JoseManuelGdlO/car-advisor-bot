@@ -11,6 +11,7 @@ from src.state import clientState
 from src.services.llm_responses import (
     classify_purchase_confirmation_intent,
     generate_available_models_intro,
+    generate_vehicle_candidates_selection_message,
     generate_vehicle_detail_intro,
     safe_llm_format,
 )
@@ -157,6 +158,19 @@ def _format_vehicle_name(item: dict[str, Any]) -> str:
     year = item.get("year")
     suffix = f" {year}" if isinstance(year, int) else ""
     return f"{brand} {model}{suffix}".strip()
+
+
+def _format_candidate_options(candidates: list[dict[str, Any]], limit: int = 8) -> str:
+    """Construye una lista numerada breve para que el usuario elija una opcion."""
+
+    lines: list[str] = []
+    for idx, item in enumerate(candidates[:limit], start=1):
+        if not isinstance(item, dict):
+            continue
+        label = _format_vehicle_name(item)
+        if label:
+            lines.append(f"{idx}. {label}")
+    return "\n".join(lines)
 
 
 def _find_candidate_from_pending(state: clientState, user_text: str) -> dict[str, Any] | None:
@@ -530,9 +544,14 @@ def car_selection(state: clientState) -> clientState:
             message = f"{message}\n\nSi te interesa uno, dime la marca y modelo exactos."
         else:
             _debug("search_multiple_specific_request", count=len(filtered))
-            message = safe_llm_format(
-                "Encontre varios carros parecidos. Cual te interesa? Puedes responder con el nombre o numero.",
-            )
+            options = _format_candidate_options(filtered)
+            if options:
+                message = generate_vehicle_candidates_selection_message(options)
+            else:
+                message = (
+                    "Encontre varios carros similares. "
+                    "¿Cual te interesa? Puedes responder con el nombre o el numero."
+                )
         state["last_vehicle_candidates"] = filtered[:8]
         _debug("pending_candidates_saved", count=len(state["last_vehicle_candidates"]))
         return append_assistant_message(state, message)

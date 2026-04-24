@@ -17,6 +17,7 @@ from src.utils.prompts import (
     build_rewrite_prompt,
     build_lead_capture_intro_prompt,
     build_vehicle_detail_intro_prompt,
+    build_vehicle_candidates_selection_prompt,
     build_vehicle_purchase_question_prompt,
     build_faq_response_prompt,
 )
@@ -88,6 +89,31 @@ def generate_vehicle_detail_intro(vehicle_name: str) -> str:
         if not normalized:
             return fallback
         return normalized.replace("\n", " ").strip()
+    except Exception:
+        return fallback
+
+
+def generate_vehicle_candidates_selection_message(options_text: str) -> str:
+    """Genera mensaje para elegir entre multiples vehiculos candidatos."""
+
+    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
+    normalized_options = str(options_text or "").strip()
+    fallback = (
+        "Encontre varios carros similares. ¿Cual te interesa?\n"
+        f"{normalized_options}\n\n"
+        "Puedes responder con el nombre o el numero."
+        if normalized_options
+        else "Encontre varios carros similares. ¿Cual te interesa? Puedes responder con el nombre o el numero."
+    )
+    if not normalized_options:
+        return fallback
+    try:
+        settings = get_bot_settings()
+        llm = ChatOpenAI(model=model_name, temperature=0.5)
+        prompt = build_vehicle_candidates_selection_prompt(normalized_options, settings)
+        content = llm.invoke(prompt).content
+        normalized = str(content).strip()
+        return normalized or fallback
     except Exception:
         return fallback
 

@@ -417,6 +417,33 @@ def financing(state: clientState) -> clientState:
                 only_vehicle = plan_vehicles[0]
                 selected_vehicle_id = str(only_vehicle.get("id", "")).strip()
                 selected_car = _vehicle_label(only_vehicle)
+                preselected_id = str(state.get("selected_vehicle_id", "")).strip()
+                if preselected_id and preselected_id == selected_vehicle_id:
+                    state["selected_vehicle_id"] = selected_vehicle_id
+                    state["selected_car"] = selected_car
+                    state["awaiting_financing_vehicle_selection"] = False
+                    state["financing_vehicle_candidates"] = []
+                    state["last_vehicle_candidates"] = []
+                    state["awaiting_purchase_confirmation"] = False
+                    state["show_selected_vehicle_detail_once"] = False
+                    state["intent"] = "lead_capture"
+                    state["current_node"] = "lead_capture"
+                    _debug(
+                        "single_vehicle_matches_preselected",
+                        selected_vehicle_id=selected_vehicle_id,
+                        selected_car=selected_car,
+                        selected_plan=state.get("selected_financing_plan_name", ""),
+                    )
+                    _debug(
+                        "route_change",
+                        next_node="lead_capture",
+                        reason="plan_confirmed_same_vehicle_already_selected",
+                    )
+                    confirmation = safe_llm_format(
+                        f"Perfecto, entonces avanzamos con {selected_car} y el plan "
+                        f"{state.get('selected_financing_plan_name', 'seleccionado')}."
+                    )
+                    return append_assistant_message(state, confirmation)
                 state["selected_vehicle_id"] = selected_vehicle_id
                 state["selected_car"] = selected_car
                 state["awaiting_financing_vehicle_selection"] = False
