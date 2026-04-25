@@ -7,8 +7,8 @@ const start = async () => {
   // Keep schema changes strictly in migrations to avoid
   // destructive/invalid ALTER operations at runtime.
   await sequelize.sync();
-  app.listen(env.port, () => {
-    console.log(`Backend listening on http://localhost:${env.port}`);
+  app.listen(env.port, "0.0.0.0", () => {
+    console.log(`Backend listening on http://0.0.0.0:${env.port}`);
   });
 };
 
