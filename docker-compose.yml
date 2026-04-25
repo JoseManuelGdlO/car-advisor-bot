@@ -3,10 +3,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: car-advisor-backend
     restart: unless-stopped
-    ports:
-      - "${PORT:-4000}:${PORT:-4000}"
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: ${PORT:-4000}
