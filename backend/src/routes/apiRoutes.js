@@ -7,6 +7,7 @@ import { contentRoutes } from "./contentRoutes.js";
 import { botRoutes } from "./botRoutes.js";
 import { financingRoutes } from "./financingRoutes.js";
 import { accountRoutes } from "./accountRoutes.js";
+import { pushRoutes } from "./pushRoutes.js";
 
 export const apiRoutes = Router();
 
@@ -17,3 +18,4 @@ apiRoutes.use("/", contentRoutes);
 apiRoutes.use("/", botRoutes);
 apiRoutes.use("/", financingRoutes);
 apiRoutes.use("/", accountRoutes);
+apiRoutes.use("/", pushRoutes);

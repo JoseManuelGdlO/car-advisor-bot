@@ -1,6 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { Capacitor } from "@capacitor/core";
 import { apiRequest } from "@/lib/api";
 import { accountApi } from "@/services/account";
+import { pushApi } from "@/services/push";
 
 export type AuthUser = {
   id: string;
@@ -15,7 +17,7 @@ type AuthContextType = {
   user: AuthUser | null;
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 };
 
@@ -72,7 +74,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       async register(name, email, password) {
         await apiRequest("/auth/register", "POST", { name, email, password });
       },
-      logout() {
+      async logout() {
+        const currentToken = token;
+        const deviceToken = localStorage.getItem("push_device_token");
+        if (Capacitor.isNativePlatform() && currentToken && deviceToken) {
+          await pushApi.unregisterDevice(currentToken, deviceToken).catch(() => undefined);
+        }
         setToken(null);
         setUser(null);
       },

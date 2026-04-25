@@ -10,9 +10,9 @@ export default function Login() {
   const navigate = useNavigate();
   const { login, register } = useAuth();
   const [show, setShow] = useState(false);
-  const [email, setEmail] = useState("vendedor@autos.mx");
-  const [pass, setPass] = useState("demo1234");
-  const [name, setName] = useState("Andres Vendedor");
+  const [email, setEmail] = useState("");
+  const [pass, setPass] = useState("");
+  const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [isRegisterMode, setIsRegisterMode] = useState(false);
 
@@ -93,23 +93,6 @@ export default function Login() {
           </Button>
           {error && <p className="text-xs text-destructive">{error}</p>}
         </form>
-
-        <div className="flex items-center gap-3 my-6">
-          <div className="flex-1 h-px bg-border" />
-          <span className="text-xs text-muted-foreground">o continúa con</span>
-          <div className="flex-1 h-px bg-border" />
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <button className="h-11 rounded-xl border border-border bg-card font-medium text-sm hover:bg-muted transition-colors flex items-center justify-center gap-2">
-            <span className="w-4 h-4 rounded-full bg-gradient-to-tr from-info via-warning to-destructive" />
-            Google
-          </button>
-          <button className="h-11 rounded-xl border border-border bg-card font-medium text-sm hover:bg-muted transition-colors flex items-center justify-center gap-2">
-            <span className="w-4 h-4 rounded-full bg-info" />
-            Facebook
-          </button>
-        </div>
 
         <p className="text-center text-xs text-muted-foreground mt-6">
           ¿Sin cuenta?{" "}

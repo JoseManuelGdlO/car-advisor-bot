@@ -4,6 +4,7 @@ import { isWithinBotSchedule } from "../utils/botSettings.js";
 import { channelAllowsAutoReply, normalizeInboundChannel } from "../utils/integrationChannel.js";
 import { env } from "../config/env.js";
 import { getOrCreateBotSettings } from "../services/botSettingsService.js";
+import { sendPushToOwner } from "../services/pushService.js";
 
 const botEngineBaseUrl = () => String(env.bot.engineUrl || "").replace(/\/$/, "");
 
@@ -103,7 +104,7 @@ export const botUpsertConversation = async (req, res) => {
       lastMessageAt: isInboundClientMessage ? new Date() : null,
     },
   });
-  let currentNotes = {};
+  let currentNotes;
   try {
     currentNotes = lead.notes ? JSON.parse(String(lead.notes)) : {};
   } catch {
@@ -144,6 +145,25 @@ export const botUpsertConversation = async (req, res) => {
     phone: normalizedUserId,
     time: new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }),
   });
+  if (isInboundClientMessage) {
+    try {
+      await sendPushToOwner({
+        ownerUserId,
+        title: "Nuevo cliente quiere platicar",
+        body: `${lead.name || "Cliente"}: ${normalizedMessage.slice(0, 140)}`,
+        data: {
+          type: "chat_intent",
+          conversationId: conv.id,
+        },
+      });
+    } catch (error) {
+      console.error("[botUpsertConversation] push send failed", {
+        ownerUserId,
+        conversationId: conv.id,
+        error: String(error?.message || error),
+      });
+    }
+  }
   console.log("[botUpsertConversation] persisted message", {
     conversationId: conv.id,
     leadId: lead.id,

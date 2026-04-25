@@ -31,4 +31,9 @@ export const env = {
     /** URL base del servicio FastAPI del bot (sin slash final). */
     engineUrl: must("BOT_ENGINE_URL", "http://localhost:8000"),
   },
+  push: {
+    firebaseProjectId: must("FIREBASE_PROJECT_ID", ""),
+    firebaseClientEmail: must("FIREBASE_CLIENT_EMAIL", ""),
+    firebasePrivateKey: must("FIREBASE_PRIVATE_KEY", ""),
+  },
 };

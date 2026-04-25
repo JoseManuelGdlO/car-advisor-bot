@@ -94,3 +94,35 @@ Usa `bot/.env.example`:
 - Se agrego `backend/src/migrations` y `backend/src/seeders`.
 - El backend usa Sequelize con `sequelize.sync()` al iniciar para alinear tablas en entornos de desarrollo.
 - El bot conserva fallback a MySQL local aunque ahora puede reportar eventos al backend Node.
+
+## Despliegue backend en Easy Panel (Docker Compose)
+
+Este repositorio incluye un `docker-compose.yml` para levantar solo el backend:
+
+- Servicio: `backend`
+- Build: `./backend/Dockerfile`
+- Base de datos: MySQL externo (no incluido en el compose)
+
+### Variables minimas requeridas en Easy Panel
+
+- `DB_HOST`
+- `DB_PORT` (normalmente `3306`)
+- `DB_NAME`
+- `DB_USER`
+- `DB_PASSWORD`
+- `JWT_SECRET`
+- `CORS_ORIGIN` (ej: `https://tu-frontend.com`)
+
+Tambien puedes definir (opcionales): `PORT`, `API_PREFIX`, `JWT_EXPIRES_IN`, `BOT_ENGINE_URL`, `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`.
+
+### Pasos en Easy Panel
+
+1. Crear una app usando este repositorio.
+2. Seleccionar `docker-compose.yml` en la raiz del proyecto.
+3. Cargar las variables de entorno requeridas.
+4. Exponer/publicar el puerto del servicio (`PORT`, por defecto `4000`).
+5. Desplegar.
+
+### Prueba rapida
+
+- Healthcheck manual: `GET /health`.

@@ -16,6 +16,7 @@ import FinancingPlanModel from "./FinancingPlan.js";
 import FinancingRequirementModel from "./FinancingRequirement.js";
 import VehicleFinancingPlanModel from "./VehicleFinancingPlan.js";
 import FinancingPlanRequirementModel from "./FinancingPlanRequirement.js";
+import PushDeviceModel from "./PushDevice.js";
 
 export const User = UserModel(sequelize);
 export const ServiceToken = ServiceTokenModel(sequelize);
@@ -34,6 +35,7 @@ export const FinancingPlan = FinancingPlanModel(sequelize);
 export const FinancingRequirement = FinancingRequirementModel(sequelize);
 export const VehicleFinancingPlan = VehicleFinancingPlanModel(sequelize);
 export const FinancingPlanRequirement = FinancingPlanRequirementModel(sequelize);
+export const PushDevice = PushDeviceModel(sequelize);
 
 User.hasMany(ServiceToken, {
   foreignKey: { name: "ownerUserId", field: "owner_user_id", allowNull: false },
@@ -42,6 +44,20 @@ User.hasMany(ServiceToken, {
   onUpdate: "CASCADE",
 });
 ServiceToken.belongsTo(User, {
+  foreignKey: { name: "ownerUserId", field: "owner_user_id", allowNull: false },
+  targetKey: "id",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+
+User.hasMany(PushDevice, {
+  foreignKey: { name: "ownerUserId", field: "owner_user_id", allowNull: false },
+  sourceKey: "id",
+  as: "pushDevices",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+PushDevice.belongsTo(User, {
   foreignKey: { name: "ownerUserId", field: "owner_user_id", allowNull: false },
   targetKey: "id",
   onDelete: "CASCADE",

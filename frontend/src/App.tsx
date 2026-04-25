@@ -23,6 +23,7 @@ import Perfil from "./pages/Perfil.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import { AuthProvider } from "@/context/AuthContext";
 import { RequireAuth } from "@/components/RequireAuth";
+import { PushBridge } from "@/mobile/PushBridge";
 
 const queryClient = new QueryClient();
 
@@ -33,6 +34,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
+          <PushBridge />
           <PhoneFrame>
             <Routes>
               <Route path="/" element={<Index />} />
