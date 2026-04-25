@@ -8,6 +8,8 @@ import { apiRoutes } from "./routes/apiRoutes.js";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.js";
 
 export const app = express();
+const normalizeOrigin = (value) => String(value || "").trim().replace(/\/$/, "").toLowerCase();
+const allowedOrigins = new Set(env.corsOrigins.map((item) => normalizeOrigin(item)).filter(Boolean));
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" },
@@ -16,15 +18,19 @@ app.use(
 app.use(
   cors({
     origin(origin, cb) {
+      const normalizedOrigin = normalizeOrigin(origin);
       const isLocalDevOrigin =
-        typeof origin === "string" &&
-        /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin);
-      if (!origin || env.corsOrigins.includes(origin) || (env.nodeEnv !== "production" && isLocalDevOrigin)) {
+        typeof normalizedOrigin === "string" &&
+        /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(normalizedOrigin);
+      if (!origin || allowedOrigins.has(normalizedOrigin) || isLocalDevOrigin) {
         return cb(null, true);
       }
-      return cb(new Error(`CORS blocked for origin: ${origin}`));
+      console.warn(`[cors] blocked origin: ${origin}`);
+      // Do not throw here: throwing causes preflight to return 500.
+      return cb(null, false);
     },
     credentials: true,
+    optionsSuccessStatus: 204,
   })
 );
 app.use(express.json({ limit: "1mb" }));
