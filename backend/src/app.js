@@ -3,8 +3,10 @@ import path from "path";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
+import rateLimit from "express-rate-limit";
 import { env } from "./config/env.js";
 import { apiRoutes } from "./routes/apiRoutes.js";
+import { authRoutes } from "./routes/authRoutes.js";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.js";
 
 export const app = express();
@@ -36,6 +38,9 @@ app.use(
 app.use(express.json({ limit: "1mb" }));
 app.use("/uploads/autobot", express.static(path.resolve(process.cwd(), "autobot")));
 app.use(morgan("dev"));
+const authRateLimit = rateLimit({ windowMs: 60_000, limit: 30 });
+app.use("/api/auth", authRateLimit, authRoutes);
+app.use("/auth", authRateLimit, authRoutes);
 app.use(`${env.apiPrefix}`, apiRoutes);
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
 app.use(notFoundHandler);
