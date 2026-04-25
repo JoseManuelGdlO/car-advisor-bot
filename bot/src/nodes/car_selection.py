@@ -11,6 +11,7 @@ from src.state import clientState
 from src.services.llm_responses import (
     classify_purchase_confirmation_intent,
     generate_available_models_intro,
+    generate_vehicle_candidates_selection_message,
     generate_vehicle_detail_intro,
     safe_llm_format,
 )
@@ -157,6 +158,19 @@ def _format_vehicle_name(item: dict[str, Any]) -> str:
     year = item.get("year")
     suffix = f" {year}" if isinstance(year, int) else ""
     return f"{brand} {model}{suffix}".strip()
+
+
+def _format_candidate_options(candidates: list[dict[str, Any]], limit: int = 8) -> str:
+    """Construye una lista numerada breve para que el usuario elija una opcion."""
+
+    lines: list[str] = []
+    for idx, item in enumerate(candidates[:limit], start=1):
+        if not isinstance(item, dict):
+            continue
+        label = _format_vehicle_name(item)
+        if label:
+            lines.append(f"{idx}. {label}")
+    return "\n".join(lines)
 
 
 def _find_candidate_from_pending(state: clientState, user_text: str) -> dict[str, Any] | None:
@@ -331,6 +345,23 @@ def _pick_vehicle_from_filters(
 
 def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, Any]) -> clientState:
     vehicle_id = str(vehicle_summary.get("id", "")).strip()
+    previous_vehicle_id = str(state.get("selected_vehicle_id", "")).strip()
+    has_selected_financing_plan = bool(str(state.get("selected_financing_plan_id", "")).strip())
+    financing_removed_notice = ""
+    if has_selected_financing_plan and previous_vehicle_id and previous_vehicle_id != vehicle_id:
+        previous_plan_name = str(state.get("selected_financing_plan_name", "")).strip() or "el plan seleccionado"
+        state["selected_financing_plan_id"] = ""
+        state["selected_financing_plan_name"] = ""
+        state["selected_financing_plan_lender"] = ""
+        state["financing_plan_candidates"] = []
+        state["financing_vehicle_candidates"] = []
+        state["awaiting_financing_plan_selection"] = False
+        state["awaiting_financing_vehicle_selection"] = False
+        financing_removed_notice = safe_llm_format(
+            f"Cambiamos de vehiculo, por lo que quite {previous_plan_name}. "
+            "Si quieres, te ayudo a revisar financiamiento para este nuevo carro."
+        )
+
     _debug("vehicle_detail_requested", vehicle_id=vehicle_id, summary=_format_vehicle_name(vehicle_summary))
     if not vehicle_id:
         _debug("vehicle_detail_missing_id")
@@ -368,7 +399,11 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
         images_block = f"{images_block}\nSi quieres ver mas imagenes, dímelo."
     purchase_question = _build_purchase_question(include_images_option=bool(top_images))
     first_block = f"{detail_intro}\n{detail_text}"
-    return _append_assistant_blocks(state, [first_block, images_block, purchase_question])
+    blocks: list[str] = []
+    if financing_removed_notice:
+        blocks.append(financing_removed_notice)
+    blocks.extend([first_block, images_block, purchase_question])
+    return _append_assistant_blocks(state, blocks)
 
 
 def _respond_available_list(state: clientState, vehicles: list[dict[str, Any]]) -> clientState:
@@ -425,6 +460,19 @@ def car_selection(state: clientState) -> clientState:
             "No pude consultar el catalogo en este momento. Intenta nuevamente en unos segundos.",
         )
         return append_assistant_message(state, message)
+
+    if state.get("show_selected_vehicle_detail_once"):
+        state["show_selected_vehicle_detail_once"] = False
+        selected_vehicle_id = str(state.get("selected_vehicle_id", "")).strip()
+        if selected_vehicle_id:
+            selected_detail = fetch_vehicle_by_id(selected_vehicle_id)
+            if isinstance(selected_detail, dict):
+                _debug(
+                    "show_selected_vehicle_detail_once",
+                    selected_vehicle_id=selected_vehicle_id,
+                    selected_car=state.get("selected_car", ""),
+                )
+                return _respond_with_vehicle_detail(state, selected_detail)
 
     if state.get("awaiting_purchase_confirmation"):
         if _is_financing_request(user_text):
@@ -496,9 +544,14 @@ def car_selection(state: clientState) -> clientState:
             message = f"{message}\n\nSi te interesa uno, dime la marca y modelo exactos."
         else:
             _debug("search_multiple_specific_request", count=len(filtered))
-            message = safe_llm_format(
-                "Encontre varios carros parecidos. Cual te interesa? Puedes responder con el nombre o numero.",
-            )
+            options = _format_candidate_options(filtered)
+            if options:
+                message = generate_vehicle_candidates_selection_message(options)
+            else:
+                message = (
+                    "Encontre varios carros similares. "
+                    "¿Cual te interesa? Puedes responder con el nombre o el numero."
+                )
         state["last_vehicle_candidates"] = filtered[:8]
         _debug("pending_candidates_saved", count=len(state["last_vehicle_candidates"]))
         return append_assistant_message(state, message)

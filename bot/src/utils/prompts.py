@@ -127,6 +127,27 @@ def build_available_models_intro_prompt(bot_settings: dict[str, Any] | None) -> 
     )
 
 
+def build_vehicle_candidates_selection_prompt(
+    options_text: str,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Prompt para redactar mensaje de seleccion cuando hay multiples candidatos."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    normalized_options = options_text.strip()
+    return (
+        f"{system_prompt}\n\n"
+        "SELECCION_MULTIPLES_VEHICULOS:\n"
+        "Redacta una introduccion breve para pedir al usuario que elija un vehiculo de una lista.\n"
+        "Debes mantener EXACTAMENTE la lista de opciones tal como viene en LISTA_OPCIONES "
+        "(mismos numeros, nombres y saltos de linea), sin reordenar ni modificar contenido.\n"
+        "Despues de la lista agrega una instruccion breve para responder con nombre o numero.\n"
+        "Devuelve un solo bloque de texto, solo saluda si el usuario te ha saludado.\n" 
+        "Debes mencionar que estos son los vehiculos disponibles o los que encontraste.\n\n"
+        f"LISTA_OPCIONES:\n{normalized_options}\n"
+    )
+
+
 def build_vehicle_detail_intro_prompt(vehicle_name: str, bot_settings: dict[str, Any] | None) -> str:
     """Prompt para la introduccion del bloque de detalle de un vehiculo."""
 
@@ -210,6 +231,38 @@ def build_purchase_confirmation_classifier_prompt(
     )
 
 
+def build_financing_plan_selection_classifier_prompt(
+    previous_bot_message: str,
+    user_message: str,
+    plan_count: int,
+    single_plan_name: str,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Prompt clasificador para seleccion de plan de financiamiento."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    previous = previous_bot_message.strip() or "(sin mensaje previo)"
+    current = user_message.strip() or "(mensaje vacio)"
+    normalized_count = max(plan_count, 0)
+    normalized_name = single_plan_name.strip() or "(sin nombre de plan)"
+    return (
+        f"{system_prompt}\n\n"
+        "CLASIFICADOR_SELECCION_PLAN_FINANCIAMIENTO:\n"
+        "Con base en el mensaje previo del bot y la respuesta del usuario, clasifica la intencion en una etiqueta.\n"
+        "Etiquetas validas:\n"
+        "- SELECT_SINGLE_PLAN: cuando hay un solo plan disponible y el usuario confirma avanzar (ej. si, me interesa, adelante).\n"
+        "- ASK_EXPLICIT_PLAN: cuando falta confirmar plan de forma clara o hay ambiguedad.\n"
+        "- REJECT: cuando el usuario rechaza continuar con ese plan o niega interes.\n"
+        "Reglas:\n"
+        "- Si plan_count != 1, nunca devuelvas SELECT_SINGLE_PLAN.\n"
+        "- Responde SOLO con una etiqueta exacta: SELECT_SINGLE_PLAN, ASK_EXPLICIT_PLAN o REJECT.\n\n"
+        f"plan_count: {normalized_count}\n"
+        f"single_plan_name: {normalized_name}\n"
+        f"Mensaje previo del bot: {previous}\n"
+        f"Mensaje del usuario: {current}\n"
+    )
+
+
 def build_router_intent_classifier_prompt(
     user_message: str,
     previous_intent: str,
@@ -235,25 +288,43 @@ def build_router_intent_classifier_prompt(
     )
 
 
-def build_faq_interrupt_classifier_prompt(
+def build_faq_interrupt_flags_prompt(
     current_node: str,
     last_bot_message: str,
     user_message: str,
+    awaiting_purchase_confirmation: bool,
+    pending_vehicle_count: int,
     bot_settings: dict[str, Any] | None,
 ) -> str:
-    """Prompt para decidir si un mensaje es FAQ interruptiva o respuesta al flujo."""
+    """Clasificador estructurado: flags para FAQ de negocio frente a continuidad de flujo."""
 
     system_prompt = build_system_prompt(bot_settings)
     node = current_node.strip() or "(sin nodo actual)"
     bot_msg = last_bot_message.strip() or "(sin mensaje previo del bot)"
     user_msg = user_message.strip() or "(mensaje vacio)"
+    espera_conf = "si" if awaiting_purchase_confirmation else "no"
+    cands = str(int(max(0, pending_vehicle_count)))
     return (
         f"{system_prompt}\n\n"
-        "CLASIFICADOR_FAQ_INTERRUPT:\n"
-        "Dado el nodo actual, el ultimo mensaje del bot y la respuesta del usuario, decide si el usuario:\n"
-        "- FAQ: interrumpe para preguntar algo general del negocio.\n"
-        "- FLOW_RESPONSE: esta respondiendo al flujo actual.\n"
-        "Responde SOLO con una etiqueta exacta: FAQ o FLOW_RESPONSE.\n\n"
+        "CLASIFICADOR_FAQ_CON_FLAGS:\n"
+        "Evalua el ultimo mensaje del usuario en el contexto del nodo y del asistente.\n"
+        "Responde SOLO con un objeto JSON, sin codigo, sin comentarios, en una sola linea. Formato exacto de claves:\n"
+        "{\n"
+        '  "interrumpir_por_faq": <bool>,\n'
+        '  "tema_vehiculo_inventario": <bool>,\n'
+        '  "tema_financiamiento_credi": <bool>,\n'
+        '  "es_respuesta_o_seguimiento_al_ultimo_bot": <bool>\n'
+        "}\n\n"
+        "Definicion de interrumpir_por_faq (true = debe atenderse con FAQ de negocio, no con catalogo/planes):\n"
+        "- true: pregunta por el negocio, agencia o lote: ubicacion, horarios, garantia o politica del lote, "
+        "contacto de oficina, datos generales de la concesionaria, que metodos de pago aceptan en caja, etc.\n"
+        "- false: todo lo demas, incluido: preguntas sobre un coche, modelo, anio, estado, 'como es' un auto, "
+        "comparaciones de unidades, mas fotos, si/no, respuestas cortas al turno, credito/enganche/plazos concretos al elegir coche, "
+        "cualquier cosa de inventario, catalogo o cierre de paso (confirmacion de compra, datos, etc.)\n"
+        f"Contexto: esperando_confirmacion_compra={espera_conf} | candidatos_vehiculo_listos_para_elegir={cands}.\n"
+        "tema_vehiculo_inventario: el mensaje trata de autos, unidades, modelos, anios, fotos, detalles, comparar.\n"
+        "tema_financiamiento_credi: enganche, plazo, tasa, credito, mensualidad en contexto de plan o coche (no caja del negocio en abstracto si el usuario pide oficina).\n"
+        "es_respuesta_o_seguimiento_al_ultimo_bot: el mensaje responde o reacciona al turno inmediato del bot (si, no, ok, otra, una seleccion, un dato pedido).\n"
         f"Nodo actual: {node}\n"
         f"Ultimo mensaje del bot: {bot_msg}\n"
         f"Mensaje del usuario: {user_msg}\n"

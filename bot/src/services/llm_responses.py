@@ -2,20 +2,25 @@
 
 from __future__ import annotations
 
+import json
 import os
+import re
+from typing import Any
 
 from langchain_openai import ChatOpenAI
 
 from src.tools.database import get_bot_settings
 from src.utils.prompts import (
     build_available_models_intro_prompt,
-    build_faq_interrupt_classifier_prompt,
+    build_faq_interrupt_flags_prompt,
+    build_financing_plan_selection_classifier_prompt,
     build_other_response_prompt,
     build_purchase_confirmation_classifier_prompt,
     build_router_intent_classifier_prompt,
     build_rewrite_prompt,
     build_lead_capture_intro_prompt,
     build_vehicle_detail_intro_prompt,
+    build_vehicle_candidates_selection_prompt,
     build_vehicle_purchase_question_prompt,
     build_faq_response_prompt,
 )
@@ -32,6 +37,48 @@ def safe_llm_format(text: str) -> str:
         return llm.invoke(prompt).content.strip()
     except Exception:
         return text
+
+
+def _parse_json_object_from_llm(text: str) -> dict[str, Any] | None:
+    """Extrae el primer JSON objeto de la salida del modelo (permite crudos o bloque ```json)."""
+
+    raw = (text or "").strip()
+    if not raw:
+        return None
+    m = re.search(r"```(?:json)?\s*(\{[\s\S]*?\})\s*```", raw, re.IGNORECASE)
+    if m:
+        raw = m.group(1).strip()
+    if not raw.lstrip().startswith("{"):
+        o = re.search(r"\{[\s\S]*\}", raw)
+        if o:
+            raw = o.group(0)
+    try:
+        obj = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if isinstance(obj, dict):
+        return obj
+    return None
+
+
+def _coerce_to_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    if isinstance(value, str):
+        t = value.strip().lower()
+        if t in ("true", "1", "sí", "si", "verdadero", "s"):
+            return True
+        if t in ("false", "0", "no", "falso", "n"):
+            return False
+        return False
+    if isinstance(value, (int, float)):
+        if value == 1:
+            return True
+        if value == 0:
+            return False
+    return False
 
 
 def generate_other_response(user_message: str) -> str:
@@ -87,6 +134,31 @@ def generate_vehicle_detail_intro(vehicle_name: str) -> str:
         if not normalized:
             return fallback
         return normalized.replace("\n", " ").strip()
+    except Exception:
+        return fallback
+
+
+def generate_vehicle_candidates_selection_message(options_text: str) -> str:
+    """Genera mensaje para elegir entre multiples vehiculos candidatos."""
+
+    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
+    normalized_options = str(options_text or "").strip()
+    fallback = (
+        "Encontre varios carros similares. ¿Cual te interesa?\n"
+        f"{normalized_options}\n\n"
+        "Puedes responder con el nombre o el numero."
+        if normalized_options
+        else "Encontre varios carros similares. ¿Cual te interesa? Puedes responder con el nombre o el numero."
+    )
+    if not normalized_options:
+        return fallback
+    try:
+        settings = get_bot_settings()
+        llm = ChatOpenAI(model=model_name, temperature=0.5)
+        prompt = build_vehicle_candidates_selection_prompt(normalized_options, settings)
+        content = llm.invoke(prompt).content
+        normalized = str(content).strip()
+        return normalized or fallback
     except Exception:
         return fallback
 
@@ -153,6 +225,34 @@ def classify_purchase_confirmation_intent(previous_bot_message: str, user_messag
         return "UNKNOWN"
 
 
+def classify_financing_plan_selection_intent(
+    previous_bot_message: str,
+    user_message: str,
+    plan_count: int,
+    single_plan_name: str = "",
+) -> str:
+    """Clasifica si el usuario confirma plan unico, rechaza o sigue ambiguo."""
+
+    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
+    try:
+        settings = get_bot_settings()
+        llm = ChatOpenAI(model=model_name, temperature=0)
+        prompt = build_financing_plan_selection_classifier_prompt(
+            previous_bot_message=previous_bot_message,
+            user_message=user_message,
+            plan_count=plan_count,
+            single_plan_name=single_plan_name,
+            bot_settings=settings,
+        )
+        content = llm.invoke(prompt).content
+        normalized = str(content).strip().upper()
+        if normalized in {"SELECT_SINGLE_PLAN", "ASK_EXPLICIT_PLAN", "REJECT"}:
+            return normalized
+        return "UNKNOWN"
+    except Exception:
+        return "UNKNOWN"
+
+
 def classify_router_intent(user_message: str, previous_intent: str = "") -> str:
     """Clasifica intencion general del router: VEHICLE_CATALOG, FAQ, FINANCING u OTHER."""
 
@@ -170,21 +270,47 @@ def classify_router_intent(user_message: str, previous_intent: str = "") -> str:
         return "UNKNOWN"
 
 
-def classify_faq_interrupt_intent(current_node: str, last_bot_message: str, user_message: str) -> str:
-    """Clasifica si el mensaje es FAQ interruptiva o respuesta al flujo."""
+def classify_faq_interrupt_flags(
+    current_node: str,
+    last_bot_message: str,
+    user_message: str,
+    *,
+    awaiting_purchase_confirmation: bool = False,
+    pending_vehicle_count: int = 0,
+) -> dict[str, bool]:
+    """Clasificador con flags: decide si se interrumpe por FAQ de negocio frente a continuidad de flujo."""
 
     model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
+    out: dict[str, bool] = {
+        "interrumpir_por_faq": False,
+        "tema_vehiculo_inventario": False,
+        "tema_financiamiento_credi": False,
+        "es_respuesta_o_seguimiento_al_ultimo_bot": False,
+    }
     try:
         settings = get_bot_settings()
         llm = ChatOpenAI(model=model_name, temperature=0)
-        prompt = build_faq_interrupt_classifier_prompt(current_node, last_bot_message, user_message, settings)
+        prompt = build_faq_interrupt_flags_prompt(
+            current_node,
+            last_bot_message,
+            user_message,
+            awaiting_purchase_confirmation,
+            pending_vehicle_count,
+            settings,
+        )
         content = llm.invoke(prompt).content
-        normalized = str(content).strip().upper()
-        if normalized in {"FAQ", "FLOW_RESPONSE"}:
-            return normalized
-        return "UNKNOWN"
+        parsed = _parse_json_object_from_llm(str(content or ""))
+        if not parsed:
+            return out
+        out["interrumpir_por_faq"] = _coerce_to_bool(parsed.get("interrumpir_por_faq"))
+        out["tema_vehiculo_inventario"] = _coerce_to_bool(parsed.get("tema_vehiculo_inventario"))
+        out["tema_financiamiento_credi"] = _coerce_to_bool(parsed.get("tema_financiamiento_credi"))
+        out["es_respuesta_o_seguimiento_al_ultimo_bot"] = _coerce_to_bool(
+            parsed.get("es_respuesta_o_seguimiento_al_ultimo_bot")
+        )
     except Exception:
-        return "UNKNOWN"
+        pass
+    return out
 
 
 def generate_faq_response(user_question: str, faq_candidates: list[str]) -> str:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.services.llm_responses import safe_llm_format
+from src.services.llm_responses import classify_financing_plan_selection_intent, safe_llm_format
 from src.state import clientState
 from src.tools.database import fetch_financing_plans, fetch_financing_plans_by_vehicle
 from src.tools.vehicles import (
@@ -308,6 +308,30 @@ def financing(state: clientState) -> clientState:
         selected_car=str(state.get("selected_car", "")).strip(),
     )
 
+    # Si el usuario hace una nueva consulta de financiamiento por vehiculo
+    # mientras esperabamos seleccion de plan, reiniciamos ese tramo del flujo
+    # para evitar seleccionar un plan previo de forma implicita.
+    refreshed_vehicle_hint = _maybe_resolve_vehicle_from_query(user_text)
+    if (
+        state.get("awaiting_financing_plan_selection")
+        and refreshed_vehicle_hint
+        and _is_financing_query(user_text)
+    ):
+        refreshed_vehicle_id = str(refreshed_vehicle_hint.get("id", "")).strip()
+        refreshed_car = _vehicle_label(refreshed_vehicle_hint)
+        state["awaiting_financing_plan_selection"] = False
+        state["selected_financing_plan_id"] = ""
+        state["selected_financing_plan_name"] = ""
+        state["selected_financing_plan_lender"] = ""
+        state["financing_plan_candidates"] = []
+        state["selected_vehicle_id"] = refreshed_vehicle_id
+        state["selected_car"] = refreshed_car
+        _debug(
+            "financing_query_vehicle_refresh",
+            selected_vehicle_id=refreshed_vehicle_id,
+            selected_car=refreshed_car,
+        )
+
     if state.get("awaiting_financing_vehicle_selection"):
         selected_vehicle = _pick_vehicle_for_plan(state, user_text)
         if not selected_vehicle:
@@ -350,6 +374,29 @@ def financing(state: clientState) -> clientState:
                 return _respond_plan_vehicle_info(state, selected_plan_for_info)
         selected_plan = _pick_plan_from_state(state, user_text)
         if not selected_plan:
+            candidates = state.get("financing_plan_candidates", [])
+            if (
+                isinstance(candidates, list)
+                and len(candidates) == 1
+                and isinstance(candidates[0], dict)
+            ):
+                unique_plan = candidates[0]
+                plan_name = str(unique_plan.get("name", "")).strip()
+                selection_intent = classify_financing_plan_selection_intent(
+                    previous_bot_message=str(state.get("last_bot_message", "")).strip(),
+                    user_message=user_text,
+                    plan_count=1,
+                    single_plan_name=plan_name,
+                )
+                _debug(
+                    "single_plan_selection_intent",
+                    intent=selection_intent,
+                    user_text=user_text,
+                    plan_name=plan_name,
+                )
+                if selection_intent == "SELECT_SINGLE_PLAN":
+                    selected_plan = unique_plan
+        if not selected_plan:
             _debug("awaiting_plan_selection_invalid_choice", user_text=user_text)
             reminder = safe_llm_format(
                 "Dime cual plan te interesa (por nombre o numero) para continuar."
@@ -366,6 +413,55 @@ def financing(state: clientState) -> clientState:
         )
         plan_vehicles = _available_plan_vehicles(selected_plan)
         if plan_vehicles:
+            if len(plan_vehicles) == 1:
+                only_vehicle = plan_vehicles[0]
+                selected_vehicle_id = str(only_vehicle.get("id", "")).strip()
+                selected_car = _vehicle_label(only_vehicle)
+                preselected_id = str(state.get("selected_vehicle_id", "")).strip()
+                if preselected_id and preselected_id == selected_vehicle_id:
+                    state["selected_vehicle_id"] = selected_vehicle_id
+                    state["selected_car"] = selected_car
+                    state["awaiting_financing_vehicle_selection"] = False
+                    state["financing_vehicle_candidates"] = []
+                    state["last_vehicle_candidates"] = []
+                    state["awaiting_purchase_confirmation"] = False
+                    state["show_selected_vehicle_detail_once"] = False
+                    state["intent"] = "lead_capture"
+                    state["current_node"] = "lead_capture"
+                    _debug(
+                        "single_vehicle_matches_preselected",
+                        selected_vehicle_id=selected_vehicle_id,
+                        selected_car=selected_car,
+                        selected_plan=state.get("selected_financing_plan_name", ""),
+                    )
+                    _debug(
+                        "route_change",
+                        next_node="lead_capture",
+                        reason="plan_confirmed_same_vehicle_already_selected",
+                    )
+                    confirmation = safe_llm_format(
+                        f"Perfecto, entonces avanzamos con {selected_car} y el plan "
+                        f"{state.get('selected_financing_plan_name', 'seleccionado')}."
+                    )
+                    return append_assistant_message(state, confirmation)
+                state["selected_vehicle_id"] = selected_vehicle_id
+                state["selected_car"] = selected_car
+                state["awaiting_financing_vehicle_selection"] = False
+                state["financing_vehicle_candidates"] = []
+                state["awaiting_purchase_confirmation"] = False
+                state["last_vehicle_candidates"] = []
+                state["intent"] = "vehicle_catalog"
+                state["current_node"] = "car_selection"
+                state["show_selected_vehicle_detail_once"] = True
+                _debug(
+                    "single_vehicle_auto_selected",
+                    selected_vehicle_id=selected_vehicle_id,
+                    selected_car=selected_car,
+                    selected_plan=state.get("selected_financing_plan_name", ""),
+                )
+                _debug("route_change", next_node="car_selection", reason="single_vehicle_in_plan")
+                return state
+
             normalized_plan = dict(selected_plan)
             normalized_plan["vehicles"] = plan_vehicles
             state["financing_vehicle_candidates"] = plan_vehicles
@@ -410,8 +506,14 @@ def financing(state: clientState) -> clientState:
                 plans=len(plans_for_vehicle),
             )
             message = format_financing_plans_for_vehicle(selected_car or "este vehiculo", plans_for_vehicle)
+            has_single_plan = len(plans_for_vehicle) == 1
+            follow_up = (
+                "Te interesa este plan? No olvides en preguntarme cualquier duda."
+                if has_single_plan
+                else "Si te interesa alguno, dime el nombre o numero del plan."
+            )
             question = safe_llm_format(
-                f"{message}\n\nSi te interesa alguno, dime el nombre o numero del plan."
+                f"{message}\n\n{follow_up}"
             )
             return append_assistant_message(state, question)
 

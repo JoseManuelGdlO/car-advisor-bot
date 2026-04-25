@@ -233,7 +233,7 @@ def format_financing_plans_for_vehicle(
     if not active_plans:
         return f"No encontre planes de financiamiento activos para {normalized_vehicle}."
 
-    bold_labels = _bold_labels(["Tasa", "Plazo maximo", "Requisitos", "Vehiculos disponibles"], platform)
+    bold_labels = _bold_labels(["Tasa", "Plazo maximo", "Requisitos"], platform)
     lines = [f"Planes de financiamiento para {normalized_vehicle}:", ""]
     printed = 0
     for idx, plan in enumerate(active_plans, start=1):
@@ -242,11 +242,12 @@ def format_financing_plans_for_vehicle(
             continue
         printed += 1
         name = str(plan.get("name", "")).strip() or f"Plan {idx}"
-        lender = str(plan.get("lender", "")).strip() or "N/D"
+        lender = str(plan.get("lender", "")).strip()
+        plan_label = f"{name} ({lender})" if lender else name
         max_term = _format_int(plan.get("maxTermMonths"), "meses")
         rate = _format_rate(plan.get("rate"), bool(plan.get("showRate", True)))
         lines.append(
-            f"{printed}. {name} ({lender}) - {bold_labels['Tasa']}: {rate} - {bold_labels['Plazo maximo']}: {max_term}"
+            f"{printed}. {plan_label} - {bold_labels['Tasa']}: {rate} - {bold_labels['Plazo maximo']}: {max_term}"
         )
 
         requirements = plan.get("requirements")
@@ -256,10 +257,10 @@ def format_financing_plans_for_vehicle(
             if isinstance(item, dict) and str(item.get("title", "")).strip()
         ] if isinstance(requirements, list) else []
         if req_values:
-            lines.append(f"   {bold_labels['Requisitos']}: {', '.join(req_values)}")
-        lines.append(f"   {bold_labels['Vehiculos disponibles']}:")
-        for vehicle in available_vehicles:
-            lines.append(f"   - {_vehicle_label(vehicle)}")
+            lines.append(f"   {bold_labels['Requisitos']}:")
+            for requirement in req_values:
+                lines.append(f"    - {requirement}")
+        lines.append("")
     if not printed:
         return f"No encontre planes de financiamiento activos para {normalized_vehicle}."
     return "\n".join(lines).strip()

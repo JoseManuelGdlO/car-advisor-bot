@@ -177,7 +177,9 @@ def lead_capture(state: clientState) -> clientState:
             )
 
     payload_info = _clean_customer_info(state.get("customer_info", {}))
-    uid = payload_info.get("telefono") or user_id or "lead"
+    # Misma clave de conversación que en el resto de eventos: id de sesión del chat (no el telefono).
+    # Así el backend hace find del mismo lead que acumulo la conversación, y `notes` incluye email.
+    uid = str(user_id or "").strip() or "lead"
     financing_selection = {
         "plan_id": str(state.get("selected_financing_plan_id", "")).strip(),
         "plan_name": str(state.get("selected_financing_plan_name", "")).strip(),
