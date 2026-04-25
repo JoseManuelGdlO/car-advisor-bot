@@ -39,9 +39,17 @@ app.use(express.json({ limit: "1mb" }));
 app.use("/uploads/autobot", express.static(path.resolve(process.cwd(), "autobot")));
 app.use(morgan("dev"));
 const authRateLimit = rateLimit({ windowMs: 60_000, limit: 30 });
+const normalizedApiPrefix = (() => {
+  const value = String(env.apiPrefix || "").trim();
+  if (!value) return "/api";
+  return value.startsWith("/") ? value : `/${value}`;
+})();
 app.use("/api/auth", authRateLimit, authRoutes);
 app.use("/auth", authRateLimit, authRoutes);
-app.use(`${env.apiPrefix}`, apiRoutes);
+app.use("/api", apiRoutes);
+if (normalizedApiPrefix !== "/api") {
+  app.use(normalizedApiPrefix, apiRoutes);
+}
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
 app.use(notFoundHandler);
 app.use(errorHandler);

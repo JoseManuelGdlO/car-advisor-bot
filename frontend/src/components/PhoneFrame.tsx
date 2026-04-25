@@ -44,7 +44,7 @@ export const PhoneFrame = ({ children }: PhoneFrameProps) => {
         </div>
 
         {/* Screen content */}
-        <div className={`h-full w-full flex flex-col lg:pt-7 ${showNav ? "pb-[72px]" : ""}`}>
+        <div className={`h-full w-full flex flex-col lg:pt-7 ${showNav ? "pb-[calc(72px+env(safe-area-inset-bottom))]" : ""}`}>
           <div className="flex-1 overflow-y-auto scrollbar-hide">{children}</div>
         </div>
 
