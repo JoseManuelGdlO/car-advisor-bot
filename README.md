@@ -21,9 +21,11 @@ Usa como base `backend/.env.example`:
 - `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
 - `JWT_SECRET`, `JWT_EXPIRES_IN`
 - `PORT`, `API_PREFIX`, `CORS_ORIGIN`
-- `WC_API_URL`, `WC_EMAIL`, `WC_PASSWORD`, `WC_DEVICE_ID` (integracion WhatsApp Connect por proxy backend)
+- `WC_API_URL` (URL base del API WhatsApp Connect; credenciales por integración en `Perfil`, no en env)
 - `WC_JWT_REFRESH_MARGIN_SECONDS` (opcional, default `300`)
 - `WC_TIMEOUT_MS` (opcional, default `8000`)
+- `WC_WEBHOOK_MAX_SKEW_MS` (opcional, ventana anti-replay del webhook)
+- `WC_WEBHOOK_ENABLED` (opcional, `true`/`false`; deshabilita ingesta de webhooks)
 
 ### Frontend (`frontend/.env`)
 
@@ -97,7 +99,7 @@ Usa `bot/.env.example`:
 
 1. El usuario crea una integracion de canal `whatsapp` con proveedor `whatsapp-connect` en `Perfil`.
 2. El frontend llama `POST /api/internal/whatsapp/qr-link`.
-3. El backend hace login con `WC_EMAIL/WC_PASSWORD`, cachea el JWT, ejecuta:
+3. El backend hace login con las credenciales cifradas de esa integración, cachea el JWT, ejecuta:
    - `POST /auth/login`
    - `POST /devices/:id/connect`
    - `POST /devices/:id/public-link`

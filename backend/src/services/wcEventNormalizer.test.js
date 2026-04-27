@@ -41,3 +41,30 @@ test("normalizeWcInboundEvent detecta eventos no inbound", () => {
   });
   assert.equal(normalized.isInboundMessage, false);
 });
+
+test("normalizeWcInboundEvent soporta payload de webhookDispatch (normalized/raw)", () => {
+  // Compatibilidad con el shape emitido por whatsapp-connect-v2.
+  const normalized = normalizeWcInboundEvent({
+    payload: {
+      eventId: "evt-3",
+      type: "message.inbound",
+      deviceId: "dev-3",
+      createdAt: "2026-04-27T12:00:00.000Z",
+      normalized: {
+        messageId: "msg-3",
+        from: "5215512345678@s.whatsapp.net",
+        content: { type: "text", text: "hola desde normalized" },
+      },
+      raw: {
+        key: { remoteJid: "5215512345678@s.whatsapp.net" },
+      },
+    },
+    integration: { id: "int-3", ownerUserId: "owner-3" },
+    credentials: { deviceId: "dev-3" },
+  });
+
+  assert.equal(normalized.externalUserId, "5215512345678@s.whatsapp.net");
+  assert.equal(normalized.messageId, "msg-3");
+  assert.equal(normalized.text, "hola desde normalized");
+  assert.equal(normalized.isInboundMessage, true);
+});

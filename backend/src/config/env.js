@@ -37,10 +37,8 @@ export const env = {
     firebasePrivateKey: must("FIREBASE_PRIVATE_KEY", ""),
   },
   wc: {
+    // URL base del servicio WhatsApp Connect (mismo host para todos los tenants; credenciales van en integración).
     apiUrl: must("WC_API_URL", ""),
-    email: must("WC_EMAIL", ""),
-    password: must("WC_PASSWORD", ""),
-    deviceId: must("WC_DEVICE_ID", ""),
     // Ventana máxima permitida para validar timestamp del webhook (anti-replay).
     webhookMaxSkewMs: Number(must("WC_WEBHOOK_MAX_SKEW_MS", "300000")),
     // Permite activar/desactivar procesamiento inbound sin desplegar cambios.

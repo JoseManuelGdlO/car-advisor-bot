@@ -7,7 +7,14 @@ const toIsoOrNow = (value) => {
 };
 
 const readText = (payload) =>
-  String(payload?.message?.text || payload?.data?.message?.text || payload?.text || payload?.body?.text || "").trim();
+  String(
+    payload?.normalized?.content?.text ||
+      payload?.message?.text ||
+      payload?.data?.message?.text ||
+      payload?.text ||
+      payload?.body?.text ||
+      ""
+  ).trim();
 
 const readDeviceId = (payload) => String(payload?.deviceId || payload?.device?.id || payload?.data?.deviceId || "").trim();
 
@@ -17,8 +24,10 @@ export const normalizeWcInboundEvent = ({ payload, integration, credentials }) =
   // Mapea payload externo de proveedor al contrato interno canónico del backend.
   const eventType = readEventType(payload);
   const eventId = String(payload?.eventId || payload?.id || payload?.data?.eventId || "").trim();
-  const messageId = String(payload?.message?.id || payload?.data?.message?.id || "").trim() || null;
-  const externalUserId = String(payload?.from || payload?.message?.from || payload?.data?.from || "").trim();
+  const messageId = String(payload?.normalized?.messageId || payload?.message?.id || payload?.data?.message?.id || "").trim() || null;
+  const externalUserId = String(
+    payload?.normalized?.from || payload?.from || payload?.message?.from || payload?.data?.from || payload?.raw?.key?.remoteJid || ""
+  ).trim();
   const text = readText(payload);
   const deviceId = readDeviceId(payload) || String(credentials?.deviceId || "").trim();
 

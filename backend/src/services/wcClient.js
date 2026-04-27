@@ -93,8 +93,8 @@ const readPublicLinkExpiry = (payload) =>
 export const wcClient = {
   // Login de servicio para obtener JWT de WhatsApp Connect.
   async login({ email, password, apiKey } = {}) {
-    const resolvedEmail = String(email || env.wc.email || "").trim();
-    const resolvedPassword = String(password || env.wc.password || "").trim();
+    const resolvedEmail = String(email || "").trim();
+    const resolvedPassword = String(password || "").trim();
     const resolvedApiKey = String(apiKey || "").trim();
     if (!resolvedApiKey && (!resolvedEmail || !resolvedPassword)) {
       throw new ApiError(500, "WhatsApp Connect credentials are not configured");
