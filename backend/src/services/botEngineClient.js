@@ -1,5 +1,6 @@
 import { env } from "../config/env.js";
 import { ApiError } from "../utils/errors.js";
+import { logWcWebhook } from "../utils/wcWebhookLog.js";
 
 const BOT_MESSAGE_SEPARATOR = "\n\n<<BOT_MSG_BREAK>>\n\n";
 
@@ -17,12 +18,17 @@ export const runBotChat = async ({ userId, platform, message }) => {
       platform: String(platform || "web").trim().toLowerCase(),
       message: String(message || "").trim(),
     }),
-  }).catch(() => {
+  }).catch((err) => {
+    logWcWebhook("bot engine: network error", { message: err?.message || String(err) });
     throw new ApiError(502, "Could not reach bot engine");
   });
 
   const text = await response.text();
   if (!response.ok) {
+    logWcWebhook("bot engine: bad response", {
+      status: response.status,
+      bodyPreview: String(text).slice(0, 300),
+    });
     throw new ApiError(response.status >= 500 ? 502 : response.status, "Bot chat failed");
   }
   let payload;

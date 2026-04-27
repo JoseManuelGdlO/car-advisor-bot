@@ -109,8 +109,8 @@ flowchart LR
 - Auth: `x-wc-signature`, `x-wc-timestamp`.
 - Request: payload webhook de WC.
 - Response:
-  - `202`: `{ ok: true, ... }`
-  - `409`: `{ ok: false, message: "duplicate_event" }`
+  - `202`: `{ ok: true, ... }` (procesado o idempotente)
+  - `202`: reintento con evento ya recibido: `{ ok: true, duplicate: true, message: "duplicate_event" }` (2xx para que el worker de WC cierre el delivery)
   - `401`: firma/timestamp invalido
 
 ### `GET /api/internal/whatsapp/device-status?integrationId=<uuid>`
@@ -142,7 +142,7 @@ flowchart LR
 - `401`: firma invalida, timestamp fuera de ventana o token WC invalido.
 - `403`: credenciales sin permiso en WC.
 - `404`: device/recurso no encontrado en WC.
-- `409`: evento duplicado por idempotencia.
+- Reintentos / duplicado: se responde `202` con `duplicate: true` (no `409`), para alinear con reintentos del proveedor.
 - `429`: limite de proveedor; retry corto.
 - `5xx`: error upstream WC; retry controlado y error final `502`.
 - `timeout`: error `504`; retry acotado.
@@ -164,7 +164,7 @@ flowchart LR
 
 ### Integracion
 - Webhook valido crea receipt y persiste mensaje.
-- Webhook duplicado retorna `409`.
+- Webhook duplicado responde `202` con `duplicate: true`.
 - Flujo inbound -> bot -> outbound con mocks.
 
 ### E2E manual

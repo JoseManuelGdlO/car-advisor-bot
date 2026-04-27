@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { ApiError } from "../utils/errors.js";
+import { logWcWebhook } from "../utils/wcWebhookLog.js";
 
 const toMillis = (value) => {
   const raw = String(value || "").trim();
@@ -47,7 +48,12 @@ export const verifyWcSignature = (req, _res, next) => {
       requestTimestampMs: toMillis(timestamp),
     };
     return next();
-  } catch (error) {
-    return next(error);
+  } catch (err) {
+    const verifyStatus = err instanceof ApiError ? err.status : 500;
+    const verifyMsg = err instanceof Error ? err.message : String(err);
+    if (verifyStatus === 401) {
+      logWcWebhook("signature verify failed", { message: verifyMsg });
+    }
+    return next(err);
   }
 };

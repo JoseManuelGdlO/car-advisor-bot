@@ -43,6 +43,8 @@ export const env = {
     webhookMaxSkewMs: Number(must("WC_WEBHOOK_MAX_SKEW_MS", "300000")),
     // Permite activar/desactivar procesamiento inbound sin desplegar cambios.
     webhookEnabled: must("WC_WEBHOOK_ENABLED", "true") === "true",
+    // Logs extra (payload resumido, pasos de pipeline, stacks en errores).
+    webhookDebug: must("WC_WEBHOOK_DEBUG", "false") === "true",
     jwtRefreshMarginSeconds: Number(must("WC_JWT_REFRESH_MARGIN_SECONDS", "300")),
     timeoutMs: Number(must("WC_TIMEOUT_MS", "8000")),
   },

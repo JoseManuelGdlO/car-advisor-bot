@@ -7,6 +7,7 @@ import { upsertConversationEvent } from "./conversationService.js";
 import { runBotChat } from "./botEngineClient.js";
 import { runWithWcToken } from "./wcAuthCache.js";
 import { wcClient } from "./wcClient.js";
+import { logWcWebhook, logWcWebhookDebug } from "../utils/wcWebhookLog.js";
 
 const PROVIDER = "whatsapp-connect";
 
@@ -48,8 +49,17 @@ export const ingestWhatsappConnectEvent = async ({ normalizedEvent, credentials 
     });
   } catch (error) {
     if (error?.name === "SequelizeUniqueConstraintError") {
+      logWcWebhook("receipt duplicate (constraint)", {
+        providerEventId: normalizedEvent.eventId,
+        channelIntegrationId: normalizedEvent.integrationId,
+      });
       throw new ApiError(409, "Duplicated webhook event");
     }
+    logWcWebhook("receipt create failed", {
+      providerEventId: normalizedEvent.eventId,
+      message: error?.message,
+      name: error?.name,
+    });
     throw error;
   }
 
@@ -65,6 +75,10 @@ export const ingestWhatsappConnectEvent = async ({ normalizedEvent, credentials 
   }
 
   try {
+    logWcWebhookDebug("pipeline: upsert client message", {
+      externalUserId: String(normalizedEvent.externalUserId || "").slice(0, 80),
+      messageId: normalizedEvent.messageId,
+    });
     const conversationResult = await upsertConversationEvent({
       ownerUserId: normalizedEvent.ownerUserId,
       userId: normalizedEvent.externalUserId,
@@ -77,18 +91,25 @@ export const ingestWhatsappConnectEvent = async ({ normalizedEvent, credentials 
     });
 
     await updateContext({ normalizedEvent, conversationResult });
+    logWcWebhook("pipeline: conversation upserted", {
+      providerEventId: normalizedEvent.eventId,
+      conversationId: conversationResult.conversationId,
+      shouldAutoReply: conversationResult.shouldAutoReply,
+    });
 
     if (!conversationResult.shouldAutoReply) {
       await markReceipt(receipt, "processed");
       return { ok: true, suppressed: true, conversationId: conversationResult.conversationId };
     }
 
+    logWcWebhookDebug("pipeline: calling bot engine", { userId: normalizedEvent.externalUserId });
     const botReplies = await runBotChat({
       userId: normalizedEvent.externalUserId,
       platform: "whatsapp",
       message: incomingMessage,
     });
 
+    logWcWebhook("pipeline: bot replies", { providerEventId: normalizedEvent.eventId, count: botReplies.length });
     for (const reply of botReplies) {
       await upsertConversationEvent({
         ownerUserId: normalizedEvent.ownerUserId,
@@ -100,6 +121,7 @@ export const ingestWhatsappConnectEvent = async ({ normalizedEvent, credentials 
         customerInfo: {},
         financingSelection: {},
       });
+      logWcWebhookDebug("pipeline: send outbound", { to: String(normalizedEvent.externalUserId || "").slice(0, 64) });
       await runWithWcToken(
         async (token) =>
           wcClient.sendMessageWithRetry({
@@ -124,6 +146,12 @@ export const ingestWhatsappConnectEvent = async ({ normalizedEvent, credentials 
     await markReceipt(receipt, "processed");
     return { ok: true, conversationId: conversationResult.conversationId, repliesSent: botReplies.length };
   } catch (error) {
+    logWcWebhook("pipeline: failed", {
+      providerEventId: normalizedEvent.eventId,
+      receiptId: receipt?.id,
+      message: error?.message,
+      status: error?.status,
+    });
     await markReceipt(receipt, "failed", error?.message || "Unhandled error");
     throw error;
   }

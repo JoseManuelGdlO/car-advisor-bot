@@ -26,6 +26,7 @@ Usa como base `backend/.env.example`:
 - `WC_TIMEOUT_MS` (opcional, default `8000`)
 - `WC_WEBHOOK_MAX_SKEW_MS` (opcional, ventana anti-replay del webhook)
 - `WC_WEBHOOK_ENABLED` (opcional, `true`/`false`; deshabilita ingesta de webhooks)
+- `WC_WEBHOOK_DEBUG` (opcional, `true`/`false`; logs extra `[wc-webhook:debug]` con pasos y payloads resumidos)
 
 ### Frontend (`frontend/.env`)
 
