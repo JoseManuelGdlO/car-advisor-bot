@@ -5,6 +5,8 @@ import BotSettingModel from "./BotSetting.js";
 import BusinessProfileModel from "./BusinessProfile.js";
 import ChannelIntegrationModel from "./ChannelIntegration.js";
 import ChannelCredentialModel from "./ChannelCredential.js";
+import ChannelEventReceiptModel from "./ChannelEventReceipt.js";
+import ChannelConversationContextModel from "./ChannelConversationContext.js";
 import VehicleModel from "./Vehicle.js";
 import ClientLeadModel from "./ClientLead.js";
 import ConversationModel from "./Conversation.js";
@@ -24,6 +26,8 @@ export const BotSetting = BotSettingModel(sequelize);
 export const BusinessProfile = BusinessProfileModel(sequelize);
 export const ChannelIntegration = ChannelIntegrationModel(sequelize);
 export const ChannelCredential = ChannelCredentialModel(sequelize);
+export const ChannelEventReceipt = ChannelEventReceiptModel(sequelize);
+export const ChannelConversationContext = ChannelConversationContextModel(sequelize);
 export const Vehicle = VehicleModel(sequelize);
 export const ClientLead = ClientLeadModel(sequelize);
 export const Conversation = ConversationModel(sequelize);
@@ -114,6 +118,38 @@ ChannelIntegration.hasMany(ChannelCredential, {
   onUpdate: "CASCADE",
 });
 ChannelCredential.belongsTo(ChannelIntegration, {
+  foreignKey: { name: "channelIntegrationId", field: "channel_integration_id", allowNull: false },
+  targetKey: "id",
+  as: "integration",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+
+ChannelIntegration.hasMany(ChannelEventReceipt, {
+  // Historial de eventos webhook procesados para deduplicación/auditoría.
+  foreignKey: { name: "channelIntegrationId", field: "channel_integration_id", allowNull: false },
+  sourceKey: "id",
+  as: "eventReceipts",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+ChannelEventReceipt.belongsTo(ChannelIntegration, {
+  foreignKey: { name: "channelIntegrationId", field: "channel_integration_id", allowNull: false },
+  targetKey: "id",
+  as: "integration",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+
+ChannelIntegration.hasMany(ChannelConversationContext, {
+  // Contexto estable de ruteo por usuario externo + device para multi-tenant.
+  foreignKey: { name: "channelIntegrationId", field: "channel_integration_id", allowNull: false },
+  sourceKey: "id",
+  as: "conversationContexts",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+ChannelConversationContext.belongsTo(ChannelIntegration, {
   foreignKey: { name: "channelIntegrationId", field: "channel_integration_id", allowNull: false },
   targetKey: "id",
   as: "integration",

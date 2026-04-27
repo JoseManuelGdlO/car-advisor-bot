@@ -19,6 +19,11 @@ export type WhatsAppQrLinkDto = {
   expiresAt: string;
 };
 
+export type WhatsAppDeviceStatusDto = {
+  status: "ONLINE" | "OFFLINE" | "UNKNOWN";
+  updatedAt: string;
+};
+
 export const integrationsApi = {
   list: (token: string) => apiRequest<IntegrationDto[]>("/integrations", "GET", undefined, token),
   create: (
@@ -32,4 +37,10 @@ export const integrationsApi = {
   test: (token: string, id: string) => apiRequest<{ ok: boolean; message: string }>(`/integrations/${id}/test`, "POST", {}, token),
   createWhatsAppQrLink: (token: string, integrationId: string) =>
     apiRequest<WhatsAppQrLinkDto>("/internal/whatsapp/qr-link", "POST", { integrationId }, token),
+  // Consulta estado del device vinculado para mostrar ONLINE/OFFLINE en Perfil.
+  getWhatsAppDeviceStatus: (token: string, integrationId: string) =>
+    apiRequest<WhatsAppDeviceStatusDto>(`/internal/whatsapp/device-status?integrationId=${encodeURIComponent(integrationId)}`, "GET", undefined, token),
+  // Envío de prueba manual para validar credenciales/ruteo outbound.
+  sendWhatsAppTest: (token: string, body: { integrationId: string; to: string; text: string }) =>
+    apiRequest<{ ok: boolean }>("/internal/whatsapp/send-test", "POST", body, token),
 };

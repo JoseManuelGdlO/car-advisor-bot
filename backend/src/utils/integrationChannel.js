@@ -20,10 +20,14 @@ export const normalizeInboundChannel = (platform) => {
  * @param {string} ownerUserId
  * @param {string | undefined} platform
  */
-export const channelAllowsAutoReply = async (ownerUserId, platform) => {
+export const channelAllowsAutoReply = async (ownerUserId, platform, provider) => {
+  // Si hay configuración del canal/proveedor, exige status activo + credencial válida.
   const ch = normalizeInboundChannel(platform);
   if (!CHANNELS_REQUIRING_CONFIG.has(ch)) return true;
-  const integration = await ChannelIntegration.findOne({ where: { ownerUserId, channel: ch } });
+  const integration = await ChannelIntegration.findOne({
+    where: { ownerUserId, channel: ch, ...(provider ? { provider: String(provider).trim() } : {}) },
+    order: [["updatedAt", "DESC"]],
+  });
   if (!integration) return true;
   if (integration.status !== "active") return false;
   const cred = await ChannelCredential.findOne({

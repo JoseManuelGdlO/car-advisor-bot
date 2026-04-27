@@ -41,6 +41,10 @@ export const env = {
     email: must("WC_EMAIL", ""),
     password: must("WC_PASSWORD", ""),
     deviceId: must("WC_DEVICE_ID", ""),
+    // Ventana máxima permitida para validar timestamp del webhook (anti-replay).
+    webhookMaxSkewMs: Number(must("WC_WEBHOOK_MAX_SKEW_MS", "300000")),
+    // Permite activar/desactivar procesamiento inbound sin desplegar cambios.
+    webhookEnabled: must("WC_WEBHOOK_ENABLED", "true") === "true",
     jwtRefreshMarginSeconds: Number(must("WC_JWT_REFRESH_MARGIN_SECONDS", "300")),
     timeoutMs: Number(must("WC_TIMEOUT_MS", "8000")),
   },

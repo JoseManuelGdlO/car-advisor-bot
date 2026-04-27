@@ -9,6 +9,7 @@ import { financingRoutes } from "./financingRoutes.js";
 import { accountRoutes } from "./accountRoutes.js";
 import { pushRoutes } from "./pushRoutes.js";
 import { whatsappConnectRoutes } from "./whatsappConnectRoutes.js";
+import { whatsappConnectWebhookRoutes } from "./whatsappConnectWebhookRoutes.js";
 
 export const apiRoutes = Router();
 
@@ -21,3 +22,5 @@ apiRoutes.use("/", financingRoutes);
 apiRoutes.use("/", accountRoutes);
 apiRoutes.use("/", pushRoutes);
 apiRoutes.use("/", whatsappConnectRoutes);
+// Webhooks públicos del proveedor (sin JWT de usuario).
+apiRoutes.use("/", whatsappConnectWebhookRoutes);

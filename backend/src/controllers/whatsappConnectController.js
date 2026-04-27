@@ -1,13 +1,20 @@
 import { z } from "zod";
-import { ChannelIntegration } from "../models/index.js";
-import { env } from "../config/env.js";
 import { ApiError } from "../utils/errors.js";
 import { wcClient } from "../services/wcClient.js";
 import { runWithWcToken } from "../services/wcAuthCache.js";
+import { resolveWhatsappConnectIntegrationById } from "../services/integrationResolverService.js";
 
 const requestSchema = z
   .object({
-    integrationId: z.string().uuid().optional(),
+    integrationId: z.string().uuid(),
+  })
+  .strict();
+
+const sendTestSchema = z
+  .object({
+    integrationId: z.string().uuid(),
+    to: z.string().min(5).max(40),
+    text: z.string().min(1).max(4096),
   })
   .strict();
 
@@ -15,16 +22,12 @@ const requestSchema = z
  * Verifica que la integracion indicada pertenezca al usuario autenticado
  * y que corresponda a WhatsApp Connect.
  */
-const assertOwnWhatsappConnectIntegration = async (integrationId, userId) => {
-  if (!integrationId) return;
-
-  const integration = await ChannelIntegration.findOne({
-    where: { id: integrationId, ownerUserId: userId },
-  });
-
-  if (!integration) throw new ApiError(404, "Integration not found");
-  if (integration.channel !== "whatsapp") throw new ApiError(400, "Integration channel must be whatsapp");
-  if (integration.provider !== "whatsapp-connect") throw new ApiError(400, "Integration provider must be whatsapp-connect");
+const getIntegrationContext = async (integrationId, ownerUserId) => {
+  // Carga integración + credenciales activas y valida mínimos operativos para WC.
+  const { integration, credentials } = await resolveWhatsappConnectIntegrationById({ integrationId, ownerUserId });
+  if (integration.status !== "active") throw new ApiError(400, "Integration must be active");
+  if (!credentials.deviceId) throw new ApiError(400, "Integration credentials missing deviceId");
+  return { integration, credentials };
 };
 
 /**
@@ -38,19 +41,72 @@ const assertOwnWhatsappConnectIntegration = async (integrationId, userId) => {
 export const postWhatsappConnectQrLink = async (req, res, next) => {
   try {
     const { integrationId } = requestSchema.parse(req.body || {});
-    await assertOwnWhatsappConnectIntegration(integrationId, req.auth.userId);
+    const { credentials } = await getIntegrationContext(integrationId, req.auth.userId);
+    const loginArgs = {
+      email: credentials.apiEmail,
+      password: credentials.apiPassword,
+      apiKey: credentials.apiKey,
+    };
 
     const result = await runWithWcToken(async (token) => {
       // Inicia/renueva la sesion del device antes de emitir el link publico.
-      await wcClient.connectDevice(env.wc.deviceId, token);
-      return wcClient.createPublicLink(env.wc.deviceId, token);
-    });
+      await wcClient.connectDevice(credentials.deviceId, token);
+      return wcClient.createPublicLink(credentials.deviceId, token);
+    }, { cacheKey: credentials.apiEmail || credentials.apiKey || integrationId, loginArgs });
 
     // Si upstream no envia expiracion, usamos un fallback corto para UX.
     return res.json({
       url: result.url,
       expiresAt: result.expiresAt || new Date(Date.now() + 5 * 60 * 1000).toISOString(),
     });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+export const getWhatsappConnectDeviceStatus = async (req, res, next) => {
+  try {
+    // Consulta estado online/offline del device asociado a la integración.
+    const { integrationId } = requestSchema.parse(req.query || {});
+    const { credentials } = await getIntegrationContext(integrationId, req.auth.userId);
+    const loginArgs = {
+      email: credentials.apiEmail,
+      password: credentials.apiPassword,
+      apiKey: credentials.apiKey,
+    };
+    const result = await runWithWcToken((token) => wcClient.getDeviceStatus({ deviceId: credentials.deviceId, token }), {
+      cacheKey: credentials.apiEmail || credentials.apiKey || integrationId,
+      loginArgs,
+    });
+    return res.json(result);
+  } catch (err) {
+    return next(err);
+  }
+};
+
+export const postWhatsappConnectSendTest = async (req, res, next) => {
+  try {
+    // Endpoint de diagnóstico para verificar envío saliente controlado.
+    const { integrationId, to, text } = sendTestSchema.parse(req.body || {});
+    const { credentials } = await getIntegrationContext(integrationId, req.auth.userId);
+    const loginArgs = {
+      email: credentials.apiEmail,
+      password: credentials.apiPassword,
+      apiKey: credentials.apiKey,
+    };
+    await runWithWcToken(
+      (token) =>
+        wcClient.sendMessageWithRetry({
+          deviceId: credentials.deviceId,
+          token,
+          to,
+          type: "text",
+          text,
+          tenantId: credentials.tenantId,
+        }),
+      { cacheKey: credentials.apiEmail || credentials.apiKey || integrationId, loginArgs }
+    );
+    return res.status(202).json({ ok: true });
   } catch (err) {
     return next(err);
   }

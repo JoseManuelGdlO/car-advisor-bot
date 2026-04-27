@@ -10,7 +10,7 @@ class WcRequestError extends Error {
 
 // Valida configuracion minima para evitar llamadas a upstream mal formadas.
 const ensureConfigured = () => {
-  if (!env.wc.apiUrl || !env.wc.email || !env.wc.password || !env.wc.deviceId) {
+  if (!env.wc.apiUrl) {
     throw new ApiError(500, "WhatsApp Connect is not configured");
   }
 };
@@ -92,10 +92,16 @@ const readPublicLinkExpiry = (payload) =>
 
 export const wcClient = {
   // Login de servicio para obtener JWT de WhatsApp Connect.
-  async login() {
+  async login({ email, password, apiKey } = {}) {
+    const resolvedEmail = String(email || env.wc.email || "").trim();
+    const resolvedPassword = String(password || env.wc.password || "").trim();
+    const resolvedApiKey = String(apiKey || "").trim();
+    if (!resolvedApiKey && (!resolvedEmail || !resolvedPassword)) {
+      throw new ApiError(500, "WhatsApp Connect credentials are not configured");
+    }
     const payload = await wcFetch("/auth/login", {
       method: "POST",
-      body: { email: env.wc.email, password: env.wc.password },
+      body: resolvedApiKey ? { apiKey: resolvedApiKey } : { email: resolvedEmail, password: resolvedPassword },
     });
     const token = readTokenFromLogin(payload);
     const expiresAt = readExpiresAtFromLogin(payload);
@@ -115,5 +121,51 @@ export const wcClient = {
     const url = readPublicLink(payload);
     if (!url) throw new ApiError(502, "WhatsApp Connect public link response invalid");
     return { url, expiresAt: readPublicLinkExpiry(payload) };
+  },
+
+  async sendMessage({ deviceId, token, to, type = "text", text, tenantId }) {
+    // Wrapper directo al endpoint de salida de mensajes del proveedor.
+    const payload = await wcFetch(`/devices/${deviceId}/messages/send`, {
+      method: "POST",
+      token,
+      body: {
+        to,
+        type,
+        text,
+        ...(tenantId ? { tenantId } : {}),
+      },
+    });
+    return payload;
+  },
+
+  async sendMessageWithRetry(params, { maxAttempts = 3, baseDelayMs = 250 } = {}) {
+    // Reintento acotado para errores transitorios de red/auth/rate-limit.
+    let attempt = 0;
+    while (true) {
+      attempt += 1;
+      try {
+        return await wcClient.sendMessage(params);
+      } catch (error) {
+        const status = Number(error?.status || 0);
+        const retryable = status === 401 || status === 429 || status >= 500 || status === 504;
+        if (!retryable || attempt >= maxAttempts) throw error;
+        const jitter = Math.floor(Math.random() * 100);
+        const delay = baseDelayMs * attempt + jitter;
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  },
+
+  async getDeviceStatus({ deviceId, token }) {
+    // Consulta estado operativo del device para UX de integración.
+    const payload = await wcFetch(`/devices/${deviceId}`, {
+      method: "GET",
+      token,
+    });
+    const status = String(payload?.status || payload?.data?.status || "UNKNOWN").toUpperCase();
+    return {
+      status: ["ONLINE", "OFFLINE"].includes(status) ? status : "UNKNOWN",
+      updatedAt: payload?.updatedAt || payload?.data?.updatedAt || new Date().toISOString(),
+    };
   },
 };

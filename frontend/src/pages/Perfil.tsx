@@ -78,11 +78,22 @@ export default function Perfil() {
   const [bizForm, setBizForm] = useState<BusinessProfileDto>(emptyBusiness);
   const [credOpenFor, setCredOpenFor] = useState<string | null>(null);
   const [credJson, setCredJson] = useState("{}");
+  const [credError, setCredError] = useState("");
+  const [wcCredForm, setWcCredForm] = useState({
+    deviceId: "",
+    webhookSecret: "",
+    apiKey: "",
+    apiEmail: "",
+    apiPassword: "",
+    tenantId: "",
+  });
   const [newTokenName, setNewTokenName] = useState("");
   const [tokenDialogOpen, setTokenDialogOpen] = useState(false);
   const [lastCreatedToken, setLastCreatedToken] = useState<string | null>(null);
   const [lastQrByIntegrationId, setLastQrByIntegrationId] = useState<Record<string, { url: string; expiresAt: string }>>({});
   const [lastQrErrorByIntegrationId, setLastQrErrorByIntegrationId] = useState<Record<string, string>>({});
+  const [deviceStatusByIntegrationId, setDeviceStatusByIntegrationId] = useState<Record<string, { status: "ONLINE" | "OFFLINE" | "UNKNOWN"; updatedAt: string }>>({});
+  const [deviceStatusLoadingIntegrationId, setDeviceStatusLoadingIntegrationId] = useState<string | null>(null);
   const [qrLoadingIntegrationId, setQrLoadingIntegrationId] = useState<string | null>(null);
   const [qrViewerOpen, setQrViewerOpen] = useState(false);
   const [qrViewerIntegrationId, setQrViewerIntegrationId] = useState<string | null>(null);
@@ -144,6 +155,19 @@ export default function Perfil() {
       queryClient.invalidateQueries({ queryKey: ["integrations"] });
       setCredOpenFor(null);
       setCredJson("{}");
+      setCredError("");
+      setWcCredForm({
+        deviceId: "",
+        webhookSecret: "",
+        apiKey: "",
+        apiEmail: "",
+        apiPassword: "",
+        tenantId: "",
+      });
+    },
+    onError: (error) => {
+      const message = error instanceof Error && error.message.trim() ? error.message : "No se pudieron guardar las credenciales.";
+      setCredError(message);
     },
   });
 
@@ -213,6 +237,21 @@ export default function Perfil() {
     },
   });
 
+  const deviceStatusMutation = useMutation({
+    // Lee estado del device para feedback operativo en la tarjeta de integración.
+    mutationFn: (integrationId: string) => integrationsApi.getWhatsAppDeviceStatus(token!, integrationId),
+    onMutate: (integrationId) => setDeviceStatusLoadingIntegrationId(integrationId),
+    onSuccess: (data, integrationId) => {
+      setDeviceStatusByIntegrationId((prev) => ({ ...prev, [integrationId]: data }));
+    },
+    onSettled: () => setDeviceStatusLoadingIntegrationId(null),
+  });
+
+  const sendTestMutation = useMutation({
+    // Ejecuta envío manual para validar credenciales y canal outbound.
+    mutationFn: (params: { integrationId: string; to: string; text: string }) => integrationsApi.sendWhatsAppTest(token!, params),
+  });
+
   const openQrViewer = (integrationId: string) => {
     setQrViewerIntegrationId(integrationId);
     setQrViewerOpen(true);
@@ -220,6 +259,10 @@ export default function Perfil() {
 
   const activeQr = qrViewerIntegrationId ? lastQrByIntegrationId[qrViewerIntegrationId] : null;
   const activeQrIsExpired = activeQr ? new Date(activeQr.expiresAt).getTime() <= Date.now() : false;
+  const activeCredIntegration = credOpenFor ? integrations.find((it) => it.id === credOpenFor) || null : null;
+  const isWhatsAppConnectCredModal = Boolean(
+    activeCredIntegration && activeCredIntegration.channel === "whatsapp" && activeCredIntegration.provider === "whatsapp-connect"
+  );
 
   return (
     <>
@@ -356,13 +399,51 @@ export default function Perfil() {
                         {qrLoadingIntegrationId === it.id ? "Generando QR..." : "Generar QR"}
                       </Button>
                     ) : null}
+                    {it.channel === "whatsapp" && it.provider === "whatsapp-connect" ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8"
+                        onClick={() => deviceStatusMutation.mutate(it.id)}
+                        disabled={deviceStatusLoadingIntegrationId === it.id}
+                      >
+                        {deviceStatusLoadingIntegrationId === it.id ? "Consultando..." : "Estado device"}
+                      </Button>
+                    ) : null}
+                    {it.channel === "whatsapp" && it.provider === "whatsapp-connect" ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8"
+                        disabled={sendTestMutation.isPending}
+                        onClick={() => {
+                          // Flujo simple de prueba sin crear formulario adicional.
+                          const to = window.prompt("Número destino (con código de país):", "");
+                          if (!to) return;
+                          const text = window.prompt("Mensaje de prueba:", "Hola desde Car Advisor Bot");
+                          if (!text) return;
+                          sendTestMutation.mutate({ integrationId: it.id, to, text });
+                        }}
+                      >
+                        Probar envío
+                      </Button>
+                    ) : null}
                     <Button
                       size="sm"
                       variant="outline"
                       className="h-8"
                       onClick={() => {
                         setCredOpenFor(it.id);
+                        setCredError("");
                         setCredJson("{}");
+                        setWcCredForm({
+                          deviceId: "",
+                          webhookSecret: "",
+                          apiKey: "",
+                          apiEmail: "",
+                          apiPassword: "",
+                          tenantId: "",
+                        });
                       }}
                     >
                       Credenciales
@@ -402,6 +483,11 @@ export default function Perfil() {
                         Ver QR en modal
                       </Button>
                     ) : null}
+                    {deviceStatusByIntegrationId[it.id] ? (
+                      <p className="text-[11px] text-muted-foreground">
+                        Device {deviceStatusByIntegrationId[it.id].status} · actualizado {new Date(deviceStatusByIntegrationId[it.id].updatedAt).toLocaleString()}
+                      </p>
+                    ) : null}
                   </div>
                 ) : null}
               </li>
@@ -410,28 +496,129 @@ export default function Perfil() {
           </ul>
         </div>
 
-        <Dialog open={Boolean(credOpenFor)} onOpenChange={(o) => !o && setCredOpenFor(null)}>
+        <Dialog
+          open={Boolean(credOpenFor)}
+          onOpenChange={(o) => {
+            if (o) return;
+            setCredOpenFor(null);
+            setCredError("");
+          }}
+        >
           <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle>Credenciales (JSON)</DialogTitle>
+              <DialogTitle>{isWhatsAppConnectCredModal ? "Credenciales WhatsApp Connect" : "Credenciales (JSON)"}</DialogTitle>
               <DialogDescription>Se guardan cifradas en el servidor. No se vuelven a mostrar.</DialogDescription>
             </DialogHeader>
-            <Textarea rows={10} className="font-mono text-xs" value={credJson} onChange={(e) => setCredJson(e.target.value)} />
+            {isWhatsAppConnectCredModal ? (
+              <div className="space-y-2">
+                <div>
+                  <Label className="text-xs">Device ID *</Label>
+                  <Input
+                    className="mt-1"
+                    value={wcCredForm.deviceId}
+                    onChange={(e) => setWcCredForm((s) => ({ ...s, deviceId: e.target.value }))}
+                    placeholder="device_xxx"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Webhook secret *</Label>
+                  <Input
+                    className="mt-1"
+                    value={wcCredForm.webhookSecret}
+                    onChange={(e) => setWcCredForm((s) => ({ ...s, webhookSecret: e.target.value }))}
+                    placeholder="secreto para validar firma webhook"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">API Key</Label>
+                  <Input
+                    className="mt-1"
+                    value={wcCredForm.apiKey}
+                    onChange={(e) => setWcCredForm((s) => ({ ...s, apiKey: e.target.value }))}
+                    placeholder="Si usas API key, deja email/password vacíos"
+                  />
+                </div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div>
+                    <Label className="text-xs">API email</Label>
+                    <Input
+                      className="mt-1"
+                      value={wcCredForm.apiEmail}
+                      onChange={(e) => setWcCredForm((s) => ({ ...s, apiEmail: e.target.value }))}
+                      placeholder="email@dominio.com"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">API password</Label>
+                    <Input
+                      className="mt-1"
+                      type="password"
+                      value={wcCredForm.apiPassword}
+                      onChange={(e) => setWcCredForm((s) => ({ ...s, apiPassword: e.target.value }))}
+                      placeholder="••••••••"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs">Tenant ID (opcional)</Label>
+                  <Input
+                    className="mt-1"
+                    value={wcCredForm.tenantId}
+                    onChange={(e) => setWcCredForm((s) => ({ ...s, tenantId: e.target.value }))}
+                    placeholder="tenant_123"
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Debes enviar <strong>API Key</strong> o bien <strong>API email + API password</strong>.
+                </p>
+              </div>
+            ) : (
+              <Textarea rows={10} className="font-mono text-xs" value={credJson} onChange={(e) => setCredJson(e.target.value)} />
+            )}
             <Button
               className="w-full"
               disabled={!credOpenFor || saveCredsMutation.isPending}
               onClick={() => {
                 if (!credOpenFor) return;
+                if (isWhatsAppConnectCredModal) {
+                  const deviceId = wcCredForm.deviceId.trim();
+                  const webhookSecret = wcCredForm.webhookSecret.trim();
+                  const apiKey = wcCredForm.apiKey.trim();
+                  const apiEmail = wcCredForm.apiEmail.trim();
+                  const apiPassword = wcCredForm.apiPassword.trim();
+                  const tenantId = wcCredForm.tenantId.trim();
+                  const hasApiKey = Boolean(apiKey);
+                  const hasEmailPassword = Boolean(apiEmail && apiPassword);
+                  if (!deviceId || !webhookSecret) {
+                    setCredError("Device ID y Webhook secret son obligatorios.");
+                    return;
+                  }
+                  if (!hasApiKey && !hasEmailPassword) {
+                    setCredError("Debes capturar API Key o API email + API password.");
+                    return;
+                  }
+                  setCredError("");
+                  const payload: Record<string, unknown> = {
+                    deviceId,
+                    webhookSecret,
+                    ...(hasApiKey ? { apiKey } : { apiEmail, apiPassword }),
+                    ...(tenantId ? { tenantId } : {}),
+                  };
+                  saveCredsMutation.mutate({ id: credOpenFor, payload });
+                  return;
+                }
                 try {
+                  setCredError("");
                   const payload = JSON.parse(credJson || "{}") as Record<string, unknown>;
                   saveCredsMutation.mutate({ id: credOpenFor, payload });
                 } catch {
-                  alert("JSON inválido");
+                  setCredError("JSON inválido");
                 }
               }}
             >
               {saveCredsMutation.isPending ? "Guardando..." : "Guardar credenciales"}
             </Button>
+            {credError ? <p className="text-xs text-destructive">{credError}</p> : null}
           </DialogContent>
         </Dialog>
 

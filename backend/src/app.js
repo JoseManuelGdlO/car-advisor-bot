@@ -35,7 +35,15 @@ app.use(
     optionsSuccessStatus: 204,
   })
 );
-app.use(express.json({ limit: "1mb" }));
+app.use(
+  express.json({
+    limit: "1mb",
+    // Conserva el payload crudo para validar firmas HMAC en webhooks.
+    verify(req, _res, buf) {
+      req.rawBody = buf?.toString("utf8") || "";
+    },
+  })
+);
 app.use("/uploads/autobot", express.static(path.resolve(process.cwd(), "autobot")));
 app.use(morgan("dev"));
 const authRateLimit = rateLimit({ windowMs: 60_000, limit: 30 });
