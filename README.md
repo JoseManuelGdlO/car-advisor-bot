@@ -21,6 +21,9 @@ Usa como base `backend/.env.example`:
 - `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
 - `JWT_SECRET`, `JWT_EXPIRES_IN`
 - `PORT`, `API_PREFIX`, `CORS_ORIGIN`
+- `WC_API_URL`, `WC_EMAIL`, `WC_PASSWORD`, `WC_DEVICE_ID` (integracion WhatsApp Connect por proxy backend)
+- `WC_JWT_REFRESH_MARGIN_SECONDS` (opcional, default `300`)
+- `WC_TIMEOUT_MS` (opcional, default `8000`)
 
 ### Frontend (`frontend/.env`)
 
@@ -88,6 +91,21 @@ Usa `bot/.env.example`:
 - FAQs: `/api/faqs`
 - Promociones: `/api/promotions`
 - Bot integration: `POST /api/bot/conversation-events`
+- WhatsApp QR link (interno): `POST /api/internal/whatsapp/qr-link` (requiere JWT de usuario)
+
+## Flujo WhatsApp Connect (proxy backend)
+
+1. El usuario crea una integracion de canal `whatsapp` con proveedor `whatsapp-connect` en `Perfil`.
+2. El frontend llama `POST /api/internal/whatsapp/qr-link`.
+3. El backend hace login con `WC_EMAIL/WC_PASSWORD`, cachea el JWT, ejecuta:
+   - `POST /auth/login`
+   - `POST /devices/:id/connect`
+   - `POST /devices/:id/public-link`
+4. El backend responde `{ url, expiresAt }` y el frontend abre el QR en una nueva pestana.
+
+Notas de seguridad:
+- El JWT de WhatsApp Connect y las credenciales de servicio nunca se exponen al frontend.
+- El backend reintenta una vez si recibe `401` del proveedor (re-login + retry).
 
 ## Notas de migracion
 

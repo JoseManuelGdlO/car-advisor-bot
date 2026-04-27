@@ -36,4 +36,12 @@ export const env = {
     firebaseClientEmail: must("FIREBASE_CLIENT_EMAIL", ""),
     firebasePrivateKey: must("FIREBASE_PRIVATE_KEY", ""),
   },
+  wc: {
+    apiUrl: must("WC_API_URL", ""),
+    email: must("WC_EMAIL", ""),
+    password: must("WC_PASSWORD", ""),
+    deviceId: must("WC_DEVICE_ID", ""),
+    jwtRefreshMarginSeconds: Number(must("WC_JWT_REFRESH_MARGIN_SECONDS", "300")),
+    timeoutMs: Number(must("WC_TIMEOUT_MS", "8000")),
+  },
 };

@@ -14,6 +14,11 @@ export type IntegrationDto = {
   hasActiveCredential: boolean;
 };
 
+export type WhatsAppQrLinkDto = {
+  url: string;
+  expiresAt: string;
+};
+
 export const integrationsApi = {
   list: (token: string) => apiRequest<IntegrationDto[]>("/integrations", "GET", undefined, token),
   create: (
@@ -25,4 +30,6 @@ export const integrationsApi = {
   postCredentials: (token: string, id: string, payload: Record<string, unknown>) =>
     apiRequest<{ ok: boolean; hasActiveCredential: boolean }>(`/integrations/${id}/credentials`, "POST", { payload }, token),
   test: (token: string, id: string) => apiRequest<{ ok: boolean; message: string }>(`/integrations/${id}/test`, "POST", {}, token),
+  createWhatsAppQrLink: (token: string, integrationId: string) =>
+    apiRequest<WhatsAppQrLinkDto>("/internal/whatsapp/qr-link", "POST", { integrationId }, token),
 };

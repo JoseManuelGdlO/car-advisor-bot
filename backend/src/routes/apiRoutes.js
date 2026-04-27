@@ -8,6 +8,7 @@ import { botRoutes } from "./botRoutes.js";
 import { financingRoutes } from "./financingRoutes.js";
 import { accountRoutes } from "./accountRoutes.js";
 import { pushRoutes } from "./pushRoutes.js";
+import { whatsappConnectRoutes } from "./whatsappConnectRoutes.js";
 
 export const apiRoutes = Router();
 
@@ -19,3 +20,4 @@ apiRoutes.use("/", botRoutes);
 apiRoutes.use("/", financingRoutes);
 apiRoutes.use("/", accountRoutes);
 apiRoutes.use("/", pushRoutes);
+apiRoutes.use("/", whatsappConnectRoutes);

@@ -81,6 +81,11 @@ export default function Perfil() {
   const [newTokenName, setNewTokenName] = useState("");
   const [tokenDialogOpen, setTokenDialogOpen] = useState(false);
   const [lastCreatedToken, setLastCreatedToken] = useState<string | null>(null);
+  const [lastQrByIntegrationId, setLastQrByIntegrationId] = useState<Record<string, { url: string; expiresAt: string }>>({});
+  const [lastQrErrorByIntegrationId, setLastQrErrorByIntegrationId] = useState<Record<string, string>>({});
+  const [qrLoadingIntegrationId, setQrLoadingIntegrationId] = useState<string | null>(null);
+  const [qrViewerOpen, setQrViewerOpen] = useState(false);
+  const [qrViewerIntegrationId, setQrViewerIntegrationId] = useState<string | null>(null);
 
   useEffect(() => {
     if (token) {
@@ -161,7 +166,7 @@ export default function Perfil() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["service-tokens"] }),
   });
 
-  const safeKpis = kpis || {
+  const safeKpis: { activeChats: number; newLeads: number; conversions: number } = (kpis as { activeChats: number; newLeads: number; conversions: number } | undefined) || {
     activeChats: 0,
     newLeads: 0,
     conversions: 0,
@@ -187,6 +192,34 @@ export default function Perfil() {
     };
     return m[c] || c;
   };
+
+  const qrLinkMutation = useMutation({
+    mutationFn: (integrationId: string) => integrationsApi.createWhatsAppQrLink(token!, integrationId),
+    onMutate: (integrationId) => {
+      setQrLoadingIntegrationId(integrationId);
+      setLastQrErrorByIntegrationId((prev) => ({ ...prev, [integrationId]: "" }));
+    },
+    onSuccess: (data, integrationId) => {
+      setLastQrByIntegrationId((prev) => ({ ...prev, [integrationId]: data }));
+      setLastQrErrorByIntegrationId((prev) => ({ ...prev, [integrationId]: "" }));
+      setQrViewerIntegrationId(integrationId);
+      setQrViewerOpen(true);
+    },
+    onError: (error, integrationId) => {
+      setLastQrErrorByIntegrationId((prev) => ({ ...prev, [integrationId]: (error as Error).message }));
+    },
+    onSettled: () => {
+      setQrLoadingIntegrationId(null);
+    },
+  });
+
+  const openQrViewer = (integrationId: string) => {
+    setQrViewerIntegrationId(integrationId);
+    setQrViewerOpen(true);
+  };
+
+  const activeQr = qrViewerIntegrationId ? lastQrByIntegrationId[qrViewerIntegrationId] : null;
+  const activeQrIsExpired = activeQr ? new Date(activeQr.expiresAt).getTime() <= Date.now() : false;
 
   return (
     <>
@@ -318,6 +351,11 @@ export default function Perfil() {
                     <Button size="sm" variant="secondary" className="h-8" onClick={() => testIntegrationMutation.mutate(it.id)} disabled={testIntegrationMutation.isPending}>
                       <FlaskConical className="w-3.5 h-3.5 mr-1" /> Probar
                     </Button>
+                    {it.channel === "whatsapp" && it.provider === "whatsapp-connect" ? (
+                      <Button size="sm" variant="outline" className="h-8" onClick={() => qrLinkMutation.mutate(it.id)} disabled={qrLoadingIntegrationId === it.id}>
+                        {qrLoadingIntegrationId === it.id ? "Generando QR..." : "Generar QR"}
+                      </Button>
+                    ) : null}
                     <Button
                       size="sm"
                       variant="outline"
@@ -349,6 +387,23 @@ export default function Perfil() {
                     Desactivar
                   </Button>
                 </div>
+                {it.channel === "whatsapp" && it.provider === "whatsapp-connect" ? (
+                  <div className="space-y-1">
+                    {lastQrErrorByIntegrationId[it.id] ? <p className="text-[11px] text-destructive">{lastQrErrorByIntegrationId[it.id]}</p> : null}
+                    {lastQrByIntegrationId[it.id]?.expiresAt ? (
+                      <p className="text-[11px] text-muted-foreground">
+                        {new Date(lastQrByIntegrationId[it.id].expiresAt).getTime() <= Date.now()
+                          ? "QR expirado. Genera uno nuevo."
+                          : `QR vigente hasta ${new Date(lastQrByIntegrationId[it.id].expiresAt).toLocaleString()}`}
+                      </p>
+                    ) : null}
+                    {lastQrByIntegrationId[it.id]?.url ? (
+                      <Button size="sm" variant="ghost" className="h-7 px-1 text-[11px]" onClick={() => openQrViewer(it.id)}>
+                        Ver QR en modal
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : null}
               </li>
             ))}
             {integrations.length === 0 ? <p className="text-xs text-muted-foreground">No hay integraciones. Añade al menos una si quieres exigir credenciales por canal.</p> : null}
@@ -377,6 +432,39 @@ export default function Perfil() {
             >
               {saveCredsMutation.isPending ? "Guardando..." : "Guardar credenciales"}
             </Button>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={qrViewerOpen} onOpenChange={setQrViewerOpen}>
+          <DialogContent className="w-[calc(100vw-1.5rem)] max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Escanea tu QR de WhatsApp</DialogTitle>
+              <DialogDescription>
+                {activeQrIsExpired
+                  ? "Este QR ya expiró. Puedes regenerarlo desde la tarjeta de integración."
+                  : "Si no se visualiza por políticas del proveedor, usa el botón de abrir en pestaña nueva."}
+              </DialogDescription>
+            </DialogHeader>
+            {activeQr?.url ? (
+              <div className="space-y-3">
+                <div className="w-full flex justify-center">
+                  <iframe
+                    src={activeQr.url}
+                    title="QR WhatsApp Connect"
+                    loading="lazy"
+                    className="w-full max-w-[375px] rounded-md border border-border bg-background"
+                    style={{ height: "min(667px, 55vh)" }}
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" className="w-full" onClick={() => window.open(activeQr.url, "_blank", "noopener,noreferrer")}>
+                    Abrir en pestaña nueva
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Primero genera un QR desde la integración.</p>
+            )}
           </DialogContent>
         </Dialog>
 
@@ -512,6 +600,17 @@ function NewIntegrationForm({
   const [channel, setChannel] = useState<IntegrationDto["channel"]>("whatsapp");
   const [provider, setProvider] = useState("meta");
   const [displayName, setDisplayName] = useState("");
+
+  useEffect(() => {
+    if (channel === "whatsapp") {
+      setProvider((prev) => (prev === "meta" || prev === "whatsapp-connect" ? prev : "meta"));
+      return;
+    }
+    if (!provider.trim()) setProvider("meta");
+  }, [channel, provider]);
+
+  const isWhatsApp = channel === "whatsapp";
+
   return (
     <div className="space-y-3">
       <div>
@@ -526,7 +625,14 @@ function NewIntegrationForm({
       </div>
       <div>
         <Label className="text-xs">Proveedor</Label>
-        <Input className="mt-1" value={provider} onChange={(e) => setProvider(e.target.value)} />
+        {isWhatsApp ? (
+          <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm mt-1" value={provider} onChange={(e) => setProvider(e.target.value)}>
+            <option value="meta">meta</option>
+            <option value="whatsapp-connect">whatsapp-connect</option>
+          </select>
+        ) : (
+          <Input className="mt-1" value={provider} onChange={(e) => setProvider(e.target.value)} />
+        )}
       </div>
       <div>
         <Label className="text-xs">Nombre visible</Label>
