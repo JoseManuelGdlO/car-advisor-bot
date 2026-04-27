@@ -1,0 +1,107 @@
+from __future__ import annotations
+
+from unittest.mock import patch
+
+from tests.test_helpers import GraphTestCase, initial_state, with_user_message
+
+
+class Flow03DirectBrandFaqFinancingLeadTests(GraphTestCase):
+    def test_flow_03_direct_brand_faq_financing_lead(self) -> None:
+        versa_2011 = {
+            "id": "veh-versa-2011",
+            "brand": "Nissan",
+            "model": "Versa",
+            "year": 2011,
+            "status": "available",
+            "price": 3000000,
+            "km": 0,
+            "transmission": "si",
+            "engine": "si",
+            "color": "verde",
+            "description": "Barato pa que salga",
+        }
+        versa_2001 = {
+            "id": "veh-versa-2001",
+            "brand": "Nissan",
+            "model": "Versa",
+            "year": 2001,
+            "status": "available",
+            "price": 1200000,
+            "km": 90000,
+            "transmission": "manual",
+            "engine": "1.6",
+            "color": "gris",
+            "description": "",
+        }
+        shilo_plan = {
+            "id": "plan-shilo",
+            "name": "financiamiento shilo",
+            "lender": "BBVA",
+            "active": True,
+            "vehicles": [{"id": "veh-versa-2011", "brand": "Nissan", "model": "Versa", "year": 2011, "status": "available"}],
+            "requirements": [{"title": "Cuenta de banco"}],
+            "rate": 1.0,
+            "showRate": True,
+            "maxTermMonths": 12,
+        }
+        plan_test = {
+            "id": "plan-test",
+            "name": "Test",
+            "lender": "Test",
+            "active": True,
+            "vehicles": [{"id": "veh-versa-2011", "brand": "Nissan", "model": "Versa", "year": 2011, "status": "available"}],
+            "requirements": [{"title": "Requisito y cuenta de banco"}],
+            "rate": 12.0,
+            "showRate": True,
+            "maxTermMonths": 48,
+        }
+
+        def faq_flags(_current_node: str, _last_bot: str, user_message: str, **_kwargs: object) -> dict[str, bool]:
+            return {"interrumpir_por_faq": "ubicad" in user_message.lower()}
+
+        state = initial_state()
+        state["platform"] = "web"
+        state["user_id"] = "5512345678"
+
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", side_effect=faq_flags),
+            patch("src.nodes.faq.fetch_faq_candidates", return_value=["Estamos ubicados por el colegio REX."]),
+            patch("src.nodes.faq.generate_faq_response", return_value="Estamos ubicados por el colegio REX."),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=[versa_2011, versa_2001]),
+            patch("src.nodes.car_selection.search_vehicles", side_effect=[[versa_2011, versa_2001], [versa_2011]]),
+            patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=versa_2011),
+            patch("src.nodes.car_selection.fetch_vehicle_images", return_value={"images": ["Imagen del vehiculo"], "nextCursor": 1, "hasMore": False, "mode": "top"}),
+            patch("src.nodes.car_selection.generate_vehicle_candidates_selection_message", return_value="1. Nissan Versa 2011\n2. Nissan Versa 2001"),
+            patch("src.nodes.car_selection.generate_vehicle_detail_intro", return_value="Aqui tienes la información completa del Nissan Versa 2011. 😊"),
+            patch("src.nodes.car_selection.safe_llm_format", side_effect=lambda text: text),
+            patch("src.nodes.financing.fetch_vehicles", return_value=[versa_2011, versa_2001]),
+            patch("src.nodes.financing.search_vehicles", return_value=[versa_2011]),
+            patch("src.nodes.financing.fetch_financing_plans_by_vehicle", return_value=[shilo_plan, plan_test]),
+            patch("src.nodes.financing.safe_llm_format", side_effect=lambda text: text),
+            patch("src.nodes.financing.classify_financing_plan_selection_intent", return_value="ASK_EXPLICIT_PLAN"),
+            patch("src.nodes.lead_capture.safe_llm_format", side_effect=lambda text: text),
+            patch("src.nodes.lead_capture.notify_advisor") as notify_mock,
+            patch("src.nodes.lead_capture.push_event_to_backend") as event_mock,
+        ):
+            state = self.graph.invoke(with_user_message(state, "tienes carros versa?"))
+            state = self.graph.invoke(with_user_message(state, "Cómo es el nissan versa 2011?"))
+            state = self.graph.invoke(with_user_message(state, "dónde estan ubicados?"))
+            self.assertIn("colegio REX", state["messages"][-1]["content"])
+
+            state = self.graph.invoke(with_user_message(state, "si me interesa el vehiculo, pero no tienen planes de financiamiento?"))
+            self.assertEqual(state.get("current_node"), "financing")
+
+            state = self.graph.invoke(with_user_message(state, "el shilo suena interesante"))
+            self.assertEqual(state.get("selected_financing_plan_id"), "")
+
+            state = self.graph.invoke(with_user_message(state, "el financiamiento shilo"))
+            self.assertEqual(state.get("current_node"), "lead_capture")
+            self.assertEqual(state.get("selected_financing_plan_id"), "plan-shilo")
+
+            state = self.graph.invoke(with_user_message(state, "javier karim reyes"))
+            state = self.graph.invoke(with_user_message(state, "javier@kaim.com"))
+            self.assertTrue(state.get("lead_capture_done"))
+            self.assertEqual(state.get("current_node"), "router")
+            notify_mock.assert_called_once()
+            event_mock.assert_called_once()
+
