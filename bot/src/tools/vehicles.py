@@ -187,6 +187,20 @@ def _best_fuzzy_match(token: str, options_map: dict[str, str], threshold: float 
     return None
 
 
+def _term_matches_as_whole_words(haystack: str, term: str) -> bool:
+    """Evita que modelos cortos (ej. Ram) coincidan como subcadena de otra palabra (ej. muestrame)."""
+
+    if not term:
+        return False
+    parts = [p for p in str(term).strip().split() if p]
+    if not parts:
+        return False
+    if len(parts) == 1:
+        return re.search(rf"(?<![a-z0-9]){re.escape(parts[0])}(?![a-z0-9])", haystack) is not None
+    segs = [re.escape(p) for p in parts]
+    return re.search(rf"(?<![a-z0-9])" + r"\s+".join(segs) + r"(?![a-z0-9])", haystack) is not None
+
+
 def canonicalize_with_typo_support(text: str, options: list[str], threshold: float = 0.75) -> str | None:
     """Devuelve opcion canonica con exact/contains/fuzzy para tolerar typos."""
 
@@ -197,7 +211,7 @@ def canonicalize_with_typo_support(text: str, options: list[str], threshold: flo
     if normalized_text in options_map:
         return options_map[normalized_text]
     for normalized_option, raw in options_map.items():
-        if normalized_option and normalized_option in normalized_text:
+        if normalized_option and _term_matches_as_whole_words(normalized_text, normalized_option):
             return raw
     tokens = [token for token in normalized_text.split(" ") if token]
     for token in tokens:
