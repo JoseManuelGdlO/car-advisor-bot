@@ -6,7 +6,6 @@ import os
 import re
 import unicodedata
 from difflib import SequenceMatcher
-from urllib.parse import urlsplit, urlunsplit
 from typing import Any
 
 import requests
@@ -40,7 +39,7 @@ def _normalize_vehicles_payload(payload: Any) -> list[dict[str, Any]]:
 def fetch_vehicles() -> list[dict[str, Any]]:
     """Obtiene catalogo de vehiculos completo desde backend."""
 
-    url = f"{_vehicles_api_base_url()}/api/vehicles"
+    url = f"{_vehicles_api_base_url()}/vehicles"
     response = requests.get(url, headers=_vehicles_api_headers(), timeout=6)
     response.raise_for_status()
     return _normalize_vehicles_payload(response.json())
@@ -55,7 +54,7 @@ def search_vehicles(filters: dict[str, Any]) -> list[dict[str, Any]]:
         if key not in allowed_keys or value in (None, ""):
             continue
         params[key] = value
-    url = f"{_vehicles_api_base_url()}/api/vehicles/search"
+    url = f"{_vehicles_api_base_url()}/vehicles/search"
     response = requests.get(url, headers=_vehicles_api_headers(), params=params, timeout=6)
     response.raise_for_status()
     return _normalize_vehicles_payload(response.json())
@@ -67,7 +66,7 @@ def fetch_vehicle_by_id(vehicle_id: str) -> dict[str, Any] | None:
     cleaned_id = str(vehicle_id or "").strip()
     if not cleaned_id:
         return None
-    url = f"{_vehicles_api_base_url()}/api/vehicles/{cleaned_id}"
+    url = f"{_vehicles_api_base_url()}/vehicles/{cleaned_id}"
     response = requests.get(url, headers=_vehicles_api_headers(), timeout=6)
     if response.status_code == 404:
         return None
@@ -142,7 +141,7 @@ def fetch_vehicle_images(
     if normalized_mode == "next" and isinstance(cursor, int) and cursor >= 0:
         params["cursor"] = cursor
 
-    url = f"{_vehicles_api_base_url()}/api/vehicles/{cleaned_id}/images"
+    url = f"{_vehicles_api_base_url()}/vehicles/{cleaned_id}/images"
     response = requests.get(url, headers=_vehicles_api_headers(), params=params, timeout=6)
     if response.status_code == 404:
         return _normalize_vehicle_images_payload({"mode": normalized_mode})

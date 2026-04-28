@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+from urllib.parse import urlsplit, urlunsplit
 from typing import Any
 
 from src.state import clientState
@@ -233,7 +234,13 @@ def _image_url_for_chat(raw_url: str) -> str:
         return ""
     if cleaned.startswith("http://") or cleaned.startswith("https://"):
         return cleaned
-    base = os.getenv("VEHICLES_API_BASE_URL", "http://localhost:4000").rstrip("/")
+    backend_api_url = str(os.getenv("BACKEND_API_URL", "")).strip()
+    if backend_api_url:
+        parts = urlsplit(backend_api_url)
+        path = re.sub(r"/api/?$", "", parts.path or "", flags=re.IGNORECASE) or ""
+        base = urlunsplit((parts.scheme, parts.netloc, path, "", "")).rstrip("/")
+    else:
+        base = "http://localhost:4000"
     if cleaned.startswith("/"):
         return f"{base}{cleaned}"
     return f"{base}/{cleaned}"

@@ -1,4 +1,5 @@
 class ChatInterface {
+  // python3 -m http.server 8090
   static BOT_MESSAGE_SEPARATOR = "<<BOT_MSG_BREAK>>";
   constructor() {
     this.messagesContainer = document.getElementById("chat-messages");
@@ -11,6 +12,7 @@ class ChatInterface {
 
     this.userIdInput = document.getElementById("user-id");
     this.apiUrlInput = document.getElementById("api-url");
+    this.backendUrlInput = document.getElementById("backend-url");
 
     this.currentNodeElement = document.getElementById("current-node");
     this.selectedCarElement = document.getElementById("selected-car");
@@ -74,6 +76,13 @@ class ChatInterface {
       return "";
     }
     return String(this.apiUrlInput.value || "").trim();
+  }
+
+  getBackendBase() {
+    if (!this.backendUrlInput) {
+      return "";
+    }
+    return String(this.backendUrlInput.value || "").trim();
   }
 
   getChatEndpoint() {
@@ -287,7 +296,7 @@ class ChatInterface {
       const match = line.match(imageLineRegex);
       if (!match) return line;
       const rawPath = match[1];
-      const baseUrl = this.getApiBase();
+      const baseUrl = this.getBackendBase() || this.getApiBase();
       const src = rawPath.startsWith("/") && baseUrl ? `${baseUrl}${rawPath}` : rawPath;
       return `<img src="${src}" alt="Imagen del vehiculo" class="chat-inline-image" loading="lazy">`;
     });

@@ -73,7 +73,15 @@
                 <label for="api-url">API URL:</label>
                 <select id="api-url" title="Entorno del bot">
                     <option value="http://localhost:8000">localhost:8000</option>
+                    <option value="https://bot-autobot.vvggha.easypanel.host">Prod bot</option>
                     <option value="">Mismo host (ruta relativa)</option>
+                </select>
+
+                <label for="backend-url">Backend URL:</label>
+                <select id="backend-url" title="Entorno del backend">
+                    <option value="">Auto (igual que API URL)</option>
+                    <option value="http://localhost:4000">localhost:4000</option>
+                    <option value="https://prueba-autobot.vvggha.easypanel.host">Prod backend</option>
                 </select>
             </div>
 
@@ -93,6 +101,6 @@
         </div>
     </div>
 
-    <script src="app.js?v=3"></script>
+    <script src="app.js?v=4"></script>
 </body>
 </html>
