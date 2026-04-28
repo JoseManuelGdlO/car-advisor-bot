@@ -34,7 +34,7 @@ const markReceipt = async (receipt, status, errorMessage) => {
   });
 };
 
-export const ingestWhatsappConnectEvent = async ({ normalizedEvent, credentials }) => {
+export const ingestWhatsappConnectEvent = async ({ normalizedEvent, credentials: _credentials }) => {
   // Ejecuta pipeline completo inbound: dedupe, persistencia, bot y outbound.
   let receipt;
   try {
@@ -123,23 +123,14 @@ export const ingestWhatsappConnectEvent = async ({ normalizedEvent, credentials 
       });
       logWcWebhookDebug("pipeline: send outbound", { to: String(normalizedEvent.externalUserId || "").slice(0, 64) });
       await runWithWcToken(
-        async (token) =>
+        async () =>
           wcClient.sendMessageWithRetry({
             deviceId: normalizedEvent.deviceId,
-            token,
             to: normalizedEvent.externalUserId,
             type: "text",
             text: reply,
             tenantId: normalizedEvent.tenantId,
-          }),
-        {
-          cacheKey: credentials.apiEmail || credentials.apiKey || normalizedEvent.integrationId,
-          loginArgs: {
-            email: credentials.apiEmail,
-            password: credentials.apiPassword,
-            apiKey: credentials.apiKey,
-          },
-        }
+          })
       );
     }
 

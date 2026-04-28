@@ -42,17 +42,12 @@ export const postWhatsappConnectQrLink = async (req, res, next) => {
   try {
     const { integrationId } = requestSchema.parse(req.body || {});
     const { credentials } = await getIntegrationContext(integrationId, req.auth.userId);
-    const loginArgs = {
-      email: credentials.apiEmail,
-      password: credentials.apiPassword,
-      apiKey: credentials.apiKey,
-    };
 
-    const result = await runWithWcToken(async (token) => {
+    const result = await runWithWcToken(async () => {
       // Inicia/renueva la sesion del device antes de emitir el link publico.
-      await wcClient.connectDevice(credentials.deviceId, token);
-      return wcClient.createPublicLink(credentials.deviceId, token);
-    }, { cacheKey: credentials.apiEmail || credentials.apiKey || integrationId, loginArgs });
+      await wcClient.connectDevice(credentials.deviceId);
+      return wcClient.createPublicLink(credentials.deviceId);
+    });
 
     // Si upstream no envia expiracion, usamos un fallback corto para UX.
     return res.json({
@@ -69,15 +64,7 @@ export const getWhatsappConnectDeviceStatus = async (req, res, next) => {
     // Consulta estado online/offline del device asociado a la integración.
     const { integrationId } = requestSchema.parse(req.query || {});
     const { credentials } = await getIntegrationContext(integrationId, req.auth.userId);
-    const loginArgs = {
-      email: credentials.apiEmail,
-      password: credentials.apiPassword,
-      apiKey: credentials.apiKey,
-    };
-    const result = await runWithWcToken((token) => wcClient.getDeviceStatus({ deviceId: credentials.deviceId, token }), {
-      cacheKey: credentials.apiEmail || credentials.apiKey || integrationId,
-      loginArgs,
-    });
+    const result = await runWithWcToken(() => wcClient.getDeviceStatus({ deviceId: credentials.deviceId }));
     return res.json(result);
   } catch (err) {
     return next(err);
@@ -89,22 +76,15 @@ export const postWhatsappConnectSendTest = async (req, res, next) => {
     // Endpoint de diagnóstico para verificar envío saliente controlado.
     const { integrationId, to, text } = sendTestSchema.parse(req.body || {});
     const { credentials } = await getIntegrationContext(integrationId, req.auth.userId);
-    const loginArgs = {
-      email: credentials.apiEmail,
-      password: credentials.apiPassword,
-      apiKey: credentials.apiKey,
-    };
     await runWithWcToken(
-      (token) =>
+      () =>
         wcClient.sendMessageWithRetry({
           deviceId: credentials.deviceId,
-          token,
           to,
           type: "text",
           text,
           tenantId: credentials.tenantId,
         }),
-      { cacheKey: credentials.apiEmail || credentials.apiKey || integrationId, loginArgs }
     );
     return res.status(202).json({ ok: true });
   } catch (err) {

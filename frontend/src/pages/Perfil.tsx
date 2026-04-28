@@ -83,9 +83,6 @@ export default function Perfil() {
   const [wcCredForm, setWcCredForm] = useState({
     deviceId: "",
     webhookSecret: "",
-    apiKey: "",
-    apiEmail: "",
-    apiPassword: "",
     tenantId: "",
   });
   const [newTokenName, setNewTokenName] = useState("");
@@ -162,9 +159,6 @@ export default function Perfil() {
       setWcCredForm({
         deviceId: "",
         webhookSecret: "",
-        apiKey: "",
-        apiEmail: "",
-        apiPassword: "",
         tenantId: "",
       });
     },
@@ -450,9 +444,6 @@ export default function Perfil() {
                         setWcCredForm({
                           deviceId: "",
                           webhookSecret: "",
-                          apiKey: "",
-                          apiEmail: "",
-                          apiPassword: "",
                           tenantId: "",
                         });
                       }}
@@ -541,36 +532,6 @@ export default function Perfil() {
                   />
                 </div>
                 <div>
-                  <Label className="text-xs">API Key</Label>
-                  <Input
-                    className="mt-1"
-                    value={wcCredForm.apiKey}
-                    onChange={(e) => setWcCredForm((s) => ({ ...s, apiKey: e.target.value }))}
-                    placeholder="Si usas API key, deja email/password vacíos"
-                  />
-                </div>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <div>
-                    <Label className="text-xs">API email</Label>
-                    <Input
-                      className="mt-1"
-                      value={wcCredForm.apiEmail}
-                      onChange={(e) => setWcCredForm((s) => ({ ...s, apiEmail: e.target.value }))}
-                      placeholder="email@dominio.com"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs">API password</Label>
-                    <Input
-                      className="mt-1"
-                      type="password"
-                      value={wcCredForm.apiPassword}
-                      onChange={(e) => setWcCredForm((s) => ({ ...s, apiPassword: e.target.value }))}
-                      placeholder="••••••••"
-                    />
-                  </div>
-                </div>
-                <div>
                   <Label className="text-xs">Tenant ID (opcional)</Label>
                   <Input
                     className="mt-1"
@@ -579,9 +540,7 @@ export default function Perfil() {
                     placeholder="tenant_123"
                   />
                 </div>
-                <p className="text-[11px] text-muted-foreground">
-                  Debes enviar <strong>API Key</strong> o bien <strong>API email + API password</strong>.
-                </p>
+                <p className="text-[11px] text-muted-foreground">El Service JWT se configura en backend (`WC_SERVICE_JWT`), no en este formulario.</p>
               </div>
             ) : (
               <Textarea rows={10} className="font-mono text-xs" value={credJson} onChange={(e) => setCredJson(e.target.value)} />
@@ -594,25 +553,15 @@ export default function Perfil() {
                 if (isWhatsAppConnectCredModal) {
                   const deviceId = wcCredForm.deviceId.trim();
                   const webhookSecret = wcCredForm.webhookSecret.trim();
-                  const apiKey = wcCredForm.apiKey.trim();
-                  const apiEmail = wcCredForm.apiEmail.trim();
-                  const apiPassword = wcCredForm.apiPassword.trim();
                   const tenantId = wcCredForm.tenantId.trim();
-                  const hasApiKey = Boolean(apiKey);
-                  const hasEmailPassword = Boolean(apiEmail && apiPassword);
                   if (!deviceId || !webhookSecret) {
                     setCredError("Device ID y Webhook secret son obligatorios.");
-                    return;
-                  }
-                  if (!hasApiKey && !hasEmailPassword) {
-                    setCredError("Debes capturar API Key o API email + API password.");
                     return;
                   }
                   setCredError("");
                   const payload: Record<string, unknown> = {
                     deviceId,
                     webhookSecret,
-                    ...(hasApiKey ? { apiKey } : { apiEmail, apiPassword }),
                     ...(tenantId ? { tenantId } : {}),
                   };
                   saveCredsMutation.mutate({ id: credOpenFor, payload });

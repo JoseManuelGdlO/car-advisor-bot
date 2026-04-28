@@ -21,8 +21,8 @@ Usa como base `backend/.env.example`:
 - `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
 - `JWT_SECRET`, `JWT_EXPIRES_IN`
 - `PORT`, `API_PREFIX`, `CORS_ORIGIN`
-- `WC_API_URL` (URL base del API WhatsApp Connect; credenciales por integración en `Perfil`, no en env)
-- `WC_JWT_REFRESH_MARGIN_SECONDS` (opcional, default `300`)
+- `WC_API_URL` (URL base del API WhatsApp Connect)
+- `WC_SERVICE_JWT` (token de servicio permanente emitido por `whatsapp-connect-v2`)
 - `WC_TIMEOUT_MS` (opcional, default `8000`)
 - `WC_WEBHOOK_MAX_SKEW_MS` (opcional, ventana anti-replay del webhook)
 - `WC_WEBHOOK_ENABLED` (opcional, `true`/`false`; deshabilita ingesta de webhooks)
@@ -100,15 +100,47 @@ Usa `bot/.env.example`:
 
 1. El usuario crea una integracion de canal `whatsapp` con proveedor `whatsapp-connect` en `Perfil`.
 2. El frontend llama `POST /api/internal/whatsapp/qr-link`.
-3. El backend hace login con las credenciales cifradas de esa integración, cachea el JWT, ejecuta:
-   - `POST /auth/login`
+3. El backend usa `WC_SERVICE_JWT` global desde entorno y ejecuta:
    - `POST /devices/:id/connect`
    - `POST /devices/:id/public-link`
+   - `GET /devices/:id/status`
+   - `POST /devices/:id/messages/send`
 4. El backend responde `{ url, expiresAt }` y el frontend abre el QR en una nueva pestana.
 
 Notas de seguridad:
 - El JWT de WhatsApp Connect y las credenciales de servicio nunca se exponen al frontend.
-- El backend reintenta una vez si recibe `401` del proveedor (re-login + retry).
+- El backend no hace re-login legacy; para `401/403` registra `service_jwt_invalid_or_missing_scope` y falla la petición.
+
+## Service JWT en WhatsApp Connect v2
+
+### Scopes requeridos
+
+- `devices:status:read`
+- `devices:public-link:write`
+- `messages:send`
+- `messages:test`
+
+### Generar token permanente
+
+1. Obtener JWT de superadmin:
+   - `POST /auth/login`
+2. Crear Service JWT:
+   - `POST /auth/service-jwt`
+   - body sugerido:
+     - `service: "car-advisor-bot"`
+     - `scopes: ["devices:status:read","devices:public-link:write","messages:send","messages:test"]`
+3. Guardar el `token` retornado en `backend/.env` como `WC_SERVICE_JWT`.
+
+### Rotación y revocación
+
+1. Listar tokens emitidos:
+   - `GET /auth/service-jwt`
+2. Rotar:
+   - crear un token nuevo con `POST /auth/service-jwt`
+   - actualizar `WC_SERVICE_JWT` en entorno y redeploy
+   - validar operaciones (`status`, `public-link`, `messages/send`)
+3. Revocar token anterior:
+   - `POST /auth/service-jwt/:id/revoke`
 
 ## Notas de migracion
 

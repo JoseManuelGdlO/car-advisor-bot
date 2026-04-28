@@ -24,9 +24,6 @@ const getActiveCredentialPayload = async (ownerUserId, channelIntegrationId) => 
 };
 
 const normalizeWcCredentials = (payload = {}) => ({
-  apiEmail: String(payload.apiEmail || payload.email || "").trim(),
-  apiPassword: String(payload.apiPassword || payload.password || "").trim(),
-  apiKey: String(payload.apiKey || "").trim(),
   webhookSecret: String(payload.webhookSecret || "").trim(),
   deviceId: String(payload.deviceId || "").trim(),
   tenantId: String(payload.tenantId || "").trim() || null,
