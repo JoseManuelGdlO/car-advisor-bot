@@ -6,6 +6,7 @@ import os
 import re
 import unicodedata
 from difflib import SequenceMatcher
+from urllib.parse import urlsplit, urlunsplit
 from typing import Any
 
 import requests
@@ -14,7 +15,7 @@ import requests
 def _vehicles_api_base_url() -> str:
     """Retorna base URL del backend para consultar catalogo de vehiculos."""
 
-    return os.getenv("VEHICLES_API_BASE_URL", "http://localhost:4000").rstrip("/")
+    return os.getenv("BACKEND_API_URL", "http://localhost:4000").rstrip("/")
 
 
 def _vehicles_api_headers() -> dict[str, str]:
