@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from src.services.llm_responses import classify_financing_plan_selection_intent, safe_llm_format
@@ -60,7 +61,15 @@ def _is_financing_query(user_text: str) -> bool:
     normalized = normalize_user_text(user_text)
     if not normalized:
         return False
-    return any(signal in normalized for signal in _FINANCING_SIGNALS)
+    return any(_contains_signal_phrase(normalized, signal) for signal in _FINANCING_SIGNALS)
+
+
+def _contains_signal_phrase(normalized_text: str, signal: str) -> bool:
+    parts = [part for part in normalize_user_text(signal).split() if part]
+    if not parts:
+        return False
+    pattern = r"(?<![a-z0-9])" + r"\s+".join(re.escape(part) for part in parts) + r"(?![a-z0-9])"
+    return re.search(pattern, normalized_text) is not None
 
 
 def _vehicle_label(item: dict[str, Any]) -> str:
@@ -505,7 +514,12 @@ def financing(state: clientState) -> clientState:
                 selected_vehicle_id=selected_vehicle_id,
                 plans=len(plans_for_vehicle),
             )
-            message = format_financing_plans_for_vehicle(selected_car or "este vehiculo", plans_for_vehicle)
+            platform = str(state.get("platform", "web")).strip().lower() or "web"
+            message = format_financing_plans_for_vehicle(
+                selected_car or "este vehiculo",
+                plans_for_vehicle,
+                platform=platform,
+            )
             has_single_plan = len(plans_for_vehicle) == 1
             follow_up = (
                 "Te interesa este plan? No olvides en preguntarme cualquier duda."
@@ -535,7 +549,8 @@ def financing(state: clientState) -> clientState:
     state["financing_plan_candidates"] = plans
     state["awaiting_financing_plan_selection"] = True
     _debug("plans_loaded", total_plans=len(plans))
-    listing = format_financing_plans(plans)
+    platform = str(state.get("platform", "web")).strip().lower() or "web"
+    listing = format_financing_plans(plans, platform=platform)
     prompt = (
         f"{listing}\n\nSi te interesa uno en particular, dime el nombre o numero del plan."
         " Despues te pedire seleccionar el vehiculo dentro de ese plan."

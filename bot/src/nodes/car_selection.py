@@ -150,7 +150,17 @@ def _is_financing_request(user_text: str) -> bool:
     normalized = normalize_user_text(user_text)
     if not normalized:
         return False
-    return any(signal in normalized for signal in _FINANCING_SIGNALS_NORMALIZED)
+    return any(_contains_signal_phrase(normalized, signal) for signal in _FINANCING_SIGNALS_NORMALIZED)
+
+
+def _contains_signal_phrase(normalized_text: str, signal: str) -> bool:
+    """Busca una señal respetando limites de palabra para evitar falsos positivos."""
+
+    parts = [part for part in str(signal or "").split() if part]
+    if not parts:
+        return False
+    pattern = r"(?<![a-z0-9])" + r"\s+".join(re.escape(part) for part in parts) + r"(?![a-z0-9])"
+    return re.search(pattern, normalized_text) is not None
 
 
 def _format_vehicle_name(item: dict[str, Any]) -> str:
