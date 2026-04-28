@@ -16,5 +16,4 @@ COPY . .
 
 EXPOSE 8000
 
-# Si el orquestador inyecta PORT (p. ej. EasyPanel), prevalece sobre API_PORT.
 CMD ["sh", "-c", "exec python -m uvicorn src.server:app --host \"${API_HOST:-0.0.0.0}\" --port \"${PORT:-${API_PORT:-8000}}\""]

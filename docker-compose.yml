@@ -19,7 +19,35 @@ services:
       CREDENTIALS_ENCRYPTION_KEY: ${CREDENTIALS_ENCRYPTION_KEY:-}
       BOT_DEFAULT_OWNER_USER_ID: ${BOT_DEFAULT_OWNER_USER_ID:-}
       BOT_DEFAULT_INBOUND_CHANNEL: ${BOT_DEFAULT_INBOUND_CHANNEL:-web}
-      BOT_ENGINE_URL: ${BOT_ENGINE_URL:-http://localhost:8000}
+      BOT_ENGINE_URL: ${BOT_ENGINE_URL:-http://bot:8000}
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
       FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL:-}
       FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY:-}
+    depends_on:
+      - bot
+
+  bot:
+    build:
+      context: ./bot
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      API_HOST: ${BOT_API_HOST:-0.0.0.0}
+      API_PORT: ${BOT_API_PORT:-8000}
+      PORT: ${BOT_PORT:-8000}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      MODEL_NAME: ${MODEL_NAME:-gpt-4o-mini}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_DIALECT: ${DB_DIALECT:-mysql}
+      NOTIFY_ADVISOR_URL: ${NOTIFY_ADVISOR_URL:-http://localhost:8000/notificarAsesor}
+      BACKEND_API_URL: ${BACKEND_API_URL:-http://backend:4000/api}
+      BACKEND_SERVICE_TOKEN: ${BACKEND_SERVICE_TOKEN:-}
+      BOT_CRM_OWNER_USER_ID: ${BOT_CRM_OWNER_USER_ID:-}
+      BOT_DEFAULT_INBOUND_CHANNEL: ${BOT_DEFAULT_INBOUND_CHANNEL:-web}
+      CORS_ORIGINS: ${BOT_CORS_ORIGINS:-}
+    ports:
+      - "${BOT_PORT:-8000}:8000"
