@@ -19,7 +19,7 @@ services:
       CREDENTIALS_ENCRYPTION_KEY: ${CREDENTIALS_ENCRYPTION_KEY:-}
       BOT_DEFAULT_OWNER_USER_ID: ${BOT_DEFAULT_OWNER_USER_ID:-}
       BOT_DEFAULT_INBOUND_CHANNEL: ${BOT_DEFAULT_INBOUND_CHANNEL:-web}
-      BOT_ENGINE_URL: ${BOT_ENGINE_URL:-http://bot:8000}
+      BOT_ENGINE_URL: ${BOT_ENGINE_URL:-http://autobot:8000}
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
       FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL:-}
       FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY:-}
@@ -30,12 +30,12 @@ services:
       WC_JWT_REFRESH_MARGIN_SECONDS: ${WC_JWT_REFRESH_MARGIN_SECONDS:-300}
       WC_TIMEOUT_MS: ${WC_TIMEOUT_MS:-8000}
     depends_on:
-      - bot
+      - autobot
 
-  bot:
+  autobot:
     build:
       context: ./bot
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.autobot
     restart: unless-stopped
     environment:
       API_HOST: ${BOT_API_HOST:-0.0.0.0}
