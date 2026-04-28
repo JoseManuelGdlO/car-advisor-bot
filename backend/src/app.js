@@ -10,6 +10,8 @@ import { authRoutes } from "./routes/authRoutes.js";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.js";
 
 export const app = express();
+// EasyPanel/Nginx agrega X-Forwarded-*; habilitar trust proxy evita falsos positivos en rate-limit.
+app.set("trust proxy", 1);
 const normalizeOrigin = (value) => String(value || "").trim().replace(/\/$/, "").toLowerCase();
 const allowedOrigins = new Set(env.corsOrigins.map((item) => normalizeOrigin(item)).filter(Boolean));
 app.use(
