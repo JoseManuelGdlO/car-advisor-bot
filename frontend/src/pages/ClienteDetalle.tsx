@@ -15,6 +15,7 @@ export default function ClienteDetalle() {
   const { data: client } = useQuery({ queryKey: ["client", id], queryFn: () => crmApi.getClient(token!, id!), enabled: Boolean(token && id) });
   const { data: conversations } = useQuery({ queryKey: ["conversations"], queryFn: () => crmApi.getConversations(token!), enabled: Boolean(token) });
   const conv = (conversations || []).find((c: any) => c.clientLeadId === id);
+  const convMessages = Array.isArray(conv?.messages) ? conv.messages : [];
 
   if (!client) {
     return (
@@ -73,11 +74,11 @@ export default function ClienteDetalle() {
           </div>
         )}
 
-        {conv && (
+        {conv && convMessages.length > 0 && (
           <div className="bg-card rounded-2xl p-4 shadow-card border border-border">
             <h3 className="text-xs font-bold uppercase text-muted-foreground tracking-wide mb-3">Últimos mensajes</h3>
             <div className="space-y-2">
-              {conv.messages.slice(-3).map((m) => (
+              {convMessages.slice(-3).map((m) => (
                 <div
                   key={m.id}
                   className={`p-3 rounded-xl text-sm ${

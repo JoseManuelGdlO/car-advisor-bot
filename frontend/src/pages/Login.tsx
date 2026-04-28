@@ -4,6 +4,7 @@ import { Eye, EyeOff, Bot } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/context/AuthContext";
 
 export default function Login() {
@@ -15,6 +16,7 @@ export default function Login() {
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [isRegisterMode, setIsRegisterMode] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,7 +25,7 @@ export default function Login() {
       if (isRegisterMode) {
         await register(name, email, pass);
       }
-      await login(email, pass);
+      await login(email, pass, rememberMe);
       navigate("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo iniciar sesión");
@@ -86,6 +88,18 @@ export default function Login() {
             <button type="button" className="text-xs font-semibold text-primary-dark hover:underline">
               ¿Olvidaste tu contraseña?
             </button>
+          </div>
+
+          <div className="flex items-center justify-between rounded-xl border border-border bg-card px-3 py-2">
+            <Label htmlFor="remember-me" className="text-sm cursor-pointer">
+              Recuérdame
+            </Label>
+            <Switch
+              id="remember-me"
+              checked={rememberMe}
+              onCheckedChange={setRememberMe}
+              aria-label="Activar recordar sesión"
+            />
           </div>
 
           <Button type="submit" className="w-full h-12 rounded-xl text-base font-semibold shadow-green">

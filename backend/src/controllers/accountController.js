@@ -124,3 +124,26 @@ export const patchAccountProfile = async (req, res, next) => {
     return next(err);
   }
 };
+
+const deleteAccountSchema = z
+  .object({
+    confirmText: z.string().trim().min(1),
+  })
+  .strict();
+
+export const deleteAccount = async (req, res, next) => {
+  try {
+    const { confirmText } = deleteAccountSchema.parse(req.body || {});
+    if (confirmText.toUpperCase() !== "ELIMINAR") {
+      throw new ApiError(400, "Debes escribir ELIMINAR para confirmar.");
+    }
+
+    const user = await User.findByPk(req.auth.userId);
+    if (!user) throw new ApiError(404, "User not found");
+
+    await user.destroy();
+    return res.status(204).send();
+  } catch (err) {
+    return next(err);
+  }
+};

@@ -15,7 +15,7 @@ export type AuthUser = {
 type AuthContextType = {
   token: string | null;
   user: AuthUser | null;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -23,21 +23,51 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const TOKEN_KEY = "auth_token";
+const USER_KEY = "auth_user";
+const REMEMBER_KEY = "auth_remember_me";
+
+const getStoredValue = (key: string): string | null => {
+  const local = localStorage.getItem(key);
+  if (local !== null) return local;
+  return sessionStorage.getItem(key);
+};
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem("auth_token"));
+  const [token, setToken] = useState<string | null>(() => getStoredValue(TOKEN_KEY));
   const [user, setUser] = useState<AuthUser | null>(() => {
-    const raw = localStorage.getItem("auth_user");
+    const raw = getStoredValue(USER_KEY);
     return raw ? JSON.parse(raw) : null;
   });
+  const [rememberMe, setRememberMe] = useState<boolean>(() => localStorage.getItem(REMEMBER_KEY) === "true");
 
   useEffect(() => {
-    if (token) localStorage.setItem("auth_token", token);
-    else localStorage.removeItem("auth_token");
-  }, [token]);
+    const store = rememberMe ? localStorage : sessionStorage;
+    const otherStore = rememberMe ? sessionStorage : localStorage;
+    if (token) {
+      store.setItem(TOKEN_KEY, token);
+      otherStore.removeItem(TOKEN_KEY);
+      return;
+    }
+    localStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(TOKEN_KEY);
+  }, [token, rememberMe]);
+
   useEffect(() => {
-    if (user) localStorage.setItem("auth_user", JSON.stringify(user));
-    else localStorage.removeItem("auth_user");
-  }, [user]);
+    const store = rememberMe ? localStorage : sessionStorage;
+    const otherStore = rememberMe ? sessionStorage : localStorage;
+    if (user) {
+      store.setItem(USER_KEY, JSON.stringify(user));
+      otherStore.removeItem(USER_KEY);
+      return;
+    }
+    localStorage.removeItem(USER_KEY);
+    sessionStorage.removeItem(USER_KEY);
+  }, [user, rememberMe]);
+
+  useEffect(() => {
+    localStorage.setItem(REMEMBER_KEY, rememberMe ? "true" : "false");
+  }, [rememberMe]);
 
   const refreshProfile = useCallback(async () => {
     if (!token) return;
@@ -55,8 +85,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     () => ({
       token,
       user,
-      async login(email, password) {
+      async login(email, password, remember = true) {
         const res = await apiRequest<{ token: string; user: AuthUser }>("/auth/login", "POST", { email, password });
+        setRememberMe(remember);
         setToken(res.token);
         try {
           const profile = await accountApi.getProfile(res.token);
@@ -82,6 +113,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         setToken(null);
         setUser(null);
+        setRememberMe(false);
+        localStorage.removeItem(REMEMBER_KEY);
       },
       refreshProfile,
     }),

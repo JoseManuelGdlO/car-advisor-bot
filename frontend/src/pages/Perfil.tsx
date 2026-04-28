@@ -15,6 +15,7 @@ import {
   Plus,
   FlaskConical,
   Car,
+  AlertTriangle,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ScreenHeader } from "@/components/ScreenHeader";
@@ -90,6 +91,8 @@ export default function Perfil() {
   const [newTokenName, setNewTokenName] = useState("");
   const [tokenDialogOpen, setTokenDialogOpen] = useState(false);
   const [lastCreatedToken, setLastCreatedToken] = useState<string | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [lastQrByIntegrationId, setLastQrByIntegrationId] = useState<Record<string, { url: string; expiresAt: string }>>({});
   const [lastQrErrorByIntegrationId, setLastQrErrorByIntegrationId] = useState<Record<string, string>>({});
   const [deviceStatusByIntegrationId, setDeviceStatusByIntegrationId] = useState<Record<string, { status: "ONLINE" | "OFFLINE" | "UNKNOWN"; updatedAt: string }>>({});
@@ -188,6 +191,14 @@ export default function Perfil() {
   const revokeTokenMutation = useMutation({
     mutationFn: (id: string) => authApi.revokeServiceToken(token!, id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["service-tokens"] }),
+  });
+
+  const deleteAccountMutation = useMutation({
+    mutationFn: () => accountApi.deleteAccount(token!, { confirmText: deleteConfirmText }),
+    onSuccess: async () => {
+      await logout();
+      navigate("/login", { replace: true });
+    },
   });
 
   const safeKpis: { activeChats: number; newLeads: number; conversions: number } = (kpis as { activeChats: number; newLeads: number; conversions: number } | undefined) || {
@@ -759,6 +770,50 @@ export default function Perfil() {
             </button>
           </li>
         </ul>
+
+        <div className="bg-card rounded-2xl p-4 shadow-card border border-destructive/30 space-y-3">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="w-5 h-5 text-destructive mt-0.5" />
+            <div>
+              <p className="font-semibold text-sm text-destructive">Eliminar cuenta</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Eliminará de forma permanente tu usuario y los datos asociados.
+              </p>
+            </div>
+          </div>
+          <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="destructive" className="w-full">Iniciar eliminación de cuenta</Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Confirmar eliminación de cuenta</DialogTitle>
+                <DialogDescription>
+                  Esta acción es permanente. Para continuar, escribe <strong>ELIMINAR</strong>.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-2">
+                <Label className="text-xs">Confirmación</Label>
+                <Input
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  placeholder="ELIMINAR"
+                />
+              </div>
+              <Button
+                variant="destructive"
+                className="w-full"
+                disabled={deleteAccountMutation.isPending || deleteConfirmText.trim().toUpperCase() !== "ELIMINAR"}
+                onClick={() => deleteAccountMutation.mutate()}
+              >
+                {deleteAccountMutation.isPending ? "Eliminando..." : "Eliminar cuenta definitivamente"}
+              </Button>
+              {deleteAccountMutation.isError ? (
+                <p className="text-xs text-destructive">{(deleteAccountMutation.error as Error).message}</p>
+              ) : null}
+            </DialogContent>
+          </Dialog>
+        </div>
 
         <button
           type="button"

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireUserAuth } from "../middlewares/auth.js";
-import { getAccountProfile, patchAccountProfile } from "../controllers/accountController.js";
+import { deleteAccount, getAccountProfile, patchAccountProfile } from "../controllers/accountController.js";
 import {
   createIntegration,
   listIntegrations,
@@ -13,6 +13,7 @@ export const accountRoutes = Router();
 
 accountRoutes.get("/account/profile", requireUserAuth, getAccountProfile);
 accountRoutes.patch("/account/profile", requireUserAuth, patchAccountProfile);
+accountRoutes.delete("/account", requireUserAuth, deleteAccount);
 
 accountRoutes.get("/integrations", requireUserAuth, listIntegrations);
 accountRoutes.post("/integrations", requireUserAuth, createIntegration);

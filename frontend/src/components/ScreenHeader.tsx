@@ -18,7 +18,7 @@ export const ScreenHeader = ({ title, subtitle, back, action, variant = "default
   return (
     <header
       className={cn(
-        "sticky top-0 z-20 px-4 pt-[calc(1rem+env(safe-area-inset-top))] pb-3 border-b",
+        "sticky top-0 z-20 px-4 pt-4 pb-3 border-b",
         isPrimary
           ? "bg-gradient-hero text-primary-foreground border-transparent"
           : "bg-card/95 backdrop-blur border-border text-foreground"

@@ -1,5 +1,6 @@
 import { ReactNode } from "react";
 import { useLocation } from "react-router-dom";
+import { Capacitor } from "@capacitor/core";
 import { Signal, Wifi, BatteryFull } from "lucide-react";
 import { BottomNav } from "./BottomNav";
 
@@ -12,6 +13,18 @@ const HIDE_NAV_PREFIXES = ["/login"];
 export const PhoneFrame = ({ children }: PhoneFrameProps) => {
   const { pathname } = useLocation();
   const showNav = !HIDE_NAV_PREFIXES.some((p) => pathname.startsWith(p)) && !pathname.startsWith("/chat/");
+  const isNativeApp = Capacitor.isNativePlatform();
+
+  if (isNativeApp) {
+    return (
+      <div className="min-h-screen w-full bg-background">
+        <div className={`h-screen w-full flex flex-col ${showNav ? "pb-[calc(72px+var(--safe-area-bottom))]" : "pb-safe"}`}>
+          <div className="flex-1 overflow-y-auto scrollbar-hide">{children}</div>
+        </div>
+        {showNav && <BottomNav />}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen w-full bg-gradient-soft flex flex-col items-center justify-center p-0 lg:p-8">
@@ -44,7 +57,7 @@ export const PhoneFrame = ({ children }: PhoneFrameProps) => {
         </div>
 
         {/* Screen content */}
-        <div className={`h-full w-full flex flex-col lg:pt-7 ${showNav ? "pb-[calc(72px+env(safe-area-inset-bottom))]" : ""}`}>
+        <div className={`h-full w-full flex flex-col pt-safe lg:pt-7 ${showNav ? "pb-[calc(72px+var(--safe-area-bottom))]" : "pb-safe"}`}>
           <div className="flex-1 overflow-y-auto scrollbar-hide">{children}</div>
         </div>
 
