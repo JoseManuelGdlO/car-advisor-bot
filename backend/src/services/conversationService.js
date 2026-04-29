@@ -22,6 +22,7 @@ export const upsertConversationEvent = async ({
   selectedCar = "",
   customerInfo = {},
   financingSelection = {},
+  promotionSelection = {},
 }) => {
   // Servicio compartido que centraliza reglas de persistencia y auto-reply por canal.
   if (!ownerUserId) throw new ApiError(500, "owner user is not configured");
@@ -86,10 +87,16 @@ export const upsertConversationEvent = async ({
       ? currentNotes.financing_selection
       : {};
   const mergedFinancing = isNonEmptyObject(financingSelection) ? { ...prevFinancing, ...financingSelection } : { ...prevFinancing };
+  const prevPromotion =
+    currentNotes && typeof currentNotes === "object" && currentNotes.promotion_selection && typeof currentNotes.promotion_selection === "object"
+      ? currentNotes.promotion_selection
+      : {};
+  const mergedPromotion = isNonEmptyObject(promotionSelection) ? { ...prevPromotion, ...promotionSelection } : { ...prevPromotion };
   const mergedNotes = {
     ...currentNotes,
     ...(Object.keys(mergedCustomerInfo).length ? { customer_info: mergedCustomerInfo } : {}),
     ...(Object.keys(mergedFinancing).length ? { financing_selection: mergedFinancing } : {}),
+    ...(Object.keys(mergedPromotion).length ? { promotion_selection: mergedPromotion } : {}),
   };
   const leadFieldUpdates = {
     interestedIn: selectedCar || lead.interestedIn,

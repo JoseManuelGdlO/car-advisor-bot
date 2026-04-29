@@ -9,6 +9,7 @@ from src.nodes.faq import faq
 from src.nodes.financing import financing
 from src.nodes.intent_checker import intent_checker
 from src.nodes.lead_capture import lead_capture
+from src.nodes.promotions import promotions
 from src.nodes.router import router
 from src.state import clientState
 
@@ -40,6 +41,9 @@ def _route_from_router(state: clientState) -> str:
     if node == "financing":
         _log_transition("router", "financing")
         return "financing"
+    if node == "promotions":
+        _log_transition("router", "promotions")
+        return "promotions"
     _log_transition("router", "end", "sin nodo valido")
     return "end"
 
@@ -64,6 +68,10 @@ def _route_after_intent_checker(state: clientState) -> str:
         print("[GRAPH] route_after_intent_checker: retomando financing")
         _log_transition("intent_checker", "financing", "reanudar flujo")
         return "financing"
+    if node == "promotions":
+        print("[GRAPH] route_after_intent_checker: retomando promotions")
+        _log_transition("intent_checker", "promotions", "reanudar flujo")
+        return "promotions"
     print(f"[GRAPH] route_after_intent_checker: sin FAQ, continuando flujo (current_node='{node}')")
     _log_transition("intent_checker", "router")
     return "router"
@@ -79,6 +87,9 @@ def _route_after_car_selection(state: clientState) -> str:
     if node == "financing":
         _log_transition("car_selection", "financing", "consulta de financiamiento")
         return "financing"
+    if node == "promotions":
+        _log_transition("car_selection", "promotions", "consulta de promociones")
+        return "promotions"
     _log_transition("car_selection", "end")
     return "end"
 
@@ -97,6 +108,23 @@ def _route_after_financing(state: clientState) -> str:
     return "end"
 
 
+def _route_after_promotions(state: clientState) -> str:
+    """Permite continuar flujo cuando promotions cambia de nodo destino."""
+
+    node = state.get("current_node", "promotions")
+    if node == "car_selection":
+        _log_transition("promotions", "car_selection", "continuacion hacia catalogo")
+        return "car_selection"
+    if node == "financing":
+        _log_transition("promotions", "financing", "continuacion hacia financiamiento")
+        return "financing"
+    if node == "lead_capture":
+        _log_transition("promotions", "lead_capture", "confirmacion de promocion + vehiculo")
+        return "lead_capture"
+    _log_transition("promotions", "end")
+    return "end"
+
+
 def build_graph():
     """Construye y compila el grafo principal del bot."""
 
@@ -107,6 +135,7 @@ def build_graph():
     graph.add_node("lead_capture", lead_capture)
     graph.add_node("faq", faq)
     graph.add_node("financing", financing)
+    graph.add_node("promotions", promotions)
 
     graph.add_edge(START, "intent_checker")
     graph.add_conditional_edges(
@@ -118,6 +147,7 @@ def build_graph():
             "lead_capture": "lead_capture",
             "car_selection": "car_selection",
             "financing": "financing",
+            "promotions": "promotions",
         },
     )
     graph.add_conditional_edges(
@@ -128,6 +158,7 @@ def build_graph():
             "lead_capture": "lead_capture",
             "faq": "faq",
             "financing": "financing",
+            "promotions": "promotions",
             "end": END,
         },
     )
@@ -138,6 +169,7 @@ def build_graph():
         {
             "lead_capture": "lead_capture",
             "financing": "financing",
+            "promotions": "promotions",
             "end": END,
         },
     )
@@ -146,6 +178,16 @@ def build_graph():
         _route_after_financing,
         {
             "car_selection": "car_selection",
+            "lead_capture": "lead_capture",
+            "end": END,
+        },
+    )
+    graph.add_conditional_edges(
+        "promotions",
+        _route_after_promotions,
+        {
+            "car_selection": "car_selection",
+            "financing": "financing",
             "lead_capture": "lead_capture",
             "end": END,
         },

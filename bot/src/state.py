@@ -36,6 +36,10 @@ class clientState(TypedDict, total=False):
     - financing_vehicle_candidates: lista temporal de vehiculos dentro del plan.
     - awaiting_financing_plan_selection / awaiting_financing_vehicle_selection: banderas de paso.
     - show_selected_vehicle_detail_once: fuerza mostrar detalle del vehiculo ya seleccionado al entrar a car_selection.
+    - selected_promotion_*: promocion elegida/aplicable durante el flujo.
+    - promotion_candidates / promotion_vehicle_candidates: listas temporales para seleccion.
+    - awaiting_promotion_selection / awaiting_promotion_vehicle_selection / awaiting_promotion_vehicle_interest_confirmation:
+      banderas de paso para nodo promotions.
     """
 
     messages: list[dict[str, Any]]
@@ -66,3 +70,13 @@ class clientState(TypedDict, total=False):
     awaiting_financing_plan_selection: bool
     awaiting_financing_vehicle_selection: bool
     show_selected_vehicle_detail_once: bool
+    selected_promotion_id: str
+    selected_promotion_title: str
+    selected_promotion_description: str
+    selected_promotion_valid_until: str
+    selected_promotion_vehicle_ids: list[str]
+    promotion_candidates: list[dict[str, Any]]
+    promotion_vehicle_candidates: list[dict[str, Any]]
+    awaiting_promotion_selection: bool
+    awaiting_promotion_vehicle_selection: bool
+    awaiting_promotion_vehicle_interest_confirmation: bool

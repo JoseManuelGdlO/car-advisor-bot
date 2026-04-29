@@ -145,6 +145,16 @@ def _build_initial_state() -> dict[str, Any]:
         "financing_vehicle_candidates": [],
         "awaiting_financing_plan_selection": False,
         "awaiting_financing_vehicle_selection": False,
+        "selected_promotion_id": "",
+        "selected_promotion_title": "",
+        "selected_promotion_description": "",
+        "selected_promotion_valid_until": "",
+        "selected_promotion_vehicle_ids": [],
+        "promotion_candidates": [],
+        "promotion_vehicle_candidates": [],
+        "awaiting_promotion_selection": False,
+        "awaiting_promotion_vehicle_selection": False,
+        "awaiting_promotion_vehicle_interest_confirmation": False,
     }
 
 

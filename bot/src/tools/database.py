@@ -114,6 +114,18 @@ def _normalize_financing_plans_payload(payload: Any) -> list[dict[str, Any]]:
     return []
 
 
+def _normalize_promotions_payload(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if isinstance(payload, dict):
+        data = payload.get("data")
+        if isinstance(data, list):
+            return [item for item in data if isinstance(item, dict)]
+        if isinstance(payload.get("rows"), list):
+            return [item for item in payload["rows"] if isinstance(item, dict)]
+    return []
+
+
 def fetch_financing_plans() -> list[dict[str, Any]]:
     """Obtiene todos los planes de financiamiento disponibles del backend."""
 
@@ -143,6 +155,37 @@ def fetch_financing_plans_by_vehicle(vehicle_id: str) -> list[dict[str, Any]]:
         return []
     response.raise_for_status()
     return _normalize_financing_plans_payload(response.json())
+
+
+def fetch_promotions() -> list[dict[str, Any]]:
+    """Obtiene todas las promociones disponibles del backend."""
+
+    url = _backend_api_url("/promotions")
+    headers = _backend_headers()
+    if not url:
+        return []
+    response = requests.get(url, headers=headers, timeout=6)
+    if response.status_code == 404:
+        return []
+    response.raise_for_status()
+    return _normalize_promotions_payload(response.json())
+
+
+def fetch_promotions_by_vehicle(vehicle_id: str) -> list[dict[str, Any]]:
+    """Obtiene promociones asociadas a un vehiculo puntual."""
+
+    normalized_id = str(vehicle_id or "").strip()
+    if not normalized_id:
+        return []
+    url = _backend_api_url(f"/vehicles/{normalized_id}/promotions")
+    headers = _backend_headers()
+    if not url:
+        return []
+    response = requests.get(url, headers=headers, timeout=6)
+    if response.status_code == 404:
+        return []
+    response.raise_for_status()
+    return _normalize_promotions_payload(response.json())
 
 
 def upsert_inbound_user_message(phone: str, message: str, platform: str = "web") -> dict[str, str] | None:

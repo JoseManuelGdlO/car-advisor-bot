@@ -182,6 +182,34 @@ def _set_selected_plan(state: clientState, plan: dict[str, Any]) -> None:
     state["selected_financing_plan_lender"] = str(plan.get("lender", "")).strip()
 
 
+def _clear_incompatible_promotion(state: clientState, selected_vehicle_id: str) -> str:
+    promotion_id = str(state.get("selected_promotion_id", "")).strip()
+    if not promotion_id:
+        return ""
+    promotion_vehicle_ids = state.get("selected_promotion_vehicle_ids", [])
+    normalized_ids = (
+        {str(item).strip() for item in promotion_vehicle_ids if str(item).strip()}
+        if isinstance(promotion_vehicle_ids, list)
+        else set()
+    )
+    if not normalized_ids or selected_vehicle_id in normalized_ids:
+        return ""
+    previous_promotion = str(state.get("selected_promotion_title", "")).strip() or "la promocion seleccionada"
+    state["selected_promotion_id"] = ""
+    state["selected_promotion_title"] = ""
+    state["selected_promotion_description"] = ""
+    state["selected_promotion_valid_until"] = ""
+    state["selected_promotion_vehicle_ids"] = []
+    state["promotion_candidates"] = []
+    state["promotion_vehicle_candidates"] = []
+    state["awaiting_promotion_selection"] = False
+    state["awaiting_promotion_vehicle_selection"] = False
+    state["awaiting_promotion_vehicle_interest_confirmation"] = False
+    return safe_llm_format(
+        f"El vehiculo elegido no aplica para {previous_promotion}, asi que quite esa promocion activa."
+    )
+
+
 def _looks_like_plan_vehicle_info_request(user_text: str) -> bool:
     normalized = normalize_user_text(user_text)
     if not normalized:
@@ -382,6 +410,7 @@ def financing(state: clientState) -> clientState:
         state["last_vehicle_candidates"] = []
         state["intent"] = "lead_capture"
         state["current_node"] = "lead_capture"
+        promotion_notice = _clear_incompatible_promotion(state, selected_vehicle_id)
         _debug(
             "route_change",
             next_node="lead_capture",
@@ -392,6 +421,8 @@ def financing(state: clientState) -> clientState:
         confirmation = safe_llm_format(
             f"Perfecto, entonces avanzamos con {selected_car} y el plan {state.get('selected_financing_plan_name', 'seleccionado')}."
         )
+        if promotion_notice:
+            confirmation = f"{promotion_notice}\n\n{confirmation}"
         return append_assistant_message(state, confirmation)
 
     if state.get("awaiting_financing_plan_selection"):
@@ -459,6 +490,7 @@ def financing(state: clientState) -> clientState:
                     state["show_selected_vehicle_detail_once"] = False
                     state["intent"] = "lead_capture"
                     state["current_node"] = "lead_capture"
+                    promotion_notice = _clear_incompatible_promotion(state, selected_vehicle_id)
                     _debug(
                         "single_vehicle_matches_preselected",
                         selected_vehicle_id=selected_vehicle_id,
@@ -474,6 +506,8 @@ def financing(state: clientState) -> clientState:
                         f"Perfecto, entonces avanzamos con {selected_car} y el plan "
                         f"{state.get('selected_financing_plan_name', 'seleccionado')}."
                     )
+                    if promotion_notice:
+                        confirmation = f"{promotion_notice}\n\n{confirmation}"
                     return append_assistant_message(state, confirmation)
                 state["selected_vehicle_id"] = selected_vehicle_id
                 state["selected_car"] = selected_car
@@ -484,6 +518,7 @@ def financing(state: clientState) -> clientState:
                 state["intent"] = "vehicle_catalog"
                 state["current_node"] = "car_selection"
                 state["show_selected_vehicle_detail_once"] = True
+                _clear_incompatible_promotion(state, selected_vehicle_id)
                 _debug(
                     "single_vehicle_auto_selected",
                     selected_vehicle_id=selected_vehicle_id,

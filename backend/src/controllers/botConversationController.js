@@ -57,7 +57,7 @@ export const botResetConversation = async (req, res) => {
 
 export const botUpsertConversation = async (req, res) => {
   // Delega toda la lógica de persistencia a un servicio reutilizable por otros canales.
-  const { user_id, platform, message, selected_car, customer_info, financing_selection } = req.body;
+  const { user_id, platform, message, selected_car, customer_info, financing_selection, promotion_selection } = req.body;
   const ownerUserId = env.bot.defaultOwnerUserId || req.auth.userId;
   const normalizedPlatform = normalizeInboundChannel(platform || env.bot.defaultInboundChannel || "web");
   console.log("[botUpsertConversation] inbound event", {
@@ -74,6 +74,7 @@ export const botUpsertConversation = async (req, res) => {
     selectedCar: selected_car,
     customerInfo: customer_info,
     financingSelection: financing_selection,
+    promotionSelection: promotion_selection,
   });
   console.log("[botUpsertConversation] persisted message", {
     conversationId: result.conversationId,

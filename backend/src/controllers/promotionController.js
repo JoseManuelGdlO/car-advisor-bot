@@ -1,10 +1,32 @@
-import { Promotion } from "../models/index.js";
+import { Promotion, Vehicle } from "../models/index.js";
 import { ApiError } from "../utils/errors.js";
 
 const ownerWhere = (userId) => ({ ownerUserId: userId });
 
+const getOwnedVehicle = async (userId, vehicleId) => {
+  const vehicle = await Vehicle.findOne({ where: { id: vehicleId, ...ownerWhere(userId) } });
+  if (!vehicle) throw new ApiError(404, "Vehicle not found");
+  return vehicle;
+};
+
 export const listPromotions = async (req, res) =>
   res.json(await Promotion.findAll({ where: ownerWhere(req.auth.userId), order: [["updatedAt", "DESC"]] }));
+
+export const getPromotionsByVehicleId = async (req, res) => {
+  const vehicleId = req.params.vehicleId ?? req.params.id;
+  if (!vehicleId) throw new ApiError(400, "vehicleId is required");
+  const userId = req.auth.userId;
+  await getOwnedVehicle(userId, vehicleId);
+  const rows = await Promotion.findAll({
+    where: { ...ownerWhere(userId), active: true },
+    order: [["updatedAt", "DESC"]],
+  });
+  const filtered = rows.filter((row) => {
+    const vehicleIds = row?.vehicleIds;
+    return Array.isArray(vehicleIds) && vehicleIds.some((item) => String(item).trim() === String(vehicleId).trim());
+  });
+  return res.json(filtered);
+};
 
 export const createPromotion = async (req, res) => res.status(201).json(await Promotion.create({ ...req.body, ownerUserId: req.auth.userId }));
 

@@ -263,6 +263,39 @@ def build_financing_plan_selection_classifier_prompt(
     )
 
 
+def build_promotion_selection_classifier_prompt(
+    previous_bot_message: str,
+    user_message: str,
+    promotion_count: int,
+    single_promotion_title: str,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Prompt clasificador para seleccion explicita de promocion."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    previous = previous_bot_message.strip() or "(sin mensaje previo)"
+    current = user_message.strip() or "(mensaje vacio)"
+    normalized_count = max(promotion_count, 0)
+    normalized_title = single_promotion_title.strip() or "(sin titulo)"
+    return (
+        f"{system_prompt}\n\n"
+        "CLASIFICADOR_SELECCION_PROMOCION:\n"
+        "Con base en el mensaje previo del bot y la respuesta del usuario, clasifica la intencion en una etiqueta.\n"
+        "Etiquetas validas:\n"
+        "- APPLY_SINGLE_PROMOTION: cuando hay una promocion y el usuario confirma aplicarla de forma explicita.\n"
+        "- ASK_EXPLICIT_PROMOTION: cuando falta confirmar aplicacion explicita o hay ambiguedad.\n"
+        "- REJECT: cuando el usuario rechaza aplicar la promocion.\n"
+        "Reglas:\n"
+        "- Si promotion_count != 1, nunca devuelvas APPLY_SINGLE_PROMOTION.\n"
+        "- No consideres preguntas de detalle del vehiculo como aplicacion explicita.\n"
+        "- Responde SOLO con una etiqueta exacta: APPLY_SINGLE_PROMOTION, ASK_EXPLICIT_PROMOTION o REJECT.\n\n"
+        f"promotion_count: {normalized_count}\n"
+        f"single_promotion_title: {normalized_title}\n"
+        f"Mensaje previo del bot: {previous}\n"
+        f"Mensaje del usuario: {current}\n"
+    )
+
+
 def build_router_intent_classifier_prompt(
     user_message: str,
     previous_intent: str,
@@ -280,11 +313,70 @@ def build_router_intent_classifier_prompt(
         "Etiquetas validas:\n"
         "- VEHICLE_CATALOG: pide ver, buscar o comparar carros/modelos/marcas, o menciona un modelo especifico.\n"
         "- FINANCING: pregunta por planes de financiamiento, credito, tasas, enganche, mensualidades o plazos.\n"
+        "- PROMOTIONS: pregunta por promociones, ofertas, descuentos o bonos para un vehiculo o en general.\n"
         "- FAQ: pregunta informacion general del negocio (ubicacion, horarios, garantias, contacto).\n"
         "- OTHER: saludo, agradecimiento o mensaje fuera del alcance.\n"
-        "Responde SOLO con una etiqueta exacta: VEHICLE_CATALOG, FINANCING, FAQ, OTHER.\n\n"
+        "Responde SOLO con una etiqueta exacta: VEHICLE_CATALOG, FINANCING, PROMOTIONS, FAQ, OTHER.\n\n"
         f"Intent previo: {previous}\n"
         f"Mensaje del usuario: {message}\n"
+    )
+
+
+def build_vehicle_step_flags_prompt(
+    previous_bot_message: str,
+    user_message: str,
+    selected_vehicle_name: str,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Prompt clasificador por flags para decision en car_selection (paso confirmacion)."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    previous = previous_bot_message.strip() or "(sin mensaje previo)"
+    current = user_message.strip() or "(mensaje vacio)"
+    vehicle = selected_vehicle_name.strip() or "(sin vehiculo seleccionado)"
+    return (
+        f"{system_prompt}\n\n"
+        "CLASIFICADOR_FLAGS_PASO_VEHICULO:\n"
+        "Analiza el mensaje del usuario y responde SOLO con JSON de una linea con estas claves booleanas exactas:\n"
+        '{ "ask_promotions": <bool>, "ask_financing": <bool>, "ask_more_images": <bool>, "wants_other_vehicles": <bool>, "confirm_purchase": <bool>, "reject_purchase": <bool> }\n'
+        "Reglas:\n"
+        "- ask_promotions=true cuando pide promociones/ofertas/descuentos para el vehiculo actual o en general.\n"
+        "- ask_financing=true cuando pide credito/financiamiento/tasa/plazo/mensualidades.\n"
+        "- ask_more_images=true cuando pide mas fotos/imagenes del vehiculo actual.\n"
+        "- wants_other_vehicles=true cuando quiere ver otro modelo/u otro carro/catalogo.\n"
+        "- confirm_purchase=true cuando confirma avanzar o comprar el vehiculo actual.\n"
+        "- reject_purchase=true cuando rechaza comprar el vehiculo actual.\n"
+        "- Si faltan señales claras, usa false en esas claves.\n\n"
+        f"Vehiculo actual: {vehicle}\n"
+        f"Mensaje previo del bot: {previous}\n"
+        f"Mensaje del usuario: {current}\n"
+    )
+
+
+def build_promotions_step_flags_prompt(
+    user_message: str,
+    current_promotion_title: str,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Prompt clasificador por flags para navegacion dentro del nodo promotions."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    current = user_message.strip() or "(mensaje vacio)"
+    promotion = current_promotion_title.strip() or "(sin promocion seleccionada)"
+    return (
+        f"{system_prompt}\n\n"
+        "CLASIFICADOR_FLAGS_PROMOTIONS:\n"
+        "Responde SOLO con JSON de una linea con estas claves booleanas exactas:\n"
+        '{ "ask_financing": <bool>, "ask_other_vehicles": <bool>, "ask_promotions": <bool>, "confirm_yes": <bool>, "confirm_no": <bool> }\n'
+        "Reglas:\n"
+        "- ask_financing=true cuando pide planes/tasas/credito.\n"
+        "- ask_other_vehicles=true cuando pide ver otros carros/modelos/catalogo.\n"
+        "- ask_promotions=true cuando sigue en tema promociones (listar/ver/consultar).\n"
+        "- confirm_yes=true cuando confirma afirmativamente una pregunta de decision.\n"
+        "- confirm_no=true cuando responde negativamente una pregunta de decision.\n"
+        "- Si no aplica, deja false.\n\n"
+        f"Promocion actual: {promotion}\n"
+        f"Mensaje del usuario: {current}\n"
     )
 
 

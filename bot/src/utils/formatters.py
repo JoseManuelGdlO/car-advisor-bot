@@ -274,3 +274,28 @@ def format_financing_plan_vehicles(plan: dict[str, Any]) -> str:
     for idx, vehicle in enumerate(valid, start=1):
         lines.append(f"{idx}. {_vehicle_label(vehicle)}")
     return "\n".join(lines)
+
+
+def format_promotions(promotions: list[dict[str, Any]], platform: str = "web") -> str:
+    """Lista promociones activas con titulo, descripcion y vigencia."""
+
+    active_promotions = [item for item in promotions if isinstance(item, dict) and bool(item.get("active", True))]
+    if not active_promotions:
+        return "No hay promociones disponibles en este momento."
+    bold_labels = _bold_labels(["Titulo", "Descripcion", "Vigencia"], platform)
+    lines = ["Estas son las promociones disponibles:", ""]
+    printed = 0
+    for item in active_promotions:
+        title = str(item.get("title", "")).strip()
+        description = str(item.get("description", "")).strip()
+        valid_until = str(item.get("validUntil", "")).strip()
+        if not title:
+            continue
+        printed += 1
+        lines.append(f"{printed}. {_bold_label(title, platform)}")
+        lines.append(f"   - {description or 'Sin descripcion'}")
+        lines.append(f"   - {bold_labels['Vigencia']}: {valid_until or 'Sin fecha de expiracion'}")
+        lines.append("")
+    if not printed:
+        return "No hay promociones disponibles en este momento."
+    return "\n".join(lines).strip()

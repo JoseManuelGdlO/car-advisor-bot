@@ -189,9 +189,28 @@ def lead_capture(state: clientState) -> clientState:
     }
     if not any(financing_selection.values()):
         financing_selection = {}
+    promotion_selection = {
+        "promotion_id": str(state.get("selected_promotion_id", "")).strip(),
+        "title": str(state.get("selected_promotion_title", "")).strip(),
+        "description": str(state.get("selected_promotion_description", "")).strip(),
+        "valid_until": str(state.get("selected_promotion_valid_until", "")).strip(),
+        "vehicle_ids": state.get("selected_promotion_vehicle_ids", []),
+        "vehicle_id": str(state.get("selected_vehicle_id", "")).strip(),
+        "vehicle_name": selected_car,
+    }
+    has_promotion = bool(
+        promotion_selection["promotion_id"] or promotion_selection["title"] or promotion_selection["description"]
+    )
+    if not has_promotion:
+        promotion_selection = {}
 
     try:
-        notify_advisor(selected_car, payload_info, financing_selection=financing_selection)
+        notify_advisor(
+            selected_car,
+            payload_info,
+            financing_selection=financing_selection,
+            promotion_selection=promotion_selection,
+        )
         push_event_to_backend(
             {
                 "user_id": uid,
@@ -200,6 +219,7 @@ def lead_capture(state: clientState) -> clientState:
                 "selected_car": selected_car,
                 "customer_info": payload_info,
                 "financing_selection": financing_selection,
+                "promotion_selection": promotion_selection,
             }
         )
         base_text = f"Listo. Recibi tus datos para {selected_car} y ya notifique a un asesor para que se ponga en contacto contigo 😊🛞.\n"

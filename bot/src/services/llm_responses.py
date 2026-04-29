@@ -14,6 +14,7 @@ from src.utils.prompts import (
     build_available_models_intro_prompt,
     build_faq_interrupt_flags_prompt,
     build_financing_plan_selection_classifier_prompt,
+    build_promotion_selection_classifier_prompt,
     build_other_response_prompt,
     build_purchase_confirmation_classifier_prompt,
     build_router_intent_classifier_prompt,
@@ -23,6 +24,8 @@ from src.utils.prompts import (
     build_vehicle_candidates_selection_prompt,
     build_vehicle_purchase_question_prompt,
     build_faq_response_prompt,
+    build_vehicle_step_flags_prompt,
+    build_promotions_step_flags_prompt,
 )
 
 
@@ -253,6 +256,34 @@ def classify_financing_plan_selection_intent(
         return "UNKNOWN"
 
 
+def classify_promotion_selection_intent(
+    previous_bot_message: str,
+    user_message: str,
+    promotion_count: int,
+    single_promotion_title: str = "",
+) -> str:
+    """Clasifica si el usuario confirma aplicar una promocion unica."""
+
+    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
+    try:
+        settings = get_bot_settings()
+        llm = ChatOpenAI(model=model_name, temperature=0)
+        prompt = build_promotion_selection_classifier_prompt(
+            previous_bot_message=previous_bot_message,
+            user_message=user_message,
+            promotion_count=promotion_count,
+            single_promotion_title=single_promotion_title,
+            bot_settings=settings,
+        )
+        content = llm.invoke(prompt).content
+        normalized = str(content).strip().upper()
+        if normalized in {"APPLY_SINGLE_PROMOTION", "ASK_EXPLICIT_PROMOTION", "REJECT"}:
+            return normalized
+        return "UNKNOWN"
+    except Exception:
+        return "UNKNOWN"
+
+
 def classify_router_intent(user_message: str, previous_intent: str = "") -> str:
     """Clasifica intencion general del router: VEHICLE_CATALOG, FAQ, FINANCING u OTHER."""
 
@@ -263,11 +294,75 @@ def classify_router_intent(user_message: str, previous_intent: str = "") -> str:
         prompt = build_router_intent_classifier_prompt(user_message, previous_intent, settings)
         content = llm.invoke(prompt).content
         normalized = str(content).strip().upper()
-        if normalized in {"VEHICLE_CATALOG", "FAQ", "FINANCING", "OTHER"}:
+        if normalized in {"VEHICLE_CATALOG", "FAQ", "FINANCING", "PROMOTIONS", "OTHER"}:
             return normalized
         return "UNKNOWN"
     except Exception:
         return "UNKNOWN"
+
+
+def classify_vehicle_step_flags(
+    previous_bot_message: str,
+    user_message: str,
+    selected_vehicle_name: str,
+) -> dict[str, bool]:
+    """Clasifica flags de navegacion cuando estamos en confirmacion de compra de vehiculo."""
+
+    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
+    out = {
+        "ask_promotions": False,
+        "ask_financing": False,
+        "ask_more_images": False,
+        "wants_other_vehicles": False,
+        "confirm_purchase": False,
+        "reject_purchase": False,
+    }
+    try:
+        settings = get_bot_settings()
+        llm = ChatOpenAI(model=model_name, temperature=0)
+        prompt = build_vehicle_step_flags_prompt(
+            previous_bot_message=previous_bot_message,
+            user_message=user_message,
+            selected_vehicle_name=selected_vehicle_name,
+            bot_settings=settings,
+        )
+        parsed = _parse_json_object_from_llm(str(llm.invoke(prompt).content or ""))
+        if not parsed:
+            return out
+        for key in out:
+            out[key] = _coerce_to_bool(parsed.get(key))
+    except Exception:
+        pass
+    return out
+
+
+def classify_promotions_step_flags(user_message: str, current_promotion_title: str = "") -> dict[str, bool]:
+    """Clasifica flags de navegacion dentro del nodo promotions."""
+
+    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
+    out = {
+        "ask_financing": False,
+        "ask_other_vehicles": False,
+        "ask_promotions": False,
+        "confirm_yes": False,
+        "confirm_no": False,
+    }
+    try:
+        settings = get_bot_settings()
+        llm = ChatOpenAI(model=model_name, temperature=0)
+        prompt = build_promotions_step_flags_prompt(
+            user_message=user_message,
+            current_promotion_title=current_promotion_title,
+            bot_settings=settings,
+        )
+        parsed = _parse_json_object_from_llm(str(llm.invoke(prompt).content or ""))
+        if not parsed:
+            return out
+        for key in out:
+            out[key] = _coerce_to_bool(parsed.get(key))
+    except Exception:
+        pass
+    return out
 
 
 def classify_faq_interrupt_flags(

@@ -133,6 +133,10 @@ def router(state: clientState) -> clientState:
         state["current_node"] = "financing"
         _debug_router("route_to_financing", reason="financing_context")
         return state
+    if state.get("intent") == "promotions" and text and not _is_simple_greeting(text):
+        state["current_node"] = "promotions"
+        _debug_router("route_to_promotions", reason="promotions_context")
+        return state
 
     if _is_vehicle_request(text):
         state["intent"] = "vehicle_catalog"
@@ -165,6 +169,11 @@ def router(state: clientState) -> clientState:
         state["intent"] = "faq"
         state["current_node"] = "faq"
         _debug_router("route_to_faq", reason="llm_classifier")
+        return state
+    if classified_intent == "PROMOTIONS":
+        state["intent"] = "promotions"
+        state["current_node"] = "promotions"
+        _debug_router("route_to_promotions", reason="llm_classifier")
         return state
     if classified_intent == "FINANCING":
         state["intent"] = "financing"

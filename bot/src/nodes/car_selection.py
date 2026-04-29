@@ -11,6 +11,7 @@ from typing import Any
 from src.state import clientState
 
 from src.services.llm_responses import (
+    classify_vehicle_step_flags,
     classify_purchase_confirmation_intent,
     generate_available_models_intro,
     generate_vehicle_candidates_selection_message,
@@ -394,7 +395,9 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
     vehicle_id = str(vehicle_summary.get("id", "")).strip()
     previous_vehicle_id = str(state.get("selected_vehicle_id", "")).strip()
     has_selected_financing_plan = bool(str(state.get("selected_financing_plan_id", "")).strip())
+    has_selected_promotion = bool(str(state.get("selected_promotion_id", "")).strip())
     financing_removed_notice = ""
+    promotion_removed_notice = ""
     if has_selected_financing_plan and previous_vehicle_id and previous_vehicle_id != vehicle_id:
         previous_plan_name = str(state.get("selected_financing_plan_name", "")).strip() or "el plan seleccionado"
         state["selected_financing_plan_id"] = ""
@@ -408,6 +411,29 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
             f"Cambiamos de vehiculo, por lo que quite {previous_plan_name}. "
             "Si quieres, te ayudo a revisar financiamiento para este nuevo carro."
         )
+    if has_selected_promotion:
+        promotion_vehicle_ids = state.get("selected_promotion_vehicle_ids", [])
+        normalized_ids = (
+            {str(item).strip() for item in promotion_vehicle_ids if str(item).strip()}
+            if isinstance(promotion_vehicle_ids, list)
+            else set()
+        )
+        if normalized_ids and vehicle_id not in normalized_ids:
+            previous_promotion = str(state.get("selected_promotion_title", "")).strip() or "la promocion seleccionada"
+            state["selected_promotion_id"] = ""
+            state["selected_promotion_title"] = ""
+            state["selected_promotion_description"] = ""
+            state["selected_promotion_valid_until"] = ""
+            state["selected_promotion_vehicle_ids"] = []
+            state["promotion_candidates"] = []
+            state["promotion_vehicle_candidates"] = []
+            state["awaiting_promotion_selection"] = False
+            state["awaiting_promotion_vehicle_selection"] = False
+            state["awaiting_promotion_vehicle_interest_confirmation"] = False
+            promotion_removed_notice = safe_llm_format(
+                f"Este vehiculo no aplica para {previous_promotion}, por eso quite esa promocion. "
+                "Si quieres, puedo mostrarte otras promociones disponibles."
+            )
 
     _debug("vehicle_detail_requested", vehicle_id=vehicle_id, summary=_format_vehicle_name(vehicle_summary))
     if not vehicle_id:
@@ -453,6 +479,8 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
     blocks: list[str] = []
     if financing_removed_notice:
         blocks.append(financing_removed_notice)
+    if promotion_removed_notice:
+        blocks.append(promotion_removed_notice)
     blocks.extend([first_block, images_block, purchase_question])
     return _append_assistant_blocks(state, blocks)
 
@@ -526,12 +554,32 @@ def car_selection(state: clientState) -> clientState:
                 return _respond_with_vehicle_detail(state, selected_detail)
 
     if state.get("awaiting_purchase_confirmation"):
-        if _is_financing_request(user_text):
+        previous_bot_message = str(state.get("last_bot_message", "")).strip()
+        selected_car_name = str(state.get("selected_car", "")).strip()
+        step_flags = classify_vehicle_step_flags(previous_bot_message, user_text, selected_car_name)
+        _debug("vehicle_step_flags", **step_flags)
+        if step_flags.get("ask_promotions"):
+            state["awaiting_purchase_confirmation"] = False
+            state["current_node"] = "promotions"
+            state["intent"] = "promotions"
+            _debug("route_change", next_node="promotions", reason="llm_flags")
+            return state
+        if step_flags.get("ask_financing") or _is_financing_request(user_text):
             state["awaiting_purchase_confirmation"] = False
             state["current_node"] = "financing"
             _debug("route_change", next_node="financing", reason="financing_request")
             return state
-        previous_bot_message = str(state.get("last_bot_message", "")).strip()
+        if step_flags.get("ask_more_images"):
+            return _respond_with_more_images(state)
+        if step_flags.get("wants_other_vehicles"):
+            return _respond_available_list(state, vehicles)
+        if step_flags.get("confirm_purchase"):
+            state["awaiting_purchase_confirmation"] = False
+            state["current_node"] = "lead_capture"
+            _debug("route_change", next_node="lead_capture", reason="llm_flags")
+            return state
+        if step_flags.get("reject_purchase"):
+            return _respond_available_list(state, vehicles)
         decision = classify_purchase_confirmation_intent(previous_bot_message, user_text)
         _debug(
             "purchase_confirmation_classified",

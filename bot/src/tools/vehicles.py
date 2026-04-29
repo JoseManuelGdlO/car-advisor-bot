@@ -398,6 +398,7 @@ def notify_advisor(
     selected_car: str,
     customer_info: dict[str, Any],
     financing_selection: dict[str, Any] | None = None,
+    promotion_selection: dict[str, Any] | None = None,
 ) -> None:
     """Notifica al asesor comercial via endpoint externo configurable."""
 
@@ -406,5 +407,6 @@ def notify_advisor(
         "selected_car": selected_car,
         "customer_info": customer_info,
         "financing_selection": financing_selection or {},
+        "promotion_selection": promotion_selection or {},
     }
     requests.post(endpoint, json=payload, timeout=5)
