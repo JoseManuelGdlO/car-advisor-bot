@@ -156,15 +156,19 @@ def build_whatsapp_image_messages(
     limit: int = 3,
     mode: str = "top",
     cursor: int | None = None,
+    image_urls: list[str] | None = None,
 ) -> list[dict[str, str]]:
     """Construye mensajes WhatsApp tipo image compatibles con backend WC."""
 
     normalized_to = str(to or "").strip()
     normalized_caption = str(caption or "").strip()
-    images_payload = fetch_vehicle_images(vehicle_id=vehicle_id, mode=mode, limit=limit, cursor=cursor)
+    if isinstance(image_urls, list):
+        images_source = [str(url or "").strip() for url in image_urls if str(url or "").strip()]
+    else:
+        images_payload = fetch_vehicle_images(vehicle_id=vehicle_id, mode=mode, limit=limit, cursor=cursor)
+        images_source = [str(url or "").strip() for url in images_payload.get("images", []) if str(url or "").strip()]
     messages: list[dict[str, str]] = []
-    for image_url in images_payload.get("images", []):
-        normalized_url = str(image_url or "").strip()
+    for normalized_url in images_source:
         if not normalized_to or not normalized_url:
             continue
         message: dict[str, str] = {

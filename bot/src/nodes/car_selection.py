@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from urllib.parse import urlsplit, urlunsplit
@@ -17,6 +18,7 @@ from src.services.llm_responses import (
     safe_llm_format,
 )
 from src.tools.vehicles import (
+    build_whatsapp_image_messages,
     canonicalize_with_typo_support,
     detect_vehicle_filters,
     fetch_vehicle_by_id,
@@ -102,6 +104,7 @@ _NO_MORE_IMAGES_MESSAGE = (
     "Ya no hay mas imagenes de este vehiculo. "
     "Si quieres, te ayudo con otro modelo o continuamos con la compra."
 )
+_WC_IMAGE_MARKER_PREFIX = "<<WC_IMAGE_JSON>>"
 
 
 def _normalize_signal_set(values: set[str]) -> set[str]:
@@ -218,6 +221,25 @@ def _format_images_block(images: list[str]) -> str:
     return f"Imagenes del vehiculo:\n{formatted}"
 
 
+def _build_whatsapp_image_marker_block(state: clientState, vehicle_id: str, images: list[str]) -> str:
+    user_id = str(state.get("user_id", "")).strip()
+    if not user_id or not vehicle_id or not images:
+        return ""
+    image_messages = build_whatsapp_image_messages(
+        to=user_id,
+        vehicle_id=vehicle_id,
+        caption="Imagen del vehiculo",
+        image_urls=images,
+    )
+    marker_lines = []
+    for message in image_messages:
+        image_url = str(message.get("imageUrl", "")).strip()
+        if not image_url:
+            continue
+        marker_lines.append(f"{_WC_IMAGE_MARKER_PREFIX}{json.dumps(message, ensure_ascii=True)}")
+    return "\n".join(marker_lines)
+
+
 def _build_purchase_question(include_images_option: bool) -> str:
     if include_images_option:
         return safe_llm_format(_PURCHASE_WITH_IMAGES_QUESTION)
@@ -316,11 +338,20 @@ def _respond_with_more_images(state: clientState) -> clientState:
             "No encontre mas imagenes para este vehiculo. Si quieres, continuamos con la compra o vemos otro modelo.",
         )
 
-    message = _format_images_block(images)
-    if state.get("vehicle_images_has_more"):
-        message = f"{message}\n\nSi quieres ver mas imagenes, dímelo."
+    platform = str(state.get("platform", "web")).strip().lower() or "web"
+    if platform == "whatsapp":
+        marker_block = _build_whatsapp_image_marker_block(state, vehicle_id, images)
+        message = marker_block or _format_images_block(images)
+        if state.get("vehicle_images_has_more"):
+            message = f"{message}\n\nSi quieres ver mas imagenes, dímelo."
+        else:
+            message = f"{message}\n\nEstas son todas las imagenes disponibles de este vehiculo."
     else:
-        message = f"{message}\n\nEstas son todas las imagenes disponibles de este vehiculo."
+        message = _format_images_block(images)
+        if state.get("vehicle_images_has_more"):
+            message = f"{message}\n\nSi quieres ver mas imagenes, dímelo."
+        else:
+            message = f"{message}\n\nEstas son todas las imagenes disponibles de este vehiculo."
     return append_assistant_message(state, message)
 
 
@@ -411,7 +442,11 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
     detail_intro = generate_vehicle_detail_intro(state["selected_car"])
     platform = str(state.get("platform", "web")).strip().lower() or "web"
     detail_text = format_vehicle_detail(detail, platform=platform)
-    images_block = _format_images_block(top_images)
+    platform = str(state.get("platform", "web")).strip().lower() or "web"
+    if platform == "whatsapp":
+        images_block = _build_whatsapp_image_marker_block(state, vehicle_id, top_images) or _format_images_block(top_images)
+    else:
+        images_block = _format_images_block(top_images)
     if state.get("vehicle_images_has_more"):
         images_block = f"{images_block}\nSi quieres ver mas imagenes, dímelo."
     purchase_question = _build_purchase_question(include_images_option=bool(top_images))

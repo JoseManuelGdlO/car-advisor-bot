@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
@@ -9,6 +10,7 @@ from src.services.llm_responses import classify_financing_plan_selection_intent,
 from src.state import clientState
 from src.tools.database import fetch_financing_plans, fetch_financing_plans_by_vehicle
 from src.tools.vehicles import (
+    build_whatsapp_image_messages,
     canonicalize_with_typo_support,
     detect_vehicle_filters,
     fetch_vehicle_by_id,
@@ -17,6 +19,8 @@ from src.tools.vehicles import (
     normalize_user_text,
     search_vehicles,
 )
+_WC_IMAGE_MARKER_PREFIX = "<<WC_IMAGE_JSON>>"
+
 from src.utils.formatters import (
     format_vehicle_detail,
     format_financing_plan_vehicles,
@@ -223,6 +227,21 @@ def _build_vehicle_images_block(vehicle_id: str) -> str:
     return "Imagenes del vehiculo:\n" + "\n".join(lines)
 
 
+def _build_whatsapp_vehicle_images_block(state: clientState, vehicle_id: str) -> str:
+    user_id = str(state.get("user_id", "")).strip()
+    if not user_id or not vehicle_id:
+        return ""
+    image_messages = build_whatsapp_image_messages(
+        to=user_id,
+        vehicle_id=vehicle_id,
+        caption="Imagen del vehiculo",
+        limit=3,
+        mode="top",
+    )
+    marker_lines = [f"{_WC_IMAGE_MARKER_PREFIX}{json.dumps(message, ensure_ascii=True)}" for message in image_messages]
+    return "\n".join(marker_lines)
+
+
 def _respond_plan_vehicle_info(state: clientState, plan: dict[str, Any]) -> clientState:
     plan_name = str(plan.get("name", "")).strip() or "este plan"
     vehicles = _available_plan_vehicles(plan)
@@ -242,7 +261,11 @@ def _respond_plan_vehicle_info(state: clientState, plan: dict[str, Any]) -> clie
         f"Claro, te comparto el vehiculo del {plan_name}: {vehicle_name}."
     )
     vehicle_text = format_vehicle_detail(detail_source, platform=str(state.get("platform", "web")))
-    images_block = _build_vehicle_images_block(vehicle_id)
+    platform = str(state.get("platform", "web")).strip().lower() or "web"
+    if platform == "whatsapp":
+        images_block = _build_whatsapp_vehicle_images_block(state, vehicle_id) or _build_vehicle_images_block(vehicle_id)
+    else:
+        images_block = _build_vehicle_images_block(vehicle_id)
     close_question = safe_llm_format(
         f"Quieres este plan de financiamiento para {vehicle_name}? "
         "Si si, te paso a seleccionar este vehiculo y seguimos con tus datos."

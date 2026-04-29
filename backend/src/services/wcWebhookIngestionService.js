@@ -111,11 +111,19 @@ export const ingestWhatsappConnectEvent = async ({ normalizedEvent, credentials:
 
     logWcWebhook("pipeline: bot replies", { providerEventId: normalizedEvent.eventId, count: botReplies.length });
     for (const reply of botReplies) {
+      const normalizedType = String(reply?.type || "text").trim().toLowerCase();
+      const isImage = normalizedType === "image";
+      const replyText = String(reply?.text || "").trim();
+      const imageUrl = String(reply?.imageUrl || "").trim();
+      const caption = String(reply?.caption || "").trim();
+      const messageForCrm = isImage ? caption || "Imagen del vehiculo" : replyText;
+
+      if (!messageForCrm && !imageUrl) continue;
       await upsertConversationEvent({
         ownerUserId: normalizedEvent.ownerUserId,
         userId: normalizedEvent.externalUserId,
         platform: "whatsapp",
-        message: reply,
+        message: messageForCrm,
         from: "assistant",
         selectedCar: "",
         customerInfo: {},
@@ -127,8 +135,16 @@ export const ingestWhatsappConnectEvent = async ({ normalizedEvent, credentials:
           wcClient.sendMessageWithRetry({
             deviceId: normalizedEvent.deviceId,
             to: normalizedEvent.externalUserId,
-            type: "text",
-            text: reply,
+            ...(isImage
+              ? {
+                  type: "image",
+                  imageUrl,
+                  ...(caption ? { caption } : {}),
+                }
+              : {
+                  type: "text",
+                  text: replyText,
+                }),
             tenantId: normalizedEvent.tenantId,
           })
       );

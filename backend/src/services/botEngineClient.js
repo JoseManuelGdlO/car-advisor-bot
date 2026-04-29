@@ -3,6 +3,7 @@ import { ApiError } from "../utils/errors.js";
 import { logWcWebhook } from "../utils/wcWebhookLog.js";
 
 const BOT_MESSAGE_SEPARATOR = "\n\n<<BOT_MSG_BREAK>>\n\n";
+const WC_IMAGE_MARKER_PREFIX = "<<WC_IMAGE_JSON>>";
 
 const botEngineBaseUrl = () => String(env.bot.engineUrl || "").replace(/\/$/, "");
 
@@ -40,8 +41,41 @@ export const runBotChat = async ({ userId, platform, message }) => {
 
   const reply = String(payload.reply || "").trim();
   if (!reply) return [];
-  return reply
+  const parts = reply
     .split(BOT_MESSAGE_SEPARATOR)
     .map((part) => String(part || "").trim())
     .filter(Boolean);
+
+  const normalizedMessages = [];
+  for (const part of parts) {
+    const lines = part.split("\n");
+    const textLines = [];
+    for (const line of lines) {
+      const trimmed = String(line || "").trim();
+      if (!trimmed) continue;
+      if (!trimmed.startsWith(WC_IMAGE_MARKER_PREFIX)) {
+        textLines.push(trimmed);
+        continue;
+      }
+      const rawJson = trimmed.slice(WC_IMAGE_MARKER_PREFIX.length);
+      try {
+        const parsed = JSON.parse(rawJson);
+        const imageUrl = String(parsed?.imageUrl || "").trim();
+        if (!imageUrl) continue;
+        normalizedMessages.push({
+          type: "image",
+          imageUrl,
+          caption: String(parsed?.caption || "").trim(),
+        });
+      } catch {
+        textLines.push(trimmed);
+      }
+    }
+
+    const text = textLines.join("\n").trim();
+    if (text) {
+      normalizedMessages.push({ type: "text", text });
+    }
+  }
+  return normalizedMessages;
 };
