@@ -87,7 +87,10 @@ def _pick_promotion_from_state(state: clientState, user_text: str) -> dict[str, 
     candidates = state.get("promotion_candidates", [])
     if not isinstance(candidates, list) or not candidates:
         return None
-    by_index = _extract_by_index([item for item in candidates if isinstance(item, dict)], user_text)
+    dict_candidates = [item for item in candidates if isinstance(item, dict)]
+    if len(dict_candidates) == 1:
+        return dict_candidates[0]
+    by_index = _extract_by_index(dict_candidates, user_text)
     if by_index:
         return by_index
     options: list[str] = []
@@ -190,13 +193,56 @@ def _show_vehicle_and_confirm_interest(state: clientState, vehicle: dict[str, An
     return append_assistant_message(state, f"{detail}\n\n{question}")
 
 
+def _promotion_vehicle_labels(promotion: dict[str, Any]) -> list[str]:
+    raw_ids = promotion.get("vehicleIds")
+    if not isinstance(raw_ids, list):
+        return []
+    labels: list[str] = []
+    for raw_id in raw_ids:
+        vehicle_id = str(raw_id).strip()
+        if not vehicle_id:
+            continue
+        try:
+            detail = fetch_vehicle_by_id(vehicle_id)
+        except Exception:
+            detail = None
+        if not isinstance(detail, dict):
+            continue
+        labels.append(_vehicle_label(detail))
+    return labels
+
+
+def _hydrate_promotions_with_vehicle_labels(promotions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    hydrated: list[dict[str, Any]] = []
+    for item in promotions:
+        if not isinstance(item, dict):
+            continue
+        if not bool(item.get("active", True)):
+            continue
+        row = dict(item)
+        vehicle_labels = _promotion_vehicle_labels(item)
+        if not vehicle_labels:
+            continue
+        row["vehicleLabels"] = vehicle_labels
+        hydrated.append(row)
+    return hydrated
+
+
 def _respond_promotion_listing(state: clientState, promotions: list[dict[str, Any]]) -> clientState:
     platform = str(state.get("platform", "web")).strip().lower() or "web"
-    listing = format_promotions(promotions, platform=platform)
+    hydrated_promotions = _hydrate_promotions_with_vehicle_labels(promotions)
+    if not hydrated_promotions:
+        state["promotion_candidates"] = []
+        state["awaiting_promotion_selection"] = False
+        return append_assistant_message(
+            state,
+            safe_llm_format("No hay promociones disponibles para aplicar en este momento."),
+        )
+    listing = format_promotions(hydrated_promotions, platform=platform)
     prompt = safe_llm_format(
         f"{listing}\n\nSi quieres aplicar una, dime cual y confirmame explicitamente que deseas aplicarla."
     )
-    state["promotion_candidates"] = promotions
+    state["promotion_candidates"] = hydrated_promotions
     state["awaiting_promotion_selection"] = True
     return append_assistant_message(state, prompt)
 
@@ -226,7 +272,7 @@ def promotions(state: clientState) -> clientState:
         _debug("route_change", next_node="financing", reason="financing_requested")
         return state
 
-    if nav_flags.get("ask_other_vehicles"):
+    if nav_flags.get("ask_other_vehicles") and not nav_flags.get("ask_promotions"):
         state["current_node"] = "car_selection"
         state["intent"] = "vehicle_catalog"
         _debug("route_change", next_node="car_selection", reason="other_cars_requested")
@@ -302,6 +348,58 @@ def promotions(state: clientState) -> clientState:
                 ),
             )
 
+        if _is_vehicle_info_request(user_text):
+            promotion_vehicles = _load_promotion_vehicles(state, selected_promotion)
+            hinted_vehicle = _maybe_resolve_vehicle_from_query(user_text)
+            if isinstance(hinted_vehicle, dict):
+                hinted_id = str(hinted_vehicle.get("id", "")).strip()
+                if hinted_id:
+                    for candidate in promotion_vehicles:
+                        candidate_id = str(candidate.get("id", "")).strip()
+                        if candidate_id and candidate_id == hinted_id:
+                            state["selected_vehicle_id"] = hinted_id
+                            state["selected_car"] = _vehicle_label(candidate)
+                            state["show_selected_vehicle_detail_once"] = True
+                            state["current_node"] = "car_selection"
+                            state["intent"] = "vehicle_catalog"
+                            _debug(
+                                "route_change",
+                                next_node="car_selection",
+                                reason="vehicle_info_requested_with_hint",
+                                selected_vehicle_id=hinted_id,
+                            )
+                            return state
+            if len(promotion_vehicles) == 1:
+                only_vehicle = promotion_vehicles[0]
+                only_vehicle_id = str(only_vehicle.get("id", "")).strip()
+                if only_vehicle_id:
+                    state["selected_vehicle_id"] = only_vehicle_id
+                    state["selected_car"] = _vehicle_label(only_vehicle)
+                    state["show_selected_vehicle_detail_once"] = True
+                state["current_node"] = "car_selection"
+                state["intent"] = "vehicle_catalog"
+                _debug(
+                    "route_change",
+                    next_node="car_selection",
+                    reason="vehicle_info_requested_single_candidate",
+                    selected_vehicle_id=only_vehicle_id,
+                )
+                return state
+            if len(promotion_vehicles) > 1:
+                state["promotion_vehicle_candidates"] = promotion_vehicles
+                state["awaiting_promotion_vehicle_selection"] = True
+                options = "\n".join(
+                    f"{idx}. {_vehicle_label(item)}"
+                    for idx, item in enumerate(promotion_vehicles, start=1)
+                )
+                return append_assistant_message(
+                    state,
+                    safe_llm_format(
+                        f"Esta promocion aplica a varios vehiculos:\n{options}\n\n"
+                        "Dime cual quieres ver por nombre o numero."
+                    ),
+                )
+
         promotion_vehicles = _load_promotion_vehicles(state, selected_promotion)
         if not promotion_vehicles:
             state["awaiting_promotion_selection"] = True
@@ -339,10 +437,20 @@ def promotions(state: clientState) -> clientState:
         except Exception:
             by_vehicle = []
         if by_vehicle:
-            state["promotion_candidates"] = by_vehicle
+            hydrated_promotions = _hydrate_promotions_with_vehicle_labels(by_vehicle)
+            if not hydrated_promotions:
+                state["current_node"] = "car_selection"
+                state["intent"] = "vehicle_catalog"
+                return append_assistant_message(
+                    state,
+                    safe_llm_format(
+                        "No encontre promociones con vehiculos aplicables para ese vehiculo en este momento. "
+                    ),
+                )
+            state["promotion_candidates"] = hydrated_promotions
             state["awaiting_promotion_selection"] = True
             car_name = str(state.get("selected_car", "")).strip() or "este vehiculo"
-            listing = format_promotions(by_vehicle, platform=str(state.get("platform", "web")))
+            listing = format_promotions(hydrated_promotions, platform=str(state.get("platform", "web")))
             question = safe_llm_format(
                 f"Estas son las promociones para {car_name}:\n{listing}\n\n"
                 "Si deseas aplicar una, dime cual y confirmalo explicitamente."

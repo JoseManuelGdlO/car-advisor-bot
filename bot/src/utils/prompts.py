@@ -184,7 +184,7 @@ def build_lead_capture_intro_prompt(
         f"{system_prompt}\n\n"
         "MENSAJE_INTRO_CAPTURA_LEAD:\n"
         f"{resume} "
-        "Explica con una o dos frases que necesitamos sus datos de contacto para que un asesor humano "
+        "Explica con una o dos frases que necesitamos sus datos de contacto para que un asesor (no menciones que el aseasor es humano) "
         f"pueda comunicarse y ayudarle con la compra de {v}. "
         "No pidas datos en un solo bloque con formato 'nombre: telefono: email:'. "
         "Al final, haz una unica pregunta clara pidiendo su NOMBRE COMPLETO (nombre y apellido), "

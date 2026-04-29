@@ -19,12 +19,36 @@ def phone_min_digits() -> int:
 
 def extract_name(text: str) -> str:
     t = " ".join((text or "").strip().split())
+    if not t:
+        return ""
     t = re.sub(
-        r"^(me\s+llamo|soy|mi\s+nombre\s+es)\s*[,:\-]?\s*",
+        r"^[\s,.:;\-]+",
         "",
         t,
         flags=re.IGNORECASE,
     )
+    # Quita prefijos conversacionales frecuentes para conservar solo el nombre.
+    prefix_patterns = [
+        r"^(?:si|sí|claro|ok|okay|perfecto|vale|bueno|pues)\b[\s,.:;\-]*",
+        r"^(?:mi\s+nombre(?:\s+completo)?\s+es|me\s+llamo|soy|nombre(?:\s+completo)?\s*[:\-]?|es)\b[\s,.:;\-]*",
+    ]
+    changed = True
+    while changed:
+        changed = False
+        for pattern in prefix_patterns:
+            updated = re.sub(pattern, "", t, flags=re.IGNORECASE)
+            if updated != t:
+                t = updated.strip()
+                changed = True
+    # Si viene en formato "ok, mi nombre es X", intenta quedarte con el ultimo tramo.
+    if "," in t:
+        chunks = [chunk.strip() for chunk in t.split(",") if chunk.strip()]
+        if chunks:
+            tail = chunks[-1]
+            if len(tail.split()) >= 2:
+                t = tail
+    # Limpia todo excepto letras, espacios, apostrofes y guiones.
+    t = re.sub(r"[^A-Za-zÁÉÍÓÚáéíóúÑñÜü'\-\s]", " ", t)
     return " ".join(t.strip().split())
 
 
@@ -89,3 +113,18 @@ def normalize_stored_email(text: str) -> str:
     t = normalize_email(text)
     local, _, domain = t.partition("@")
     return f"{local.lower()}@{domain.lower()}"
+
+
+def extract_email(text: str) -> str:
+    """Extrae el primer correo valido embebido en texto libre."""
+
+    raw = str(text or "").strip()
+    if not raw:
+        return ""
+    match = re.search(
+        r"([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z]{2,})+)",
+        raw,
+    )
+    if not match:
+        return ""
+    return normalize_stored_email(match.group(1))

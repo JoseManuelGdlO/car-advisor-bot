@@ -282,7 +282,7 @@ def format_promotions(promotions: list[dict[str, Any]], platform: str = "web") -
     active_promotions = [item for item in promotions if isinstance(item, dict) and bool(item.get("active", True))]
     if not active_promotions:
         return "No hay promociones disponibles en este momento."
-    bold_labels = _bold_labels(["Titulo", "Descripcion", "Vigencia"], platform)
+    bold_labels = _bold_labels(["Titulo", "Descripcion", "Vigencia", "Vehiculos aplicables"], platform)
     lines = ["Estas son las promociones disponibles:", ""]
     printed = 0
     for item in active_promotions:
@@ -295,6 +295,16 @@ def format_promotions(promotions: list[dict[str, Any]], platform: str = "web") -
         lines.append(f"{printed}. {_bold_label(title, platform)}")
         lines.append(f"   - {description or 'Sin descripcion'}")
         lines.append(f"   - {bold_labels['Vigencia']}: {valid_until or 'Sin fecha de expiracion'}")
+        vehicle_labels = item.get("vehicleLabels")
+        valid_vehicle_labels = [
+            str(label).strip()
+            for label in vehicle_labels
+            if str(label).strip()
+        ] if isinstance(vehicle_labels, list) else []
+        if valid_vehicle_labels:
+            lines.append(f"   - {bold_labels['Vehiculos aplicables']}:")
+            for label in valid_vehicle_labels:
+                lines.append(f"     - {label}")
         lines.append("")
     if not printed:
         return "No hay promociones disponibles en este momento."

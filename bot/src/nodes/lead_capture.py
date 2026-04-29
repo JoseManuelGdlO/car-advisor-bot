@@ -10,6 +10,7 @@ from src.tools.database import push_event_to_backend
 from src.tools.vehicles import notify_advisor
 from src.services.llm_responses import safe_llm_format, generate_lead_capture_intro
 from src.utils.lead_validators import (
+    extract_email,
     extract_name,
     extract_phone_digits,
     is_valid_email,
@@ -24,6 +25,14 @@ from src.utils.state_helpers import append_assistant_message, latest_user_messag
 _PLATFORMS_PREFILL_PHONE = frozenset(
     s.strip().lower() for s in (os.getenv("LEAD_PLATFORMS_PHONE_IN_USER_ID", "web,whatsapp") or "web,whatsapp").split(",") if s.strip()
 )
+
+
+def _debug(event: str, **payload: Any) -> None:
+    if payload:
+        pairs = ", ".join(f"{key}={value!r}" for key, value in payload.items())
+        print(f"[lead_capture] {event} | {pairs}")
+        return
+    print(f"[lead_capture] {event}")
 
 
 def _uses_prefill_phone(platform: str) -> bool:
@@ -80,6 +89,15 @@ def lead_capture(state: clientState) -> clientState:
     user_id = str(state.get("user_id", "")).strip()
     latest_user = latest_user_message(state)
     cinfo = state.get("customer_info", {}) or {}
+    _debug(
+        "entry",
+        selected_car=selected_car,
+        platform=platform,
+        has_name=bool(cinfo.get("nombre")),
+        has_phone=bool(cinfo.get("telefono")),
+        has_email=bool(cinfo.get("email")),
+        latest_user=latest_user,
+    )
     if state.get("lead_capture_done") and all(
         cinfo.get(f) for f in ("nombre", "telefono", "email")
     ):
@@ -110,15 +128,19 @@ def lead_capture(state: clientState) -> clientState:
     if not info.get("nombre"):
         if latest_user and _asked_for_name(state):
             extracted = extract_name(latest_user)
+            _debug("name_extracted", raw=latest_user, extracted=extracted)
             if is_valid_full_name(extracted):
                 info["nombre"] = extracted
                 state["customer_info"] = info
+                _debug("name_saved", nombre=info.get("nombre"))
             elif is_initial_only_name(extracted):
+                _debug("name_rejected_initials", extracted=extracted)
                 return append_assistant_message(
                     state,
                     "Necesitamos tu nombre completo, no solo iniciales. Indica nombre y apellido.",
                 )
             else:
+                _debug("name_rejected_invalid", extracted=extracted)
                 return append_assistant_message(
                     state, "Por favor escribe tu nombre completo, nombre y apellido."
                 )
@@ -133,16 +155,20 @@ def lead_capture(state: clientState) -> clientState:
         ):
             info["telefono"] = extract_phone_digits(user_id)
             state["customer_info"] = info
+            _debug("phone_prefilled", telefono=info.get("telefono"))
         else:
             if not info.get("telefono") and latest_user and _asked_for_phone(state):
                 digits = extract_phone_digits(latest_user)
+                _debug("phone_extracted", raw=latest_user, digits=digits)
                 if is_valid_phone_digits(digits):
                     info["telefono"] = digits
                     state["customer_info"] = info
                     state["lead_phone_attempts"] = 0
+                    _debug("phone_saved", telefono=info.get("telefono"))
                 else:
                     n = int(state.get("lead_phone_attempts", 0) or 0) + 1
                     state["lead_phone_attempts"] = n
+                    _debug("phone_rejected", attempts=n, digits=digits)
                     if n >= 2:
                         msg = (
                             f"Escribe solo el telefono en numeros, con al menos {phone_min_digits()} digitos "
@@ -163,10 +189,14 @@ def lead_capture(state: clientState) -> clientState:
     # 3) Email
     if not info.get("email"):
         if latest_user and _asked_for_email(state):
-            if is_valid_email(latest_user):
-                info["email"] = normalize_stored_email(latest_user)
+            extracted_email = extract_email(latest_user) or normalize_stored_email(latest_user)
+            _debug("email_extracted", raw=latest_user, extracted=extracted_email)
+            if is_valid_email(extracted_email):
+                info["email"] = normalize_stored_email(extracted_email)
                 state["customer_info"] = info
+                _debug("email_saved", email=info.get("email"))
             else:
+                _debug("email_rejected", raw=latest_user)
                 return append_assistant_message(
                     state,
                     "Ese no parece un correo valido. Escribe uno con formato nombre@dominio.com",
@@ -205,6 +235,13 @@ def lead_capture(state: clientState) -> clientState:
         promotion_selection = {}
 
     try:
+        _debug(
+            "notify_payload_ready",
+            selected_car=selected_car,
+            customer_info=payload_info,
+            financing_selection=financing_selection,
+            promotion_selection=promotion_selection,
+        )
         notify_advisor(
             selected_car,
             payload_info,
@@ -225,11 +262,13 @@ def lead_capture(state: clientState) -> clientState:
         base_text = f"Listo. Recibi tus datos para {selected_car} y ya notifique a un asesor para que se ponga en contacto contigo 😊🛞.\n"
         "Cualquier duda que tengas, puedo ayudarte con lo que necesites mientras se comunica tu asesor."
     except Exception:
+        _debug("notify_failed")
         base_text = (
             f"Recibi tus datos para {selected_car}. "
             "Hubo un problema temporal al notificar, pero un asesor te contactara."
         )
     else:
+        _debug("notify_success")
         state["lead_capture_done"] = True
         # Cerramos el turno actual y retomamos en router en el siguiente mensaje.
         state["current_node"] = "router"
