@@ -40,7 +40,6 @@ const wcFetch = async (path, { method = "GET", body, headers = {} } = {}) => {
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${authToken}`,
-        ...(authToken ? { "x-api-key": authToken } : {}),
         ...headers,
       },
       body: body ? JSON.stringify(body) : undefined,

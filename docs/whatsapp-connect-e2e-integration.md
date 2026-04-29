@@ -38,7 +38,7 @@ flowchart LR
 
 ### 3) Outbound
 1. Backend envia respuestas con `wcClient.sendMessage` a `POST /devices/:id/messages/send`.
-2. El cliente envía `content-type: application/json`, `x-api-key` y `x-tenant-id` (cuando aplica), reutilizando la configuración existente del backend.
+2. El cliente envía `content-type: application/json`, `Authorization: Bearer <WC_SERVICE_JWT>` y `x-tenant-id` (cuando aplica), reutilizando la configuración existente del backend.
 3. Errores transitorios (401, 429, 5xx, timeout) usan reintento controlado.
 4. Se actualiza `channel_event_receipts.status` a `processed` o `failed`.
 

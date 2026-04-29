@@ -32,7 +32,7 @@ test("wcClient envía Authorization Bearer WC_SERVICE_JWT", async () => {
   await wcClient.getDeviceStatus({ deviceId: "dev-1" });
 
   assert.equal(requestHeaders.Authorization, "Bearer svc-jwt-token");
-  assert.equal(requestHeaders["x-api-key"], "svc-jwt-token");
+  assert.equal(requestHeaders["x-api-key"], undefined);
   assert.equal(requestHeaders["Content-Type"], "application/json");
 });
 
