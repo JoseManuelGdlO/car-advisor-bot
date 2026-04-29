@@ -454,12 +454,16 @@ def promotions(state: clientState) -> clientState:
         if by_vehicle:
             hydrated_promotions = _hydrate_promotions_with_vehicle_labels(by_vehicle)
             if not hydrated_promotions:
+                selected_car_name = str(state.get("selected_car", "")).strip() or "este vehiculo"
+                state["awaiting_purchase_confirmation"] = True
+                state["skip_car_prompt"] = True
                 state["current_node"] = "car_selection"
                 state["intent"] = "vehicle_catalog"
                 return append_assistant_message(
                     state,
                     safe_llm_format(
-                        "No encontre promociones con vehiculos aplicables para ese vehiculo en este momento. "
+                        f"No encontre promociones aplicables para {selected_car_name} en este momento. "
+                        "Si quieres, podemos continuar con este vehiculo, ver otros modelos o revisar promociones generales."
                     ),
                 )
             state["promotion_candidates"] = hydrated_promotions
@@ -471,13 +475,16 @@ def promotions(state: clientState) -> clientState:
                 "Si deseas aplicar una, dime cual y confirmalo explicitamente."
             )
             return append_assistant_message(state, question)
+        selected_car_name = str(state.get("selected_car", "")).strip() or "este vehiculo"
+        state["awaiting_purchase_confirmation"] = True
+        state["skip_car_prompt"] = True
         state["current_node"] = "car_selection"
         state["intent"] = "vehicle_catalog"
         return append_assistant_message(
             state,
             safe_llm_format(
-                "No encontre promociones para ese vehiculo en este momento. "
-                "Regresamos al paso anterior para seguir revisando opciones."
+                f"No encontre promociones para {selected_car_name} en este momento. "
+                "Si quieres, podemos continuar con este vehiculo, ver otros modelos o revisar promociones generales."
             ),
         )
 
