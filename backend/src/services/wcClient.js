@@ -28,7 +28,7 @@ const safeJsonParse = (raw) => {
 };
 
 // Cliente HTTP base para WhatsApp Connect con timeout y mapeo de errores.
-const wcFetch = async (path, { method = "GET", body } = {}) => {
+const wcFetch = async (path, { method = "GET", body, headers = {} } = {}) => {
   ensureConfigured();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), env.wc.timeoutMs);
@@ -40,6 +40,8 @@ const wcFetch = async (path, { method = "GET", body } = {}) => {
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${authToken}`,
+        ...(authToken ? { "x-api-key": authToken } : {}),
+        ...headers,
       },
       body: body ? JSON.stringify(body) : undefined,
       signal: controller.signal,
@@ -99,14 +101,37 @@ export const wcClient = {
     return { url, expiresAt: readPublicLinkExpiry(payload) };
   },
 
-  async sendMessage({ deviceId, to, type = "text", text, tenantId }) {
+  async sendMessage({ deviceId, to, type = "text", text, imageUrl, caption, tenantId }) {
     // Wrapper directo al endpoint de salida de mensajes del proveedor.
+    const normalizedType = String(type || "text").trim().toLowerCase();
+    if (normalizedType === "image" && !String(imageUrl || "").trim()) {
+      throw new ApiError(400, "imageUrl is required when type=image");
+    }
+    if (normalizedType === "text" && !String(text || "").trim()) {
+      throw new ApiError(400, "text is required when type=text");
+    }
+
+    const messageBody =
+      normalizedType === "image"
+        ? {
+            to,
+            type: "image",
+            imageUrl: String(imageUrl || "").trim(),
+            ...(String(caption || "").trim() ? { caption: String(caption || "").trim() } : {}),
+          }
+        : {
+            to,
+            type: "text",
+            text: String(text || ""),
+          };
+
     const payload = await wcFetch(`/devices/${deviceId}/messages/send`, {
       method: "POST",
+      headers: {
+        ...(tenantId ? { "x-tenant-id": String(tenantId) } : {}),
+      },
       body: {
-        to,
-        type,
-        text,
+        ...messageBody,
         ...(tenantId ? { tenantId } : {}),
       },
     });

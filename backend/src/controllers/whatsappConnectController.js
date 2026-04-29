@@ -10,13 +10,26 @@ const requestSchema = z
   })
   .strict();
 
-const sendTestSchema = z
+const sendTestTextSchema = z
   .object({
     integrationId: z.string().uuid(),
     to: z.string().min(5).max(40),
+    type: z.literal("text").optional(),
     text: z.string().min(1).max(4096),
   })
   .strict();
+
+const sendTestImageSchema = z
+  .object({
+    integrationId: z.string().uuid(),
+    to: z.string().min(5).max(40),
+    type: z.literal("image"),
+    imageUrl: z.string().url().max(4096),
+    caption: z.string().min(1).max(1024).optional(),
+  })
+  .strict();
+
+export const sendTestSchema = z.union([sendTestTextSchema, sendTestImageSchema]);
 
 /**
  * Verifica que la integracion indicada pertenezca al usuario autenticado
@@ -74,15 +87,14 @@ export const getWhatsappConnectDeviceStatus = async (req, res, next) => {
 export const postWhatsappConnectSendTest = async (req, res, next) => {
   try {
     // Endpoint de diagnóstico para verificar envío saliente controlado.
-    const { integrationId, to, text } = sendTestSchema.parse(req.body || {});
+    const parsed = sendTestSchema.parse(req.body || {});
+    const { integrationId, ...messagePayload } = parsed;
     const { credentials } = await getIntegrationContext(integrationId, req.auth.userId);
     await runWithWcToken(
       () =>
         wcClient.sendMessageWithRetry({
           deviceId: credentials.deviceId,
-          to,
-          type: "text",
-          text,
+          ...messagePayload,
           tenantId: credentials.tenantId,
         }),
     );

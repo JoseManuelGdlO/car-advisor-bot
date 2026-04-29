@@ -149,6 +149,35 @@ def fetch_vehicle_images(
     return _normalize_vehicle_images_payload(response.json())
 
 
+def build_whatsapp_image_messages(
+    to: str,
+    vehicle_id: str,
+    caption: str | None = None,
+    limit: int = 3,
+    mode: str = "top",
+    cursor: int | None = None,
+) -> list[dict[str, str]]:
+    """Construye mensajes WhatsApp tipo image compatibles con backend WC."""
+
+    normalized_to = str(to or "").strip()
+    normalized_caption = str(caption or "").strip()
+    images_payload = fetch_vehicle_images(vehicle_id=vehicle_id, mode=mode, limit=limit, cursor=cursor)
+    messages: list[dict[str, str]] = []
+    for image_url in images_payload.get("images", []):
+        normalized_url = str(image_url or "").strip()
+        if not normalized_to or not normalized_url:
+            continue
+        message: dict[str, str] = {
+            "to": normalized_to,
+            "type": "image",
+            "imageUrl": normalized_url,
+        }
+        if normalized_caption:
+            message["caption"] = normalized_caption
+        messages.append(message)
+    return messages
+
+
 def fetch_vehicles_catalog() -> list[dict[str, Any]]:
     """Compatibilidad: alias de fetch_vehicles."""
 

@@ -38,8 +38,9 @@ flowchart LR
 
 ### 3) Outbound
 1. Backend envia respuestas con `wcClient.sendMessage` a `POST /devices/:id/messages/send`.
-2. Errores transitorios (401, 429, 5xx, timeout) usan reintento controlado.
-3. Se actualiza `channel_event_receipts.status` a `processed` o `failed`.
+2. El cliente envía `content-type: application/json`, `x-api-key` y `x-tenant-id` (cuando aplica), reutilizando la configuración existente del backend.
+3. Errores transitorios (401, 429, 5xx, timeout) usan reintento controlado.
+4. Se actualiza `channel_event_receipts.status` a `processed` o `failed`.
 
 ### 4) Onboarding QR
 1. Frontend `Perfil.tsx` llama `POST /api/internal/whatsapp/qr-link`.
@@ -122,10 +123,24 @@ flowchart LR
 
 ### `POST /api/internal/whatsapp/send-test`
 - Auth: usuario JWT.
-- Request:
+- Request (texto, compatible):
 ```json
 { "integrationId": "uuid", "to": "52155...", "text": "Hola" }
 ```
+- Request (imagen):
+```json
+{
+  "integrationId": "uuid",
+  "to": "52155...",
+  "type": "image",
+  "imageUrl": "https://example.com/car.png",
+  "caption": "Imagen del vehiculo"
+}
+```
+- Validaciones:
+  - Si `type` se omite, se asume `text` para compatibilidad.
+  - `type=image` requiere `imageUrl`.
+  - `type=text` requiere `text`.
 - Response: `202 { "ok": true }`
 
 ## Esquemas de datos

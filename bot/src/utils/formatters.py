@@ -111,31 +111,24 @@ def format_filtered_vehicles(vehicles: list[dict[str, Any]]) -> str:
 
 
 def format_vehicle_detail(vehicle: dict[str, Any], platform: str = "web") -> str:
-    """Construye detalle compacto del vehiculo en dos columnas."""
+    """Construye detalle del vehiculo en lista vertical corta."""
 
     brand = _title_or_default(vehicle.get("brand"))
     model = _title_or_default(vehicle.get("model"))
     year = vehicle.get("year")
     description = str(vehicle.get("description", "")).strip() or "Sin descripcion disponible"
 
-    rows = [
-        (_bold_label("Marca", platform) + f": {brand}", _bold_label("Modelo", platform) + f": {model}"),
-        (
-            _bold_label("Año", platform) + f": {year if isinstance(year, int) else 'N/D'}",
-            _bold_label("Precio", platform) + f": {_format_currency(vehicle.get('price'))}",
-        ),
-        (
-            _bold_label("Kilometraje", platform) + f": {_format_int(vehicle.get('km'), 'km')}",
-            _bold_label("Transmisión", platform) + f": {_title_or_default(vehicle.get('transmission'))}",
-        ),
-        (
-            _bold_label("Motor", platform) + f": {_title_or_default(vehicle.get('engine'))}",
-            _bold_label("Color", platform) + f": {_title_or_default(vehicle.get('color'))}",
-        ),
-        (_bold_label("Descripción", platform) + f": {description}", ""),
+    lines = [
+        f"{_bold_label('Marca', platform)}: {brand}",
+        f"{_bold_label('Modelo', platform)}: {model}",
+        f"{_bold_label('Año', platform)}: {year if isinstance(year, int) else 'N/D'}",
+        f"{_bold_label('Precio', platform)}: {_format_currency(vehicle.get('price'))}",
+        f"{_bold_label('Kilometraje', platform)}: {_format_int(vehicle.get('km'), 'km')}",
+        f"{_bold_label('Transmisión', platform)}: {_title_or_default(vehicle.get('transmission'))}",
+        f"{_bold_label('Motor', platform)}: {_title_or_default(vehicle.get('engine'))}",
+        f"{_bold_label('Color', platform)}: {_title_or_default(vehicle.get('color'))}",
+        f"{_bold_label('Descripción', platform)}: {description}",
     ]
-    left_width = max(len(left) for left, _ in rows) + 2
-    lines = [f"{left.ljust(left_width)}{right}".rstrip() for left, right in rows]
     return "\n".join(lines)
 
 

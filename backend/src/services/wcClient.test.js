@@ -32,6 +32,7 @@ test("wcClient envía Authorization Bearer WC_SERVICE_JWT", async () => {
   await wcClient.getDeviceStatus({ deviceId: "dev-1" });
 
   assert.equal(requestHeaders.Authorization, "Bearer svc-jwt-token");
+  assert.equal(requestHeaders["x-api-key"], "svc-jwt-token");
   assert.equal(requestHeaders["Content-Type"], "application/json");
 });
 
@@ -67,4 +68,98 @@ test("wcClient loggea service_jwt_invalid_or_missing_scope en 401 y no reintenta
 
   assert.equal(callCount, 1);
   assert.ok(errorLogs.some((args) => String(args[0] || "").includes("service_jwt_invalid_or_missing_scope")));
+});
+
+test("wcClient sendMessage mantiene payload de texto legacy", async () => {
+  env.wc.apiUrl = "https://wc.example";
+  env.wc.serviceJwt = "svc-jwt-token";
+
+  let requestBody;
+  let requestHeaders;
+  global.fetch = async (_url, options) => {
+    requestBody = JSON.parse(String(options?.body || "{}"));
+    requestHeaders = options?.headers || {};
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ ok: true }),
+    };
+  };
+
+  await wcClient.sendMessage({
+    deviceId: "dev-1",
+    to: "5215512345678",
+    text: "Hola, soy el bot",
+    tenantId: "tenant-1",
+  });
+
+  assert.deepEqual(requestBody, {
+    to: "5215512345678",
+    type: "text",
+    text: "Hola, soy el bot",
+    tenantId: "tenant-1",
+  });
+  assert.equal(requestHeaders["x-tenant-id"], "tenant-1");
+});
+
+test("wcClient sendMessage soporta payload de imagen", async () => {
+  env.wc.apiUrl = "https://wc.example";
+  env.wc.serviceJwt = "svc-jwt-token";
+
+  let requestBody;
+  let requestHeaders;
+  global.fetch = async (_url, options) => {
+    requestBody = JSON.parse(String(options?.body || "{}"));
+    requestHeaders = options?.headers || {};
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ ok: true }),
+    };
+  };
+
+  await wcClient.sendMessage({
+    deviceId: "dev-1",
+    to: "5215512345678",
+    type: "image",
+    imageUrl: "https://example.com/car.png",
+    caption: "Imagen del vehiculo",
+    tenantId: "tenant-1",
+  });
+
+  assert.deepEqual(requestBody, {
+    to: "5215512345678",
+    type: "image",
+    imageUrl: "https://example.com/car.png",
+    caption: "Imagen del vehiculo",
+    tenantId: "tenant-1",
+  });
+  assert.equal(requestHeaders["x-tenant-id"], "tenant-1");
+});
+
+test("wcClient sendMessage valida imageUrl cuando type=image", async () => {
+  env.wc.apiUrl = "https://wc.example";
+  env.wc.serviceJwt = "svc-jwt-token";
+
+  let callCount = 0;
+  global.fetch = async () => {
+    callCount += 1;
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ ok: true }),
+    };
+  };
+
+  await assert.rejects(
+    () =>
+      wcClient.sendMessage({
+        deviceId: "dev-1",
+        to: "5215512345678",
+        type: "image",
+      }),
+    (err) => err?.status === 400 && err?.message === "imageUrl is required when type=image"
+  );
+
+  assert.equal(callCount, 0);
 });
