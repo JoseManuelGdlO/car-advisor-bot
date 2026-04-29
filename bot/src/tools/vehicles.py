@@ -7,6 +7,7 @@ import re
 import unicodedata
 from difflib import SequenceMatcher
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import requests
 
@@ -24,6 +25,37 @@ def _vehicles_api_headers() -> dict[str, str]:
     if not token:
         return {}
     return {"Authorization": f"Bearer {token}"}
+
+
+def _public_images_base_url() -> str:
+    """Retorna base publica para URLs de imagen compatibles con WhatsApp."""
+
+    explicit = str(os.getenv("VEHICLE_IMAGES_PUBLIC_BASE_URL", "")).strip().rstrip("/")
+    if explicit:
+        return explicit
+    backend_public = str(os.getenv("BACKEND_PUBLIC_URL", "")).strip().rstrip("/")
+    if backend_public:
+        return backend_public
+    backend_api = str(os.getenv("BACKEND_API_URL", "")).strip()
+    if backend_api:
+        parts = urlsplit(backend_api)
+        path = re.sub(r"/api/?$", "", parts.path or "", flags=re.IGNORECASE) or ""
+        return urlunsplit((parts.scheme, parts.netloc, path, "", "")).rstrip("/")
+    return "http://localhost:4000"
+
+
+def _normalize_public_image_url(raw_url: str) -> str:
+    """Normaliza URL de imagen para forzar esquema http/https y ruta absoluta."""
+
+    cleaned = str(raw_url or "").strip()
+    if not cleaned:
+        return ""
+    if cleaned.startswith("http://") or cleaned.startswith("https://"):
+        return cleaned
+    base = _public_images_base_url()
+    if cleaned.startswith("/"):
+        return f"{base}{cleaned}"
+    return f"{base}/{cleaned}"
 
 
 def _normalize_vehicles_payload(payload: Any) -> list[dict[str, Any]]:
@@ -163,10 +195,14 @@ def build_whatsapp_image_messages(
     normalized_to = str(to or "").strip()
     normalized_caption = str(caption or "").strip()
     if isinstance(image_urls, list):
-        images_source = [str(url or "").strip() for url in image_urls if str(url or "").strip()]
+        images_source = [_normalize_public_image_url(str(url or "").strip()) for url in image_urls if str(url or "").strip()]
     else:
         images_payload = fetch_vehicle_images(vehicle_id=vehicle_id, mode=mode, limit=limit, cursor=cursor)
-        images_source = [str(url or "").strip() for url in images_payload.get("images", []) if str(url or "").strip()]
+        images_source = [
+            _normalize_public_image_url(str(url or "").strip())
+            for url in images_payload.get("images", [])
+            if str(url or "").strip()
+        ]
     messages: list[dict[str, str]] = []
     for normalized_url in images_source:
         if not normalized_to or not normalized_url:
