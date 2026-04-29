@@ -234,7 +234,6 @@ def _build_whatsapp_vehicle_images_block(state: clientState, vehicle_id: str) ->
     image_messages = build_whatsapp_image_messages(
         to=user_id,
         vehicle_id=vehicle_id,
-        caption="Imagen del vehiculo",
         limit=3,
         mode="top",
     )
