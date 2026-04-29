@@ -65,6 +65,7 @@ def _parse_json_object_from_llm(text: str) -> dict[str, Any] | None:
 
 
 def _coerce_to_bool(value: Any) -> bool:
+    """Convierte valores comunes a booleano de forma tolerante."""
     if isinstance(value, bool):
         return value
     if value is None:

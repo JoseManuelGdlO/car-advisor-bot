@@ -36,11 +36,13 @@ def _normalize_uuid(value: Any) -> str | None:
 
 
 def _backend_headers() -> dict[str, str]:
+    """Helper de apoyo para backend headers."""
     token = os.getenv("BACKEND_SERVICE_TOKEN", "").strip()
     return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"} if token else {}
 
 
 def _backend_api_url(path: str) -> str:
+    """Helper de apoyo para backend api url."""
     base = os.getenv("BACKEND_API_URL", "").rstrip("/")
     return f"{base}{path}" if base else ""
 
@@ -103,6 +105,7 @@ def push_event_to_backend(payload: dict[str, Any]) -> None:
 
 
 def _normalize_financing_plans_payload(payload: Any) -> list[dict[str, Any]]:
+    """Normaliza financing plans payload para mantener consistencia."""
     if isinstance(payload, list):
         return [item for item in payload if isinstance(item, dict)]
     if isinstance(payload, dict):
@@ -115,6 +118,7 @@ def _normalize_financing_plans_payload(payload: Any) -> list[dict[str, Any]]:
 
 
 def _normalize_promotions_payload(payload: Any) -> list[dict[str, Any]]:
+    """Normaliza promotions payload para mantener consistencia."""
     if isinstance(payload, list):
         return [item for item in payload if isinstance(item, dict)]
     if isinstance(payload, dict):

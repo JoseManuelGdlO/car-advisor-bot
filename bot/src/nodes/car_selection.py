@@ -131,6 +131,7 @@ def _debug(event: str, **payload: Any) -> None:
 
 
 def _is_general_request(user_text: str) -> bool:
+    """Retorna True cuando is general request."""
     normalized = normalize_user_text(user_text)
     if not normalized:
         return True
@@ -138,12 +139,14 @@ def _is_general_request(user_text: str) -> bool:
 
 
 def _looks_like_feature_request(user_text: str) -> bool:
+    """Detecta si el texto parece feature request."""
     normalized = normalize_user_text(user_text)
     has_year = bool(re.search(r"\b(?:19|20)\d{2}\b", normalized))
     return has_year or any(signal in normalized for signal in _FEATURE_SIGNALS_NORMALIZED)
 
 
 def _is_more_images_request(user_text: str) -> bool:
+    """Retorna True cuando is more images request."""
     normalized = normalize_user_text(user_text)
     if not normalized:
         return False
@@ -151,6 +154,7 @@ def _is_more_images_request(user_text: str) -> bool:
 
 
 def _is_financing_request(user_text: str) -> bool:
+    """Retorna True cuando is financing request."""
     normalized = normalize_user_text(user_text)
     if not normalized:
         return False
@@ -168,6 +172,7 @@ def _contains_signal_phrase(normalized_text: str, signal: str) -> bool:
 
 
 def _format_vehicle_name(item: dict[str, Any]) -> str:
+    """Formatea vehicle name para salida de chat."""
     brand = str(item.get("brand", "")).strip()
     model = str(item.get("model", "")).strip()
     year = item.get("year")
@@ -189,6 +194,7 @@ def _format_candidate_options(candidates: list[dict[str, Any]], limit: int = 8) 
 
 
 def _find_candidate_from_pending(state: clientState, user_text: str) -> dict[str, Any] | None:
+    """Busca candidate from pending en el estado actual."""
     pending = state.get("last_vehicle_candidates", [])
     if not isinstance(pending, list) or not pending:
         _debug("pending_candidates_empty")
@@ -216,6 +222,7 @@ def _find_candidate_from_pending(state: clientState, user_text: str) -> dict[str
 
 
 def _format_images_block(images: list[str]) -> str:
+    """Formatea images block para salida de chat."""
     if not images:
         return safe_llm_format(_NO_IMAGES_AVAILABLE_MESSAGE)
     formatted = "\n".join(f"- {_image_url_for_chat(url)}" for url in images)
@@ -223,6 +230,7 @@ def _format_images_block(images: list[str]) -> str:
 
 
 def _build_whatsapp_image_marker_block(state: clientState, vehicle_id: str, images: list[str]) -> str:
+    """Construye whatsapp image marker block para la respuesta."""
     user_id = str(state.get("user_id", "")).strip()
     if not user_id or not vehicle_id or not images:
         return ""
@@ -241,6 +249,7 @@ def _build_whatsapp_image_marker_block(state: clientState, vehicle_id: str, imag
 
 
 def _build_purchase_question(include_images_option: bool) -> str:
+    """Construye purchase question para la respuesta."""
     if include_images_option:
         return safe_llm_format(_PURCHASE_WITH_IMAGES_QUESTION)
     return safe_llm_format(_PURCHASE_ONLY_QUESTION)
@@ -253,6 +262,7 @@ def _build_no_more_images_message() -> str:
 
 
 def _append_assistant_blocks(state: clientState, blocks: list[str]) -> clientState:
+    """Agrega assistant blocks al estado sin sobrescribir historial."""
     for block in blocks:
         cleaned = str(block or "").strip()
         if cleaned:
@@ -261,6 +271,7 @@ def _append_assistant_blocks(state: clientState, blocks: list[str]) -> clientSta
 
 
 def _image_url_for_chat(raw_url: str) -> str:
+    """Helper de apoyo para image url for chat."""
     cleaned = str(raw_url or "").strip()
     if not cleaned:
         return ""
@@ -279,12 +290,14 @@ def _image_url_for_chat(raw_url: str) -> str:
 
 
 def _reset_vehicle_images_state(state: clientState) -> None:
+    """Reinicia vehicle images state para evitar residuos de estado."""
     state["vehicle_images_cursor"] = 0
     state["vehicle_images_has_more"] = False
     state["vehicle_images_last_batch"] = []
 
 
 def _fetch_top_images_for_selected_vehicle(state: clientState, vehicle_id: str) -> list[str]:
+    """Obtiene top images for selected vehicle desde servicios externos."""
     try:
         payload = fetch_vehicle_images(vehicle_id, mode="top", limit=2)
         images = payload.get("images", [])
@@ -303,6 +316,7 @@ def _fetch_top_images_for_selected_vehicle(state: clientState, vehicle_id: str) 
 
 
 def _respond_with_more_images(state: clientState) -> clientState:
+    """Genera una respuesta para with more images."""
     vehicle_id = str(state.get("selected_vehicle_id", "")).strip()
     if not vehicle_id:
         return append_assistant_message(state, "Primero selecciona un vehiculo para poder mostrarte imagenes.")
@@ -392,6 +406,7 @@ def _pick_vehicle_from_filters(
 
 
 def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, Any]) -> clientState:
+    """Genera una respuesta para with vehicle detail."""
     vehicle_id = str(vehicle_summary.get("id", "")).strip()
     previous_vehicle_id = str(state.get("selected_vehicle_id", "")).strip()
     has_selected_financing_plan = bool(str(state.get("selected_financing_plan_id", "")).strip())
@@ -486,6 +501,7 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
 
 
 def _respond_available_list(state: clientState, vehicles: list[dict[str, Any]]) -> clientState:
+    """Genera una respuesta para available list."""
     state["awaiting_purchase_confirmation"] = False
     state["last_vehicle_candidates"] = [
         item

@@ -33,6 +33,7 @@ LEAD_CAPTURE_REPLY_PROMPT = (
 
 
 def _tone_instruction(tone: str) -> str:
+    """Helper de apoyo para tone instruction."""
     value = (tone or "").strip().lower()
     mapping = {
         "formal": "Usa un tono formal, cordial y profesional.",
@@ -44,6 +45,7 @@ def _tone_instruction(tone: str) -> str:
 
 
 def _emoji_instruction(emoji_style: str) -> str:
+    """Helper de apoyo para emoji instruction."""
     value = (emoji_style or "").strip().lower()
     mapping = {
         "nunca": "No uses emojis.",
@@ -54,6 +56,7 @@ def _emoji_instruction(emoji_style: str) -> str:
 
 
 def _sales_instruction(sales_proactivity: str) -> str:
+    """Helper de apoyo para sales instruction."""
     value = (sales_proactivity or "").strip().lower()
     mapping = {
         "bajo": "No presiones venta; responde solo lo solicitado.",

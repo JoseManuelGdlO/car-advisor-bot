@@ -27,6 +27,7 @@ _NO_SIGNALS = {"no", "nel", "paso", "no gracias", "ya no", "mejor no"}
 
 
 def _debug(event: str, **payload: Any) -> None:
+    """Centraliza trazas de depuracion para este nodo."""
     if payload:
         pairs = ", ".join(f"{key}={value!r}" for key, value in payload.items())
         print(f"[promotions] {event} | {pairs}")
@@ -35,6 +36,7 @@ def _debug(event: str, **payload: Any) -> None:
 
 
 def _is_vehicle_info_request(user_text: str) -> bool:
+    """Retorna True cuando is vehicle info request."""
     normalized = normalize_user_text(user_text)
     if not normalized:
         return False
@@ -43,6 +45,7 @@ def _is_vehicle_info_request(user_text: str) -> bool:
 
 
 def _vehicle_label(item: dict[str, Any]) -> str:
+    """Helper de apoyo para vehicle label."""
     brand = str(item.get("brand", "")).strip()
     model = str(item.get("model", "")).strip()
     year = item.get("year")
@@ -50,6 +53,7 @@ def _vehicle_label(item: dict[str, Any]) -> str:
 
 
 def _filter_active_promotions(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Filtra active promotions segun criterios de negocio."""
     out: list[dict[str, Any]] = []
     for item in items:
         if not isinstance(item, dict):
@@ -61,6 +65,7 @@ def _filter_active_promotions(items: list[dict[str, Any]]) -> list[dict[str, Any
 
 
 def _set_selected_promotion(state: clientState, promotion: dict[str, Any]) -> None:
+    """Actualiza selected promotion en el estado de la conversacion."""
     state["selected_promotion_id"] = str(promotion.get("id", "")).strip()
     state["selected_promotion_title"] = str(promotion.get("title", "")).strip()
     state["selected_promotion_description"] = str(promotion.get("description", "")).strip()
@@ -71,6 +76,7 @@ def _set_selected_promotion(state: clientState, promotion: dict[str, Any]) -> No
 
 
 def _extract_by_index(candidates: list[dict[str, Any]], user_text: str) -> dict[str, Any] | None:
+    """Extrae by index desde la entrada del usuario."""
     normalized = normalize_user_text(user_text)
     tokens = [token for token in normalized.split(" ") if token.isdigit()]
     if not tokens:
@@ -84,6 +90,7 @@ def _extract_by_index(candidates: list[dict[str, Any]], user_text: str) -> dict[
 
 
 def _pick_promotion_from_state(state: clientState, user_text: str) -> dict[str, Any] | None:
+    """Selecciona promotion from state con reglas del flujo."""
     candidates = state.get("promotion_candidates", [])
     if not isinstance(candidates, list) or not candidates:
         return None
@@ -113,6 +120,7 @@ def _pick_promotion_from_state(state: clientState, user_text: str) -> dict[str, 
 
 
 def _maybe_resolve_vehicle_from_query(user_text: str) -> dict[str, Any] | None:
+    """Helper de apoyo para maybe resolve vehicle from query."""
     try:
         catalog = fetch_vehicles()
     except Exception:
@@ -131,6 +139,7 @@ def _maybe_resolve_vehicle_from_query(user_text: str) -> dict[str, Any] | None:
 
 
 def _looks_like_explicit_apply(user_text: str) -> bool:
+    """Detecta si el texto parece explicit apply."""
     normalized = normalize_user_text(user_text)
     explicit_signals = {
         "aplicar",
@@ -143,6 +152,7 @@ def _looks_like_explicit_apply(user_text: str) -> bool:
 
 
 def _pick_vehicle_candidate(state: clientState, user_text: str) -> dict[str, Any] | None:
+    """Selecciona vehicle candidate con reglas del flujo."""
     candidates = state.get("promotion_vehicle_candidates", [])
     if not isinstance(candidates, list) or not candidates:
         return None
@@ -160,6 +170,7 @@ def _pick_vehicle_candidate(state: clientState, user_text: str) -> dict[str, Any
 
 
 def _load_promotion_vehicles(state: clientState, promotion: dict[str, Any]) -> list[dict[str, Any]]:
+    """Helper de apoyo para load promotion vehicles."""
     ids = promotion.get("vehicleIds")
     if not isinstance(ids, list):
         return []
@@ -179,6 +190,7 @@ def _load_promotion_vehicles(state: clientState, promotion: dict[str, Any]) -> l
 
 
 def _show_vehicle_and_confirm_interest(state: clientState, vehicle: dict[str, Any]) -> clientState:
+    """Helper de apoyo para show vehicle and confirm interest."""
     vehicle_id = str(vehicle.get("id", "")).strip()
     state["selected_vehicle_id"] = vehicle_id
     state["selected_car"] = _vehicle_label(vehicle)
@@ -194,6 +206,7 @@ def _show_vehicle_and_confirm_interest(state: clientState, vehicle: dict[str, An
 
 
 def _promotion_vehicle_labels(promotion: dict[str, Any]) -> list[str]:
+    """Helper de apoyo para promotion vehicle labels."""
     raw_ids = promotion.get("vehicleIds")
     if not isinstance(raw_ids, list):
         return []
@@ -213,6 +226,7 @@ def _promotion_vehicle_labels(promotion: dict[str, Any]) -> list[str]:
 
 
 def _hydrate_promotions_with_vehicle_labels(promotions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Helper de apoyo para hydrate promotions with vehicle labels."""
     hydrated: list[dict[str, Any]] = []
     for item in promotions:
         if not isinstance(item, dict):
@@ -229,6 +243,7 @@ def _hydrate_promotions_with_vehicle_labels(promotions: list[dict[str, Any]]) ->
 
 
 def _respond_promotion_listing(state: clientState, promotions: list[dict[str, Any]]) -> clientState:
+    """Genera una respuesta para promotion listing."""
     platform = str(state.get("platform", "web")).strip().lower() or "web"
     hydrated_promotions = _hydrate_promotions_with_vehicle_labels(promotions)
     if not hydrated_promotions:

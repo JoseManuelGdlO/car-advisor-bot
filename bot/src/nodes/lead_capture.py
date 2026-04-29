@@ -28,6 +28,7 @@ _PLATFORMS_PREFILL_PHONE = frozenset(
 
 
 def _debug(event: str, **payload: Any) -> None:
+    """Centraliza trazas de depuracion para este nodo."""
     if payload:
         pairs = ", ".join(f"{key}={value!r}" for key, value in payload.items())
         print(f"[lead_capture] {event} | {pairs}")
@@ -36,11 +37,13 @@ def _debug(event: str, **payload: Any) -> None:
 
 
 def _uses_prefill_phone(platform: str) -> bool:
+    """Helper de apoyo para uses prefill phone."""
     p = (platform or "web").strip().lower()
     return p in _PLATFORMS_PREFILL_PHONE
 
 
 def _last_assistant_content(state: clientState) -> str:
+    """Helper de apoyo para last assistant content."""
     for m in reversed(state.get("messages", [])):
         if m.get("role") == "assistant":
             return str(m.get("content", ""))
@@ -48,11 +51,13 @@ def _last_assistant_content(state: clientState) -> str:
 
 
 def _asked_for_name(state: clientState) -> bool:
+    """Helper de apoyo para asked for name."""
     t = _last_assistant_content(state).lower()
     return "nombre" in t
 
 
 def _asked_for_phone(state: clientState) -> bool:
+    """Helper de apoyo para asked for phone."""
     t = _last_assistant_content(state).lower()
     return any(
         w in t
@@ -67,11 +72,13 @@ def _asked_for_phone(state: clientState) -> bool:
 
 
 def _asked_for_email(state: clientState) -> bool:
+    """Helper de apoyo para asked for email."""
     t = _last_assistant_content(state).lower()
     return "correo" in t or "email" in t or "electr" in t
 
 
 def _clean_customer_info(info: dict[str, Any]) -> dict[str, str]:
+    """Limpia customer info antes de persistirlos."""
     out: dict[str, str] = {}
     for k in ("nombre", "telefono", "email"):
         v = info.get(k)

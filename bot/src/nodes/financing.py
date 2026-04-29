@@ -62,6 +62,7 @@ def _debug(event: str, **payload: Any) -> None:
 
 
 def _is_financing_query(user_text: str) -> bool:
+    """Retorna True cuando is financing query."""
     normalized = normalize_user_text(user_text)
     if not normalized:
         return False
@@ -69,6 +70,7 @@ def _is_financing_query(user_text: str) -> bool:
 
 
 def _contains_signal_phrase(normalized_text: str, signal: str) -> bool:
+    """Verifica si el texto contiene signal phrase."""
     parts = [part for part in normalize_user_text(signal).split() if part]
     if not parts:
         return False
@@ -77,6 +79,7 @@ def _contains_signal_phrase(normalized_text: str, signal: str) -> bool:
 
 
 def _vehicle_label(item: dict[str, Any]) -> str:
+    """Helper de apoyo para vehicle label."""
     brand = str(item.get("brand", "")).strip()
     model = str(item.get("model", "")).strip()
     year = item.get("year")
@@ -84,6 +87,7 @@ def _vehicle_label(item: dict[str, Any]) -> str:
 
 
 def _pick_plan_from_state(state: clientState, user_text: str) -> dict[str, Any] | None:
+    """Selecciona plan from state con reglas del flujo."""
     candidates = state.get("financing_plan_candidates", [])
     if not isinstance(candidates, list) or not candidates:
         return None
@@ -120,6 +124,7 @@ def _pick_plan_from_state(state: clientState, user_text: str) -> dict[str, Any] 
 
 
 def _extract_plan_by_index(state: clientState, user_text: str) -> dict[str, Any] | None:
+    """Extrae plan by index desde la entrada del usuario."""
     candidates = state.get("financing_plan_candidates", [])
     if not isinstance(candidates, list) or not candidates:
         return None
@@ -134,6 +139,7 @@ def _extract_plan_by_index(state: clientState, user_text: str) -> dict[str, Any]
 
 
 def _pick_vehicle_for_plan(state: clientState, user_text: str) -> dict[str, Any] | None:
+    """Selecciona vehicle for plan con reglas del flujo."""
     candidates = state.get("financing_vehicle_candidates", [])
     if not isinstance(candidates, list) or not candidates:
         return None
@@ -154,6 +160,7 @@ def _pick_vehicle_for_plan(state: clientState, user_text: str) -> dict[str, Any]
 
 
 def _maybe_resolve_vehicle_from_query(user_text: str) -> dict[str, Any] | None:
+    """Helper de apoyo para maybe resolve vehicle from query."""
     try:
         catalog = fetch_vehicles()
     except Exception:
@@ -177,12 +184,14 @@ def _maybe_resolve_vehicle_from_query(user_text: str) -> dict[str, Any] | None:
 
 
 def _set_selected_plan(state: clientState, plan: dict[str, Any]) -> None:
+    """Actualiza selected plan en el estado de la conversacion."""
     state["selected_financing_plan_id"] = str(plan.get("id", "")).strip()
     state["selected_financing_plan_name"] = str(plan.get("name", "")).strip()
     state["selected_financing_plan_lender"] = str(plan.get("lender", "")).strip()
 
 
 def _clear_incompatible_promotion(state: clientState, selected_vehicle_id: str) -> str:
+    """Helper de apoyo para clear incompatible promotion."""
     promotion_id = str(state.get("selected_promotion_id", "")).strip()
     if not promotion_id:
         return ""
@@ -211,6 +220,7 @@ def _clear_incompatible_promotion(state: clientState, selected_vehicle_id: str) 
 
 
 def _looks_like_plan_vehicle_info_request(user_text: str) -> bool:
+    """Detecta si el texto parece plan vehicle info request."""
     normalized = normalize_user_text(user_text)
     if not normalized:
         return False
@@ -233,6 +243,7 @@ def _looks_like_plan_vehicle_info_request(user_text: str) -> bool:
 
 
 def _image_url_for_chat(raw_url: str) -> str:
+    """Helper de apoyo para image url for chat."""
     cleaned = str(raw_url or "").strip()
     if not cleaned:
         return ""
@@ -242,6 +253,7 @@ def _image_url_for_chat(raw_url: str) -> str:
 
 
 def _build_vehicle_images_block(vehicle_id: str) -> str:
+    """Construye vehicle images block para la respuesta."""
     try:
         payload = fetch_vehicle_images(vehicle_id, mode="top", limit=3)
     except Exception:
@@ -256,6 +268,7 @@ def _build_vehicle_images_block(vehicle_id: str) -> str:
 
 
 def _build_whatsapp_vehicle_images_block(state: clientState, vehicle_id: str) -> str:
+    """Construye whatsapp vehicle images block para la respuesta."""
     user_id = str(state.get("user_id", "")).strip()
     if not user_id or not vehicle_id:
         return ""
@@ -270,6 +283,7 @@ def _build_whatsapp_vehicle_images_block(state: clientState, vehicle_id: str) ->
 
 
 def _respond_plan_vehicle_info(state: clientState, plan: dict[str, Any]) -> clientState:
+    """Genera una respuesta para plan vehicle info."""
     plan_name = str(plan.get("name", "")).strip() or "este plan"
     vehicles = _available_plan_vehicles(plan)
     if not vehicles:
@@ -305,6 +319,7 @@ def _respond_plan_vehicle_info(state: clientState, plan: dict[str, Any]) -> clie
 
 
 def _pick_plan_for_vehicle_info(state: clientState, user_text: str) -> dict[str, Any] | None:
+    """Selecciona plan for vehicle info con reglas del flujo."""
     selected = _pick_plan_from_state(state, user_text)
     if selected:
         return selected
@@ -326,6 +341,7 @@ def _pick_plan_for_vehicle_info(state: clientState, user_text: str) -> dict[str,
 
 
 def _available_plan_vehicles(plan: dict[str, Any]) -> list[dict[str, Any]]:
+    """Helper de apoyo para available plan vehicles."""
     vehicles = plan.get("vehicles")
     raw_items = [item for item in vehicles if isinstance(item, dict)] if isinstance(vehicles, list) else []
     filtered: list[dict[str, Any]] = []
@@ -338,6 +354,7 @@ def _available_plan_vehicles(plan: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _filter_plans_with_available_vehicles(plans: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Filtra plans with available vehicles segun criterios de negocio."""
     valid_plans: list[dict[str, Any]] = []
     for item in plans:
         if not isinstance(item, dict):

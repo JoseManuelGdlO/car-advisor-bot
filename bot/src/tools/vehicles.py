@@ -59,6 +59,7 @@ def _normalize_public_image_url(raw_url: str) -> str:
 
 
 def _normalize_vehicles_payload(payload: Any) -> list[dict[str, Any]]:
+    """Normaliza vehicles payload para mantener consistencia."""
     if isinstance(payload, list):
         return [item for item in payload if isinstance(item, dict)]
     if isinstance(payload, dict):
@@ -234,6 +235,7 @@ def normalize_user_text(text: str) -> str:
 
 
 def _options_map(values: list[str]) -> dict[str, str]:
+    """Helper de apoyo para options map."""
     mapping: dict[str, str] = {}
     for value in values:
         raw = str(value or "").strip()
@@ -244,6 +246,7 @@ def _options_map(values: list[str]) -> dict[str, str]:
 
 
 def _best_fuzzy_match(token: str, options_map: dict[str, str], threshold: float = 0.75) -> str | None:
+    """Helper de apoyo para best fuzzy match."""
     best_key = ""
     best_score = 0.0
     for normalized_option in options_map:

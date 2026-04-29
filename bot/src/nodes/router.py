@@ -20,6 +20,7 @@ def _debug_router(event: str, **payload: object) -> None:
 
 
 def _is_vehicle_request(text: str) -> bool:
+    """Retorna True cuando is vehicle request."""
     normalized = normalize_user_text(text)
     if not normalized:
         return False
@@ -49,6 +50,7 @@ def _is_vehicle_request(text: str) -> bool:
 
 
 def _is_financing_request(text: str) -> bool:
+    """Retorna True cuando is financing request."""
     normalized = normalize_user_text(text)
     if not normalized:
         return False
@@ -76,6 +78,7 @@ def _is_financing_request(text: str) -> bool:
 
 
 def _is_simple_greeting(text: str) -> bool:
+    """Retorna True cuando is simple greeting."""
     normalized = normalize_user_text(text)
     if not normalized:
         return False

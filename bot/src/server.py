@@ -89,6 +89,7 @@ class ResetRequest(BaseModel):
     @field_validator("user_id")
     @classmethod
     def strip_user_id(cls, value: str) -> str:
+        """Recorta espacios del campo antes de validarlo (user id)."""
         normalized = value.strip()
         if not normalized:
             raise ValueError("El campo no puede estar vacio.")
@@ -97,6 +98,7 @@ class ResetRequest(BaseModel):
     @field_validator("platform")
     @classmethod
     def normalize_platform_reset(cls, value: str) -> str:
+        """Normaliza platform reset para mantener consistencia."""
         normalized = value.strip().lower()
         if normalized not in ALLOWED_PLATFORMS:
             raise ValueError(

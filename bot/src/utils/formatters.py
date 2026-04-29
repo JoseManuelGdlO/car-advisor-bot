@@ -8,6 +8,7 @@ from typing import Any
 
 
 def _title_or_default(value: Any, fallback: str = "N/D") -> str:
+    """Helper de apoyo para title or default."""
     text = str(value or "").strip()
     if not text:
         return fallback
@@ -15,6 +16,7 @@ def _title_or_default(value: Any, fallback: str = "N/D") -> str:
 
 
 def _format_currency(value: Any) -> str:
+    """Formatea currency para salida de chat."""
     raw = str(value or "").strip()
     if not raw:
         return "N/D"
@@ -26,6 +28,7 @@ def _format_currency(value: Any) -> str:
 
 
 def _format_int(value: Any, suffix: str = "") -> str:
+    """Formatea int para salida de chat."""
     try:
         parsed = int(value)
     except (TypeError, ValueError):
@@ -36,6 +39,7 @@ def _format_int(value: Any, suffix: str = "") -> str:
 
 
 def _status_label(status: Any) -> str:
+    """Helper de apoyo para status label."""
     normalized = str(status or "").strip().lower()
     mapping = {
         "available": "Disponible",
@@ -46,6 +50,7 @@ def _status_label(status: Any) -> str:
 
 
 def _bold_label(text: str, platform: str) -> str:
+    """Helper de apoyo para bold label."""
     normalized_platform = str(platform or "web").strip().lower()
     marker = "*" if normalized_platform == "whatsapp" else "**"
     return f"{marker}{text}{marker}"
@@ -133,6 +138,7 @@ def format_vehicle_detail(vehicle: dict[str, Any], platform: str = "web") -> str
 
 
 def _format_rate(rate: Any, show_rate: bool = True) -> str:
+    """Formatea rate para salida de chat."""
     if not show_rate:
         return "Tasa sujeta a evaluacion"
     raw = str(rate or "").strip()
@@ -146,6 +152,7 @@ def _format_rate(rate: Any, show_rate: bool = True) -> str:
 
 
 def _vehicle_label(vehicle: dict[str, Any]) -> str:
+    """Helper de apoyo para vehicle label."""
     brand = _title_or_default(vehicle.get("brand"))
     model = _title_or_default(vehicle.get("model"))
     year = vehicle.get("year")
@@ -155,6 +162,7 @@ def _vehicle_label(vehicle: dict[str, Any]) -> str:
 
 
 def _available_plan_vehicles(plan: dict[str, Any]) -> list[dict[str, Any]]:
+    """Helper de apoyo para available plan vehicles."""
     vehicles = plan.get("vehicles")
     raw_items = [item for item in vehicles if isinstance(item, dict)] if isinstance(vehicles, list) else []
     filtered: list[dict[str, Any]] = []
