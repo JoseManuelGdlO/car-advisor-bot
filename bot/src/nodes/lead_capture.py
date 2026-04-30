@@ -8,7 +8,11 @@ from typing import Any
 from src.state import clientState
 from src.tools.database import push_event_to_backend
 from src.tools.vehicles import notify_advisor
-from src.services.llm_responses import safe_llm_format, generate_lead_capture_intro
+from src.services.llm_responses import (
+    classify_lead_capture_navigation,
+    safe_llm_format,
+    generate_lead_capture_intro,
+)
 from src.utils.lead_validators import (
     extract_email,
     extract_name,
@@ -87,6 +91,31 @@ def _clean_customer_info(info: dict[str, Any]) -> dict[str, str]:
     return out
 
 
+def _detect_navigation_override(user_text: str, previous_bot_message: str, selected_car: str) -> str:
+    """Detecta cambio de flujo en lead_capture usando clasificacion LLM especializada."""
+    if not str(user_text or "").strip():
+        return ""
+    classified = classify_lead_capture_navigation(
+        previous_bot_message=previous_bot_message,
+        user_message=user_text,
+        selected_vehicle_name=selected_car,
+    )
+    if classified == "PROMOTIONS":
+        return "promotions"
+    if classified == "FINANCING":
+        return "financing"
+    if classified == "CAR_SELECTION":
+        return "car_selection"
+    return ""
+
+
+def _intent_for_route_override(route_override: str) -> str:
+    """Mapea el nodo destino al intent canónico de continuidad conversacional."""
+    if route_override == "car_selection":
+        return "vehicle_catalog"
+    return route_override
+
+
 def lead_capture(state: clientState) -> clientState:
     """Solicita nombre, telefono (condicional) y email; luego notifica y persiste al CRM."""
 
@@ -132,6 +161,17 @@ def lead_capture(state: clientState) -> clientState:
         return append_assistant_message(
             state, safe_llm_format("Primero debes elegir un vehiculo para continuar.")
         )
+
+    route_override = _detect_navigation_override(
+        latest_user,
+        _last_assistant_content(state),
+        selected_car,
+    )
+    if route_override:
+        state["current_node"] = route_override
+        state["intent"] = _intent_for_route_override(route_override)
+        _debug("route_change", next_node=route_override, reason="user_navigation_override")
+        return state
 
     info = dict(state.get("customer_info", {}))
 

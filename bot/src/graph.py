@@ -125,6 +125,28 @@ def _route_after_promotions(state: clientState) -> str:
     return "end"
 
 
+def _route_after_lead_capture(state: clientState) -> str:
+    """Permite desviar lead_capture a otros nodos cuando el usuario cambia de tema."""
+
+    node = state.get("current_node", "lead_capture")
+    if node == "promotions":
+        _log_transition("lead_capture", "promotions", "consulta de promociones")
+        return "promotions"
+    if node == "financing":
+        _log_transition("lead_capture", "financing", "consulta de financiamiento")
+        return "financing"
+    if node == "car_selection":
+        _log_transition("lead_capture", "car_selection", "consulta de otros vehiculos")
+        return "car_selection"
+    if node == "lead_capture":
+        # El nodo espera una nueva respuesta del usuario (nombre/telefono/email).
+        # Cerramos el invoke actual y en el siguiente turno intent_checker retomara lead_capture.
+        _log_transition("lead_capture", "end", "esperando datos del usuario")
+        return "end"
+    _log_transition("lead_capture", "end")
+    return "end"
+
+
 def build_graph():
     """Construye y compila el grafo principal del bot."""
 
@@ -192,7 +214,16 @@ def build_graph():
             "end": END,
         },
     )
-    graph.add_edge("lead_capture", END)
+    graph.add_conditional_edges(
+        "lead_capture",
+        _route_after_lead_capture,
+        {
+            "promotions": "promotions",
+            "financing": "financing",
+            "car_selection": "car_selection",
+            "end": END,
+        },
+    )
     graph.add_edge("faq", END)
 
     return graph.compile()

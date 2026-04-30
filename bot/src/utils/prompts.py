@@ -109,9 +109,14 @@ def build_other_response_prompt(user_message: str, bot_settings: dict[str, Any] 
     return (
         f"{system_prompt}\n\n"
         "RESPUESTA_CONVERSACIONAL:\n"
-        "Eres CarAdvisor. Responde al usuario con un saludo breve y humano. "
-        "Invita a elegir entre ver marcas/modelos o preguntar por un carro especifico. "
-        "Cierra ofreciendo resolver dudas.\n\n"
+        "Eres CarAdvisor. Responde de forma natural y contextual al ultimo mensaje del usuario.\n"
+        "Reglas:\n"
+        "- Solo saluda si el usuario esta saludando explicitamente o si el mensaje parece de inicio de conversacion.\n"
+        "- Si el usuario agradece (por ejemplo: gracias, muchas gracias), responde agradeciendo de vuelta "
+        "(por ejemplo: con gusto/de nada) y NO vuelvas a saludar.\n"
+        "- Si no hay saludo ni agradecimiento, responde sin saludo de apertura.\n"
+        "- Puedes invitar a preguntar por marcas/modelos o dudas de un vehiculo, sin sonar repetitivo.\n"
+        "- Cierra ofreciendo resolver cualquier duda que tenga el usuario.\n\n"
         f"Mensaje del usuario: {user_message}"
     )
 
@@ -379,6 +384,38 @@ def build_promotions_step_flags_prompt(
         "- confirm_no=true cuando responde negativamente una pregunta de decision.\n"
         "- Si no aplica, deja false.\n\n"
         f"Promocion actual: {promotion}\n"
+        f"Mensaje del usuario: {current}\n"
+    )
+
+
+def build_lead_capture_navigation_classifier_prompt(
+    previous_bot_message: str,
+    user_message: str,
+    selected_vehicle_name: str,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Prompt clasificador para desvio de flujo durante captura de lead."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    previous = previous_bot_message.strip() or "(sin mensaje previo)"
+    current = user_message.strip() or "(mensaje vacio)"
+    vehicle = selected_vehicle_name.strip() or "(sin vehiculo seleccionado)"
+    return (
+        f"{system_prompt}\n\n"
+        "CLASIFICADOR_NAVEGACION_LEAD_CAPTURE:\n"
+        "Estas dentro de captura de datos (nombre/telefono/correo) para cerrar la compra.\n"
+        "Clasifica SOLO si el usuario quiere cambiar de tema en este turno.\n"
+        "Responde SOLO con una etiqueta exacta:\n"
+        "- STAY: continuar captura de lead (incluye confirmaciones de interes, respuestas ambiguas, datos de contacto).\n"
+        "- PROMOTIONS: pide promociones/ofertas/descuentos/bonos.\n"
+        "- FINANCING: pide planes/tasas/plazos/credito/enganche.\n"
+        "- CAR_SELECTION: pide ver otros modelos/vehiculos/catalogo distintos al actual.\n"
+        "Reglas criticas:\n"
+        "- Si el usuario expresa interes en el vehiculo actual (ej. 'me interesa', 'si quiero este') => STAY.\n"
+        "- Si responde con posibles datos de contacto (nombre, telefono, correo) => STAY.\n"
+        "- Solo usa CAR_SELECTION cuando sea explicito que quiere ver otras opciones.\n\n"
+        f"Vehiculo actual: {vehicle}\n"
+        f"Mensaje previo del bot: {previous}\n"
         f"Mensaje del usuario: {current}\n"
     )
 

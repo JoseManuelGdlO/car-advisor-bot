@@ -26,6 +26,7 @@ from src.utils.prompts import (
     build_faq_response_prompt,
     build_vehicle_step_flags_prompt,
     build_promotions_step_flags_prompt,
+    build_lead_capture_navigation_classifier_prompt,
 )
 
 
@@ -300,6 +301,32 @@ def classify_router_intent(user_message: str, previous_intent: str = "") -> str:
         return "UNKNOWN"
     except Exception:
         return "UNKNOWN"
+
+
+def classify_lead_capture_navigation(
+    previous_bot_message: str,
+    user_message: str,
+    selected_vehicle_name: str = "",
+) -> str:
+    """Clasifica si en lead_capture se debe continuar o desviar de flujo."""
+
+    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
+    try:
+        settings = get_bot_settings()
+        llm = ChatOpenAI(model=model_name, temperature=0)
+        prompt = build_lead_capture_navigation_classifier_prompt(
+            previous_bot_message=previous_bot_message,
+            user_message=user_message,
+            selected_vehicle_name=selected_vehicle_name,
+            bot_settings=settings,
+        )
+        content = llm.invoke(prompt).content
+        normalized = str(content).strip().upper()
+        if normalized in {"STAY", "PROMOTIONS", "FINANCING", "CAR_SELECTION"}:
+            return normalized
+        return "STAY"
+    except Exception:
+        return "STAY"
 
 
 def classify_vehicle_step_flags(
