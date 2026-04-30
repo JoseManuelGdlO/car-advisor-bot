@@ -16,7 +16,8 @@ const getMessaging = () => {
   }
   const privateKey = resolvePrivateKey();
   if (!env.push.firebaseProjectId || !env.push.firebaseClientEmail || !privateKey) {
-    throw new Error("Firebase credentials are not configured");
+    console.warn("[pushService] Firebase credentials are not configured; skipping push delivery");
+    return null;
   }
   firebaseApp = admin.initializeApp({
     credential: admin.credential.cert({
@@ -64,10 +65,14 @@ export const sendPushToOwner = async ({ ownerUserId, title, body, data = {} }) =
     attributes: ["id", "token"],
   });
   if (!devices.length) {
+    console.info("[pushService] No active devices for owner", { ownerUserId });
     return { sentCount: 0, failedCount: 0, deactivatedCount: 0 };
   }
 
   const messaging = getMessaging();
+  if (!messaging) {
+    return { sentCount: 0, failedCount: 0, deactivatedCount: 0 };
+  }
   let sentCount = 0;
   let failedCount = 0;
   let deactivatedCount = 0;
@@ -83,6 +88,12 @@ export const sendPushToOwner = async ({ ownerUserId, title, body, data = {} }) =
     } catch (error) {
       failedCount += 1;
       const code = String(error?.code || "");
+      console.error("[pushService] Failed sending push to device", {
+        ownerUserId,
+        deviceId: device.id,
+        code,
+        message: String(error?.message || ""),
+      });
       if (code.includes("registration-token-not-registered") || code.includes("invalid-registration-token")) {
         await device.update({ isActive: false });
         deactivatedCount += 1;
@@ -90,5 +101,6 @@ export const sendPushToOwner = async ({ ownerUserId, title, body, data = {} }) =
     }
   }
 
+  console.info("[pushService] Push send result", { ownerUserId, sentCount, failedCount, deactivatedCount });
   return { sentCount, failedCount, deactivatedCount };
 };

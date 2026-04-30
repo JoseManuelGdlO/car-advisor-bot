@@ -437,6 +437,23 @@ def notify_advisor(
         **_vehicles_api_headers(),
         "Content-Type": "application/json",
     }
-    response = requests.post(endpoint, json=payload, headers=headers, timeout=6)
-    response.raise_for_status()
-    return True
+    try:
+        response = requests.post(endpoint, json=payload, headers=headers, timeout=6)
+        response.raise_for_status()
+        return True
+    except requests.RequestException as exc:
+        status_code = getattr(getattr(exc, "response", None), "status_code", None)
+        response_text = ""
+        if getattr(exc, "response", None) is not None:
+            response_text = str(exc.response.text or "").strip()
+        print(
+            "[notify_advisor] push request failed",
+            {
+                "endpoint": endpoint,
+                "status_code": status_code,
+                "owner_user_id": normalized_owner_user_id,
+                "error": str(exc),
+                "response": response_text[:300],
+            },
+        )
+        raise

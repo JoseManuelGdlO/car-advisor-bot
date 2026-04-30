@@ -108,6 +108,10 @@ def lead_capture(state: clientState) -> clientState:
     if state.get("lead_capture_done") and all(
         cinfo.get(f) for f in ("nombre", "telefono", "email")
     ):
+        # Si el lead ya se completo en un turno previo, volver al router para
+        # evitar quedar atrapados en lead_capture en mensajes subsecuentes.
+        state["current_node"] = "router"
+        state["intent"] = ""
         return append_assistant_message(
             state,
             safe_llm_format(

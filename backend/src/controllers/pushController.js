@@ -74,8 +74,20 @@ export const sendPush = async (req, res, next) => {
       body: payload.body,
       data: payload.data || {},
     });
+    console.info("[pushController] sendPush result", {
+      ownerUserId,
+      authType: req.auth?.type,
+      sentCount: result.sentCount,
+      failedCount: result.failedCount,
+      deactivatedCount: result.deactivatedCount,
+    });
     return res.json({ ok: true, ...result });
   } catch (error) {
+    console.error("[pushController] sendPush failed", {
+      authType: req.auth?.type,
+      ownerUserIdFromBody: req.body?.ownerUserId,
+      message: String(error?.message || ""),
+    });
     return next(error);
   }
 };
