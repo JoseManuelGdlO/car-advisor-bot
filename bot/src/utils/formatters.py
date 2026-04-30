@@ -96,22 +96,22 @@ def format_available_vehicles_grouped(vehicles: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def format_filtered_vehicles(vehicles: list[dict[str, Any]]) -> str:
-    """Presenta resultados de filtros con marca y modelo."""
+def format_filtered_vehicles(vehicles: list[dict[str, Any]], platform: str = "web") -> str:
+    """Presenta resultados de filtros en una sola linea por vehiculo."""
 
     if not vehicles:
         return "No encontre vehiculos que coincidan con esas caracteristicas. Si quieres, probamos con otra combinacion."
 
-    lines = ["Tenemos estos modelos con las caracteristicas que estas buscando 😊🚗", ""]
+    vehicle_label = _bold_label("Modelos", platform)
+    lines = [f"Tenemos estos modelos con las caracteristicas que estas buscando 😊🚗", ""]
     for item in vehicles:
         brand = _title_or_default(item.get("brand"))
         model = _title_or_default(item.get("model"))
         year = item.get("year")
-        lines.append(f"Marca: {brand}")
-        lines.append(f"Modelo: {model}")
+        one_line = f"{brand} {model}".strip()
         if isinstance(year, int):
-            lines.append(f"Año: {year}")
-        lines.append("")
+            one_line = f"{one_line} {year}".strip()
+        lines.append(f"🚗 {vehicle_label}: {_bold_label(one_line, platform)}")
     return "\n".join(lines).strip()
 
 

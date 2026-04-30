@@ -655,8 +655,9 @@ def car_selection(state: clientState) -> clientState:
             return _respond_with_vehicle_detail(state, filtered[0])
         if _looks_like_feature_request(user_text):
             _debug("search_multiple_feature_request", count=len(filtered))
-            message = format_filtered_vehicles(filtered)
-            message = f"{message}\n\nSi te interesa uno, dime la marca y modelo exactos."
+            platform = str(state.get("platform", "web")).strip().lower() or "web"
+            message = format_filtered_vehicles(filtered, platform=platform)
+            message = f"{message}\n\nSi te interesa uno de estos, dime por favor el nombre exacto del vehiculo."
         else:
             _debug("search_multiple_specific_request", count=len(filtered))
             options = _format_candidate_options(filtered)

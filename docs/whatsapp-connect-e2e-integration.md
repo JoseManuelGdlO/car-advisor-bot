@@ -1,204 +1,119 @@
 # WhatsApp Connect V2 - Integracion E2E
 
 ## Objetivo
-Habilitar el canal `whatsapp` con proveedor `whatsapp-connect` en modo productivo multi-tenant, sin exponer credenciales al frontend y reutilizando el sistema existente de integraciones (`ChannelIntegration` / `ChannelCredential`).
+Habilitar el canal `whatsapp` con proveedor `whatsapp-connect` 
 
-## Arquitectura propuesta
+# Manual de usuario: conectar un device nuevo
 
-```mermaid
-flowchart LR
-  wcProvider[WhatsAppConnectProvider] -->|"signedWebhook eventId+timestamp"| webhookApi[WebhookAPI]
-  webhookApi --> securityLayer[SignatureAntiReplay]
-  securityLayer --> dedupeStore[ChannelEventReceipts]
-  dedupeStore --> normalizer[WcEventNormalizer]
-  normalizer --> orchestrator[ConversationRoutingService]
-  orchestrator --> crmPersist[ConversationServicePersist]
-  orchestrator --> botEngine[BotEngineChat]
-  botEngine --> outboundPersist[ConversationServiceAssistantPersist]
-  outboundPersist --> wcSend[WcClientSendMessage]
-  orchestrator --> contextStore[ChannelConversationContexts]
-  orchestrator --> observability[LogsMetrics]
-```
+Esta guia describe el proceso completo para una persona vendedora que quiere conectar su WhatsApp por primera vez en la plataforma.
 
-## Flujo paso a paso
+### Antes de empezar (requisitos)
+- Tener una cuenta creada y acceso al panel.
+- Tener una integracion de tipo `whatsapp-connect` en estado utilizable (`draft` o `active`).
+- Contar con los datos de WhatsApp Connect:
+  - `deviceId`
+  - `webhookSecret`
+  - `tenantId` (si aplica en tu proveedor)
+- Tener el telefono disponible para escanear QR desde WhatsApp.
 
-### 1) Inbound webhook
-1. WC envia `POST /api/webhooks/whatsapp-connect/events`.
-2. Backend resuelve integracion por `deviceId` y obtiene secreto desde `ChannelCredential` cifrada.
-3. Middleware valida firma HMAC (`x-wc-signature`) y timestamp (`x-wc-timestamp`).
-4. Middleware anti-replay valida ventana temporal.
-5. Se registra idempotencia en `channel_event_receipts`.
-6. Si evento no es `message.inbound`, se marca `ignored` y termina.
+### Paso 1. Crear cuenta e iniciar sesion
+1. Entra al sistema y crea tu cuenta (si aun no existe).
+2. Inicia sesion con tu correo y password.
+3. Verifica que puedas entrar al modulo de perfil/integraciones.
 
-### 2) Procesamiento bot
-1. `WcEventNormalizer` transforma payload externo al DTO interno.
-2. `ConversationService` persiste mensaje inbound en `ClientLead`, `Conversation`, `Message`.
-3. Si `shouldAutoReply=true`, backend invoca `POST {BOT_ENGINE_URL}/chat`.
-4. Cada respuesta del bot se persiste como `assistant`.
+Resultado esperado:
+- La cuenta queda autenticada y puedes ver la seccion `Integraciones`.
 
-### 3) Outbound
-1. Backend envia respuestas con `wcClient.sendMessage` a `POST /devices/:id/messages/send`.
-2. El cliente envía `content-type: application/json`, `Authorization: Bearer <WC_SERVICE_JWT>` y `x-tenant-id` (cuando aplica), reutilizando la configuración existente del backend.
-3. Errores transitorios (401, 429, 5xx, timeout) usan reintento controlado.
-4. Se actualiza `channel_event_receipts.status` a `processed` o `failed`.
+### Paso 2. Crear la integracion de WhatsApp
+1. Ve a `Perfil` -> `Integraciones`.
+2. Haz clic en `Canal`.
+3. Crea una integracion con:
+   - Canal: `WhatsApp`
+   - Proveedor: `whatsapp-connect`
+   - Nombre visible: el que prefieras (ej. `WhatsApp Ventas Sucursal Centro`)
+4. Guarda.
 
-### 4) Onboarding QR
-1. Frontend `Perfil.tsx` llama `POST /api/internal/whatsapp/qr-link`.
-2. Backend valida integracion activa y credencial activa.
-3. Backend conecta device y solicita public link en WC.
-4. Frontend recibe solo `{ url, expiresAt }`.
+Resultado esperado:
+- Aparece una tarjeta de WhatsApp en la lista de integraciones.
 
-## Fases de implementacion
+### Paso 3. Guardar credenciales del proveedor
+1. En la tarjeta de WhatsApp, presiona `Credenciales`.
+2. Captura y guarda:
+   - `deviceId` (obligatorio)
+   - `webhookSecret` (obligatorio)
+   - `tenantId` (opcional, solo si tu entorno lo requiere)
+3. Guarda cambios.
 
-### Fase 1 - Seguridad e idempotencia
-- Nuevo webhook seguro con firma y anti-replay.
-- Migraciones: `channel_event_receipts`, `channel_conversation_contexts`.
-- Normalizador de eventos inbound.
+Resultado esperado:
+- La UI muestra credenciales activas/validas.
+- La integracion debe quedar en estado `active` o lista para activar.
 
-### Fase 2 - Orquestacion backend
-- Extraer persistencia reusable a `conversationService`.
-- Orquestar inbound -> bot -> persistencia assistant.
+### Paso 4. Activar la integracion
+1. Presiona `Activar` en la tarjeta de WhatsApp (si aplica en tu flujo).
+2. Verifica que el estado del canal no quede en `error`.
 
-### Fase 3 - Outbound productivo
-- Extender `wcClient` con `sendMessage`.
-- Integrar retries y mapeo de errores.
+Resultado esperado:
+- La integracion queda activa para procesar mensajes.
 
-### Fase 4 - UX operativa
-- Mantener modal QR.
-- Agregar estado `ONLINE/OFFLINE` y envio de prueba desde UI.
+### Paso 5. Generar el QR de vinculacion
+1. Presiona `Generar QR`.
+2. Se abrira o mostrara un link publico temporal para el QR.
+3. Con tu telefono, abre WhatsApp y escanea el QR.
 
-### Fase 5 - Pruebas y rollout
-- Validaciones unitarias/integracion.
-- Activacion gradual por integracion.
+Resultado esperado:
+- WhatsApp queda vinculado al device configurado.
 
-## Archivos creados/modificados
+Si falla en este paso:
+- Error `WhatsApp Connect resource not found` normalmente indica que el `deviceId` no existe en el proveedor o no corresponde al entorno configurado.
+- Revisa `deviceId`, `WC_API_URL` y permisos del `WC_SERVICE_JWT`.
 
-### Backend - creados
-- `backend/src/models/ChannelEventReceipt.js`
-- `backend/src/models/ChannelConversationContext.js`
-- `backend/src/migrations/202604271320-whatsapp-connect-context-and-idempotency.cjs`
-- `backend/src/services/integrationResolverService.js`
-- `backend/src/services/wcEventNormalizer.js`
-- `backend/src/services/wcWebhookIngestionService.js`
-- `backend/src/services/conversationRoutingService.js`
-- `backend/src/services/conversationService.js`
-- `backend/src/services/botEngineClient.js`
-- `backend/src/controllers/whatsappConnectWebhookController.js`
-- `backend/src/routes/whatsappConnectWebhookRoutes.js`
+### Paso 6. Verificar estado del device
+1. Presiona `Estado device`.
+2. Revisa el estado reportado.
 
-### Backend - modificados
-- `backend/src/models/index.js`
-- `backend/src/routes/apiRoutes.js`
-- `backend/src/routes/whatsappConnectRoutes.js`
-- `backend/src/controllers/whatsappConnectController.js`
-- `backend/src/controllers/botConversationController.js`
-- `backend/src/services/wcClient.js`
-- `backend/src/services/wcAuthCache.js`
-- `backend/src/middlewares/antiReplayWindow.js`
-- `backend/src/middlewares/verifyWcSignature.js`
-- `backend/src/utils/integrationChannel.js`
-- `backend/src/config/env.js`
-- `backend/src/app.js`
+Interpretacion:
+- `ONLINE`: listo para operar.
+- `OFFLINE`: no esta conectado, repite vinculacion QR.
+- `UNKNOWN`: proveedor no confirma estado, revisar configuracion.
 
-### Frontend - modificados
-- `frontend/src/services/integrations.ts`
-- `frontend/src/pages/Perfil.tsx`
+Resultado esperado:
+- El estado debe ser `ONLINE` antes de pruebas productivas.
 
-## Contratos de endpoints nuevos
+### Paso 7. Probar envio saliente
+1. Presiona `Probar envio`.
+2. Ingresa un numero destino de prueba y un mensaje corto.
+3. Envia.
 
-### `POST /api/webhooks/whatsapp-connect/events`
-- Auth: `x-wc-signature`, `x-wc-timestamp`.
-- Request: payload webhook de WC.
-- Response:
-  - `202`: `{ ok: true, ... }` (procesado o idempotente)
-  - `202`: reintento con evento ya recibido: `{ ok: true, duplicate: true, message: "duplicate_event" }` (2xx para que el worker de WC cierre el delivery)
-  - `401`: firma/timestamp invalido
+Resultado esperado:
+- El destinatario recibe el mensaje.
+- En backend, la respuesta esperada es aceptacion (`202`) o envio correcto segun flujo.
 
-### `GET /api/internal/whatsapp/device-status?integrationId=<uuid>`
-- Auth: usuario JWT.
-- Response `200`:
-```json
-{ "status": "ONLINE", "updatedAt": "2026-04-27T18:00:00.000Z" }
-```
+### Paso 8. Validar flujo real inbound -> bot -> outbound
+1. Desde un numero externo, envia un mensaje al WhatsApp conectado.
+2. Confirma que:
+   - El mensaje entra al CRM.
+   - El bot responde automaticamente (si `shouldAutoReply=true`).
+   - La respuesta se entrega por WhatsApp Connect.
 
-### `POST /api/internal/whatsapp/send-test`
-- Auth: usuario JWT.
-- Request (texto, compatible):
-```json
-{ "integrationId": "uuid", "to": "52155...", "text": "Hola" }
-```
-- Request (imagen):
-```json
-{
-  "integrationId": "uuid",
-  "to": "52155...",
-  "type": "image",
-  "imageUrl": "https://example.com/car.png",
-  "caption": "Imagen del vehiculo"
-}
-```
-- Validaciones:
-  - Si `type` se omite, se asume `text` para compatibilidad.
-  - `type=image` requiere `imageUrl`.
-  - `type=text` requiere `text`.
-- Response: `202 { "ok": true }`
+Resultado esperado:
+- Conversacion completa funcionando de punta a punta.
 
-## Esquemas de datos
+### Checklist rapido de verificacion final
+- Integracion creada con `channel=whatsapp` y `provider=whatsapp-connect`.
+- Credenciales guardadas con `deviceId` y `webhookSecret` correctos.
+- Integracion en estado `active`.
+- Device en estado `ONLINE`.
+- Envio de prueba exitoso.
+- Flujo real inbound/outbound validado.
 
-### `channel_event_receipts`
-- Uso: idempotencia y trazabilidad de webhooks.
-- Clave unica: `(provider, provider_event_id)`.
-
-### `channel_conversation_contexts`
-- Uso: enrutar por tenant/device y conservar contexto estable de conversacion.
-- Clave unica: `(owner_user_id, channel, external_user_id, device_id)`.
-
-## Manejo de errores
-- `401`: firma invalida, timestamp fuera de ventana o token WC invalido.
-- `403`: credenciales sin permiso en WC.
-- `404`: device/recurso no encontrado en WC.
-- Reintentos / duplicado: se responde `202` con `duplicate: true` (no `409`), para alinear con reintentos del proveedor.
-- `429`: limite de proveedor; retry corto.
-- `5xx`: error upstream WC; retry controlado y error final `502`.
-- `timeout`: error `504`; retry acotado.
-
-## Checklist de seguridad
-- Credenciales cifradas en `channel_credentials.cipher_text`.
-- No exponer payload descifrado al frontend.
-- Firma HMAC obligatoria en webhook.
-- Anti-replay por ventana temporal.
-- Rate limit en endpoint webhook.
-- Logs sin secretos (`apiKey`, `password`, JWT).
-
-## Plan de pruebas
-
-### Unitarias
-- `wcEventNormalizer` (payload correcto e incompleto).
-- `antiReplayWindow`.
-- Resolver de integraciones por credencial activa.
-
-### Integracion
-- Webhook valido crea receipt y persiste mensaje.
-- Webhook duplicado responde `202` con `duplicate: true`.
-- Flujo inbound -> bot -> outbound con mocks.
-
-### E2E manual
-1. Crear integracion `whatsapp-connect`.
-2. Guardar credenciales y generar QR.
-3. Enviar mensaje real desde WhatsApp.
-4. Ver mensaje en CRM.
-5. Ver respuesta outbound entregada por WC.
-
-## Plan de rollout
-- Activacion progresiva por integracion (`status=active` + `WC_WEBHOOK_ENABLED=true`).
-- Piloto con pocos tenants.
-- Fallback seguro: canal `web` sigue operativo aun si falla WC.
-- Rollback: desactivar integracion sin borrar historico.
-
-## Riesgos y mitigaciones
-- **Riesgo:** payload variable del proveedor.
-  - **Mitigacion:** normalizador tolerante + validaciones.
-- **Riesgo:** duplicados webhook.
-  - **Mitigacion:** indice unico de idempotencia.
-- **Riesgo:** cache de token en memoria por proceso.
-  - **Mitigacion:** llaves de cache por cuenta y refresh controlado; evolucion a cache distribuida.
+### Solucion de problemas (errores comunes)
+- `401` en webhook o llamadas al proveedor:
+  - `webhookSecret` incorrecto, firma invalida o JWT invalido.
+- `403`:
+  - token sin permisos suficientes en WhatsApp Connect.
+- `404` al generar QR o consultar estado:
+  - `deviceId` no existe en el proveedor o `WC_API_URL` apunta al entorno equivocado.
+- `429`:
+  - limite de proveedor; reintentar despues de unos segundos.
+- `502/504`:
+  - problema temporal de red/upstream; reintentar y revisar conectividad.
