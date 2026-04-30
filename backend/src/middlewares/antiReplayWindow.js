@@ -3,6 +3,7 @@ import { logWcWebhook } from "../utils/wcWebhookLog.js";
 
 const DEFAULT_WINDOW_MS = 5 * 60 * 1000;
 
+// Factory middleware para validar skew temporal del webhook.
 export const antiReplayWindow = ({ maxSkewMs = DEFAULT_WINDOW_MS } = {}) => (req, _res, next) => {
   try {
     // Rechaza eventos con desfase de tiempo excesivo para mitigar replay attacks.

@@ -12,13 +12,16 @@ import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.js";
 export const app = express();
 // EasyPanel/Nginx agrega X-Forwarded-*; habilitar trust proxy evita falsos positivos en rate-limit.
 app.set("trust proxy", 1);
+// Normaliza origins para comparar sin importar slash final/mayúsculas.
 const normalizeOrigin = (value) => String(value || "").trim().replace(/\/$/, "").toLowerCase();
 const allowedOrigins = new Set(env.corsOrigins.map((item) => normalizeOrigin(item)).filter(Boolean));
+// Capa base de hardening HTTP (headers de seguridad).
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" },
   })
 );
+// CORS con allowlist explícita + excepción localhost en desarrollo.
 app.use(
   cors({
     origin(origin, cb) {
@@ -46,9 +49,12 @@ app.use(
     },
   })
 );
+// Activos estáticos para recursos del bot/autobot.
 app.use("/uploads/autobot", express.static(path.resolve(process.cwd(), "autobot")));
 app.use(morgan("dev"));
+// Throttling de rutas de autenticación para reducir brute force.
 const authRateLimit = rateLimit({ windowMs: 60_000, limit: 30 });
+// Soporta prefijo custom de API, manteniendo compatibilidad con /api.
 const normalizedApiPrefix = (() => {
   const value = String(env.apiPrefix || "").trim();
   if (!value) return "/api";

@@ -3,10 +3,12 @@ import { normalizeInboundChannel } from "../utils/integrationChannel.js";
 import { env } from "../config/env.js";
 import { upsertConversationEvent } from "../services/conversationService.js";
 
+// Obtiene URL base del motor de bot sin slash final.
 const botEngineBaseUrl = () => String(env.bot.engineUrl || "").replace(/\/$/, "");
 
 export const botResetConversation = async (req, res) => {
   // Reinicia la sesión conversacional en el motor del bot para un user_id + canal.
+  // 1) normaliza inputs.
   const normalizedUserId = String(req.body?.user_id || "").trim();
   const resolvedChannel = normalizeInboundChannel(req.body?.platform || env.bot.defaultInboundChannel || "web");
   console.log("[botResetConversation] request", {
@@ -16,6 +18,7 @@ export const botResetConversation = async (req, res) => {
   if (!normalizedUserId) {
     throw new ApiError(400, "user_id is required");
   }
+  // 2) valida integración con motor externo.
   const base = botEngineBaseUrl();
   if (!base) {
     console.error("[botResetConversation] BOT_ENGINE_URL is empty");
@@ -24,6 +27,7 @@ export const botResetConversation = async (req, res) => {
   const url = `${base}/reset`;
   let response;
   try {
+    // 3) propaga reset hacia FastAPI.
     response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -46,6 +50,7 @@ export const botResetConversation = async (req, res) => {
   }
   let data;
   try {
+    // 4) respuesta esperada: JSON.
     data = JSON.parse(text);
   } catch {
     console.error("[botResetConversation] invalid JSON from bot", text.slice(0, 200));
@@ -57,6 +62,7 @@ export const botResetConversation = async (req, res) => {
 
 export const botUpsertConversation = async (req, res) => {
   // Delega toda la lógica de persistencia a un servicio reutilizable por otros canales.
+  // Este endpoint es la entrada oficial de eventos del bot/canales al CRM.
   const { user_id, platform, message, selected_car, customer_info, financing_selection, promotion_selection } = req.body;
   const ownerUserId = env.bot.defaultOwnerUserId || req.auth.userId;
   const normalizedPlatform = normalizeInboundChannel(platform || env.bot.defaultInboundChannel || "web");
@@ -76,6 +82,7 @@ export const botUpsertConversation = async (req, res) => {
     financingSelection: financing_selection,
     promotionSelection: promotion_selection,
   });
+  // La respuesta devuelve IDs de conversación/lead + flags de auto-reply.
   console.log("[botUpsertConversation] persisted message", {
     conversationId: result.conversationId,
     leadId: result.clientId,

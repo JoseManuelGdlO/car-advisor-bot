@@ -1,3 +1,4 @@
+// Middleware genérico de validación con Zod para body/params/query.
 export const validate = (schema) => (req, _res, next) => {
   const parsed = schema.safeParse({
     body: req.body,

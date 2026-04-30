@@ -10,6 +10,7 @@ const loginSchema = z.object({
 
 export const register = async (req, res, next) => {
   try {
+    // Registro de usuario final con validación mínima de perfil/credenciales.
     const { email, password, name } = z.object({
       email: z.string().email(),
       password: z.string().min(6),
@@ -26,6 +27,7 @@ export const register = async (req, res, next) => {
 
 export const login = async (req, res, next) => {
   try {
+    // Login clásico: valida credenciales y emite JWT de usuario.
     const { email, password } = loginSchema.parse(req.body);
     const user = await User.findOne({ where: { email } });
     if (!user) throw new ApiError(401, "Invalid credentials");
@@ -40,6 +42,7 @@ export const login = async (req, res, next) => {
 
 export const createServiceToken = async (req, res, next) => {
   try {
+    // Crea token máquina-a-máquina para integraciones internas (bot/backend jobs).
     const { name } = z.object({ name: z.string().min(2).max(120) }).parse(req.body);
     const raw = randomToken();
     const item = await ServiceToken.create({
@@ -56,6 +59,7 @@ export const createServiceToken = async (req, res, next) => {
 
 export const revokeServiceToken = async (req, res, next) => {
   try {
+    // Revocación lógica: marca `revokedAt` sin borrar histórico.
     const item = await ServiceToken.findOne({ where: { id: req.params.id, ownerUserId: req.auth.userId } });
     if (!item) throw new ApiError(404, "Token not found");
     await item.update({ revokedAt: new Date() });
@@ -67,6 +71,7 @@ export const revokeServiceToken = async (req, res, next) => {
 
 export const listServiceTokens = async (req, res, next) => {
   try {
+    // Lista metadatos de tokens del usuario autenticado (sin exponer token plano).
     const rows = await ServiceToken.findAll({
       where: { ownerUserId: req.auth.userId },
       attributes: ["id", "name", "scopes", "revokedAt", "lastUsedAt", "createdAt"],

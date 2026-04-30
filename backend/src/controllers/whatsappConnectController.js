@@ -29,6 +29,7 @@ const sendTestImageSchema = z
   })
   .strict();
 
+// Validador combinado para endpoint de prueba (texto o imagen).
 export const sendTestSchema = z.union([sendTestTextSchema, sendTestImageSchema]);
 
 /**

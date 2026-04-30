@@ -30,8 +30,10 @@ const credentialsSchema = z
   })
   .strict();
 
+// Scope multi-tenant por propietario autenticado.
 const ownerWhere = (userId) => ({ ownerUserId: userId });
 
+// DTO estable para frontend, incluyendo si existe credencial activa.
 const integrationDto = async (row) => {
   const activeCred = await ChannelCredential.findOne({
     where: { ownerUserId: row.ownerUserId, channelIntegrationId: row.id, isActive: true },
@@ -51,6 +53,7 @@ const integrationDto = async (row) => {
 
 export const listIntegrations = async (req, res, next) => {
   try {
+    // Lista integraciones por canal/proveedor del usuario actual.
     const rows = await ChannelIntegration.findAll({
       where: ownerWhere(req.auth.userId),
       order: [["updatedAt", "DESC"]],
@@ -64,6 +67,7 @@ export const listIntegrations = async (req, res, next) => {
 
 export const createIntegration = async (req, res, next) => {
   try {
+    // Crea una integración única por (owner, channel, provider).
     const body = createSchema.parse(req.body);
     const [row, created] = await ChannelIntegration.findOrCreate({
       where: {
@@ -89,6 +93,7 @@ export const createIntegration = async (req, res, next) => {
 
 export const patchIntegration = async (req, res, next) => {
   try {
+    // Ajusta metadata operativa sin tocar credenciales.
     const row = await ChannelIntegration.findOne({
       where: { id: req.params.id, ...ownerWhere(req.auth.userId) },
     });
@@ -107,6 +112,7 @@ export const patchIntegration = async (req, res, next) => {
 
 export const postIntegrationCredentials = async (req, res, next) => {
   try {
+    // Rota credenciales: desactiva previas y guarda nueva versión cifrada.
     const row = await ChannelIntegration.findOne({
       where: { id: req.params.id, ...ownerWhere(req.auth.userId) },
     });
@@ -134,6 +140,7 @@ export const postIntegrationCredentials = async (req, res, next) => {
 
 export const postIntegrationTest = async (req, res, next) => {
   try {
+    // Healthcheck de credenciales: prueba decrypt local y actualiza estado.
     const row = await ChannelIntegration.findOne({
       where: { id: req.params.id, ...ownerWhere(req.auth.userId) },
     });

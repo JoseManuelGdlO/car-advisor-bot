@@ -1,10 +1,12 @@
 import { FinancingPlan, Vehicle } from "../models/index.js";
 import { ApiError } from "../utils/errors.js";
 
+// Scope multi-tenant por propietario autenticado.
 const ownerWhere = (userId) => ({ ownerUserId: userId });
 const TOP_IMAGES_DEFAULT = 2;
 const NEXT_IMAGES_DEFAULT = 5;
 
+// Lista inventario con planes financieros asociados y prioridad comercial.
 export const listVehicles = async (req, res) =>
   res.json(
     await Vehicle.findAll({
@@ -14,9 +16,11 @@ export const listVehicles = async (req, res) =>
     })
   );
 
+// Crea vehículo nuevo dentro del tenant actual.
 export const createVehicle = async (req, res) => res.status(201).json(await Vehicle.create({ ...req.body, ownerUserId: req.auth.userId }));
 
 export const updateVehicle = async (req, res, next) => {
+  // Edita vehículo existente validando ownership.
   const row = await Vehicle.findOne({ where: { id: req.params.id, ...ownerWhere(req.auth.userId) } });
   if (!row) return next(new ApiError(404, "Vehicle not found"));
   await row.update(req.body);
@@ -24,12 +28,14 @@ export const updateVehicle = async (req, res, next) => {
 };
 
 export const getVehicleById = async (req, res, next) => {
+  // Obtiene detalle puntual de vehículo por id.
   const row = await Vehicle.findOne({ where: { id: req.params.id, ...ownerWhere(req.auth.userId) } });
   if (!row) return next(new ApiError(404, "Vehicle not found"));
   return res.json(row);
 };
 
 export const getVehiclesByFilters = async (req, res) => {
+  // Filtros de catálogo usados por backoffice y flujos de bot.
   const where = {
     ...ownerWhere(req.auth.userId),
   };
@@ -52,6 +58,7 @@ export const getVehiclesByFilters = async (req, res) => {
 };
 
 export const getVehicleImages = async (req, res, next) => {
+  // Paginación de imágenes por cursor para no enviar arreglos grandes en cada request.
   const row = await Vehicle.findOne({
     where: { id: req.params.id, ...ownerWhere(req.auth.userId) },
     attributes: ["id", "imageUrls"],
@@ -86,6 +93,7 @@ export const getVehicleImages = async (req, res, next) => {
 };
 
 export const uploadVehicleImages = async (req, res) => {
+  // Devuelve URLs públicas relativas de los archivos subidos por multer.
   const files = req.files || [];
   const imageUrls = files.map((file) => `/uploads/autobot/${file.filename}`);
   return res.status(201).json({ imageUrls });

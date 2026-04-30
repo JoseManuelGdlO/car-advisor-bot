@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { ApiError } from "../utils/errors.js";
 import { logWcWebhook } from "../utils/wcWebhookLog.js";
 
+// Convierte timestamps heterogéneos (epoch sec/ms o ISO) a milisegundos.
 const toMillis = (value) => {
   const raw = String(value || "").trim();
   if (!raw) return 0;
@@ -14,6 +15,7 @@ const toMillis = (value) => {
   return Number.isNaN(parsed) ? 0 : parsed;
 };
 
+// Comparación en tiempo constante para evitar filtrado por timing.
 const safeCompareHex = (a, b) => {
   const left = Buffer.from(String(a || ""), "hex");
   const right = Buffer.from(String(b || ""), "hex");
@@ -21,6 +23,7 @@ const safeCompareHex = (a, b) => {
   return crypto.timingSafeEqual(left, right);
 };
 
+// Lee payload raw capturado por express.json(verify) para HMAC.
 const readRawBody = (req) => {
   if (typeof req.rawBody === "string") return req.rawBody;
   if (Buffer.isBuffer(req.body)) return req.body.toString("utf8");

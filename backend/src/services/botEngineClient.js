@@ -5,12 +5,14 @@ import { logWcWebhook } from "../utils/wcWebhookLog.js";
 const BOT_MESSAGE_SEPARATOR = "\n\n<<BOT_MSG_BREAK>>\n\n";
 const WC_IMAGE_MARKER_PREFIX = "<<WC_IMAGE_JSON>>";
 
+// Sanitiza URL base para evitar dobles slashes al concatenar paths.
 const botEngineBaseUrl = () => String(env.bot.engineUrl || "").replace(/\/$/, "");
 
 export const runBotChat = async ({ userId, platform, message }) => {
   // Wrapper del endpoint /chat para desacoplar la orquestación del controlador HTTP.
   const base = botEngineBaseUrl();
   if (!base) throw new ApiError(500, "BOT_ENGINE_URL is not configured");
+  // 1) Invoca el motor FastAPI del bot.
   const response = await fetch(`${base}/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -24,6 +26,7 @@ export const runBotChat = async ({ userId, platform, message }) => {
     throw new ApiError(502, "Could not reach bot engine");
   });
 
+  // 2) Normaliza respuesta HTTP/JSON.
   const text = await response.text();
   if (!response.ok) {
     logWcWebhook("bot engine: bad response", {
@@ -41,6 +44,7 @@ export const runBotChat = async ({ userId, platform, message }) => {
 
   const reply = String(payload.reply || "").trim();
   if (!reply) return [];
+  // 3) Soporta respuestas multipartes separadas por marcador interno.
   const parts = reply
     .split(BOT_MESSAGE_SEPARATOR)
     .map((part) => String(part || "").trim())
@@ -57,6 +61,7 @@ export const runBotChat = async ({ userId, platform, message }) => {
         textLines.push(trimmed);
         continue;
       }
+      // 4) Si viene payload embebido de imagen, lo transforma a mensaje estructurado.
       const rawJson = trimmed.slice(WC_IMAGE_MARKER_PREFIX.length);
       try {
         const parsed = JSON.parse(rawJson);
@@ -77,5 +82,6 @@ export const runBotChat = async ({ userId, platform, message }) => {
       normalizedMessages.push({ type: "text", text });
     }
   }
+  // Contrato de salida uniforme para WhatsApp Connect ingestion.
   return normalizedMessages;
 };

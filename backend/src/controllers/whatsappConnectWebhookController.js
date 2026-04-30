@@ -6,6 +6,7 @@ import {
 import { routeWhatsappConnectWebhookEvent } from "../services/conversationRoutingService.js";
 import { logWcWebhook, logWcWebhookDebug } from "../utils/wcWebhookLog.js";
 
+// Parse resiliente para soportar body JSON o raw body.
 const safeParseBody = (req) => {
   // Admite body parseado o buffer crudo para soportar validación de firma.
   if (req.body && typeof req.body === "object" && !Buffer.isBuffer(req.body)) return req.body;

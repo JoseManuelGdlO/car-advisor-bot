@@ -1,9 +1,11 @@
 import { Op, fn, col } from "sequelize";
 import { ClientLead, Conversation } from "../models/index.js";
 
+// Scope multi-tenant por propietario autenticado.
 const ownerWhere = (userId) => ({ ownerUserId: userId });
 
 export const getDashboard = async (req, res) => {
+  // Agrega KPIs principales para cards y gráficas del dashboard.
   const userId = req.auth.userId;
   const [activeChats, newLeads, conversions, waiting, topRows] = await Promise.all([
     Conversation.count({ where: ownerWhere(userId) }),

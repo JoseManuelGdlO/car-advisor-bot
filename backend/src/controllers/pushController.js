@@ -23,6 +23,7 @@ const botPushNotifySchema = z.object({
 
 export const registerPushDevice = async (req, res, next) => {
   try {
+    // Registra/actualiza token de push para el usuario autenticado.
     const { token, platform } = registerDeviceSchema.parse(req.body);
     const device = await upsertPushDevice({
       ownerUserId: req.auth.userId,
@@ -43,6 +44,7 @@ export const registerPushDevice = async (req, res, next) => {
 
 export const unregisterPushDevice = async (req, res, next) => {
   try {
+    // Baja lógica del token de push sin destruir historial.
     const removed = await deactivatePushDevice({
       ownerUserId: req.auth.userId,
       token: String(req.params.token || ""),
@@ -55,6 +57,7 @@ export const unregisterPushDevice = async (req, res, next) => {
 
 export const sendPush = async (req, res, next) => {
   try {
+    // Envío manual de push (usuario o servicio con owner explícito).
     const payload = sendPushSchema.parse(req.body);
     let ownerUserId;
     if (req.auth.type === "user") {
@@ -79,6 +82,7 @@ export const sendPush = async (req, res, next) => {
 
 export const botPushNotify = async (req, res, next) => {
   try {
+    // Endpoint machine-to-machine usado por el bot para notificaciones al owner.
     const payload = botPushNotifySchema.parse(req.body);
     const result = await sendPushToOwner({
       ownerUserId: payload.owner_user_id,

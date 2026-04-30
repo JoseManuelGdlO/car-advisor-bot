@@ -27,6 +27,7 @@ const userPatchSchema = z
   })
   .strict();
 
+// Presentación del perfil comercial para frontend (evita exponer columnas internas).
 const toBusinessDto = (row) => {
   if (!row) return null;
   return {
@@ -47,6 +48,7 @@ const toBusinessDto = (row) => {
 
 export const getAccountProfile = async (req, res, next) => {
   try {
+    // Obtiene perfil de usuario + business profile (creándolo si no existe).
     const user = await User.findByPk(req.auth.userId);
     if (!user) throw new ApiError(404, "User not found");
     const [business] = await BusinessProfile.findOrCreate({
@@ -70,6 +72,7 @@ export const getAccountProfile = async (req, res, next) => {
 
 export const patchAccountProfile = async (req, res, next) => {
   try {
+    // Aplica patch parcial validado sobre usuario y datos de negocio.
     const user = await User.findByPk(req.auth.userId);
     if (!user) throw new ApiError(404, "User not found");
     const userPatch = userPatchSchema.safeParse(req.body?.user || {});
@@ -133,6 +136,7 @@ const deleteAccountSchema = z
 
 export const deleteAccount = async (req, res, next) => {
   try {
+    // Eliminación de cuenta con confirmación explícita para prevenir borrados accidentales.
     const { confirmText } = deleteAccountSchema.parse(req.body || {});
     if (confirmText.toUpperCase() !== "ELIMINAR") {
       throw new ApiError(400, "Debes escribir ELIMINAR para confirmar.");

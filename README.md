@@ -12,6 +12,56 @@ Proyecto integrado con:
 - El `bot` mantiene `/chat`, pero reporta eventos de conversacion al backend con token permanente revocable.
 - Aislamiento estricto por usuario: cada cuenta solo ve sus propios datos.
 
+## Mapa rapido del backend (funciones y responsabilidades)
+
+Para facilitar mantenimiento, el backend esta organizado por capas. Estos son los archivos clave y lo que hace cada bloque de funciones:
+
+- `backend/src/server.js`
+  - `start()`: inicializa DB (`authenticate` + `sync`) y levanta HTTP listener.
+- `backend/src/app.js`
+  - `normalizeOrigin()`: estandariza origins para validacion CORS.
+  - Configuracion Express: `helmet`, `cors`, `express.json` (incluye `rawBody` para firmas), `morgan`, rate limit de auth y registro de rutas.
+- `backend/src/middlewares/auth.js`
+  - `getBearer()`: extrae token Bearer desde headers.
+  - `requireUserAuth()`: autentica JWT de usuario y adjunta `req.auth`.
+  - `requireServiceToken()`: valida token de servicio (hash en DB), actualiza `lastUsedAt`, adjunta `req.auth`.
+  - `requireUserOrServiceAuth()`: fallback dual (usuario -> servicio).
+- `backend/src/middlewares/verifyWcSignature.js`
+  - `toMillis()`: normaliza timestamp webhook.
+  - `safeCompareHex()`: comparacion HMAC en tiempo constante.
+  - `readRawBody()`: obtiene payload crudo para firma.
+  - `verifyWcSignature()`: valida firma y timestamp base en `req.wc`.
+- `backend/src/middlewares/antiReplayWindow.js`
+  - `antiReplayWindow()`: rechaza webhooks con drift temporal fuera de ventana.
+- `backend/src/middlewares/errorHandler.js`
+  - `notFoundHandler()`: respuesta 404 uniforme.
+  - `errorHandler()`: salida JSON estandar para errores de negocio/infra.
+- `backend/src/middlewares/validate.js`
+  - `validate(schema)`: validacion Zod centralizada de `body`, `params`, `query`.
+- `backend/src/controllers/botConversationController.js`
+  - `botResetConversation()`: reenvia reset de sesion al motor FastAPI (`/reset`).
+  - `botUpsertConversation()`: recibe evento de chat y delega persistencia al servicio de conversaciones.
+- `backend/src/services/botEngineClient.js`
+  - `runBotChat()`: llama `/chat` del bot engine y normaliza salida (texto/imagen) para canales externos.
+
+### Controladores del backend (todos documentados en código)
+
+- `authController.js`: registro/login de usuario y ciclo de service tokens.
+- `accountController.js`: perfil de cuenta/negocio y eliminación de cuenta con confirmación.
+- `clientsController.js`: CRUD básico de leads/clientes.
+- `conversationsController.js`: listado de conversaciones y timeline de mensajes.
+- `dashboardController.js`: agregación de KPIs para panel principal.
+- `vehiclesController.js`: inventario, filtros e imágenes de vehículos.
+- `financingController.js`: planes, requisitos y relaciones plan-vehículo.
+- `promotionController.js`: CRUD y activación de promociones.
+- `faqController.js`: CRUD de FAQs operativas del bot.
+- `integrationsController.js`: integraciones por canal + credenciales cifradas.
+- `botSettingsController.js`: lectura/edición de configuración del bot.
+- `botConversationController.js`: entrada de eventos del bot y reset de sesión.
+- `whatsappConnectController.js`: QR/status/envío de prueba para WhatsApp Connect.
+- `whatsappConnectWebhookController.js`: resolución de integración e ingesta de webhook.
+- `pushController.js`: registro/baja de dispositivos push y notificaciones.
+
 ## Variables de entorno
 
 ### Backend (`backend/.env`)
