@@ -97,7 +97,7 @@ def build_rewrite_prompt(base_text: str, bot_settings: dict[str, Any] | None) ->
         f"{system_prompt}\n\n"
         "REESCRITURA:\n"
         "Reescribe el siguiente mensaje en espanol claro y breve. "
-        "No cambies el significado ni agregues informacion nueva.\n\n"
+        "No cambies el significado, usa el mismo significado que el mensaje base.\n\n"
         f"Mensaje base: {base_text}\n"
     )
 
@@ -449,10 +449,20 @@ def build_faq_interrupt_flags_prompt(
         "}\n\n"
         "Definicion de interrumpir_por_faq (true = debe atenderse con FAQ de negocio, no con catalogo/planes):\n"
         "- true: pregunta por el negocio, agencia o lote: ubicacion, horarios, garantia o politica del lote, "
-        "contacto de oficina, datos generales de la concesionaria, que metodos de pago aceptan en caja, etc.\n"
+        "contacto de oficina, datos generales de la concesionaria, que metodos de pago aceptan en caja, "
+        "politica por atraso de pagos, papeles/documentos para comprar, adeudos o multas del vehiculo, "
+        "disponibilidad y condiciones de prueba de manejo, etc.\n"
         "- false: todo lo demas, incluido: preguntas sobre un coche, modelo, anio, estado, 'como es' un auto, "
         "comparaciones de unidades, mas fotos, si/no, respuestas cortas al turno, credito/enganche/plazos concretos al elegir coche, "
         "cualquier cosa de inventario, catalogo o cierre de paso (confirmacion de compra, datos, etc.)\n"
+        "Ejemplos que DEBEN marcarse como FAQ (interrumpir_por_faq=true):\n"
+        "- 'que pasa si me atraso en el pago?'\n"
+        "- 'que papeles necesito para comprarlo?'\n"
+        "- 'el auto tiene adeudos o multas?'\n"
+        "- 'tienen prueba de manejo?'\n"
+        "Ejemplos que NO deben marcarse como FAQ (interrumpir_por_faq=false):\n"
+        "- 'quiero ver mas fotos'\n"
+        "- 'me interesa el plan 2'\n"
         f"Contexto: esperando_confirmacion_compra={espera_conf} | candidatos_vehiculo_listos_para_elegir={cands}.\n"
         "tema_vehiculo_inventario: el mensaje trata de autos, unidades, modelos, anios, fotos, detalles, comparar.\n"
         "tema_financiamiento_credi: enganche, plazo, tasa, credito, mensualidad en contexto de plan o coche (no caja del negocio en abstracto si el usuario pide oficina).\n"
@@ -468,7 +478,7 @@ def build_faq_response_prompt(
     faq_context: str,
     bot_settings: dict[str, Any] | None,
 ) -> str:
-    """Prompt para responder FAQ solo con contexto proveniente de BD."""
+    """Prompt para responder FAQ con estilo conversacional usando base FAQ de BD."""
 
     system_prompt = build_system_prompt(bot_settings)
     question = user_question.strip() or "(mensaje vacio)"
@@ -476,9 +486,112 @@ def build_faq_response_prompt(
     return (
         f"{system_prompt}\n\n"
         "RESPUESTA_FAQ:\n"
-        "Responde la pregunta del usuario usando EXCLUSIVAMENTE la BASE_FAQ provista.\n"
-        "Si la BASE_FAQ no contiene informacion suficiente, dilo de forma clara y breve.\n"
+        "Responde de forma natural y conversacional usando EXCLUSIVAMENTE la BASE_FAQ provista.\n"
+        "No copies textualmente: reformula la informacion para que suene cercana y clara.\n"
+        "Si la BASE_FAQ no contiene informacion suficiente, dilo amablemente y ofrece una alternativa de ayuda.\n"
+        "Si el contenido disponible sugiere un siguiente paso (por ejemplo, contactar asesor, revisar modelos o planes), "
+        "puedes incluirlo de forma breve y util.\n"
         "No inventes datos. No saludes. No menciones que eres una IA.\n\n"
         f"PREGUNTA_USUARIO: {question}\n\n"
         f"BASE_FAQ:\n{context}\n"
+    )
+
+
+def _build_answer_first_prompt_by_mode(
+    *,
+    user_question: str,
+    context_blocks: str,
+    mode: str,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Prompt base para respuesta answer-first usando solo contexto verificable."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    question = user_question.strip() or "(mensaje vacio)"
+    context = context_blocks.strip() or "(sin contexto)"
+    mode_label = mode.strip().lower() or "general"
+    return (
+        f"{system_prompt}\n\n"
+        "ANSWER_FIRST_RESPONSE:\n"
+        "Tu prioridad es responder la pregunta del usuario con informacion verificable del CONTEXTO.\n"
+        "Reglas obligatorias:\n"
+        "- Usa EXCLUSIVAMENTE el CONTEXTO provisto.\n"
+        "- Si no hay evidencia suficiente, dilo claramente y de forma amable.\n"
+        "- No inventes datos tecnicos ni disponibilidad.\n"
+        "- Manten tono natural y breve.\n"
+        "- Estructura de salida obligatoria en 3 partes, en este orden:\n"
+        "  1) responde la duda del usuario.\n"
+        "  2) sugiere la accion comercial/logica segun el dominio.\n"
+        "  3) cierra con una pregunta corta para continuar.\n"
+        "- El bloque estructurado (listados, opciones, precios, planes, promociones) se mostrara aparte "
+        "en otro mensaje del sistema: NO lo repitas ni lo parafrasees.\n"
+        "- Evita copiar frases literales del CONTEXTO si describen listados u opciones.\n"
+        "- No enumeres modelos/planes/promociones en tu respuesta semantica.\n"
+        "- La parte 1 (respuesta principal) debe ser breve: maximo 1-2 oraciones.\n"
+        "- IMPORTANTE: no incluyas encabezados ni etiquetas literales como "
+        "'RESPUESTA', 'SIGUIENTE_PASO' o 'CIERRE'.\n"
+        "- No saludes salvo que el usuario haya saludado.\n\n"
+        f"DOMINIO: {mode_label}\n"
+        f"PREGUNTA_USUARIO: {question}\n\n"
+        f"CONTEXTO:\n{context}\n"
+    )
+
+
+def build_answer_first_inventory_prompt(
+    user_question: str,
+    context_blocks: str,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Prompt answer-first para catalogo/inventario de vehiculos."""
+
+    return _build_answer_first_prompt_by_mode(
+        user_question=user_question,
+        context_blocks=context_blocks,
+        mode="inventory",
+        bot_settings=bot_settings,
+    )
+
+
+def build_answer_first_financing_prompt(
+    user_question: str,
+    context_blocks: str,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Prompt answer-first para financiamiento."""
+
+    return _build_answer_first_prompt_by_mode(
+        user_question=user_question,
+        context_blocks=context_blocks,
+        mode="financing",
+        bot_settings=bot_settings,
+    )
+
+
+def build_answer_first_promotion_prompt(
+    user_question: str,
+    context_blocks: str,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Prompt answer-first para promociones."""
+
+    return _build_answer_first_prompt_by_mode(
+        user_question=user_question,
+        context_blocks=context_blocks,
+        mode="promotion",
+        bot_settings=bot_settings,
+    )
+
+
+def build_answer_first_faq_prompt(
+    user_question: str,
+    context_blocks: str,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Prompt answer-first para FAQ de negocio."""
+
+    return _build_answer_first_prompt_by_mode(
+        user_question=user_question,
+        context_blocks=context_blocks,
+        mode="faq",
+        bot_settings=bot_settings,
     )

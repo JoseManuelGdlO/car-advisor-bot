@@ -6,6 +6,19 @@ from tests.test_helpers import GraphTestCase, initial_state, with_user_message
 
 
 class VehicleCatalogFlowTests(GraphTestCase):
+    def test_promotions_request_from_start_routes_to_promotions(self) -> None:
+        state = with_user_message(initial_state(), "hola tienes promociones disponibles?")
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.promotions.fetch_promotions", return_value=[]),
+            patch("src.nodes.promotions.safe_llm_format", side_effect=lambda text: text),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertEqual(updated.get("current_node"), "promotions")
+        self.assertEqual(updated.get("intent"), "promotions")
+        self.assertIn("No hay promociones disponibles", str(updated["messages"][-1]["content"]))
+
     def test_vehicle_request_routes_to_car_selection_and_shows_detail(self) -> None:
         vehicles = [
             {

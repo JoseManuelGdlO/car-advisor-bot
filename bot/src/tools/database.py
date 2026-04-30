@@ -454,8 +454,8 @@ def upsert_bot_session_state(
         connection.close()
 
 
-def fetch_faq_candidates(question: str, limit: int = 3) -> list[str]:
-    """Obtiene respuestas FAQ candidatas desde BD para preguntas generales."""
+def fetch_faq_candidates(question: str, limit: int = 12) -> list[str]:
+    """Obtiene FAQs candidatas y, si no hay match, un bloque base de FAQs recientes."""
 
     normalized_question = str(question or "").strip()
     if not normalized_question:
@@ -488,6 +488,19 @@ def fetch_faq_candidates(question: str, limit: int = 3) -> list[str]:
         with connection.cursor() as cursor:
             cursor.execute(query, tuple(params))
             rows = cursor.fetchall() or []
+            if not rows:
+                # Fallback: cuando no hay coincidencias claras, entrega FAQs recientes para que
+                # el LLM tenga una base minima y pueda responder de forma conversacional.
+                cursor.execute(
+                    """
+                    SELECT question, answer
+                    FROM faqs
+                    ORDER BY updated_at DESC
+                    LIMIT %s
+                    """,
+                    (max(limit, 12),),
+                )
+                rows = cursor.fetchall() or []
         candidates: list[str] = []
         for row in rows:
             if not row:

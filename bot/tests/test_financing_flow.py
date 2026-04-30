@@ -6,6 +6,50 @@ from tests.test_helpers import GraphTestCase, initial_state, with_user_message
 
 
 class FinancingFlowTests(GraphTestCase):
+    def test_financing_requests_catalog_routes_to_car_selection(self) -> None:
+        state = initial_state()
+        state["current_node"] = "financing"
+        state["intent"] = "financing"
+        state["awaiting_financing_plan_selection"] = True
+        state["financing_plan_candidates"] = [{"id": "plan-1", "name": "Plan Demo", "lender": "Banco", "active": True, "vehicles": []}]
+        state["messages"] = [
+            {
+                "role": "assistant",
+                "content": "Si te interesa uno en particular, dime el nombre o numero del plan.",
+                "type": "AIMessage",
+            }
+        ]
+
+        state = with_user_message(state, "no mejor solo muestrame los modelos disponibles por favor")
+        with patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}):
+            updated = self.graph.invoke(state)
+
+        self.assertEqual(updated.get("current_node"), "car_selection")
+        self.assertEqual(updated.get("intent"), "vehicle_catalog")
+        self.assertFalse(updated.get("awaiting_financing_plan_selection"))
+
+    def test_financing_requests_promotions_routes_to_promotions_not_faq(self) -> None:
+        state = initial_state()
+        state["current_node"] = "financing"
+        state["intent"] = "financing"
+        state["awaiting_financing_plan_selection"] = True
+        state["financing_plan_candidates"] = [{"id": "plan-1", "name": "Plan Demo", "lender": "Banco", "active": True, "vehicles": []}]
+        state["messages"] = [
+            {
+                "role": "assistant",
+                "content": "Si te interesa uno en particular, dime el nombre o numero del plan.",
+                "type": "AIMessage",
+            }
+        ]
+
+        state = with_user_message(state, "mejor cuentame si tienes promociones")
+        with patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": True}):
+            updated = self.graph.invoke(state)
+
+        self.assertEqual(updated.get("current_node"), "promotions")
+        self.assertEqual(updated.get("intent"), "promotions")
+        self.assertFalse(updated.get("is_faq_interrupt"))
+
     def test_financing_multi_vehicle_to_lead_capture_notifies_and_returns_router(self) -> None:
         plan_a = {
             "id": "plan-a",

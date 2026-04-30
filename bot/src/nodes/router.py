@@ -77,6 +77,24 @@ def _is_financing_request(text: str) -> bool:
     return any(signal in normalized for signal in signals)
 
 
+def _is_promotions_request(text: str) -> bool:
+    """Retorna True cuando is promotions request."""
+    normalized = normalize_user_text(text)
+    if not normalized:
+        return False
+    signals = [
+        "promocion",
+        "promociones",
+        "oferta",
+        "ofertas",
+        "descuento",
+        "descuentos",
+        "bono",
+        "bonos",
+    ]
+    return any(signal in normalized for signal in signals)
+
+
 def _is_simple_greeting(text: str) -> bool:
     """Retorna True cuando is simple greeting."""
     normalized = normalize_user_text(text)
@@ -116,7 +134,21 @@ def router(state: clientState) -> clientState:
         _debug_router("route_to_financing", reason="financing_signal")
         return state
 
-    if is_faq_intent(text):
+    if _is_promotions_request(text):
+        state["intent"] = "promotions"
+        state["current_node"] = "promotions"
+        _debug_router("route_to_promotions", reason="promotions_signal")
+        return state
+
+    faq_like = is_faq_intent(text)
+    vehicle_like = _is_vehicle_request(text)
+    if faq_like and vehicle_like:
+        state["intent"] = "vehicle_catalog"
+        state["current_node"] = "car_selection"
+        _debug_router("route_to_car_selection", reason="hybrid_question_vehicle_priority")
+        return state
+
+    if faq_like:
         state["intent"] = "faq"
         state["current_node"] = "faq"
         _debug_router("route_to_faq")
@@ -141,7 +173,7 @@ def router(state: clientState) -> clientState:
         _debug_router("route_to_promotions", reason="promotions_context")
         return state
 
-    if _is_vehicle_request(text):
+    if vehicle_like:
         state["intent"] = "vehicle_catalog"
         state["current_node"] = "car_selection"
         _debug_router("route_to_car_selection", reason="vehicle_request_signal")

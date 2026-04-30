@@ -6,7 +6,12 @@ import json
 import re
 from typing import Any
 
-from src.services.llm_responses import classify_financing_plan_selection_intent, safe_llm_format
+from src.services.llm_responses import (
+    classify_financing_plan_selection_intent,
+    compose_answer_first_response,
+    generate_grounded_answer,
+    safe_llm_format,
+)
 from src.state import clientState
 from src.tools.database import fetch_financing_plans, fetch_financing_plans_by_vehicle
 from src.tools.vehicles import (
@@ -49,6 +54,31 @@ _FINANCING_SIGNALS = {
     "plan de pagos",
     "planes de pagos",
 }
+_PROMOTIONS_SIGNALS = {
+    "promocion",
+    "promociones",
+    "oferta",
+    "ofertas",
+    "descuento",
+    "descuentos",
+    "bono",
+    "bonos",
+}
+_CATALOG_SIGNALS = {
+    "modelo",
+    "modelos",
+    "carro",
+    "carros",
+    "auto",
+    "autos",
+    "vehiculo",
+    "vehiculos",
+    "marca",
+    "marcas",
+    "catalogo",
+    "disponible",
+    "disponibles",
+}
 
 
 def _debug(event: str, **payload: Any) -> None:
@@ -67,6 +97,22 @@ def _is_financing_query(user_text: str) -> bool:
     if not normalized:
         return False
     return any(_contains_signal_phrase(normalized, signal) for signal in _FINANCING_SIGNALS)
+
+
+def _is_promotions_query(user_text: str) -> bool:
+    """Retorna True cuando is promotions query."""
+    normalized = normalize_user_text(user_text)
+    if not normalized:
+        return False
+    return any(_contains_signal_phrase(normalized, signal) for signal in _PROMOTIONS_SIGNALS)
+
+
+def _is_catalog_query(user_text: str) -> bool:
+    """Retorna True cuando is catalog query."""
+    normalized = normalize_user_text(user_text)
+    if not normalized:
+        return False
+    return any(_contains_signal_phrase(normalized, signal) for signal in _CATALOG_SIGNALS)
 
 
 def _contains_signal_phrase(normalized_text: str, signal: str) -> bool:
@@ -242,6 +288,32 @@ def _looks_like_plan_vehicle_info_request(user_text: str) -> bool:
     return any(signal in normalized for signal in signals)
 
 
+def _compose_conversational_block(intro_base: str, structured_block: str, follow_up: str = "") -> str:
+    """Compone salida conversacional con intro + bloque estructurado + cierre opcional."""
+    intro = safe_llm_format(intro_base)
+    sections = [part for part in [intro, structured_block.strip(), follow_up.strip()] if part]
+    return "\n\n".join(sections)
+
+
+def _compose_answer_first_block(
+    *,
+    user_text: str,
+    context_blocks: str,
+    structured_block: str,
+    follow_up: str,
+    fallback_semantic: str,
+) -> str:
+    """Compone salida answer-first para respuestas de financiamiento."""
+
+    semantic = generate_grounded_answer(
+        user_question=user_text,
+        context_blocks=context_blocks,
+        mode="financing",
+        fallback=fallback_semantic,
+    )
+    return compose_answer_first_response(semantic, structured_block, follow_up)
+
+
 def _image_url_for_chat(raw_url: str) -> str:
     """Helper de apoyo para image url for chat."""
     cleaned = str(raw_url or "").strip()
@@ -408,6 +480,26 @@ def financing(state: clientState) -> clientState:
             selected_car=refreshed_car,
         )
 
+    # Permite salir de financiamiento hacia promociones cuando el usuario cambia de tema.
+    if _is_promotions_query(user_text):
+        state["awaiting_financing_plan_selection"] = False
+        state["awaiting_financing_vehicle_selection"] = False
+        state["financing_plan_candidates"] = []
+        state["financing_vehicle_candidates"] = []
+        state["current_node"] = "promotions"
+        state["intent"] = "promotions"
+        _debug("route_change", next_node="promotions", reason="promotions_requested")
+        return state
+    if _is_catalog_query(user_text):
+        state["awaiting_financing_plan_selection"] = False
+        state["awaiting_financing_vehicle_selection"] = False
+        state["financing_plan_candidates"] = []
+        state["financing_vehicle_candidates"] = []
+        state["current_node"] = "car_selection"
+        state["intent"] = "vehicle_catalog"
+        _debug("route_change", next_node="car_selection", reason="catalog_requested")
+        return state
+
     if state.get("awaiting_financing_vehicle_selection"):
         selected_vehicle = _pick_vehicle_for_plan(state, user_text)
         if not selected_vehicle:
@@ -551,8 +643,10 @@ def financing(state: clientState) -> clientState:
             state["awaiting_financing_vehicle_selection"] = True
             _debug("awaiting_vehicle_selection_enabled", candidates=len(plan_vehicles))
             vehicle_picker = format_financing_plan_vehicles(normalized_plan)
-            question = safe_llm_format(
-                f"{vehicle_picker}\n\nCuando lo elijas, paso a capturar tus datos para que un asesor te contacte."
+            question = _compose_conversational_block(
+                "Perfecto, te muestro los vehiculos disponibles dentro de este plan para que elijas el que prefieras.",
+                vehicle_picker,
+                "Cuando lo elijas, paso a capturar tus datos para que un asesor te contacte.",
             )
             return append_assistant_message(state, question)
 
@@ -600,8 +694,15 @@ def financing(state: clientState) -> clientState:
                 if has_single_plan
                 else "Si te interesa alguno, dime el nombre o numero del plan."
             )
-            question = safe_llm_format(
-                f"{message}\n\n{follow_up}"
+            question = _compose_answer_first_block(
+                user_text=user_text,
+                context_blocks=(
+                    f"Vehiculo consultado: {selected_car or 'este vehiculo'}\n\n"
+                    f"Planes disponibles:\n{message}"
+                ),
+                structured_block=message,
+                follow_up=follow_up,
+                fallback_semantic=f"Claro, para {selected_car or 'este vehiculo'} si tenemos opciones de pago a plazos.",
             )
             return append_assistant_message(state, question)
 
@@ -625,8 +726,11 @@ def financing(state: clientState) -> clientState:
     _debug("plans_loaded", total_plans=len(plans))
     platform = str(state.get("platform", "web")).strip().lower() or "web"
     listing = format_financing_plans(plans, platform=platform)
-    prompt = (
-        f"{listing}\n\nSi te interesa uno en particular, dime el nombre o numero del plan."
-        " Despues te pedire seleccionar el vehiculo dentro de ese plan."
+    prompt = _compose_answer_first_block(
+        user_text=user_text,
+        context_blocks=f"Planes de financiamiento vigentes:\n{listing}",
+        structured_block=listing,
+        follow_up="Si te interesa uno en particular, dime el nombre o numero del plan. Despues te pedire seleccionar el vehiculo dentro de ese plan.",
+        fallback_semantic="Claro, manejamos pagos a plazos y puedo mostrarte los planes disponibles.",
     )
-    return append_assistant_message(state, safe_llm_format(prompt))
+    return append_assistant_message(state, prompt)

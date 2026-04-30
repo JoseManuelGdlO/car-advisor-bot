@@ -13,9 +13,11 @@ from src.state import clientState
 from src.services.llm_responses import (
     classify_vehicle_step_flags,
     classify_purchase_confirmation_intent,
+    compose_answer_first_response,
     generate_available_models_intro,
     generate_vehicle_candidates_selection_message,
     generate_vehicle_detail_intro,
+    generate_grounded_answer,
     safe_llm_format,
 )
 from src.tools.vehicles import (
@@ -93,6 +95,16 @@ _FINANCING_SIGNALS = {
     "plan de pagos",
     "planes de pagos",
 }
+_PROMOTIONS_SIGNALS = {
+    "promocion",
+    "promociones",
+    "oferta",
+    "ofertas",
+    "descuento",
+    "descuentos",
+    "bono",
+    "bonos",
+}
 _PURCHASE_WITH_IMAGES_QUESTION = (
     "¿Te interesa comprar este vehículo o quieres ver más imágenes del mismo? 🚗✨ "
 )
@@ -118,6 +130,7 @@ _GENERAL_SIGNALS_NORMALIZED = _normalize_signal_set(_GENERAL_SIGNALS)
 _FEATURE_SIGNALS_NORMALIZED = _normalize_signal_set(_FEATURE_SIGNALS)
 _MORE_IMAGES_SIGNALS_NORMALIZED = _normalize_signal_set(_MORE_IMAGES_SIGNALS)
 _FINANCING_SIGNALS_NORMALIZED = _normalize_signal_set(_FINANCING_SIGNALS)
+_PROMOTIONS_SIGNALS_NORMALIZED = _normalize_signal_set(_PROMOTIONS_SIGNALS)
 
 
 def _debug(event: str, **payload: Any) -> None:
@@ -145,6 +158,21 @@ def _looks_like_feature_request(user_text: str) -> bool:
     return has_year or any(signal in normalized for signal in _FEATURE_SIGNALS_NORMALIZED)
 
 
+def _looks_like_specific_vehicle_request(user_text: str) -> bool:
+    """Detecta preguntas por un modelo/marca puntual aunque no exista en catalogo."""
+
+    normalized = normalize_user_text(user_text)
+    if not normalized:
+        return False
+    # Ejemplos: "tienes modelo chevrolet", "busco marca chevrolet"
+    if re.search(r"\b(modelo|marca)\s+[a-z0-9]+\b", normalized):
+        return True
+    # Ejemplos: "tienes chevrolet?", "hay chevrolet?"
+    if re.search(r"\b(tienes|hay|busco|quiero)\s+[a-z0-9]+\b", normalized):
+        return not _is_general_request(user_text)
+    return False
+
+
 def _is_more_images_request(user_text: str) -> bool:
     """Retorna True cuando is more images request."""
     normalized = normalize_user_text(user_text)
@@ -159,6 +187,14 @@ def _is_financing_request(user_text: str) -> bool:
     if not normalized:
         return False
     return any(_contains_signal_phrase(normalized, signal) for signal in _FINANCING_SIGNALS_NORMALIZED)
+
+
+def _is_promotions_request(user_text: str) -> bool:
+    """Retorna True cuando is promotions request."""
+    normalized = normalize_user_text(user_text)
+    if not normalized:
+        return False
+    return any(_contains_signal_phrase(normalized, signal) for signal in _PROMOTIONS_SIGNALS_NORMALIZED)
 
 
 def _contains_signal_phrase(normalized_text: str, signal: str) -> bool:
@@ -204,8 +240,9 @@ def _find_candidate_from_pending(state: clientState, user_text: str) -> dict[str
     picked_label = canonicalize_with_typo_support(user_text, options, threshold=0.72)
     if not picked_label:
         normalized = normalize_user_text(user_text)
-        if normalized.isdigit():
-            idx = int(normalized) - 1
+        index_match = re.search(r"\b(\d{1,2})\b", normalized)
+        if index_match:
+            idx = int(index_match.group(1)) - 1
             if 0 <= idx < len(pending) and isinstance(pending[idx], dict):
                 _debug("pending_candidate_selected_by_index", index=idx, value=_format_vehicle_name(pending[idx]))
                 return pending[idx]
@@ -500,7 +537,12 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
     return _append_assistant_blocks(state, blocks)
 
 
-def _respond_available_list(state: clientState, vehicles: list[dict[str, Any]]) -> clientState:
+def _respond_available_list(
+    state: clientState,
+    vehicles: list[dict[str, Any]],
+    *,
+    unavailable_request: bool = False,
+) -> clientState:
     """Genera una respuesta para available list."""
     state["awaiting_purchase_confirmation"] = False
     state["last_vehicle_candidates"] = [
@@ -522,8 +564,28 @@ def _respond_available_list(state: clientState, vehicles: list[dict[str, Any]]) 
     if available_list.startswith("No tengo vehiculos disponibles"):
         message = available_list
     else:
-        intro = generate_available_models_intro()
-        message = f"{intro}\n{available_list}"
+        semantic_intro = ""
+        if unavailable_request:
+            fallback_semantic = (
+                "No tengo informacion suficiente para responder por completo esa duda tecnica. "
+                "Ademas, ese modelo no lo tenemos disponible ahora."
+            )
+            semantic_intro = generate_grounded_answer(
+                user_question=latest_user_message(state),
+                context_blocks=(
+                    "Contexto inventario:\n"
+                    f"{available_list}\n\n"
+                    "Indicacion: si el modelo preguntado no esta disponible, dilo con claridad "
+                    "y ofrece alternativas disponibles."
+                ),
+                mode="inventory",
+                fallback=fallback_semantic,
+            )
+            intro = safe_llm_format("Estos son todos los modelos disponibles en este momento:")
+        else:
+            intro = generate_available_models_intro()
+        close = "Si quieres, te ayudo a comparar cual te conviene mas."
+        message = compose_answer_first_response(semantic_intro or intro, available_list, close)
     return append_assistant_message(state, message)
 
 
@@ -634,6 +696,11 @@ def car_selection(state: clientState) -> clientState:
         state["current_node"] = "financing"
         _debug("route_change", next_node="financing", reason="mid_selection_financing")
         return state
+    if _is_promotions_request(user_text):
+        state["current_node"] = "promotions"
+        state["intent"] = "promotions"
+        _debug("route_change", next_node="promotions", reason="mid_selection_promotions")
+        return state
 
     filters = detect_vehicle_filters(user_text, vehicles)
     _debug("filters_detected", filters=filters)
@@ -672,5 +739,9 @@ def car_selection(state: clientState) -> clientState:
         _debug("pending_candidates_saved", count=len(state["last_vehicle_candidates"]))
         return append_assistant_message(state, message)
 
-    _debug("no_filters_detected_fallback_to_available")
-    return _respond_available_list(state, vehicles)
+    unavailable_request = _looks_like_specific_vehicle_request(user_text)
+    _debug(
+        "no_filters_detected_fallback_to_available",
+        unavailable_request=unavailable_request,
+    )
+    return _respond_available_list(state, vehicles, unavailable_request=unavailable_request)

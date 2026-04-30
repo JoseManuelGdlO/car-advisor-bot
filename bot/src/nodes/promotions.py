@@ -7,6 +7,8 @@ from typing import Any
 from src.services.llm_responses import (
     classify_promotions_step_flags,
     classify_promotion_selection_intent,
+    compose_answer_first_response,
+    generate_grounded_answer,
     safe_llm_format,
 )
 from src.state import clientState
@@ -254,8 +256,16 @@ def _respond_promotion_listing(state: clientState, promotions: list[dict[str, An
             safe_llm_format("No hay promociones disponibles para aplicar en este momento."),
         )
     listing = format_promotions(hydrated_promotions, platform=platform)
-    prompt = safe_llm_format(
-        f"{listing}\n\nSi quieres aplicar una, dime cual y confirmame explicitamente que deseas aplicarla."
+    semantic = generate_grounded_answer(
+        user_question=latest_user_message(state),
+        context_blocks=f"Promociones activas:\n{listing}",
+        mode="promotion",
+        fallback="Claro, te comparto las promociones activas para que revises cual te conviene mas.",
+    )
+    prompt = compose_answer_first_response(
+        semantic,
+        listing,
+        "Si quieres aplicar una, dime cual y confirmame explicitamente que deseas aplicarla.",
     )
     state["promotion_candidates"] = hydrated_promotions
     state["awaiting_promotion_selection"] = True
@@ -470,9 +480,16 @@ def promotions(state: clientState) -> clientState:
             state["awaiting_promotion_selection"] = True
             car_name = str(state.get("selected_car", "")).strip() or "este vehiculo"
             listing = format_promotions(hydrated_promotions, platform=str(state.get("platform", "web")))
-            question = safe_llm_format(
-                f"Estas son las promociones para {car_name}:\n{listing}\n\n"
-                "Si deseas aplicar una, dime cual y confirmalo explicitamente."
+            semantic = generate_grounded_answer(
+                user_question=user_text,
+                context_blocks=f"Vehiculo: {car_name}\nPromociones aplicables:\n{listing}",
+                mode="promotion",
+                fallback=f"Claro, para {car_name} estas son las promociones que si aplican.",
+            )
+            question = compose_answer_first_response(
+                semantic,
+                listing,
+                "Si deseas aplicar una, dime cual y confirmalo explicitamente.",
             )
             return append_assistant_message(state, question)
         selected_car_name = str(state.get("selected_car", "")).strip() or "este vehiculo"

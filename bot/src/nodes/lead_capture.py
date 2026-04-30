@@ -239,14 +239,14 @@ def lead_capture(state: clientState) -> clientState:
 
     # 3) Email
     if not info.get("email"):
-        if latest_user and _asked_for_email(state):
+        if latest_user:
             extracted_email = extract_email(latest_user) or normalize_stored_email(latest_user)
             _debug("email_extracted", raw=latest_user, extracted=extracted_email)
             if is_valid_email(extracted_email):
                 info["email"] = normalize_stored_email(extracted_email)
                 state["customer_info"] = info
                 _debug("email_saved", email=info.get("email"))
-            else:
+            elif _asked_for_email(state):
                 _debug("email_rejected", raw=latest_user)
                 return append_assistant_message(
                     state,

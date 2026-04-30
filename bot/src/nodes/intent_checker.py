@@ -1,12 +1,43 @@
 """Nodo para detectar intencion FAQ interruptiva."""
 
 from src.state import clientState
+from src.tools.vehicles import normalize_user_text
 
 from src.services.llm_responses import (
     classify_faq_interrupt_flags,
     classify_vehicle_step_flags,
 )
 from src.utils.state_helpers import latest_human_ai_pair
+
+
+def _looks_like_commercial_navigation_request(user_text: str) -> bool:
+    """Detecta pedidos de flujo comercial (no FAQ de negocio)."""
+    normalized = normalize_user_text(user_text)
+    if not normalized:
+        return False
+    signals = {
+        "promocion",
+        "promociones",
+        "oferta",
+        "ofertas",
+        "descuento",
+        "bono",
+        "financiamiento",
+        "credito",
+        "plan",
+        "mensualidad",
+        "enganche",
+        "carro",
+        "carros",
+        "vehiculo",
+        "vehiculos",
+        "modelo",
+        "modelos",
+        "marca",
+        "marcas",
+        "catalogo",
+    }
+    return any(signal in normalized for signal in signals)
 
 
 def intent_checker(state: clientState) -> clientState:
@@ -48,6 +79,12 @@ def intent_checker(state: clientState) -> clientState:
         ):
             state["is_faq_interrupt"] = False
             return state
+
+    # Durante flujo comercial, no debemos desviar a FAQ si el usuario cambia
+    # entre temas de venta (promociones, financiamiento, catalogo, etc.).
+    if _looks_like_commercial_navigation_request(last_user):
+        state["is_faq_interrupt"] = False
+        return state
 
     pending = state.get("last_vehicle_candidates")
     pending_n = len(pending) if isinstance(pending, list) else 0

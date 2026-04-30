@@ -12,6 +12,10 @@ from langchain_openai import ChatOpenAI
 from src.tools.database import get_bot_settings
 from src.utils.prompts import (
     build_available_models_intro_prompt,
+    build_answer_first_faq_prompt,
+    build_answer_first_financing_prompt,
+    build_answer_first_inventory_prompt,
+    build_answer_first_promotion_prompt,
     build_faq_interrupt_flags_prompt,
     build_financing_plan_selection_classifier_prompt,
     build_promotion_selection_classifier_prompt,
@@ -443,20 +447,79 @@ def generate_faq_response(user_question: str, faq_candidates: list[str]) -> str:
     normalized_question = str(user_question or "").strip()
     context = "\n\n".join(str(item).strip() for item in faq_candidates if str(item).strip())
     fallback_base = (
-        "Lo siento, pero no tengo informacion suficiente para responder esa pregunta. "
-        "Si gustas, puedo orientarte con un asesor para resolver todas tus dudas."
+        "No encontre informacion suficiente para responder eso con precision. "
+        "Si quieres, te ayudo a revisar modelos, planes o te contacto con un asesor para resolverlo."
     )
     fallback = safe_llm_format(fallback_base)
     if not normalized_question:
         return fallback
     if not context:
         return fallback
+    return generate_grounded_answer(
+        user_question=normalized_question,
+        context_blocks=context,
+        mode="faq",
+        fallback=fallback,
+    )
+
+
+def compose_answer_first_response(
+    semantic_answer: str,
+    business_block: str = "",
+    close_question: str = "",
+) -> str:
+    """Compone salida canónica answer-first: respuesta + bloque negocio + cierre."""
+
+    def _strip_answer_first_labels(text: str) -> str:
+        cleaned = str(text or "").strip()
+        if not cleaned:
+            return ""
+        cleaned = re.sub(r"(?im)^\s*respuesta\s*:\s*", "", cleaned)
+        cleaned = re.sub(r"(?im)^\s*siguiente[_\s-]*paso\s*:\s*", "", cleaned)
+        cleaned = re.sub(r"(?im)^\s*cierre\s*:\s*", "", cleaned)
+        return cleaned.strip()
+
+    parts = [
+        _strip_answer_first_labels(semantic_answer),
+        _strip_answer_first_labels(business_block),
+        _strip_answer_first_labels(close_question),
+    ]
+    return "\n\n".join(part for part in parts if part)
+
+
+def generate_grounded_answer(
+    *,
+    user_question: str,
+    context_blocks: str,
+    mode: str,
+    fallback: str,
+) -> str:
+    """Genera respuesta semántica verídica con patrón answer-first por dominio."""
+
+    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
+    question = str(user_question or "").strip()
+    context = str(context_blocks or "").strip()
+    safe_fallback = str(fallback or "").strip() or "No tengo suficiente informacion para responder con precision."
+    if not question:
+        return safe_fallback
+    if not context:
+        return safe_fallback
     try:
         settings = get_bot_settings()
-        llm = ChatOpenAI(model=model_name, temperature=0)
-        prompt = build_faq_response_prompt(normalized_question, context, settings)
+        llm = ChatOpenAI(model=model_name, temperature=0.35)
+        mode_key = str(mode or "").strip().lower()
+        if mode_key == "inventory":
+            prompt = build_answer_first_inventory_prompt(question, context, settings)
+        elif mode_key == "financing":
+            prompt = build_answer_first_financing_prompt(question, context, settings)
+        elif mode_key == "promotion":
+            prompt = build_answer_first_promotion_prompt(question, context, settings)
+        elif mode_key == "faq":
+            prompt = build_answer_first_faq_prompt(question, context, settings)
+        else:
+            prompt = build_faq_response_prompt(question, context, settings)
         content = llm.invoke(prompt).content
         normalized = str(content).strip()
-        return normalized or fallback
+        return normalized or safe_fallback
     except Exception:
-        return fallback
+        return safe_fallback
