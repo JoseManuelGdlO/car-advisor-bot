@@ -47,7 +47,7 @@ Usa `bot/.env.example`:
 1. Backend
    - `cd backend`
    - `npm install`
-   - `npm run dev`
+   - `npm start`
 
 2. Frontend
    - `cd frontend`
@@ -56,7 +56,7 @@ Usa `bot/.env.example`:
 
 3. Bot
    - Configurar entorno Python e instalar `requirements.txt`
-   - Ejecutar FastAPI del bot como normalmente lo hacias
+   - Ejecutar FastAPI del bot: `python -m src.server`
 
 4. Mobile (Ionic + Capacitor wrapper)
    - `cd mobile`
@@ -65,6 +65,10 @@ Usa `bot/.env.example`:
    - Requisito Android: usar Gradle JDK 21+ (si falla con `invalid source release: 21`, cambia `JAVA_HOME` o el Gradle JDK de Android Studio)
    - Android: `npm run android`
    - iOS: `npm run ios`
+
+5. Chat web
+   - `cd bot/chat`
+   - `python -m http.server 8090`
 
 ## Flujo web -> app mobile
 
