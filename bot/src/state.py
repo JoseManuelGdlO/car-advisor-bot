@@ -29,6 +29,7 @@ class clientState(TypedDict, total=False):
     - vehicle_images_has_more: indica si hay mas imagenes por pedir al backend.
     - vehicle_images_last_batch: ultimo lote de URLs de imagenes enviado al usuario.
     - user_id: identificador de conversacion (en web/whatsapp suele ser el telefono).
+    - owner_user_id: UUID del owner CRM para operaciones machine-to-machine (ej. push).
     - lead_phone_attempts: reintentos al validar telefono en plataformas que lo piden.
     - lead_capture_done: True cuando ya se notifico y persistio el lead en esta conversacion.
     - selected_financing_plan_*: datos del plan seleccionado por el usuario.
@@ -57,6 +58,7 @@ class clientState(TypedDict, total=False):
     awaiting_purchase_confirmation: bool
     platform: str
     user_id: str
+    owner_user_id: str
     lead_phone_attempts: int
     lead_capture_done: bool
     vehicle_images_cursor: int

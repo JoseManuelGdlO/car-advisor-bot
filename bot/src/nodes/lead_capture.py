@@ -240,21 +240,27 @@ def lead_capture(state: clientState) -> clientState:
     )
     if not has_promotion:
         promotion_selection = {}
+    owner_user_id = str(state.get("owner_user_id", "")).strip()
 
     try:
         _debug(
             "notify_payload_ready",
             selected_car=selected_car,
+            owner_user_id=owner_user_id,
             customer_info=payload_info,
             financing_selection=financing_selection,
             promotion_selection=promotion_selection,
         )
-        notify_advisor(
-            selected_car,
-            payload_info,
-            financing_selection=financing_selection,
-            promotion_selection=promotion_selection,
-        )
+        if owner_user_id:
+            notify_advisor(
+                selected_car,
+                payload_info,
+                owner_user_id=owner_user_id,
+                financing_selection=financing_selection,
+                promotion_selection=promotion_selection,
+            )
+        else:
+            _debug("notify_skipped_missing_owner_user_id")
         push_event_to_backend(
             {
                 "user_id": uid,

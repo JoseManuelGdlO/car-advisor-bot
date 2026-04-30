@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import unicodedata
@@ -400,16 +401,42 @@ def available_models_by_brand(brand: str) -> list[str]:
 def notify_advisor(
     selected_car: str,
     customer_info: dict[str, Any],
+    owner_user_id: str,
     financing_selection: dict[str, Any] | None = None,
     promotion_selection: dict[str, Any] | None = None,
-) -> None:
-    """Notifica al asesor comercial via endpoint externo configurable."""
+) -> bool:
+    """Envia push al owner via backend API `/push/send`."""
 
-    endpoint = os.getenv("NOTIFY_ADVISOR_URL", "http://localhost:8000/notificarAsesor")
+    normalized_owner_user_id = str(owner_user_id or "").strip()
+    if not normalized_owner_user_id:
+        return False
+
+    endpoint = f"{_vehicles_api_base_url()}/push/send"
+    customer_name = str(customer_info.get("nombre", "")).strip()
+    customer_phone = str(customer_info.get("telefono", "")).strip()
+    customer_email = str(customer_info.get("email", "")).strip()
+    normalized_financing = financing_selection or {}
+    normalized_promotion = promotion_selection or {}
     payload = {
-        "selected_car": selected_car,
-        "customer_info": customer_info,
-        "financing_selection": financing_selection or {},
-        "promotion_selection": promotion_selection or {},
+        "ownerUserId": normalized_owner_user_id,
+        "title": "Nuevo lead interesado en vehiculo",
+        "body": (
+            f"{customer_name or 'Cliente'} quiere informacion de {selected_car}. "
+            f"Telefono: {customer_phone or 'N/D'}."
+        ),
+        "data": {
+            "selected_car": str(selected_car or "").strip(),
+            "customer_name": customer_name,
+            "customer_phone": customer_phone,
+            "customer_email": customer_email,
+            "financing_selection": json.dumps(normalized_financing, ensure_ascii=True, separators=(",", ":")),
+            "promotion_selection": json.dumps(normalized_promotion, ensure_ascii=True, separators=(",", ":")),
+        },
     }
-    requests.post(endpoint, json=payload, timeout=5)
+    headers = {
+        **_vehicles_api_headers(),
+        "Content-Type": "application/json",
+    }
+    response = requests.post(endpoint, json=payload, headers=headers, timeout=6)
+    response.raise_for_status()
+    return True

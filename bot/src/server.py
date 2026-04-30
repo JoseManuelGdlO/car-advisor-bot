@@ -157,6 +157,7 @@ def _build_initial_state() -> dict[str, Any]:
         "awaiting_promotion_selection": False,
         "awaiting_promotion_vehicle_selection": False,
         "awaiting_promotion_vehicle_interest_confirmation": False,
+        "owner_user_id": "",
     }
 
 
@@ -187,6 +188,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
         crm = upsert_inbound_user_message(payload.user_id, payload.message, payload.platform)
         if crm:
             conversation_id = crm["conversation_id"]
+            state["owner_user_id"] = str(crm.get("owner_user_id", "")).strip()
         messages = list(state.get("messages", []))
         messages.append({"role": "user", "content": payload.message, "type": "HumanMessage"})
         # Evita crecimiento ilimitado del estado persistido.
