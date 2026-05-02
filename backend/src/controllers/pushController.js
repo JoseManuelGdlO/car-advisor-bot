@@ -21,6 +21,12 @@ const botPushNotifySchema = z.object({
   data: z.record(z.string(), z.string()).optional(),
 });
 
+const ensureServiceTokenOwnsTarget = (req, ownerUserId) => {
+  if (req.auth?.type === "service" && req.auth.userId !== ownerUserId) {
+    throw new ApiError(403, "Service token cannot send push notifications for another owner");
+  }
+};
+
 export const registerPushDevice = async (req, res, next) => {
   try {
     // Registra/actualiza token de push para el usuario autenticado.
@@ -67,6 +73,7 @@ export const sendPush = async (req, res, next) => {
         throw new ApiError(400, "ownerUserId is required when using a service token; use POST /api/bot/push-notify instead");
       }
       ownerUserId = payload.ownerUserId;
+      ensureServiceTokenOwnsTarget(req, ownerUserId);
     }
     const result = await sendPushToOwner({
       ownerUserId,
@@ -96,6 +103,7 @@ export const botPushNotify = async (req, res, next) => {
   try {
     // Endpoint machine-to-machine usado por el bot para notificaciones al owner.
     const payload = botPushNotifySchema.parse(req.body);
+    ensureServiceTokenOwnsTarget(req, payload.owner_user_id);
     const result = await sendPushToOwner({
       ownerUserId: payload.owner_user_id,
       title: payload.title,
