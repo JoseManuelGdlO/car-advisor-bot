@@ -286,16 +286,17 @@ def lead_capture(state: clientState) -> clientState:
         promotion_selection = {}
     owner_user_id = str(state.get("owner_user_id", "")).strip()
 
-    try:
-        _debug(
-            "notify_payload_ready",
-            selected_car=selected_car,
-            owner_user_id=owner_user_id,
-            customer_info=payload_info,
-            financing_selection=financing_selection,
-            promotion_selection=promotion_selection,
-        )
-        if owner_user_id:
+    _debug(
+        "notify_payload_ready",
+        selected_car=selected_car,
+        owner_user_id=owner_user_id,
+        customer_info=payload_info,
+        financing_selection=financing_selection,
+        promotion_selection=promotion_selection,
+    )
+    notification_failed = False
+    if owner_user_id:
+        try:
             notify_advisor(
                 selected_car,
                 payload_info,
@@ -303,8 +304,14 @@ def lead_capture(state: clientState) -> clientState:
                 financing_selection=financing_selection,
                 promotion_selection=promotion_selection,
             )
-        else:
-            _debug("notify_skipped_missing_owner_user_id")
+        except Exception:
+            notification_failed = True
+            _debug("notify_failed")
+    else:
+        _debug("notify_skipped_missing_owner_user_id")
+
+    try:
+        # Persistencia del lead es la fuente de verdad; no debe depender del push al asesor.
         push_event_to_backend(
             {
                 "user_id": uid,
@@ -316,16 +323,24 @@ def lead_capture(state: clientState) -> clientState:
                 "promotion_selection": promotion_selection,
             }
         )
-        base_text = f"Listo. Recibi tus datos para {selected_car} y ya notifique a un asesor para que se ponga en contacto contigo 😊🛞.\n"
-        "Cualquier duda que tengas, puedo ayudarte con lo que necesites mientras se comunica tu asesor."
+        if notification_failed:
+            base_text = (
+                f"Recibi tus datos para {selected_car}. "
+                "Hubo un problema temporal al notificar, pero un asesor te contactara."
+            )
+        else:
+            base_text = (
+                f"Listo. Recibi tus datos para {selected_car} y ya notifique a un asesor para que se ponga en contacto contigo 😊🛞.\n"
+                "Cualquier duda que tengas, puedo ayudarte con lo que necesites mientras se comunica tu asesor."
+            )
     except Exception:
-        _debug("notify_failed")
+        _debug("lead_persist_failed")
         base_text = (
             f"Recibi tus datos para {selected_car}. "
             "Hubo un problema temporal al notificar, pero un asesor te contactara."
         )
     else:
-        _debug("notify_success")
+        _debug("lead_persist_success", notification_failed=notification_failed)
         state["lead_capture_done"] = True
         # Cerramos el turno actual y retomamos en router en el siguiente mensaje.
         state["current_node"] = "router"

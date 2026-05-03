@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from unittest.mock import patch
+from requests import RequestException
 
 from tests.test_helpers import GraphTestCase, initial_state, with_user_message
 
@@ -57,6 +58,42 @@ class FinancingFlowTests(GraphTestCase):
             self.assertEqual(state.get("current_node"), "router")
             notify_mock.assert_called_once()
             event_mock.assert_called_once()
+
+    def test_lead_completion_persists_when_advisor_notification_fails(self) -> None:
+        state = initial_state()
+        state["current_node"] = "lead_capture"
+        state["intent"] = "lead_capture"
+        state["platform"] = "web"
+        state["user_id"] = "5512345678"
+        state["owner_user_id"] = "owner-1"
+        state["selected_car"] = "Nissan Versa 2011"
+        state["selected_vehicle_id"] = "veh-1"
+        state["customer_info"] = {
+            "nombre": "Javier Karim Reyes",
+            "telefono": "5512345678",
+        }
+        state["messages"] = [
+            {
+                "role": "assistant",
+                "content": "Cual es tu correo electronico?",
+                "type": "AIMessage",
+            }
+        ]
+
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.lead_capture.safe_llm_format", side_effect=lambda text: text),
+            patch("src.nodes.lead_capture.notify_advisor", side_effect=RequestException("push timeout")),
+            patch("src.nodes.lead_capture.push_event_to_backend") as event_mock,
+        ):
+            updated = self.graph.invoke(with_user_message(state, "javier@karim.com"))
+
+        self.assertTrue(updated.get("lead_capture_done"))
+        self.assertEqual(updated.get("current_node"), "router")
+        event_mock.assert_called_once()
+        payload = event_mock.call_args.args[0]
+        self.assertEqual(payload["message"], "lead_capture_completed")
+        self.assertEqual(payload["customer_info"]["email"], "javier@karim.com")
 
     def test_multiturn_versa_faq_interruption_to_financing_plan_and_lead_capture(self) -> None:
         versa_2011 = {
