@@ -76,6 +76,7 @@ def build_settings_block(settings: dict[str, Any] | None) -> str:
         f"- {_tone_instruction(str(cfg.get('tone', 'cercano')))}",
         f"- {_emoji_instruction(str(cfg.get('emojiStyle', 'pocos')))}",
         f"- {_sales_instruction(str(cfg.get('salesProactivity', 'medio')))}",
+        f"- Solo saluda si el usuario esta saludando explicitamente o si el mensaje parece de inicio de conversacion.",
     ]
     if custom_instructions:
         parts.append(f"- Instrucciones personalizadas del negocio: {custom_instructions}")
@@ -102,22 +103,172 @@ def build_rewrite_prompt(base_text: str, bot_settings: dict[str, Any] | None) ->
     )
 
 
-def build_other_response_prompt(user_message: str, bot_settings: dict[str, Any] | None) -> str:
-    """Prompt para generar respuesta libre en intent `other`."""
+def build_other_response_prompt(
+    user_message: str,
+    bot_settings: dict[str, Any] | None,
+    *,
+    verified_settings_block: str = "",
+) -> str:
+    """Prompt para generar respuesta libre en intent `other`, anclada a DATOS_VERIFICADOS del negocio."""
 
     system_prompt = build_system_prompt(bot_settings)
+    facts = str(verified_settings_block or "").strip() or "(sin configuracion adicional del negocio en este bloque)"
     return (
         f"{system_prompt}\n\n"
-        "RESPUESTA_CONVERSACIONAL:\n"
+        "RESPUESTA_CONVERSACIONAL_OTRO:\n"
         "Eres CarAdvisor. Responde de forma natural y contextual al ultimo mensaje del usuario.\n"
+        "A continuacion aparece DATOS_VERIFICADOS: solo configuracion/estilo del bot y mensaje del usuario. "
+        "No inventes inventario, precios, promociones, planes de financiamiento ni disponibilidad de vehiculos.\n"
         "Reglas:\n"
         "- Solo saluda si el usuario esta saludando explicitamente o si el mensaje parece de inicio de conversacion.\n"
         "- Si el usuario agradece (por ejemplo: gracias, muchas gracias), responde agradeciendo de vuelta "
         "(por ejemplo: con gusto/de nada) y NO vuelvas a saludar.\n"
         "- Si no hay saludo ni agradecimiento, responde sin saludo de apertura.\n"
-        "- Puedes invitar a preguntar por marcas/modelos o dudas de un vehiculo, sin sonar repetitivo.\n"
-        "- Cierra ofreciendo resolver cualquier duda que tenga el usuario.\n\n"
-        f"Mensaje del usuario: {user_message}"
+        "- Puedes invitar a preguntar por marcas/modelos o dudas generales; no cites modelos concretos que no esten en DATOS_VERIFICADOS.\n"
+        "- Cierra ofreciendo resolver dudas dentro de lo que el negocio permite.\n\n"
+        "DATOS_VERIFICADOS:\n"
+        f"{facts}\n\n"
+        f"Ultimo mensaje del usuario: {user_message}\n"
+    )
+
+
+_VERIFIED_MODE_INSTRUCTIONS: dict[str, str] = {
+    "catalog_availability": (
+        "TAREA: Presenta el catalogo o disponibilidad al usuario.\n"
+        "El bloque DATOS_VERIFICADOS incluye el listado agrupado del inventario (o mensaje de vacio del sistema) "
+        "y puede incluir la ultima pregunta del usuario y banderas (por ejemplo si pidio un modelo no disponible).\n"
+        "Redacta en espanol (Mexico) un mensaje unico para el chat: tono de asesor.\n"
+        "Si DATOS_VERIFICADOS contiene un listado de vehiculos, COPIALO TAL CUAL en tu respuesta en una seccion clara "
+        "(mismas lineas y datos); puedes agregar antes o despues una frase breve de contexto sin contradecir el listado.\n"
+        "Si el listado indica que no hay vehiculos, dilo con naturalidad sin inventar unidades.\n"
+        "No inventes marcas, modelos, precios ni anos que no aparezcan en DATOS_VERIFICADOS.\n"
+        "Devuelve UNICAMENTE el mensaje para el usuario, sin titulos ni prefijos tipo 'Respuesta:'."
+    ),
+    "catalog_prose_only": (
+        "TAREA: Escribe SOLO texto de enlace (maximo 3 oraciones cortas) para acompanar un listado de inventario "
+        "que el sistema mostrara justo despues de tu mensaje.\n"
+        "Usa exclusivamente hechos que puedas inferir del bloque DATOS_VERIFICADOS (resumen o banderas); "
+        "NO copies ni enumeres el listado de vehiculos ni lineas numeradas del bloque; NO repitas precios ni tablas.\n"
+        "Si el usuario busco algo no disponible, reconocelo solo si consta en DATOS_VERIFICADOS.\n"
+        "Cierra invitando a elegir un modelo o a pedir ayuda para comparar.\n"
+        "Devuelve UNICAMENTE el texto puente, sin titulos ni prefijos."
+    ),
+    "inventory_candidates": (
+        "TAREA: El usuario debe elegir entre varios vehiculos candidatos.\n"
+        "DATOS_VERIFICADOS contiene LISTA_OPCIONES numerada: debes mantenerla EXACTA (mismos numeros, textos y saltos de linea) "
+        "dentro de tu respuesta.\n"
+        "Agrega una introduccion breve y una instruccion final para responder con nombre o numero.\n"
+        "No inventes vehiculos extra. Espanol (Mexico). Un solo mensaje. Sin prefijos tipo 'Respuesta:'."
+    ),
+    "inventory_search_empty": (
+        "TAREA: Informar que la busqueda no arrojo vehiculos con los criterios dados.\n"
+        "Usa solo lo que conste en DATOS_VERIFICADOS (filtros resumidos, resultado 0, etc.). "
+        "Ofrece mostrar el catalogo completo o afinar la busqueda, sin inventar existencias.\n"
+        "Un solo mensaje breve. Espanol (Mexico)."
+    ),
+    "filtered_vehicles_followup": (
+        "TAREA: El usuario hizo una busqueda por caracteristicas; DATOS_VERIFICADOS incluye el listado formateado.\n"
+        "Mantén el listado exacto dentro de tu respuesta si aparece en DATOS_VERIFICADOS.\n"
+        "Agrega una sola frase de cierre pidiendo el nombre exacto del vehiculo de interes.\n"
+        "No inventes datos. Espanol (Mexico). Sin prefijos."
+    ),
+    "operational": (
+        "TAREA: Comunicar un estado operativo al usuario (error de sistema, recurso no disponible, accion no permitida, etc.).\n"
+        "Usa SOLO lo que conste en DATOS_VERIFICADOS (operacion, ids, exito/fallo, mensajes literales del backend si vienen).\n"
+        "No inventes codigos HTTP, stack traces ni detalles tecnicos no listados.\n"
+        "Sé breve, empatico y claro. Espanol (Mexico). Un solo mensaje. Sin prefijos."
+    ),
+    "financing_prose_only": (
+        "TAREA: Escribe SOLO texto de enlace (maximo 3 oraciones) para acompanar un listado de planes de financiamiento "
+        "que el sistema mostrara justo despues.\n"
+        "NO copies ni enumeres planes, montos ni tablas del bloque DATOS_VERIFICADOS; solo contexto y tono.\n"
+        "Responde a la intencion del usuario usando solo lo que conste en DATOS_VERIFICADOS.\n"
+        "Espanol (Mexico). Sin prefijos."
+    ),
+    "financing_plan_vehicle": (
+        "TAREA: Presentar el vehiculo vinculado a un plan de financiamiento y motivar la siguiente accion.\n"
+        "DATOS_VERIFICADOS incluye datos del plan y la ficha del vehiculo (texto del sistema). "
+        "Puedes integrar la ficha tal cual en una seccion si el bloque la trae formateada, o parafrasear solo "
+        "si no contradices valores (mejor mantener la ficha literal si ya viene en el bloque).\n"
+        "No inventes condiciones de credito no listadas. Espanol (Mexico). Un solo mensaje."
+    ),
+    "promotion_prose_only": (
+        "TAREA: Escribe SOLO texto de enlace (maximo 3 oraciones) antes de un listado de promociones que el sistema mostrara despues.\n"
+        "NO copies listados del bloque. Usa solo hechos permitidos por DATOS_VERIFICADOS.\n"
+        "Espanol (Mexico). Sin prefijos."
+    ),
+    "promotion_vehicle_confirm": (
+        "TAREA: Mostrar la ficha del vehiculo bajo una promocion y pedir confirmacion de interes.\n"
+        "DATOS_VERIFICADOS incluye ficha formateada y titulo/datos de la promocion. No inventes beneficios no listados.\n"
+        "Un solo mensaje. Espanol (Mexico)."
+    ),
+    "promotion_list_message": (
+        "TAREA: Presentar promociones aplicables al usuario.\n"
+        "Si DATOS_VERIFICADOS contiene listado formateado de promociones, incluyelo TAL CUAL en tu respuesta.\n"
+        "Agrega instrucciones claras para elegir o confirmar segun lo que indique el bloque.\n"
+        "No inventes promociones. Espanol (Mexico)."
+    ),
+    "lead_capture_intro": (
+        "TAREA: Mensaje inicial de captura de datos para contacto con asesor.\n"
+        "DATOS_VERIFICADOS describe el vehiculo de interes, si es reanudacion, y datos ya capturados (solo lo que conste).\n"
+        "Explica brevemente que se necesitan datos para que un asesor contacte; termina pidiendo NOMBRE COMPLETO "
+        "(debe aparecer la palabra 'nombre' en la pregunta).\n"
+        "No pidas nombre, telefono y email en un solo formato tipo formulario.\n"
+        "Un parrafo corto o dos frases. Espanol (Mexico). Sin prefijos."
+    ),
+    "lead_capture_step": (
+        "TAREA: Mensaje corto para solicitar o corregir un dato de contacto (telefono, email, nombre).\n"
+        "Usa solo reglas y estado descritos en DATOS_VERIFICADOS.\n"
+        "No inventes politicas del negocio no listadas. Espanol (Mexico). Breve."
+    ),
+    "lead_capture_close": (
+        "TAREA: Confirmar al usuario que sus datos fueron recibidos y que un asesor dara seguimiento.\n"
+        "DATOS_VERIFICADOS incluye nombre del vehiculo, resultado de notificacion (exito/fallo) y datos permitidos.\n"
+        "No inventes tiempos de respuesta no listados. Espanol (Mexico). Tono cercano."
+    ),
+    "purchase_question": (
+        "TAREA: Pregunta de cierre para confirmar compra o ver mas imagenes del vehiculo.\n"
+        "DATOS_VERIFICADOS incluye instrucciones literales del sistema (si incluye opcion de imagenes o no).\n"
+        "Genera una sola pregunta breve alineada a esas reglas; puedes usar 1-2 emojis si el bloque lo permite.\n"
+        "No inventes equipamiento. Espanol (Mexico). Sin prefijos."
+    ),
+    "faq_insufficient": (
+        "TAREA: Indicar que no hay suficiente informacion en la base FAQ para responder con precision.\n"
+        "Usa solo DATOS_VERIFICADOS. Ofrece ayuda general (catalogo, asesor) sin inventar datos del negocio.\n"
+        "Breve. Espanol (Mexico)."
+    ),
+    "faq_turn": (
+        "TAREA: Responder la duda del usuario usando EXCLUSIVAMENTE el texto en BASE_FAQ_DESDE_BD dentro de DATOS_VERIFICADOS.\n"
+        "No inventes horarios, direcciones, politicas ni datos que no aparezcan en BASE_FAQ_DESDE_BD.\n"
+        "Si faq_respuesta_compacta es true, limita la parte de la respuesta FAQ a un solo parrafo corto (idea principal).\n"
+        "Despues de la respuesta FAQ, si transicion_literal no es '(ninguna)', agrega esa frase tal cual (puede ajustar mayusculas iniciales para encajar).\n"
+        "Al final, si cierre_literal no es '(ninguno)', incluye esa pregunta o cierre tal cual.\n"
+        "Un solo mensaje coherente. Espanol (Mexico). Sin prefijos tipo 'Respuesta:'."
+    ),
+}
+
+
+def build_verified_user_message_prompt(
+    mode: str,
+    verified_facts_block: str,
+    user_message: str,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Prompt unificado: mensaje al usuario solo anclado a DATOS_VERIFICADOS."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    task = _VERIFIED_MODE_INSTRUCTIONS.get(mode.strip())
+    if not task:
+        task = _VERIFIED_MODE_INSTRUCTIONS["operational"]
+    um = str(user_message or "").strip() or "(sin mensaje reciente del usuario)"
+    facts = str(verified_facts_block or "").strip() or "(vacío)"
+    return (
+        f"{system_prompt}\n\n"
+        f"MODO: {mode.strip()}\n\n"
+        f"{task}\n\n"
+        f"Ultimo mensaje del usuario (contexto): {um}\n\n"
+        "DATOS_VERIFICADOS:\n"
+        f"{facts}\n"
     )
 
 

@@ -17,10 +17,12 @@ class VehicleCatalogFlowTests(GraphTestCase):
             patch("src.nodes.router.classify_router_intent", return_value="FAQ"),
             patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
             patch(
-                "src.nodes.car_selection.generate_grounded_answer",
-                return_value="No tengo ficha tecnica suficiente para confirmarlo con precision. Ese modelo no esta disponible.",
+                "src.nodes.car_selection.generate_verified_user_message",
+                side_effect=lambda **kw: (
+                    "No tengo ficha tecnica suficiente para confirmarlo con precision. Ese modelo no esta disponible.\n\n"
+                    f"{kw.get('fallback', '')}"
+                ),
             ),
-            patch("src.nodes.car_selection.safe_llm_format", side_effect=lambda text: text),
         ):
             updated = self.graph.invoke(state)
 
@@ -35,7 +37,10 @@ class VehicleCatalogFlowTests(GraphTestCase):
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
             patch("src.nodes.promotions.fetch_promotions", return_value=[]),
-            patch("src.nodes.promotions.safe_llm_format", side_effect=lambda text: text),
+            patch(
+                "src.nodes.promotions.generate_verified_user_message",
+                side_effect=lambda **kw: kw["fallback"],
+            ),
         ):
             updated = self.graph.invoke(state)
 
@@ -155,7 +160,14 @@ class VehicleCatalogFlowTests(GraphTestCase):
                 return_value="Detalle del vehiculo: Nissan Versa 2004, color blanco.",
             ),
             patch("src.nodes.car_selection.fetch_vehicle_images", return_value={"images": [], "hasMore": False, "mode": "top"}),
-            patch("src.nodes.car_selection.safe_llm_format", side_effect=lambda text: text),
+            patch(
+                "src.nodes.car_selection.generate_verified_user_message",
+                side_effect=lambda **kw: kw["fallback"],
+            ),
+            patch(
+                "src.nodes.car_selection.generate_vehicle_purchase_question",
+                return_value="¿Te interesa comprar este vehículo ? 🚗✨",
+            ),
         ):
             updated = self.graph.invoke(state)
 
@@ -209,7 +221,10 @@ class VehicleCatalogFlowTests(GraphTestCase):
                 "src.nodes.car_selection.fetch_vehicle_images",
                 return_value={"images": ["/img/versa-2011-1.jpg"], "nextCursor": 1, "hasMore": False, "mode": "top"},
             ),
-            patch("src.nodes.car_selection.safe_llm_format", side_effect=lambda text: text),
+            patch(
+                "src.nodes.car_selection.generate_verified_user_message",
+                side_effect=lambda **kw: kw["fallback"],
+            ),
         ):
             state = self.graph.invoke(with_user_message(state, "hola"))
             self.assertEqual(state.get("intent"), "other")

@@ -7,9 +7,8 @@ from typing import Any
 from src.services.llm_responses import (
     classify_promotions_step_flags,
     classify_promotion_selection_intent,
-    compose_answer_first_response,
-    generate_grounded_answer,
-    safe_llm_format,
+    generate_promotion_listing_user_message,
+    generate_verified_user_message,
 )
 from src.state import clientState
 from src.tools.database import fetch_promotions, fetch_promotions_by_vehicle
@@ -200,11 +199,28 @@ def _show_vehicle_and_confirm_interest(state: clientState, vehicle: dict[str, An
     state["awaiting_promotion_vehicle_selection"] = False
     detail = format_vehicle_detail(vehicle, platform=str(state.get("platform", "web")))
     promotion_title = str(state.get("selected_promotion_title", "")).strip() or "esta promocion"
-    question = safe_llm_format(
-        f"Este es el vehiculo aplicable a {promotion_title}. "
-        "Te interesa este vehiculo con la promocion? Si me confirmas, avanzamos con tus datos."
+    promo_id = str(state.get("selected_promotion_id", "")).strip()
+    verified = "\n".join(
+        [
+            f"promocion_titulo: {promotion_title}",
+            f"promocion_id: {promo_id}",
+            f"vehicle_id: {vehicle_id}",
+            "",
+            "FICHA_VEHICULO_INVENTARIO:",
+            detail,
+        ]
     )
-    return append_assistant_message(state, f"{detail}\n\n{question}")
+    message = generate_verified_user_message(
+        mode="promotion_vehicle_confirm",
+        verified_facts_block=verified,
+        user_message=latest_user_message(state),
+        fallback=(
+            f"Este es el vehiculo aplicable a {promotion_title}. "
+            "Te interesa este vehiculo con la promocion? Si me confirmas, avanzamos con tus datos."
+        ),
+        temperature=0.42,
+    )
+    return append_assistant_message(state, message)
 
 
 def _promotion_vehicle_labels(promotion: dict[str, Any]) -> list[str]:
@@ -251,21 +267,23 @@ def _respond_promotion_listing(state: clientState, promotions: list[dict[str, An
     if not hydrated_promotions:
         state["promotion_candidates"] = []
         state["awaiting_promotion_selection"] = False
-        return append_assistant_message(
-            state,
-            safe_llm_format("No hay promociones disponibles para aplicar en este momento."),
+        empty_msg = generate_verified_user_message(
+            mode="operational",
+            verified_facts_block=(
+                "operacion: listar_promociones_hidratadas\n"
+                "resultado: lista_vacia_tras_hidratar\n"
+            ),
+            user_message=latest_user_message(state),
+            fallback="No hay promociones disponibles para aplicar en este momento.",
+            temperature=0.35,
         )
+        return append_assistant_message(state, empty_msg)
     listing = format_promotions(hydrated_promotions, platform=platform)
-    semantic = generate_grounded_answer(
-        user_question=latest_user_message(state),
-        context_blocks=f"Promociones activas:\n{listing}",
-        mode="promotion",
-        fallback="Claro, te comparto las promociones activas para que revises cual te conviene mas.",
-    )
-    prompt = compose_answer_first_response(
-        semantic,
-        listing,
-        "Si quieres aplicar una, dime cual y confirmame explicitamente que deseas aplicarla.",
+    prompt = generate_promotion_listing_user_message(
+        user_text=latest_user_message(state),
+        listing_block=listing,
+        closing_hint="Si quieres aplicar una, dime cual y confirmame explicitamente que deseas aplicarla.",
+        fallback_semantic="Claro, te comparto las promociones activas para que revises cual te conviene mas.",
     )
     state["promotion_candidates"] = hydrated_promotions
     state["awaiting_promotion_selection"] = True
@@ -316,7 +334,13 @@ def promotions(state: clientState) -> clientState:
             if not promotions_list:
                 return append_assistant_message(
                     state,
-                    safe_llm_format("Entendido. En este momento no tengo mas promociones activas para mostrarte."),
+                    generate_verified_user_message(
+                        mode="operational",
+                        verified_facts_block="situacion: usuario_rechazo_vehiculo_promo\nresultado_promociones_fetch: lista_vacia\n",
+                        user_message=user_text,
+                        fallback="Entendido. En este momento no tengo mas promociones activas para mostrarte.",
+                        temperature=0.35,
+                    ),
                 )
             return _respond_promotion_listing(state, promotions_list)
         if nav_flags.get("confirm_yes") or any(signal in normalized for signal in _YES_SIGNALS):
@@ -325,11 +349,31 @@ def promotions(state: clientState) -> clientState:
             state["intent"] = "lead_capture"
             return append_assistant_message(
                 state,
-                safe_llm_format("Perfecto, avancemos con tus datos para aplicar la promocion a este vehiculo."),
+                generate_verified_user_message(
+                    mode="operational",
+                    verified_facts_block=(
+                        "evento: usuario_confirma_interes_vehiculo_con_promocion\n"
+                        f"vehicle_id: {str(state.get('selected_vehicle_id', '')).strip()}\n"
+                        f"promocion_titulo: {str(state.get('selected_promotion_title', '')).strip()}\n"
+                    ),
+                    user_message=user_text,
+                    fallback="Perfecto, avancemos con tus datos para aplicar la promocion a este vehiculo.",
+                    temperature=0.35,
+                ),
             )
         return append_assistant_message(
             state,
-            safe_llm_format("Solo confirmame si te interesa este vehiculo con la promocion (si o no)."),
+            generate_verified_user_message(
+                mode="operational",
+                verified_facts_block=(
+                    "situacion: esperando_confirmacion_si_no\n"
+                    f"promocion_titulo: {str(state.get('selected_promotion_title', '')).strip()}\n"
+                    f"vehicle_id: {str(state.get('selected_vehicle_id', '')).strip()}\n"
+                ),
+                user_message=user_text,
+                fallback="Solo confirmame si te interesa este vehiculo con la promocion (si o no).",
+                temperature=0.35,
+            ),
         )
 
     if state.get("awaiting_promotion_vehicle_selection"):
@@ -337,7 +381,16 @@ def promotions(state: clientState) -> clientState:
         if not selected_vehicle:
             return append_assistant_message(
                 state,
-                safe_llm_format("Elige uno de los vehiculos aplicables por nombre o numero para continuar."),
+                generate_verified_user_message(
+                    mode="operational",
+                    verified_facts_block=(
+                        "situacion: seleccion_vehiculo_promocion_invalida\n"
+                        f"candidatos: {user_text}\n"
+                    ),
+                    user_message=user_text,
+                    fallback="Elige uno de los vehiculos aplicables por nombre o numero para continuar.",
+                    temperature=0.35,
+                ),
             )
         return _show_vehicle_and_confirm_interest(state, selected_vehicle)
 
@@ -346,9 +399,15 @@ def promotions(state: clientState) -> clientState:
         if not selected_promotion:
             return append_assistant_message(
                 state,
-                safe_llm_format(
-                    "Dime cual promocion te interesa por nombre o numero. "
-                    "Si quieres aplicarla, confirmalo explicitamente."
+                generate_verified_user_message(
+                    mode="operational",
+                    verified_facts_block="situacion: esperando_seleccion_promocion\n",
+                    user_message=user_text,
+                    fallback=(
+                        "Dime cual promocion te interesa por nombre o numero. "
+                        "Si quieres aplicarla, confirmalo explicitamente."
+                    ),
+                    temperature=0.35,
                 ),
             )
 
@@ -367,9 +426,18 @@ def promotions(state: clientState) -> clientState:
             title = str(state.get("selected_promotion_title", "")).strip() or "esa promocion"
             return append_assistant_message(
                 state,
-                safe_llm_format(
-                    f"Perfecto, identifique {title}. Para seleccionarla, necesito que me confirmes explicitamente "
-                    "si deseas aplicarla a tu compra."
+                generate_verified_user_message(
+                    mode="operational",
+                    verified_facts_block=(
+                        "situacion: promocion_identificada_sin_confirmacion_explicita\n"
+                        f"promocion_titulo: {title}\n"
+                    ),
+                    user_message=user_text,
+                    fallback=(
+                        f"Perfecto, identifique {title}. Para seleccionarla, necesito que me confirmes explicitamente "
+                        "si deseas aplicarla a tu compra."
+                    ),
+                    temperature=0.35,
                 ),
             )
 
@@ -419,9 +487,18 @@ def promotions(state: clientState) -> clientState:
                 )
                 return append_assistant_message(
                     state,
-                    safe_llm_format(
-                        f"Esta promocion aplica a varios vehiculos:\n{options}\n\n"
-                        "Dime cual quieres ver por nombre o numero."
+                    generate_verified_user_message(
+                        mode="inventory_candidates",
+                        verified_facts_block=(
+                            "CONTEXTO: Esta promocion aplica a varios vehiculos.\n\n"
+                            f"LISTA_OPCIONES:\n{options}\n"
+                        ),
+                        user_message=user_text,
+                        fallback=(
+                            f"Esta promocion aplica a varios vehiculos:\n{options}\n\n"
+                            "Dime cual quieres ver por nombre o numero."
+                        ),
+                        temperature=0.45,
                     ),
                 )
 
@@ -430,9 +507,18 @@ def promotions(state: clientState) -> clientState:
             state["awaiting_promotion_selection"] = True
             return append_assistant_message(
                 state,
-                safe_llm_format(
-                    "Esta promocion no tiene vehiculos disponibles en este momento. "
-                    "Si quieres, te muestro otras promociones."
+                generate_verified_user_message(
+                    mode="operational",
+                    verified_facts_block=(
+                        "situacion: promocion_sin_vehiculos_disponibles\n"
+                        f"promocion_id: {str(selected_promotion.get('id', '')).strip()}\n"
+                    ),
+                    user_message=user_text,
+                    fallback=(
+                        "Esta promocion no tiene vehiculos disponibles en este momento. "
+                        "Si quieres, te muestro otras promociones."
+                    ),
+                    temperature=0.35,
                 ),
             )
 
@@ -443,9 +529,18 @@ def promotions(state: clientState) -> clientState:
 
         options = "\n".join(f"{idx}. {_vehicle_label(item)}" for idx, item in enumerate(promotion_vehicles, start=1))
         state["awaiting_promotion_vehicle_selection"] = True
-        message = safe_llm_format(
-            f"Estos son los vehiculos aplicables a la promocion:\n{options}\n\n"
-            "Cual quieres revisar primero?"
+        message = generate_verified_user_message(
+            mode="inventory_candidates",
+            verified_facts_block=(
+                "CONTEXTO: Vehiculos aplicables a la promocion seleccionada.\n\n"
+                f"LISTA_OPCIONES:\n{options}\n"
+            ),
+            user_message=user_text,
+            fallback=(
+                f"Estos son los vehiculos aplicables a la promocion:\n{options}\n\n"
+                "Cual quieres revisar primero?"
+            ),
+            temperature=0.45,
         )
         return append_assistant_message(state, message)
 
@@ -471,25 +566,31 @@ def promotions(state: clientState) -> clientState:
                 state["intent"] = "vehicle_catalog"
                 return append_assistant_message(
                     state,
-                    safe_llm_format(
-                        f"No encontre promociones aplicables para {selected_car_name} en este momento. "
-                        "Si quieres, podemos continuar con este vehiculo, ver otros modelos o revisar promociones generales."
+                    generate_verified_user_message(
+                        mode="operational",
+                        verified_facts_block=(
+                            "operacion: fetch_promotions_by_vehicle\n"
+                            f"vehicle_id: {selected_vehicle_id}\n"
+                            f"vehicle_etiqueta: {selected_car_name}\n"
+                            "resultado: lista_hidratada_vacia\n"
+                        ),
+                        user_message=user_text,
+                        fallback=(
+                            f"No encontre promociones aplicables para {selected_car_name} en este momento. "
+                            "Si quieres, podemos continuar con este vehiculo, ver otros modelos o revisar promociones generales."
+                        ),
+                        temperature=0.35,
                     ),
                 )
             state["promotion_candidates"] = hydrated_promotions
             state["awaiting_promotion_selection"] = True
             car_name = str(state.get("selected_car", "")).strip() or "este vehiculo"
             listing = format_promotions(hydrated_promotions, platform=str(state.get("platform", "web")))
-            semantic = generate_grounded_answer(
-                user_question=user_text,
-                context_blocks=f"Vehiculo: {car_name}\nPromociones aplicables:\n{listing}",
-                mode="promotion",
-                fallback=f"Claro, para {car_name} estas son las promociones que si aplican.",
-            )
-            question = compose_answer_first_response(
-                semantic,
-                listing,
-                "Si deseas aplicar una, dime cual y confirmalo explicitamente.",
+            question = generate_promotion_listing_user_message(
+                user_text=user_text,
+                listing_block=f"Vehiculo: {car_name}\n\nPromociones aplicables:\n{listing}",
+                closing_hint="Si deseas aplicar una, dime cual y confirmalo explicitamente.",
+                fallback_semantic=f"Claro, para {car_name} estas son las promociones que si aplican.",
             )
             return append_assistant_message(state, question)
         selected_car_name = str(state.get("selected_car", "")).strip() or "este vehiculo"
@@ -499,9 +600,20 @@ def promotions(state: clientState) -> clientState:
         state["intent"] = "vehicle_catalog"
         return append_assistant_message(
             state,
-            safe_llm_format(
-                f"No encontre promociones para {selected_car_name} en este momento. "
-                "Si quieres, podemos continuar con este vehiculo, ver otros modelos o revisar promociones generales."
+            generate_verified_user_message(
+                mode="operational",
+                verified_facts_block=(
+                    "operacion: fetch_promotions_by_vehicle\n"
+                    f"vehicle_id: {selected_vehicle_id}\n"
+                    f"vehicle_etiqueta: {selected_car_name}\n"
+                    "resultado: sin_promociones_en_respuesta_api\n"
+                ),
+                user_message=user_text,
+                fallback=(
+                    f"No encontre promociones para {selected_car_name} en este momento. "
+                    "Si quieres, podemos continuar con este vehiculo, ver otros modelos o revisar promociones generales."
+                ),
+                temperature=0.35,
             ),
         )
 
@@ -512,6 +624,15 @@ def promotions(state: clientState) -> clientState:
     if not promotions_list:
         return append_assistant_message(
             state,
-            safe_llm_format("No hay promociones disponibles en este momento. Si quieres, revisamos vehiculos o financiamiento."),
+            generate_verified_user_message(
+                mode="operational",
+                verified_facts_block=(
+                    "operacion: fetch_promotions_generales\n"
+                    "resultado: lista_vacia\n"
+                ),
+                user_message=user_text,
+                fallback="No hay promociones disponibles en este momento. Si quieres, revisamos vehiculos o financiamiento.",
+                temperature=0.35,
+            ),
         )
     return _respond_promotion_listing(state, promotions_list)

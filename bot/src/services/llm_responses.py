@@ -23,15 +23,15 @@ from src.utils.prompts import (
     build_purchase_confirmation_classifier_prompt,
     build_router_intent_classifier_prompt,
     build_rewrite_prompt,
-    build_lead_capture_intro_prompt,
     build_vehicle_detail_conversation_prompt,
     build_vehicle_detail_intro_prompt,
     build_vehicle_candidates_selection_prompt,
-    build_vehicle_purchase_question_prompt,
     build_faq_response_prompt,
     build_vehicle_step_flags_prompt,
     build_promotions_step_flags_prompt,
     build_lead_capture_navigation_classifier_prompt,
+    build_settings_block,
+    build_verified_user_message_prompt,
 )
 
 
@@ -46,6 +46,121 @@ def safe_llm_format(text: str) -> str:
         return llm.invoke(prompt).content.strip()
     except Exception:
         return text
+
+
+def generate_verified_user_message(
+    *,
+    mode: str,
+    verified_facts_block: str,
+    user_message: str = "",
+    fallback: str | None = None,
+    temperature: float = 0.4,
+) -> str:
+    """Genera mensaje al usuario usando solo DATOS_VERIFICADOS (bloque literal desde BD/API/formatters)."""
+
+    facts = str(verified_facts_block or "").strip()
+    fb = (fallback or "").strip() or (
+        "No pude generar una respuesta en este momento. Intenta de nuevo en unos segundos."
+    )
+    if not facts:
+        return fb
+    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
+    try:
+        settings = get_bot_settings()
+        llm = ChatOpenAI(model=model_name, temperature=temperature)
+        prompt = build_verified_user_message_prompt(mode, facts, user_message, settings)
+        content = llm.invoke(prompt).content
+        out = str(content).strip()
+        if not out:
+            return fb
+        # Si el modelo devuelve una negativa meta ("no puedo generar respuesta"),
+        # regresamos al fallback contextual para no romper la conversacion.
+        lower_out = out.lower()
+        if (
+            "no pude generar" in lower_out
+            or "no puedo generar" in lower_out
+            or "en este turno" in lower_out
+        ):
+            return fb
+        return out
+    except Exception:
+        return fb
+
+
+def compose_verified_prose_and_appendix(*, prose: str, appendix: str) -> str:
+    """Concatena prosa LLM (sin listado) + bloque literal del formatter."""
+
+    p = str(prose or "").strip()
+    a = str(appendix or "").strip()
+    if p and a:
+        return f"{p}\n\n{a}"
+    return p or a
+
+
+def generate_financing_plans_user_message(
+    *,
+    user_text: str,
+    listing_block: str,
+    follow_up_hint: str,
+    fallback_semantic: str,
+) -> str:
+    """Prosa LLM anclada a planes + listado exacto del formatter (opcion B del plan)."""
+
+    listing = str(listing_block or "").strip()
+    if not listing:
+        return generate_verified_user_message(
+            mode="operational",
+            verified_facts_block="operacion: financiamiento\nresultado: sin listado de planes en contexto\n",
+            user_message=user_text,
+            fallback=fallback_semantic,
+            temperature=0.35,
+        )
+    prose = generate_verified_user_message(
+        mode="financing_prose_only",
+        verified_facts_block=(
+            f"ultimo_mensaje_usuario:\n{user_text}\n\n"
+            "contexto_interno_planes (no reproducir textualmente en la salida; solo para entender):\n"
+            f"{listing}\n\n"
+            f"cierre_sugerido_literal:\n{follow_up_hint}\n"
+        ),
+        user_message=user_text,
+        fallback=fallback_semantic,
+        temperature=0.38,
+    )
+    return compose_verified_prose_and_appendix(prose=prose, appendix=listing)
+
+
+def generate_promotion_listing_user_message(
+    *,
+    user_text: str,
+    listing_block: str,
+    closing_hint: str,
+    fallback_semantic: str,
+) -> str:
+    """Prosa LLM anclada a promociones + listado exacto del formatter."""
+
+    listing = str(listing_block or "").strip()
+    if not listing:
+        return generate_verified_user_message(
+            mode="operational",
+            verified_facts_block="operacion: promociones\nresultado: sin listado en contexto\n",
+            user_message=user_text,
+            fallback=fallback_semantic,
+            temperature=0.35,
+        )
+    prose = generate_verified_user_message(
+        mode="promotion_prose_only",
+        verified_facts_block=(
+            f"ultimo_mensaje_usuario:\n{user_text}\n\n"
+            "contexto_interno_promociones (no reproducir listado en la salida):\n"
+            f"{listing}\n\n"
+            f"cierre_sugerido_literal:\n{closing_hint}\n"
+        ),
+        user_message=user_text,
+        fallback=fallback_semantic,
+        temperature=0.38,
+    )
+    return compose_verified_prose_and_appendix(prose=prose, appendix=listing)
 
 
 def _parse_json_object_from_llm(text: str) -> dict[str, Any] | None:
@@ -92,7 +207,7 @@ def _coerce_to_bool(value: Any) -> bool:
 
 
 def generate_other_response(user_message: str) -> str:
-    """Genera respuesta para intent `other` sin texto base predefinido."""
+    """Genera respuesta para intent `other` anclada a configuracion del bot (DATOS_VERIFICADOS)."""
 
     model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
     fallback = (
@@ -103,7 +218,8 @@ def generate_other_response(user_message: str) -> str:
     try:
         settings = get_bot_settings()
         llm = ChatOpenAI(model=model_name, temperature=0.5)
-        prompt = build_other_response_prompt(user_message, settings)
+        verified = build_settings_block(settings) or "CONFIGURACION_NEGOCIO: (sin campos extra)"
+        prompt = build_other_response_prompt(user_message, settings, verified_settings_block=verified)
         content = llm.invoke(prompt).content
         normalized = str(content).strip()
         return normalized or fallback
@@ -185,7 +301,18 @@ def generate_vehicle_detail_conversation(vehicle_name: str, grounded_facts_block
     normalized_name = vehicle_name.strip() or "este vehiculo"
     facts = str(grounded_facts_block or "").strip()
     if not facts:
-        return safe_llm_format(f"No tengo ficha detallada para {normalized_name} en este momento.")
+        operational = (
+            f"vehicle_name: {normalized_name}\n"
+            "ficha_disponible: false\n"
+            "motivo: sin bloque de inventario para este id\n"
+        )
+        return generate_verified_user_message(
+            mode="operational",
+            verified_facts_block=operational,
+            user_message="",
+            fallback=f"No tengo ficha detallada para {normalized_name} en este momento.",
+            temperature=0.35,
+        )
     fallback = _grounded_facts_to_fallback_paragraph(normalized_name, facts)
     try:
         settings = get_bot_settings()
@@ -200,10 +327,9 @@ def generate_vehicle_detail_conversation(vehicle_name: str, grounded_facts_block
         return fallback
 
 
-def generate_vehicle_candidates_selection_message(options_text: str) -> str:
-    """Genera mensaje para elegir entre multiples vehiculos candidatos."""
+def generate_vehicle_candidates_selection_message(options_text: str, user_message: str = "") -> str:
+    """Genera mensaje para elegir entre multiples vehiculos candidatos (solo datos verificados en lista)."""
 
-    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
     normalized_options = str(options_text or "").strip()
     fallback = (
         "Encontre varios carros similares. ¿Cual te interesa?\n"
@@ -214,21 +340,24 @@ def generate_vehicle_candidates_selection_message(options_text: str) -> str:
     )
     if not normalized_options:
         return fallback
-    try:
-        settings = get_bot_settings()
-        llm = ChatOpenAI(model=model_name, temperature=0.5)
-        prompt = build_vehicle_candidates_selection_prompt(normalized_options, settings)
-        content = llm.invoke(prompt).content
-        normalized = str(content).strip()
-        return normalized or fallback
-    except Exception:
-        return fallback
+    block = f"LISTA_OPCIONES:\n{normalized_options}\n"
+    return generate_verified_user_message(
+        mode="inventory_candidates",
+        verified_facts_block=block,
+        user_message=user_message,
+        fallback=fallback,
+        temperature=0.45,
+    )
 
 
-def generate_lead_capture_intro(selected_car: str, resuming: bool = False) -> str:
-    """Mensaje inicial para captura de lead: explicar contacto con asesor y pedir nombre completo."""
+def generate_lead_capture_intro(
+    selected_car: str,
+    resuming: bool = False,
+    *,
+    verified_facts_block: str | None = None,
+) -> str:
+    """Mensaje inicial para captura de lead, anclado a DATOS_VERIFICADOS del estado."""
 
-    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
     name = (selected_car or "").strip() or "este vehiculo"
     fallback = (
         f"Continuamos con {name}. Necesitamos unos datos para que un asesor te contacte y "
@@ -239,35 +368,45 @@ def generate_lead_capture_intro(selected_car: str, resuming: bool = False) -> st
             f"te pediremos unos datos. Cual es tu nombre completo?"
         )
     )
-    try:
-        settings = get_bot_settings()
-        llm = ChatOpenAI(model=model_name, temperature=0.5)
-        prompt = build_lead_capture_intro_prompt(name, settings, resuming=resuming)
-        content = llm.invoke(prompt).content
-        normalized = str(content).strip()
-        if not normalized:
-            return fallback
-        return normalized.replace("\n", " ").strip()
-    except Exception:
-        return fallback
+    block = str(verified_facts_block or "").strip()
+    if not block:
+        block = (
+            f"vehiculo_seleccionado: {name}\n"
+            f"reanudacion_flujo: {str(resuming).lower()}\n"
+        )
+    return generate_verified_user_message(
+        mode="lead_capture_intro",
+        verified_facts_block=block,
+        user_message="",
+        fallback=fallback,
+        temperature=0.45,
+    )
 
 
-def generate_vehicle_purchase_question() -> str:
-    """Genera pregunta embellecida para confirmar compra."""
+def generate_vehicle_purchase_question(*, include_images_option: bool) -> str:
+    """Genera pregunta de confirmacion de compra anclada a reglas literales del sistema."""
 
-    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
-    fallback = "Te interesa comprar este vehiculo o quieres ver mas imagenes del mismo? 🚗🖼️ "
-    try:
-        settings = get_bot_settings()
-        llm = ChatOpenAI(model=model_name, temperature=0.5)
-        prompt = build_vehicle_purchase_question_prompt(settings)
-        content = llm.invoke(prompt).content
-        normalized = str(content).strip()
-        if not normalized:
-            return fallback
-        return normalized.replace("\n", " ").strip()
-    except Exception:
-        return fallback
+    if include_images_option:
+        literal = (
+            "instruccion_sistema: El usuario puede confirmar compra del vehiculo mostrado o pedir ver mas imagenes.\n"
+            "texto_base_literal: ¿Te interesa comprar este vehículo o quieres ver más imágenes del mismo? 🚗✨\n"
+            "permite_emojis: si (maximo 2)\n"
+        )
+        fallback = "¿Te interesa comprar este vehículo o quieres ver más imágenes del mismo? 🚗✨"
+    else:
+        literal = (
+            "instruccion_sistema: El usuario puede confirmar compra del vehiculo mostrado (sin opcion de mas imagenes en este turno).\n"
+            "texto_base_literal: ¿Te interesa comprar este vehículo ? 🚗✨\n"
+            "permite_emojis: si (maximo 2)\n"
+        )
+        fallback = "¿Te interesa comprar este vehículo ? 🚗✨"
+    return generate_verified_user_message(
+        mode="purchase_question",
+        verified_facts_block=literal,
+        user_message="",
+        fallback=fallback,
+        temperature=0.45,
+    )
 
 
 def classify_purchase_confirmation_intent(previous_bot_message: str, user_message: str) -> str:
@@ -496,14 +635,22 @@ def classify_faq_interrupt_flags(
 def generate_faq_response(user_question: str, faq_candidates: list[str]) -> str:
     """Responde FAQ usando solo contexto proveniente de base de datos."""
 
-    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
     normalized_question = str(user_question or "").strip()
     context = "\n\n".join(str(item).strip() for item in faq_candidates if str(item).strip())
     fallback_base = (
         "No encontre informacion suficiente para responder eso con precision. "
         "Si quieres, te ayudo a revisar modelos, planes o te contacto con un asesor para resolverlo."
     )
-    fallback = safe_llm_format(fallback_base)
+    fallback = generate_verified_user_message(
+        mode="faq_insufficient",
+        verified_facts_block=(
+            "situacion: sin fragmentos FAQ en base de datos para la pregunta del usuario\n"
+            f"mensaje_base_literal_para_tono: {fallback_base}\n"
+        ),
+        user_message=normalized_question,
+        fallback=fallback_base,
+        temperature=0.35,
+    )
     if not normalized_question:
         return fallback
     if not context:
@@ -513,6 +660,67 @@ def generate_faq_response(user_question: str, faq_candidates: list[str]) -> str:
         context_blocks=context,
         mode="faq",
         fallback=fallback,
+    )
+
+
+def generate_faq_user_turn(
+    *,
+    user_question: str,
+    faq_candidates: list[str],
+    transition_literal: str = "",
+    close_literal: str = "",
+    compact_faq_body: bool = False,
+) -> str:
+    """Un solo mensaje al usuario: respuesta FAQ anclada a BD + transicion/cierre literales del flujo."""
+
+    normalized_question = str(user_question or "").strip()
+    context = "\n\n".join(str(item).strip() for item in faq_candidates if str(item).strip())
+    if not normalized_question or not context:
+        return generate_faq_response(normalized_question, faq_candidates)
+    trans = str(transition_literal or "").strip()
+    close = str(close_literal or "").strip()
+    fallback_base = (
+        "No encontre informacion suficiente para responder eso con precision. "
+        "Si quieres, te ayudo a revisar modelos, planes o te contacto con un asesor para resolverlo."
+    )
+    grounded_fallback = generate_verified_user_message(
+        mode="faq_insufficient",
+        verified_facts_block=(
+            "situacion: generate_grounded_answer_fallo_o_vacio\n"
+            f"mensaje_base_literal_para_tono: {fallback_base}\n"
+        ),
+        user_message=normalized_question,
+        fallback=fallback_base,
+        temperature=0.35,
+    )
+    body = generate_grounded_answer(
+        user_question=normalized_question,
+        context_blocks=context,
+        mode="faq",
+        fallback=grounded_fallback,
+    )
+    fb_parts = [body]
+    if trans:
+        fb_parts.append(trans)
+    if close:
+        fb_parts.append(close)
+    fallback = "\n\n".join(p for p in fb_parts if p)
+    verified = "\n".join(
+        [
+            "BASE_FAQ_DESDE_BD:",
+            context,
+            "",
+            f"faq_respuesta_compacta: {str(bool(compact_faq_body)).lower()}",
+            f"transicion_literal: {trans or '(ninguna)'}",
+            f"cierre_literal: {close or '(ninguno)'}",
+        ]
+    )
+    return generate_verified_user_message(
+        mode="faq_turn",
+        verified_facts_block=verified,
+        user_message=normalized_question,
+        fallback=fallback,
+        temperature=0.38,
     )
 
 

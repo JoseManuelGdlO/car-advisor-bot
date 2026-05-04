@@ -25,7 +25,10 @@ class PurchaseFlowTests(GraphTestCase):
                 "src.nodes.lead_capture.generate_lead_capture_intro",
                 return_value="Necesitamos datos para un asesor (Nissan Versa 2004). Cual es tu nombre completo?",
             ),
-            patch("src.nodes.lead_capture.safe_llm_format", side_effect=lambda text: text),
+            patch(
+                "src.nodes.lead_capture.generate_verified_user_message",
+                side_effect=lambda **kw: kw["fallback"],
+            ),
         ):
             updated = self.graph.invoke(state)
 

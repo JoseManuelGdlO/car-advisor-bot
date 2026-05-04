@@ -51,7 +51,10 @@ class Flow01GreetingModelsSelectionDataTests(GraphTestCase):
                 "src.nodes.car_selection.fetch_vehicle_images",
                 return_value={"images": ["/img/versa-2011-1.jpg"], "nextCursor": 1, "hasMore": False, "mode": "top"},
             ),
-            patch("src.nodes.car_selection.safe_llm_format", side_effect=lambda text: text),
+            patch(
+                "src.nodes.car_selection.generate_verified_user_message",
+                side_effect=lambda **kw: kw["fallback"],
+            ),
         ):
             state = self.graph.invoke(with_user_message(state, "hola"))
             self.assertEqual(state.get("intent"), "other")

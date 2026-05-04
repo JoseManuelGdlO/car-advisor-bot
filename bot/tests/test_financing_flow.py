@@ -72,14 +72,21 @@ class FinancingFlowTests(GraphTestCase):
         state = initial_state()
         state["platform"] = "web"
         state["user_id"] = "5512345678"
+        state["owner_user_id"] = "owner-test"
 
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
             patch("src.nodes.financing.fetch_vehicles", return_value=vehicle_hint),
             patch("src.nodes.financing.search_vehicles", return_value=vehicle_hint),
             patch("src.nodes.financing.fetch_financing_plans_by_vehicle", return_value=[plan_a, plan_b]),
-            patch("src.nodes.financing.safe_llm_format", side_effect=lambda text: text),
-            patch("src.nodes.lead_capture.safe_llm_format", side_effect=lambda text: text),
+            patch(
+                "src.nodes.financing.generate_verified_user_message",
+                side_effect=lambda **kw: kw["fallback"],
+            ),
+            patch(
+                "src.nodes.lead_capture.generate_verified_user_message",
+                side_effect=lambda **kw: kw["fallback"],
+            ),
             patch("src.nodes.lead_capture.notify_advisor") as notify_mock,
             patch("src.nodes.lead_capture.push_event_to_backend") as event_mock,
         ):
@@ -158,11 +165,12 @@ class FinancingFlowTests(GraphTestCase):
         state = initial_state()
         state["platform"] = "web"
         state["user_id"] = "5512345678"
+        state["owner_user_id"] = "owner-multiturn"
 
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", side_effect=faq_flags),
             patch("src.nodes.faq.fetch_faq_candidates", return_value=["Estamos ubicados por el colegio REX."]),
-            patch("src.nodes.faq.generate_faq_response", return_value="Estamos ubicados por el colegio REX."),
+            patch("src.nodes.faq.generate_faq_user_turn", return_value="Estamos ubicados por el colegio REX."),
             patch("src.nodes.car_selection.fetch_vehicles", return_value=[versa_2011, versa_2001]),
             patch("src.nodes.car_selection.search_vehicles", side_effect=[[versa_2011, versa_2001], [versa_2011]]),
             patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=versa_2011),
@@ -172,13 +180,22 @@ class FinancingFlowTests(GraphTestCase):
                 "src.nodes.car_selection.generate_vehicle_detail_conversation",
                 return_value="Aqui tienes la información completa del Nissan Versa 2011. 😊",
             ),
-            patch("src.nodes.car_selection.safe_llm_format", side_effect=lambda text: text),
+            patch(
+                "src.nodes.car_selection.generate_verified_user_message",
+                side_effect=lambda **kw: kw["fallback"],
+            ),
             patch("src.nodes.financing.fetch_vehicles", return_value=[versa_2011, versa_2001]),
             patch("src.nodes.financing.search_vehicles", return_value=[versa_2011]),
             patch("src.nodes.financing.fetch_financing_plans_by_vehicle", return_value=[shilo_plan, plan_test]),
-            patch("src.nodes.financing.safe_llm_format", side_effect=lambda text: text),
+            patch(
+                "src.nodes.financing.generate_verified_user_message",
+                side_effect=lambda **kw: kw["fallback"],
+            ),
             patch("src.nodes.financing.classify_financing_plan_selection_intent", return_value="ASK_EXPLICIT_PLAN"),
-            patch("src.nodes.lead_capture.safe_llm_format", side_effect=lambda text: text),
+            patch(
+                "src.nodes.lead_capture.generate_verified_user_message",
+                side_effect=lambda **kw: kw["fallback"],
+            ),
             patch("src.nodes.lead_capture.notify_advisor") as notify_mock,
             patch("src.nodes.lead_capture.push_event_to_backend") as event_mock,
         ):

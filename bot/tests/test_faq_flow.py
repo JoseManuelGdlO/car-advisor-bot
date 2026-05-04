@@ -16,7 +16,7 @@ class FaqFlowTests(GraphTestCase):
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": True}),
             patch("src.nodes.faq.fetch_faq_candidates", return_value=["Estamos en Av. Siempre Viva 123."]),
-            patch("src.nodes.faq.generate_faq_response", return_value="Estamos en Av. Siempre Viva 123."),
+            patch("src.nodes.faq.generate_faq_user_turn", return_value="Estamos en Av. Siempre Viva 123."),
         ):
             updated = self.graph.invoke(state)
 
@@ -43,7 +43,7 @@ class FaqFlowTests(GraphTestCase):
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": True}),
             patch("src.nodes.faq.fetch_faq_candidates", return_value=["Estamos en Centro."]),
-            patch("src.nodes.faq.generate_faq_response", return_value="Estamos en Centro."),
+            patch("src.nodes.faq.generate_faq_user_turn", return_value="Estamos en Centro."),
         ):
             after_faq = self.graph.invoke(faq_turn)
 
@@ -64,7 +64,10 @@ class FaqFlowTests(GraphTestCase):
         ]
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
-            patch("src.nodes.lead_capture.safe_llm_format", side_effect=lambda text: text),
+            patch(
+                "src.nodes.lead_capture.generate_verified_user_message",
+                side_effect=lambda **kw: kw["fallback"],
+            ),
         ):
             resumed = self.graph.invoke(resume_state)
 

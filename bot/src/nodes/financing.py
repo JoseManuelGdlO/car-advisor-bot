@@ -8,9 +8,8 @@ from typing import Any
 
 from src.services.llm_responses import (
     classify_financing_plan_selection_intent,
-    compose_answer_first_response,
-    generate_grounded_answer,
-    safe_llm_format,
+    generate_financing_plans_user_message,
+    generate_verified_user_message,
 )
 from src.state import clientState
 from src.tools.database import fetch_financing_plans, fetch_financing_plans_by_vehicle
@@ -260,8 +259,19 @@ def _clear_incompatible_promotion(state: clientState, selected_vehicle_id: str) 
     state["awaiting_promotion_selection"] = False
     state["awaiting_promotion_vehicle_selection"] = False
     state["awaiting_promotion_vehicle_interest_confirmation"] = False
-    return safe_llm_format(
-        f"El vehiculo elegido no aplica para {previous_promotion}, asi que quite esa promocion activa."
+    return generate_verified_user_message(
+        mode="operational",
+        verified_facts_block=(
+            "evento: promocion_removida_por_incompatibilidad\n"
+            f"promocion_anterior: {previous_promotion}\n"
+            f"vehicle_id_seleccionado: {selected_vehicle_id}\n"
+        ),
+        user_message="",
+        fallback=(
+            f"El vehiculo elegido no aplica para {previous_promotion}, "
+            "asi que quite esa promocion activa."
+        ),
+        temperature=0.35,
     )
 
 
@@ -289,10 +299,15 @@ def _looks_like_plan_vehicle_info_request(user_text: str) -> bool:
 
 
 def _compose_conversational_block(intro_base: str, structured_block: str, follow_up: str = "") -> str:
-    """Compone salida conversacional con intro + bloque estructurado + cierre opcional."""
-    intro = safe_llm_format(intro_base)
-    sections = [part for part in [intro, structured_block.strip(), follow_up.strip()] if part]
-    return "\n\n".join(sections)
+    """Prosa LLM anclada a datos + listado literal de vehiculos del plan."""
+    listing = structured_block.strip()
+    hint = "\n".join(part for part in (intro_base.strip(), follow_up.strip()) if part)
+    return generate_financing_plans_user_message(
+        user_text="",
+        listing_block=listing,
+        follow_up_hint=hint or "Indica cual vehiculo eliges para continuar.",
+        fallback_semantic=hint or listing,
+    )
 
 
 def _compose_answer_first_block(
@@ -303,15 +318,16 @@ def _compose_answer_first_block(
     follow_up: str,
     fallback_semantic: str,
 ) -> str:
-    """Compone salida answer-first para respuestas de financiamiento."""
+    """Listado de planes desde formatter + prosa LLM anclada (sin duplicar listado en la prosa)."""
 
-    semantic = generate_grounded_answer(
-        user_question=user_text,
-        context_blocks=context_blocks,
-        mode="financing",
-        fallback=fallback_semantic,
+    _ = context_blocks  # reservado por compatibilidad de firma con llamadas existentes
+    listing = structured_block.strip()
+    return generate_financing_plans_user_message(
+        user_text=user_text,
+        listing_block=listing,
+        follow_up_hint=follow_up,
+        fallback_semantic=fallback_semantic,
     )
-    return compose_answer_first_response(semantic, structured_block, follow_up)
 
 
 def _image_url_for_chat(raw_url: str) -> str:
@@ -359,9 +375,18 @@ def _respond_plan_vehicle_info(state: clientState, plan: dict[str, Any]) -> clie
     plan_name = str(plan.get("name", "")).strip() or "este plan"
     vehicles = _available_plan_vehicles(plan)
     if not vehicles:
-        message = safe_llm_format(
-            f"El plan {plan_name} no tiene vehiculos disponibles vinculados. "
-            "Si quieres, te muestro otros planes."
+        message = generate_verified_user_message(
+            mode="operational",
+            verified_facts_block=(
+                f"plan_nombre: {plan_name}\n"
+                "vehiculos_disponibles_en_plan: 0\n"
+            ),
+            user_message=latest_user_message(state),
+            fallback=(
+                f"El plan {plan_name} no tiene vehiculos disponibles vinculados. "
+                "Si quieres, te muestro otros planes."
+            ),
+            temperature=0.35,
         )
         return append_assistant_message(state, message)
 
@@ -370,23 +395,41 @@ def _respond_plan_vehicle_info(state: clientState, plan: dict[str, Any]) -> clie
     detail = fetch_vehicle_by_id(vehicle_id) if vehicle_id else None
     detail_source = detail if isinstance(detail, dict) else target_vehicle
     vehicle_name = _vehicle_label(detail_source)
-    intro = safe_llm_format(
-        f"Claro, te comparto el vehiculo del {plan_name}: {vehicle_name}."
-    )
     vehicle_text = format_vehicle_detail(detail_source, platform=str(state.get("platform", "web")))
     platform = str(state.get("platform", "web")).strip().lower() or "web"
     if platform == "whatsapp":
         images_block = _build_whatsapp_vehicle_images_block(state, vehicle_id) or _build_vehicle_images_block(vehicle_id)
     else:
         images_block = _build_vehicle_images_block(vehicle_id)
-    close_question = safe_llm_format(
-        f"Quieres este plan de financiamiento para {vehicle_name}? "
-        "Si si, te paso a seleccionar este vehiculo y seguimos con tus datos."
+    plan_id = str(plan.get("id", "")).strip()
+    lender = str(plan.get("lender", "")).strip()
+    verified = "\n".join(
+        [
+            "CONTEXTO_PLAN_FINANCIAMIENTO:",
+            f"plan_nombre: {plan_name}",
+            f"plan_id: {plan_id}",
+            f"plan_financiera_o_lender: {lender}",
+            f"vehicle_id: {vehicle_id}",
+            f"vehicle_etiqueta_inventario: {vehicle_name}",
+            "",
+            "FICHA_VEHICULO_INVENTARIO:",
+            vehicle_text,
+            "",
+            "pregunta_cierre_literal_sugerida:",
+            f"Quieres este plan de financiamiento para {vehicle_name}? "
+            "Si si, te paso a seleccionar este vehiculo y seguimos con tus datos.",
+        ]
     )
-    blocks = [intro, vehicle_text]
+    body = generate_verified_user_message(
+        mode="financing_plan_vehicle",
+        verified_facts_block=verified,
+        user_message=latest_user_message(state),
+        fallback=f"Claro, te comparto el vehiculo del {plan_name}: {vehicle_name}.\n\n{vehicle_text}",
+        temperature=0.42,
+    )
+    blocks = [body]
     if images_block:
         blocks.append(images_block)
-    blocks.append(close_question)
     return append_assistant_message(state, "\n\n".join(blocks))
 
 
@@ -490,7 +533,7 @@ def financing(state: clientState) -> clientState:
         state["intent"] = "promotions"
         _debug("route_change", next_node="promotions", reason="promotions_requested")
         return state
-    if _is_catalog_query(user_text):
+    if _is_catalog_query(user_text) and not _is_financing_query(user_text):
         state["awaiting_financing_plan_selection"] = False
         state["awaiting_financing_vehicle_selection"] = False
         state["financing_plan_candidates"] = []
@@ -504,8 +547,16 @@ def financing(state: clientState) -> clientState:
         selected_vehicle = _pick_vehicle_for_plan(state, user_text)
         if not selected_vehicle:
             _debug("awaiting_vehicle_selection_invalid_choice", user_text=user_text)
-            reminder = safe_llm_format(
-                "Necesito que selecciones uno de los vehiculos del plan. Puedes responder con nombre o numero."
+            reminder = generate_verified_user_message(
+                mode="operational",
+                verified_facts_block=(
+                    "situacion: esperando_seleccion_vehiculo_en_plan\n"
+                    f"ultimo_mensaje_usuario: {user_text}\n"
+                    f"candidatos_vehiculos_en_plan: {json.dumps([_vehicle_label(v) for v in state.get('financing_vehicle_candidates', []) if isinstance(v, dict)], ensure_ascii=False)}\n"
+                ),
+                user_message=user_text,
+                fallback="Necesito que selecciones uno de los vehiculos del plan. Puedes responder con nombre o numero.",
+                temperature=0.35,
             )
             return append_assistant_message(state, reminder)
 
@@ -527,8 +578,20 @@ def financing(state: clientState) -> clientState:
             selected_car=selected_car,
             selected_plan=state.get("selected_financing_plan_name", ""),
         )
-        confirmation = safe_llm_format(
-            f"Perfecto, entonces avanzamos con {selected_car} y el plan {state.get('selected_financing_plan_name', 'seleccionado')}."
+        confirmation = generate_verified_user_message(
+            mode="operational",
+            verified_facts_block=(
+                "evento: confirmacion_tras_elegir_vehiculo_en_plan\n"
+                f"vehicle_id: {selected_vehicle_id}\n"
+                f"vehicle_etiqueta: {selected_car}\n"
+                f"plan_nombre: {state.get('selected_financing_plan_name', '')}\n"
+            ),
+            user_message=user_text,
+            fallback=(
+                f"Perfecto, entonces avanzamos con {selected_car} y el plan "
+                f"{state.get('selected_financing_plan_name', 'seleccionado')}."
+            ),
+            temperature=0.35,
         )
         if promotion_notice:
             confirmation = f"{promotion_notice}\n\n{confirmation}"
@@ -569,8 +632,16 @@ def financing(state: clientState) -> clientState:
                     selected_plan = unique_plan
         if not selected_plan:
             _debug("awaiting_plan_selection_invalid_choice", user_text=user_text)
-            reminder = safe_llm_format(
-                "Dime cual plan te interesa (por nombre o numero) para continuar."
+            reminder = generate_verified_user_message(
+                mode="operational",
+                verified_facts_block=(
+                    "situacion: esperando_seleccion_de_plan\n"
+                    f"ultimo_mensaje_usuario: {user_text}\n"
+                    f"planes_candidatos_ids: {json.dumps([str(p.get('id','')) for p in candidates if isinstance(p, dict)])}\n"
+                ),
+                user_message=user_text,
+                fallback="Dime cual plan te interesa (por nombre o numero) para continuar.",
+                temperature=0.35,
             )
             return append_assistant_message(state, reminder)
 
@@ -611,9 +682,20 @@ def financing(state: clientState) -> clientState:
                         next_node="lead_capture",
                         reason="plan_confirmed_same_vehicle_already_selected",
                     )
-                    confirmation = safe_llm_format(
-                        f"Perfecto, entonces avanzamos con {selected_car} y el plan "
-                        f"{state.get('selected_financing_plan_name', 'seleccionado')}."
+                    confirmation = generate_verified_user_message(
+                        mode="operational",
+                        verified_facts_block=(
+                            "evento: plan_unico_mismo_vehiculo_preseleccionado\n"
+                            f"vehicle_id: {selected_vehicle_id}\n"
+                            f"vehicle_etiqueta: {selected_car}\n"
+                            f"plan_nombre: {state.get('selected_financing_plan_name', '')}\n"
+                        ),
+                        user_message=user_text,
+                        fallback=(
+                            f"Perfecto, entonces avanzamos con {selected_car} y el plan "
+                            f"{state.get('selected_financing_plan_name', 'seleccionado')}."
+                        ),
+                        temperature=0.35,
                     )
                     if promotion_notice:
                         confirmation = f"{promotion_notice}\n\n{confirmation}"
@@ -651,8 +733,16 @@ def financing(state: clientState) -> clientState:
             return append_assistant_message(state, question)
 
         _debug("selected_plan_without_vehicles")
-        fallback = safe_llm_format(
-            "Este plan no trae vehiculos vinculados. Dime marca y modelo del carro que te interesa para continuar."
+        fallback = generate_verified_user_message(
+            mode="operational",
+            verified_facts_block=(
+                "situacion: plan_sin_vehiculos_vinculados\n"
+                f"plan_nombre: {state.get('selected_financing_plan_name', '')}\n"
+                f"plan_id: {state.get('selected_financing_plan_id', '')}\n"
+            ),
+            user_message=user_text,
+            fallback="Este plan no trae vehiculos vinculados. Dime marca y modelo del carro que te interesa para continuar.",
+            temperature=0.35,
         )
         return append_assistant_message(state, fallback)
 
@@ -715,9 +805,18 @@ def financing(state: clientState) -> clientState:
 
     if not plans:
         _debug("plans_unavailable")
-        message = safe_llm_format(
-            "No hay planes de financiamiento con vehiculos disponibles en este momento. "
-            "Si quieres, puedo pasarte con un asesor para revisar opciones."
+        message = generate_verified_user_message(
+            mode="operational",
+            verified_facts_block=(
+                "operacion: fetch_financing_plans\n"
+                "resultado: lista_vacia_despues_de_filtros\n"
+            ),
+            user_message=user_text,
+            fallback=(
+                "No hay planes de financiamiento con vehiculos disponibles en este momento. "
+                "Si quieres, puedo pasarte con un asesor para revisar opciones."
+            ),
+            temperature=0.35,
         )
         return append_assistant_message(state, message)
 
