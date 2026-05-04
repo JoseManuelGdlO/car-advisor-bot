@@ -24,11 +24,13 @@ import NotFound from "./pages/NotFound.tsx";
 import { AuthProvider } from "@/context/AuthContext";
 import { RequireAuth } from "@/components/RequireAuth";
 import { PushBridge } from "@/mobile/PushBridge";
+import { DelayedQueryLoadingOverlay } from "@/components/DelayedQueryLoadingOverlay";
 
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
+    <DelayedQueryLoadingOverlay />
     <AuthProvider>
       <TooltipProvider>
         <Toaster />

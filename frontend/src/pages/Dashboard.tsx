@@ -1,12 +1,15 @@
+import { useState } from "react";
 import { Bell, TrendingUp, TrendingDown, MessageCircle, UserPlus, Trophy, ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { crmApi } from "@/services/crm";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const [notifOpen, setNotifOpen] = useState(false);
   const { token, user } = useAuth();
   const { data: kpis } = useQuery({
     queryKey: ["kpis"],
@@ -16,6 +19,13 @@ export default function Dashboard() {
   const safeKpis = kpis || { activeChats: 0, newToday: 0, waiting: 0, newLeads: 0, newLeadsChange: 0, conversions: 0, conversionsChange: 0, weeklyChats: [0, 0, 0, 0, 0, 0, 0], topProducts: [] };
   const max = Math.max(...safeKpis.weeklyChats, 1);
   const days = ["L", "M", "X", "J", "V", "S", "D"];
+  const hasNotifDot =
+    safeKpis.waiting > 0 || safeKpis.newToday > 0 || safeKpis.newLeads > 0 || safeKpis.activeChats > 0;
+
+  const go = (path: string) => {
+    setNotifOpen(false);
+    navigate(path);
+  };
 
   return (
     <>
@@ -24,9 +34,15 @@ export default function Dashboard() {
         subtitle="Esto es lo que pasa hoy"
         variant="primary"
         action={
-          <button className="w-9 h-9 grid place-items-center rounded-full bg-white/15 hover:bg-white/25 transition-colors relative" aria-label="Notificaciones">
+          <button
+            type="button"
+            onClick={() => setNotifOpen(true)}
+            className="w-9 h-9 grid place-items-center rounded-full bg-white/15 hover:bg-white/25 transition-colors relative"
+            aria-label="Notificaciones"
+            aria-expanded={notifOpen}
+          >
             <Bell className="w-5 h-5" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-warning rounded-full" />
+            {hasNotifDot ? <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-warning rounded-full" /> : null}
           </button>
         }
       />
@@ -140,20 +156,122 @@ export default function Dashboard() {
         </div>
 
         {/* Quick action */}
-        <button
-          onClick={() => navigate("/chats")}
-          className="w-full bg-warning/10 border border-warning/30 rounded-2xl p-4 flex items-center gap-3 text-left hover:bg-warning/15 transition-colors"
-        >
-          <div className="w-10 h-10 rounded-xl bg-warning/20 text-warning grid place-items-center">
-            <TrendingDown className="w-5 h-5" />
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-foreground">3 conversaciones esperando</p>
-            <p className="text-xs text-muted-foreground">Toma el control para no perder ventas</p>
-          </div>
-          <ChevronRight className="w-5 h-5 text-muted-foreground" />
-        </button>
+        {safeKpis.waiting > 0 ? (
+          <button
+            onClick={() => navigate("/chats")}
+            className="w-full bg-warning/10 border border-warning/30 rounded-2xl p-4 flex items-center gap-3 text-left hover:bg-warning/15 transition-colors"
+          >
+            <div className="w-10 h-10 rounded-xl bg-warning/20 text-warning grid place-items-center">
+              <TrendingDown className="w-5 h-5" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-foreground">
+                {safeKpis.waiting === 1
+                  ? "1 conversación en espera"
+                  : `${safeKpis.waiting} conversaciones en espera`}
+              </p>
+              <p className="text-xs text-muted-foreground">Toma el control para no perder ventas</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-muted-foreground" />
+          </button>
+        ) : null}
       </div>
+
+      <Sheet open={notifOpen} onOpenChange={setNotifOpen}>
+        <SheetContent side="bottom" className="rounded-t-2xl max-h-[85vh] overflow-y-auto">
+          <SheetHeader className="text-left">
+            <SheetTitle>Notificaciones</SheetTitle>
+            <SheetDescription>Lo que necesita tu atención hoy, según el panel.</SheetDescription>
+          </SheetHeader>
+          <div className="mt-5 space-y-2 pb-safe">
+            {safeKpis.waiting > 0 ? (
+              <button
+                type="button"
+                onClick={() => go("/chats")}
+                className="w-full flex items-center gap-3 rounded-xl border border-border bg-card p-3 text-left hover:bg-muted/50 transition-colors"
+              >
+                <div className="w-10 h-10 shrink-0 rounded-xl bg-warning/15 text-warning grid place-items-center">
+                  <MessageCircle className="w-5 h-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-foreground">Chats en espera</p>
+                  <p className="text-xs text-muted-foreground">
+                    {safeKpis.waiting === 1
+                      ? "Hay 1 conversación esperando respuesta."
+                      : `Hay ${safeKpis.waiting} conversaciones esperando respuesta.`}
+                  </p>
+                </div>
+                <ChevronRight className="w-5 h-5 shrink-0 text-muted-foreground" />
+              </button>
+            ) : null}
+            {safeKpis.newToday > 0 ? (
+              <button
+                type="button"
+                onClick={() => go("/chats")}
+                className="w-full flex items-center gap-3 rounded-xl border border-border bg-card p-3 text-left hover:bg-muted/50 transition-colors"
+              >
+                <div className="w-10 h-10 shrink-0 rounded-xl bg-info/15 text-info grid place-items-center">
+                  <TrendingUp className="w-5 h-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-foreground">Conversaciones nuevas hoy</p>
+                  <p className="text-xs text-muted-foreground">
+                    {safeKpis.newToday === 1
+                      ? "1 conversación iniciada hoy."
+                      : `${safeKpis.newToday} conversaciones iniciadas hoy.`}
+                  </p>
+                </div>
+                <ChevronRight className="w-5 h-5 shrink-0 text-muted-foreground" />
+              </button>
+            ) : null}
+            {safeKpis.newLeads > 0 ? (
+              <button
+                type="button"
+                onClick={() => go("/clientes")}
+                className="w-full flex items-center gap-3 rounded-xl border border-border bg-card p-3 text-left hover:bg-muted/50 transition-colors"
+              >
+                <div className="w-10 h-10 shrink-0 rounded-xl bg-primary/10 text-primary-dark grid place-items-center">
+                  <UserPlus className="w-5 h-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-foreground">Leads nuevos</p>
+                  <p className="text-xs text-muted-foreground">
+                    {safeKpis.newLeads === 1
+                      ? "Tienes 1 lead nuevo para revisar."
+                      : `Tienes ${safeKpis.newLeads} leads nuevos para revisar.`}
+                  </p>
+                </div>
+                <ChevronRight className="w-5 h-5 shrink-0 text-muted-foreground" />
+              </button>
+            ) : null}
+            {safeKpis.activeChats > 0 && safeKpis.waiting === 0 && safeKpis.newToday === 0 && safeKpis.newLeads === 0 ? (
+              <button
+                type="button"
+                onClick={() => go("/chats")}
+                className="w-full flex items-center gap-3 rounded-xl border border-border bg-card p-3 text-left hover:bg-muted/50 transition-colors"
+              >
+                <div className="w-10 h-10 shrink-0 rounded-xl bg-accent grid place-items-center text-accent-foreground">
+                  <MessageCircle className="w-5 h-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-foreground">Conversaciones activas</p>
+                  <p className="text-xs text-muted-foreground">
+                    {safeKpis.activeChats === 1
+                      ? "1 conversación activa en curso."
+                      : `${safeKpis.activeChats} conversaciones activas en curso.`}
+                  </p>
+                </div>
+                <ChevronRight className="w-5 h-5 shrink-0 text-muted-foreground" />
+              </button>
+            ) : null}
+            {!safeKpis.waiting && !safeKpis.newToday && !safeKpis.newLeads && !safeKpis.activeChats ? (
+              <p className="text-sm text-muted-foreground text-center py-8 px-2">
+                No hay alertas por ahora. Cuando haya chats en espera, leads o actividad nueva, aparecerán aquí.
+              </p>
+            ) : null}
+          </div>
+        </SheetContent>
+      </Sheet>
     </>
   );
 }

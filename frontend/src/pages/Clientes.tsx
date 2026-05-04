@@ -33,7 +33,7 @@ export default function Clientes() {
       const matchQ = !q || c.name.toLowerCase().includes(q.toLowerCase()) || c.interestedIn.toLowerCase().includes(q.toLowerCase());
       return matchF && matchQ;
     });
-  }, [filter, q]);
+  }, [clients, filter, q]);
 
   return (
     <>
