@@ -392,12 +392,6 @@ def delete_bot_session(phone: str, platform: str = "web") -> int:
         connection.close()
 
 
-def reset_bot_session_state(phone: str, platform: str = "web") -> int:
-    """Alias explícito para reiniciar estado persistido (borra la fila de sesión)."""
-
-    return delete_bot_session(phone, platform)
-
-
 def upsert_bot_session_state(
     phone: str,
     state_dict: dict[str, Any],

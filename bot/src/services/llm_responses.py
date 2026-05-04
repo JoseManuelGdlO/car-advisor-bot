@@ -12,7 +12,6 @@ from langchain_openai import ChatOpenAI
 
 from src.tools.database import get_bot_settings
 from src.utils.prompts import (
-    build_available_models_intro_prompt,
     build_answer_first_faq_prompt,
     build_answer_first_financing_prompt,
     build_answer_first_inventory_prompt,
@@ -24,10 +23,7 @@ from src.utils.prompts import (
     build_purchase_confirmation_classifier_prompt,
     build_selected_vehicle_qa_prompt,
     build_router_intent_classifier_prompt,
-    build_rewrite_prompt,
     build_vehicle_detail_conversation_prompt,
-    build_vehicle_detail_intro_prompt,
-    build_vehicle_candidates_selection_prompt,
     build_faq_response_prompt,
     build_vehicle_step_flags_prompt,
     build_promotions_step_flags_prompt,
@@ -110,26 +106,6 @@ def _log_llm_invoke_failure(
     ctx = " ".join(bits)
     detail = str(exc).strip().replace("\n", " ")[:500]
     logger.warning("%s | exc_type=%s | %s", ctx, type(exc).__name__, detail, exc_info=exc)
-
-
-def safe_llm_format(text: str) -> str:
-    """Usa ChatOpenAI para dar formato, con fallback seguro al texto base."""
-
-    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
-    try:
-        settings = get_bot_settings()
-        llm = ChatOpenAI(model=model_name, temperature=0)
-        prompt = build_rewrite_prompt(text, settings)
-        return llm.invoke(prompt).content.strip()
-    except Exception as exc:
-        _log_llm_invoke_failure(
-            "safe_llm_format",
-            exc,
-            model_name=model_name,
-            prompt_kind="rewrite",
-            temperature=0.0,
-        )
-        return text
 
 
 def generate_verified_user_message(
@@ -510,57 +486,6 @@ def generate_other_response(user_message: str) -> str:
             exc,
             model_name=model_name,
             prompt_kind="other_response",
-            temperature=0.5,
-        )
-        return fallback
-
-
-def generate_available_models_intro() -> str:
-    """Genera introduccion embellecida para lista de modelos disponibles."""
-
-    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
-    fallback = "Aqui tienes los modelos disponibles. Te gustaria saber mas sobre alguno?"
-    try:
-        settings = get_bot_settings()
-        llm = ChatOpenAI(model=model_name, temperature=0.5)
-        prompt = build_available_models_intro_prompt(settings)
-        content = llm.invoke(prompt).content
-        normalized = str(content).strip()
-        if not normalized:
-            return fallback
-        return normalized.replace("\n", " ").strip()
-    except Exception as exc:
-        _log_llm_invoke_failure(
-            "generate_available_models_intro",
-            exc,
-            model_name=model_name,
-            prompt_kind="available_models_intro",
-            temperature=0.5,
-        )
-        return fallback
-
-
-def generate_vehicle_detail_intro(vehicle_name: str) -> str:
-    """Genera introduccion embellecida para detalle del vehiculo."""
-
-    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
-    normalized_name = vehicle_name.strip() or "este vehiculo"
-    fallback = f"Aqui tienes la informacion completa de {normalized_name}."
-    try:
-        settings = get_bot_settings()
-        llm = ChatOpenAI(model=model_name, temperature=0.5)
-        prompt = build_vehicle_detail_intro_prompt(normalized_name, settings)
-        content = llm.invoke(prompt).content
-        normalized = str(content).strip()
-        if not normalized:
-            return fallback
-        return normalized.replace("\n", " ").strip()
-    except Exception as exc:
-        _log_llm_invoke_failure(
-            "generate_vehicle_detail_intro",
-            exc,
-            model_name=model_name,
-            prompt_kind="vehicle_detail_intro",
             temperature=0.5,
         )
         return fallback
@@ -1175,30 +1100,6 @@ def generate_faq_user_turn(
         fallback=fallback,
         temperature=0.38,
     )
-
-
-def compose_answer_first_response(
-    semantic_answer: str,
-    business_block: str = "",
-    close_question: str = "",
-) -> str:
-    """Compone salida canónica answer-first: respuesta + bloque negocio + cierre."""
-
-    def _strip_answer_first_labels(text: str) -> str:
-        cleaned = str(text or "").strip()
-        if not cleaned:
-            return ""
-        cleaned = re.sub(r"(?im)^\s*respuesta\s*:\s*", "", cleaned)
-        cleaned = re.sub(r"(?im)^\s*siguiente[_\s-]*paso\s*:\s*", "", cleaned)
-        cleaned = re.sub(r"(?im)^\s*cierre\s*:\s*", "", cleaned)
-        return cleaned.strip()
-
-    parts = [
-        _strip_answer_first_labels(semantic_answer),
-        _strip_answer_first_labels(business_block),
-        _strip_answer_first_labels(close_question),
-    ]
-    return "\n\n".join(part for part in parts if part)
 
 
 def generate_grounded_answer(

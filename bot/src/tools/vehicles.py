@@ -220,12 +220,6 @@ def build_whatsapp_image_messages(
     return messages
 
 
-def fetch_vehicles_catalog() -> list[dict[str, Any]]:
-    """Compatibilidad: alias de fetch_vehicles."""
-
-    return fetch_vehicles()
-
-
 def normalize_user_text(text: str) -> str:
     """Normaliza texto: lowercase, trim, acentos y espacios."""
 
@@ -330,72 +324,6 @@ def detect_vehicle_filters(user_text: str, vehicles: list[dict[str, Any]]) -> di
         filters["color"] = color
 
     return filters
-
-
-def resolve_vehicle_candidates(user_text: str, vehicles: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Busca candidatos de vehiculo especifico usando filtros inferidos."""
-
-    filters = detect_vehicle_filters(user_text, vehicles)
-    if not filters:
-        return []
-    candidates: list[dict[str, Any]] = []
-    for item in vehicles:
-        matches = True
-        for key, expected in filters.items():
-            if key == "year":
-                if int(item.get("year", 0) or 0) != int(expected):
-                    matches = False
-                    break
-            else:
-                current = str(item.get(key, "")).strip().lower()
-                if current != str(expected).strip().lower():
-                    matches = False
-                    break
-        if matches:
-            candidates.append(item)
-    return candidates
-
-
-def available_brands() -> list[str]:
-    """Retorna marcas disponibles unicas desde el catalogo real."""
-
-    vehicles = fetch_vehicles()
-    seen: set[str] = set()
-    brands: list[str] = []
-    for item in vehicles:
-        brand = str(item.get("brand", "")).strip()
-        if not brand:
-            continue
-        key = normalize_user_text(brand)
-        if key in seen:
-            continue
-        seen.add(key)
-        brands.append(brand)
-    return brands
-
-
-def available_models_by_brand(brand: str) -> list[str]:
-    """Retorna modelos disponibles para una marca especifica."""
-
-    normalized_brand = normalize_user_text(brand)
-    if not normalized_brand:
-        return []
-    vehicles = fetch_vehicles()
-    seen: set[str] = set()
-    models: list[str] = []
-    for item in vehicles:
-        item_brand = normalize_user_text(item.get("brand", ""))
-        if item_brand != normalized_brand:
-            continue
-        model = str(item.get("model", "")).strip()
-        if not model:
-            continue
-        key = normalize_user_text(model)
-        if key in seen:
-            continue
-        seen.add(key)
-        models.append(model)
-    return models
 
 
 def notify_advisor(

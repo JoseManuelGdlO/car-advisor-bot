@@ -16,21 +16,6 @@ _SYSTEM_RULES_BLOCK = (
     "- Manten un tono humano y claro."
 )
 
-ROUTER_OTHER_REPLY_PROMPT = (
-    "Genera una respuesta breve para orientar al usuario.\n"
-    "Mensaje base: {base_text}"
-)
-
-CATALOG_REPLY_PROMPT = (
-    "Redacta un mensaje claro para presentar opciones de catalogo.\n"
-    "Mensaje base: {base_text}"
-)
-
-LEAD_CAPTURE_REPLY_PROMPT = (
-    "Genera un mensaje corto para capturar o confirmar datos del cliente.\n"
-    "Mensaje base: {base_text}"
-)
-
 
 def _tone_instruction(tone: str) -> str:
     """Helper de apoyo para tone instruction."""
@@ -88,19 +73,6 @@ def build_system_prompt(bot_settings: dict[str, Any] | None, fallback_response: 
 
     base_prompt = (fallback_response or "").strip() or DEFAULT_RESPONSE_FALLBACK
     return "\n\n".join([base_prompt, _SYSTEM_RULES_BLOCK, build_settings_block(bot_settings)])
-
-
-def build_rewrite_prompt(base_text: str, bot_settings: dict[str, Any] | None) -> str:
-    """Prompt final para reformular una respuesta manteniendo su significado."""
-
-    system_prompt = build_system_prompt(bot_settings)
-    return (
-        f"{system_prompt}\n\n"
-        "REESCRITURA:\n"
-        "Reescribe el siguiente mensaje en espanol claro y breve. "
-        "No cambies el significado, usa el mismo significado que el mensaje base.\n\n"
-        f"Mensaje base: {base_text}\n"
-    )
 
 
 def build_other_response_prompt(
@@ -275,55 +247,6 @@ def build_verified_user_message_prompt(
     )
 
 
-def build_available_models_intro_prompt(bot_settings: dict[str, Any] | None) -> str:
-    """Prompt para la introduccion del listado de modelos disponibles."""
-
-    system_prompt = build_system_prompt(bot_settings)
-    return (
-        f"{system_prompt}\n\n"
-        "INTRO_MODELOS_DISPONIBLES:\n"
-        "Redacta una sola frase breve y natural para presentar una lista de modelos disponibles. "
-        "Debe invitar al usuario a elegir uno para conocer mas detalles. "
-        "No inventes datos, no incluyas lista ni saltos de linea.\n\n"
-        "Mensaje base: Aqui tienes los modelos disponibles. Te gustaria saber mas sobre alguno?"
-    )
-
-
-def build_vehicle_candidates_selection_prompt(
-    options_text: str,
-    bot_settings: dict[str, Any] | None,
-) -> str:
-    """Prompt para redactar mensaje de seleccion cuando hay multiples candidatos."""
-
-    system_prompt = build_system_prompt(bot_settings)
-    normalized_options = options_text.strip()
-    return (
-        f"{system_prompt}\n\n"
-        "SELECCION_MULTIPLES_VEHICULOS:\n"
-        "Redacta una introduccion breve para pedir al usuario que elija un vehiculo de una lista.\n"
-        "Debes mantener EXACTAMENTE la lista de opciones tal como viene en LISTA_OPCIONES "
-        "(mismos numeros, nombres y saltos de linea), sin reordenar ni modificar contenido.\n"
-        "Despues de la lista agrega una instruccion breve para responder con nombre o numero.\n"
-        "Devuelve un solo bloque de texto, solo saluda si el usuario te ha saludado.\n" 
-        "Debes mencionar que estos son los vehiculos disponibles o los que encontraste.\n\n"
-        f"LISTA_OPCIONES:\n{normalized_options}\n"
-    )
-
-
-def build_vehicle_detail_intro_prompt(vehicle_name: str, bot_settings: dict[str, Any] | None) -> str:
-    """Prompt para la introduccion del bloque de detalle de un vehiculo."""
-
-    system_prompt = build_system_prompt(bot_settings)
-    normalized_name = vehicle_name.strip() or "este vehiculo"
-    return (
-        f"{system_prompt}\n\n"
-        "INTRO_DETALLE_VEHICULO:\n"
-        "Redacta una sola frase breve y natural para introducir el detalle tecnico del vehiculo. "
-        "No inventes datos, no agregues lista ni saltos de linea.\n\n"
-        f"Mensaje base: Aqui tienes la informacion completa de {normalized_name}."
-    )
-
-
 def build_vehicle_detail_conversation_prompt(
     vehicle_name: str,
     grounded_facts_block: str,
@@ -353,50 +276,6 @@ def build_vehicle_detail_conversation_prompt(
         "- Evita markdown de tablas o listas; maximo un salto de linea entre dos parrafos cortos si ayuda a la lectura.\n"
         "- Cierra con una invitacion breve a seguir platicando (por ejemplo caracteristicas o ver otros modelos), sin prometer cosas no respaldadas por DATOS_VERIFICADOS.\n"
         "- Devuelve UNICAMENTE el mensaje para el usuario, sin titulos, sin prefijos tipo 'Respuesta:' ni comillas."
-    )
-
-
-def build_lead_capture_intro_prompt(
-    vehicle_name: str,
-    bot_settings: dict[str, Any] | None,
-    resuming: bool = False,
-) -> str:
-    """Prompt para el mensaje inicial de captura de lead (asesor, datos de contacto)."""
-
-    system_prompt = build_system_prompt(bot_settings)
-    v = vehicle_name.strip() or "el vehiculo de interes"
-    resume = (
-        f"Contexto: el usuario volvio al flujo. Continuamos con {v}. "
-        "No repitas un saludo largo; reconoce la continuacion y explica el siguiente paso."
-        if resuming
-        else (
-            f"Contexto: el usuario esta interesado en {v} y quiere avanzar hacia un asesor. "
-            "No saludes ni reinicies la conversacion; asume que el chat ya esta en curso."
-        )
-    )
-    return (
-        f"{system_prompt}\n\n"
-        "MENSAJE_INTRO_CAPTURA_LEAD:\n"
-        f"{resume} "
-        "Explica con una o dos frases que necesitamos sus datos de contacto para que un asesor (no menciones que el aseasor es humano) "
-        f"pueda comunicarse y ayudarle con la compra de {v}. "
-        "No pidas datos en un solo bloque con formato 'nombre: telefono: email:'. "
-        "Al final, haz una unica pregunta clara pidiendo su NOMBRE COMPLETO (nombre y apellido), "
-        "y usa la palabra 'nombre' en esa pregunta. "
-        "Un solo parrafo corto o dos frases como maximo, sin listas."
-    )
-
-
-def build_vehicle_purchase_question_prompt(bot_settings: dict[str, Any] | None) -> str:
-    """Prompt para la pregunta de cierre de compra."""
-
-    system_prompt = build_system_prompt(bot_settings)
-    return (
-        f"{system_prompt}\n\n"
-        "PREGUNTA_COMPRA_VEHICULO:\n"
-        "Redacta una sola pregunta breve para confirmar si el usuario desea comprar el vehiculo o ver mas imagenes. "
-        "Incluye 1 o 2 emojis maximo y no agregues saltos de linea.\n\n"
-        "Mensaje base: Te interesa comprar este vehiculo o quieres ver mas imagenes del mismo?"
     )
 
 
