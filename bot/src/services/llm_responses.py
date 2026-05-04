@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from typing import Any
@@ -36,6 +37,80 @@ from src.utils.prompts import (
     build_verified_user_message_prompt,
 )
 
+logger = logging.getLogger(__name__)
+
+
+def _llm_failure_bucket(exc: BaseException) -> str:
+    """Clasificación estable para filtrar fallos de proveedor/red sin imports frágiles."""
+    if isinstance(exc, TimeoutError):
+        return "timeout"
+    name = type(exc).__name__
+    nl = name.lower()
+    if "timeout" in nl:
+        return "timeout"
+    if isinstance(exc, OSError):
+        return "os_io"
+    mod = getattr(exc, "__module__", "") or ""
+    if "openai" in mod:
+        if "ratelimit" in nl:
+            return "rate_limit"
+        if "apiconnection" in nl or "connecterror" in nl:
+            return "connection"
+        if "authentication" in nl:
+            return "auth"
+        if "badrequest" in nl:
+            return "bad_request"
+        return "openai"
+    if "httpx" in mod:
+        if "timeout" in nl:
+            return "timeout"
+        if "connect" in nl:
+            return "connection"
+        return "httpx"
+    return "other"
+
+
+def _llm_failure_http_attrs(exc: BaseException) -> str:
+    parts: list[str] = []
+    status = getattr(exc, "status_code", None)
+    if status is not None:
+        parts.append(f"http_status={status}")
+    code = getattr(exc, "code", None)
+    if code is not None and code != status:
+        parts.append(f"code={code}")
+    return " ".join(parts)
+
+
+def _log_llm_invoke_failure(
+    operation: str,
+    exc: BaseException,
+    *,
+    model_name: str = "",
+    mode: str | None = None,
+    prompt_kind: str | None = None,
+    temperature: float | None = None,
+) -> None:
+    """Registra fallo de invocación LLM con contexto; el caller devuelve el fallback acordado."""
+    bucket = _llm_failure_bucket(exc)
+    bits = [
+        f"op={operation}",
+        f"bucket={bucket}",
+    ]
+    if model_name:
+        bits.append(f"model={model_name}")
+    if mode:
+        bits.append(f"mode={mode}")
+    if prompt_kind:
+        bits.append(f"prompt_kind={prompt_kind}")
+    if temperature is not None:
+        bits.append(f"temperature={temperature}")
+    http_extra = _llm_failure_http_attrs(exc)
+    if http_extra:
+        bits.append(http_extra)
+    ctx = " ".join(bits)
+    detail = str(exc).strip().replace("\n", " ")[:500]
+    logger.warning("%s | exc_type=%s | %s", ctx, type(exc).__name__, detail, exc_info=exc)
+
 
 def safe_llm_format(text: str) -> str:
     """Usa ChatOpenAI para dar formato, con fallback seguro al texto base."""
@@ -46,7 +121,14 @@ def safe_llm_format(text: str) -> str:
         llm = ChatOpenAI(model=model_name, temperature=0)
         prompt = build_rewrite_prompt(text, settings)
         return llm.invoke(prompt).content.strip()
-    except Exception:
+    except Exception as exc:
+        _log_llm_invoke_failure(
+            "safe_llm_format",
+            exc,
+            model_name=model_name,
+            prompt_kind="rewrite",
+            temperature=0.0,
+        )
         return text
 
 
@@ -85,7 +167,15 @@ def generate_verified_user_message(
         ):
             return fb
         return out
-    except Exception:
+    except Exception as exc:
+        _log_llm_invoke_failure(
+            "generate_verified_user_message",
+            exc,
+            model_name=model_name,
+            mode=mode,
+            prompt_kind="verified_user_message",
+            temperature=temperature,
+        )
         return fb
 
 
@@ -414,7 +504,14 @@ def generate_other_response(user_message: str) -> str:
         content = llm.invoke(prompt).content
         normalized = str(content).strip()
         return normalized or fallback
-    except Exception:
+    except Exception as exc:
+        _log_llm_invoke_failure(
+            "generate_other_response",
+            exc,
+            model_name=model_name,
+            prompt_kind="other_response",
+            temperature=0.5,
+        )
         return fallback
 
 
@@ -432,7 +529,14 @@ def generate_available_models_intro() -> str:
         if not normalized:
             return fallback
         return normalized.replace("\n", " ").strip()
-    except Exception:
+    except Exception as exc:
+        _log_llm_invoke_failure(
+            "generate_available_models_intro",
+            exc,
+            model_name=model_name,
+            prompt_kind="available_models_intro",
+            temperature=0.5,
+        )
         return fallback
 
 
@@ -451,7 +555,14 @@ def generate_vehicle_detail_intro(vehicle_name: str) -> str:
         if not normalized:
             return fallback
         return normalized.replace("\n", " ").strip()
-    except Exception:
+    except Exception as exc:
+        _log_llm_invoke_failure(
+            "generate_vehicle_detail_intro",
+            exc,
+            model_name=model_name,
+            prompt_kind="vehicle_detail_intro",
+            temperature=0.5,
+        )
         return fallback
 
 
@@ -514,7 +625,14 @@ def generate_vehicle_detail_conversation(vehicle_name: str, grounded_facts_block
         if not normalized:
             return fallback
         return normalized
-    except Exception:
+    except Exception as exc:
+        _log_llm_invoke_failure(
+            "generate_vehicle_detail_conversation",
+            exc,
+            model_name=model_name,
+            prompt_kind="vehicle_detail_conversation",
+            temperature=0.45,
+        )
         return fallback
 
 
@@ -632,7 +750,14 @@ def generate_selected_vehicle_qa_response(
         content = llm.invoke(prompt).content
         normalized = str(content).strip()
         return normalized or fallback
-    except Exception:
+    except Exception as exc:
+        _log_llm_invoke_failure(
+            "generate_selected_vehicle_qa_response",
+            exc,
+            model_name=model_name,
+            prompt_kind="selected_vehicle_qa",
+            temperature=0.35,
+        )
         return fallback
 
 
@@ -649,7 +774,14 @@ def classify_purchase_confirmation_intent(previous_bot_message: str, user_messag
         if normalized in {"SI", "NO", "VER_MODELO", "VER_MAS_IMAGENES", "PREGUNTA_MODELO", "UNKNOWN"}:
             return normalized
         return "UNKNOWN"
-    except Exception:
+    except Exception as exc:
+        _log_llm_invoke_failure(
+            "classify_purchase_confirmation_intent",
+            exc,
+            model_name=model_name,
+            prompt_kind="purchase_confirmation_classifier",
+            temperature=0.0,
+        )
         return "UNKNOWN"
 
 
@@ -677,7 +809,14 @@ def classify_financing_plan_selection_intent(
         if normalized in {"SELECT_SINGLE_PLAN", "ASK_EXPLICIT_PLAN", "REJECT"}:
             return normalized
         return "UNKNOWN"
-    except Exception:
+    except Exception as exc:
+        _log_llm_invoke_failure(
+            "classify_financing_plan_selection_intent",
+            exc,
+            model_name=model_name,
+            prompt_kind="financing_plan_selection_classifier",
+            temperature=0.0,
+        )
         return "UNKNOWN"
 
 
@@ -705,7 +844,14 @@ def classify_promotion_selection_intent(
         if normalized in {"APPLY_SINGLE_PROMOTION", "ASK_EXPLICIT_PROMOTION", "REJECT"}:
             return normalized
         return "UNKNOWN"
-    except Exception:
+    except Exception as exc:
+        _log_llm_invoke_failure(
+            "classify_promotion_selection_intent",
+            exc,
+            model_name=model_name,
+            prompt_kind="promotion_selection_classifier",
+            temperature=0.0,
+        )
         return "UNKNOWN"
 
 
@@ -722,7 +868,14 @@ def classify_router_intent(user_message: str, previous_intent: str = "") -> str:
         if normalized in {"VEHICLE_CATALOG", "FAQ", "FINANCING", "PROMOTIONS", "OTHER"}:
             return normalized
         return "UNKNOWN"
-    except Exception:
+    except Exception as exc:
+        _log_llm_invoke_failure(
+            "classify_router_intent",
+            exc,
+            model_name=model_name,
+            prompt_kind="router_intent_classifier",
+            temperature=0.0,
+        )
         return "UNKNOWN"
 
 
@@ -748,7 +901,14 @@ def classify_lead_capture_navigation(
         if normalized in {"STAY", "PROMOTIONS", "FINANCING", "CAR_SELECTION"}:
             return normalized
         return "STAY"
-    except Exception:
+    except Exception as exc:
+        _log_llm_invoke_failure(
+            "classify_lead_capture_navigation",
+            exc,
+            model_name=model_name,
+            prompt_kind="lead_capture_navigation_classifier",
+            temperature=0.0,
+        )
         return "STAY"
 
 
@@ -782,8 +942,15 @@ def classify_vehicle_step_flags(
             return out
         for key in out:
             out[key] = _coerce_to_bool(parsed.get(key))
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_llm_invoke_failure(
+            "classify_vehicle_step_flags",
+            exc,
+            model_name=model_name,
+            prompt_kind="vehicle_step_flags_classifier",
+            temperature=0.0,
+        )
+        return out
     return out
 
 
@@ -811,8 +978,15 @@ def classify_promotions_step_flags(user_message: str, current_promotion_title: s
             return out
         for key in out:
             out[key] = _coerce_to_bool(parsed.get(key))
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_llm_invoke_failure(
+            "classify_promotions_step_flags",
+            exc,
+            model_name=model_name,
+            prompt_kind="promotions_step_flags_classifier",
+            temperature=0.0,
+        )
+        return out
     return out
 
 
@@ -849,8 +1023,15 @@ def classify_financing_step_flags(
             return out
         for key in out:
             out[key] = _coerce_to_bool(parsed.get(key))
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_llm_invoke_failure(
+            "classify_financing_step_flags",
+            exc,
+            model_name=model_name,
+            prompt_kind="financing_step_flags_classifier",
+            temperature=0.0,
+        )
+        return out
     return out
 
 
@@ -892,8 +1073,15 @@ def classify_faq_interrupt_flags(
         out["es_respuesta_o_seguimiento_al_ultimo_bot"] = _coerce_to_bool(
             parsed.get("es_respuesta_o_seguimiento_al_ultimo_bot")
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_llm_invoke_failure(
+            "classify_faq_interrupt_flags",
+            exc,
+            model_name=model_name,
+            prompt_kind=f"faq_interrupt_flags_classifier|graph_node={current_node}",
+            temperature=0.0,
+        )
+        return out
     return out
 
 
@@ -1030,10 +1218,10 @@ def generate_grounded_answer(
         return safe_fallback
     if not context:
         return safe_fallback
+    mode_key = str(mode or "").strip().lower()
     try:
         settings = get_bot_settings()
         llm = ChatOpenAI(model=model_name, temperature=0.35)
-        mode_key = str(mode or "").strip().lower()
         if mode_key == "inventory":
             prompt = build_answer_first_inventory_prompt(question, context, settings)
         elif mode_key == "financing":
@@ -1047,5 +1235,13 @@ def generate_grounded_answer(
         content = llm.invoke(prompt).content
         normalized = str(content).strip()
         return normalized or safe_fallback
-    except Exception:
+    except Exception as exc:
+        _log_llm_invoke_failure(
+            "generate_grounded_answer",
+            exc,
+            model_name=model_name,
+            mode=mode_key,
+            prompt_kind=f"answer_first_{mode_key or 'default'}",
+            temperature=0.35,
+        )
         return safe_fallback
