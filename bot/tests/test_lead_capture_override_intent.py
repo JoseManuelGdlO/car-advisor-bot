@@ -54,7 +54,10 @@ class LeadCaptureOverrideIntentTests(GraphTestCase):
 
         with (
             patch("src.nodes.lead_capture.classify_lead_capture_navigation", return_value=""),
-            patch("src.nodes.lead_capture.safe_llm_format", side_effect=lambda text: text),
+            patch(
+                "src.nodes.lead_capture.generate_verified_user_message",
+                side_effect=lambda **kw: kw["fallback"],
+            ),
             patch("src.nodes.lead_capture.notify_advisor", side_effect=RuntimeError("push down")) as notify_mock,
             patch("src.nodes.lead_capture.push_event_to_backend") as event_mock,
         ):

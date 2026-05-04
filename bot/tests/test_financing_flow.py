@@ -6,6 +6,65 @@ from tests.test_helpers import GraphTestCase, initial_state, with_user_message
 
 
 class FinancingFlowTests(GraphTestCase):
+    def test_financing_rejects_plans_but_keeps_purchase_routes_to_lead_capture(self) -> None:
+        state = initial_state()
+        state["current_node"] = "financing"
+        state["intent"] = "financing"
+        state["awaiting_financing_plan_selection"] = True
+        state["selected_vehicle_id"] = "veh-versa-2011"
+        state["selected_car"] = "Nissan Versa 2011"
+        state["financing_plan_candidates"] = [
+            {
+                "id": "plan-1",
+                "name": "Financiamiento Shilo",
+                "lender": "BBVA",
+                "active": True,
+                "vehicles": [{"id": "veh-versa-2011", "brand": "Nissan", "model": "Versa", "year": 2011, "status": "available"}],
+            },
+            {
+                "id": "plan-2",
+                "name": "Test",
+                "lender": "Test",
+                "active": True,
+                "vehicles": [{"id": "veh-versa-2011", "brand": "Nissan", "model": "Versa", "year": 2011, "status": "available"}],
+            },
+        ]
+        state["messages"] = [
+            {
+                "role": "assistant",
+                "content": "Si te interesa alguno, dime el nombre o numero del plan.",
+                "type": "AIMessage",
+            }
+        ]
+
+        state = with_user_message(state, "no pero no me interesa ninguno, solo quiero comprar el carro")
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch(
+                "src.nodes.financing.classify_financing_step_flags",
+                return_value={"reject_financing_keep_purchase": True, "ask_explicit_plan": False},
+            ),
+            patch(
+                "src.nodes.financing.generate_verified_user_message",
+                side_effect=lambda **kw: kw["fallback"],
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertEqual(updated.get("current_node"), "lead_capture")
+        self.assertEqual(updated.get("intent"), "lead_capture")
+        self.assertFalse(updated.get("awaiting_financing_plan_selection"))
+        self.assertEqual(updated.get("selected_financing_plan_id"), "")
+        assistant_texts = [
+            str(m.get("content", "")).lower()
+            for m in updated.get("messages", [])
+            if m.get("role") == "assistant"
+        ]
+        self.assertTrue(
+            any("sin plan de financiamiento" in t for t in assistant_texts),
+            msg="financing debe anunciar compra sin plan antes de que lead_capture siga en el mismo invoke",
+        )
+
     def test_financing_requests_catalog_routes_to_car_selection(self) -> None:
         state = initial_state()
         state["current_node"] = "financing"
@@ -72,14 +131,21 @@ class FinancingFlowTests(GraphTestCase):
         state = initial_state()
         state["platform"] = "web"
         state["user_id"] = "5512345678"
+        state["owner_user_id"] = "owner-test"
 
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
             patch("src.nodes.financing.fetch_vehicles", return_value=vehicle_hint),
             patch("src.nodes.financing.search_vehicles", return_value=vehicle_hint),
             patch("src.nodes.financing.fetch_financing_plans_by_vehicle", return_value=[plan_a, plan_b]),
-            patch("src.nodes.financing.safe_llm_format", side_effect=lambda text: text),
-            patch("src.nodes.lead_capture.safe_llm_format", side_effect=lambda text: text),
+            patch(
+                "src.nodes.financing.generate_verified_user_message",
+                side_effect=lambda **kw: kw["fallback"],
+            ),
+            patch(
+                "src.nodes.lead_capture.generate_verified_user_message",
+                side_effect=lambda **kw: kw["fallback"],
+            ),
             patch("src.nodes.lead_capture.notify_advisor") as notify_mock,
             patch("src.nodes.lead_capture.push_event_to_backend") as event_mock,
         ):
@@ -158,24 +224,37 @@ class FinancingFlowTests(GraphTestCase):
         state = initial_state()
         state["platform"] = "web"
         state["user_id"] = "5512345678"
+        state["owner_user_id"] = "owner-multiturn"
 
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", side_effect=faq_flags),
             patch("src.nodes.faq.fetch_faq_candidates", return_value=["Estamos ubicados por el colegio REX."]),
-            patch("src.nodes.faq.generate_faq_response", return_value="Estamos ubicados por el colegio REX."),
+            patch("src.nodes.faq.generate_faq_user_turn", return_value="Estamos ubicados por el colegio REX."),
             patch("src.nodes.car_selection.fetch_vehicles", return_value=[versa_2011, versa_2001]),
             patch("src.nodes.car_selection.search_vehicles", side_effect=[[versa_2011, versa_2001], [versa_2011]]),
             patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=versa_2011),
             patch("src.nodes.car_selection.fetch_vehicle_images", return_value={"images": ["Imagen del vehiculo"], "nextCursor": 1, "hasMore": False, "mode": "top"}),
             patch("src.nodes.car_selection.generate_vehicle_candidates_selection_message", return_value="1. Nissan Versa 2011\n2. Nissan Versa 2001"),
-            patch("src.nodes.car_selection.generate_vehicle_detail_intro", return_value="Aqui tienes la información completa del Nissan Versa 2011. 😊"),
-            patch("src.nodes.car_selection.safe_llm_format", side_effect=lambda text: text),
+            patch(
+                "src.nodes.car_selection.generate_vehicle_detail_conversation",
+                return_value="Aqui tienes la información completa del Nissan Versa 2011. 😊",
+            ),
+            patch(
+                "src.nodes.car_selection.generate_verified_user_message",
+                side_effect=lambda **kw: kw["fallback"],
+            ),
             patch("src.nodes.financing.fetch_vehicles", return_value=[versa_2011, versa_2001]),
             patch("src.nodes.financing.search_vehicles", return_value=[versa_2011]),
             patch("src.nodes.financing.fetch_financing_plans_by_vehicle", return_value=[shilo_plan, plan_test]),
-            patch("src.nodes.financing.safe_llm_format", side_effect=lambda text: text),
+            patch(
+                "src.nodes.financing.generate_verified_user_message",
+                side_effect=lambda **kw: kw["fallback"],
+            ),
             patch("src.nodes.financing.classify_financing_plan_selection_intent", return_value="ASK_EXPLICIT_PLAN"),
-            patch("src.nodes.lead_capture.safe_llm_format", side_effect=lambda text: text),
+            patch(
+                "src.nodes.lead_capture.generate_verified_user_message",
+                side_effect=lambda **kw: kw["fallback"],
+            ),
             patch("src.nodes.lead_capture.notify_advisor") as notify_mock,
             patch("src.nodes.lead_capture.push_event_to_backend") as event_mock,
         ):

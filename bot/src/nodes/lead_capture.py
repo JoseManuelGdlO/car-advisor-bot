@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from typing import Any
 
@@ -10,8 +11,8 @@ from src.tools.database import push_event_to_backend
 from src.tools.vehicles import notify_advisor
 from src.services.llm_responses import (
     classify_lead_capture_navigation,
-    safe_llm_format,
     generate_lead_capture_intro,
+    generate_verified_user_message,
 )
 from src.utils.lead_validators import (
     extract_email,
@@ -143,8 +144,12 @@ def lead_capture(state: clientState) -> clientState:
         state["intent"] = ""
         return append_assistant_message(
             state,
-            safe_llm_format(
-                "Tus datos ya quedaron registrados. Un asesor se pondra en contacto contigo en breve."
+            generate_verified_user_message(
+                mode="operational",
+                verified_facts_block="evento: lead_capture_ya_completado_en_estado\ncustomer_info_completo: true\n",
+                user_message=latest_user,
+                fallback="Tus datos ya quedaron registrados. Un asesor se pondra en contacto contigo en breve.",
+                temperature=0.35,
             ),
         )
 
@@ -152,14 +157,28 @@ def lead_capture(state: clientState) -> clientState:
         state["skip_lead_prompt"] = False
         if not selected_car:
             return append_assistant_message(
-                state, safe_llm_format("Primero debes elegir un vehiculo para continuar.")
+                state,
+                generate_verified_user_message(
+                    mode="operational",
+                    verified_facts_block="situacion: lead_capture_sin_vehiculo_seleccionado\n",
+                    user_message=latest_user,
+                    fallback="Primero debes elegir un vehiculo para continuar.",
+                    temperature=0.35,
+                ),
             )
         intro = generate_lead_capture_intro(selected_car, resuming=True)
         return append_assistant_message(state, intro)
 
     if not selected_car:
         return append_assistant_message(
-            state, safe_llm_format("Primero debes elegir un vehiculo para continuar.")
+            state,
+            generate_verified_user_message(
+                mode="operational",
+                verified_facts_block="situacion: lead_capture_sin_vehiculo_seleccionado\n",
+                user_message=latest_user,
+                fallback="Primero debes elegir un vehiculo para continuar.",
+                temperature=0.35,
+            ),
         )
 
     route_override = _detect_navigation_override(
@@ -188,12 +207,33 @@ def lead_capture(state: clientState) -> clientState:
                 _debug("name_rejected_initials", extracted=extracted)
                 return append_assistant_message(
                     state,
-                    "Necesitamos tu nombre completo, no solo iniciales. Indica nombre y apellido.",
+                    generate_verified_user_message(
+                        mode="lead_capture_step",
+                        verified_facts_block=(
+                            "campo: nombre_completo\n"
+                            "resultado_validacion: solo_iniciales\n"
+                            f"ultimo_intento_usuario_literal: {latest_user[:500]}\n"
+                        ),
+                        user_message=latest_user,
+                        fallback="Necesitamos tu nombre completo, no solo iniciales. Indica nombre y apellido.",
+                        temperature=0.35,
+                    ),
                 )
             else:
                 _debug("name_rejected_invalid", extracted=extracted)
                 return append_assistant_message(
-                    state, "Por favor escribe tu nombre completo, nombre y apellido."
+                    state,
+                    generate_verified_user_message(
+                        mode="lead_capture_step",
+                        verified_facts_block=(
+                            "campo: nombre_completo\n"
+                            "resultado_validacion: formato_invalido\n"
+                            f"ultimo_intento_usuario_literal: {latest_user[:500]}\n"
+                        ),
+                        user_message=latest_user,
+                        fallback="Por favor escribe tu nombre completo, nombre y apellido.",
+                        temperature=0.35,
+                    ),
                 )
         if not info.get("nombre"):
             intro = generate_lead_capture_intro(selected_car, resuming=False)
@@ -221,20 +261,46 @@ def lead_capture(state: clientState) -> clientState:
                     state["lead_phone_attempts"] = n
                     _debug("phone_rejected", attempts=n, digits=digits)
                     if n >= 2:
-                        msg = (
-                            f"Escribe solo el telefono en numeros, con al menos {phone_min_digits()} digitos "
-                            "(por ejemplo, 5512345678 o tu numero a 10 digitos)."
+                        msg = generate_verified_user_message(
+                            mode="lead_capture_step",
+                            verified_facts_block=(
+                                "campo: telefono\n"
+                                f"resultado_validacion: digitos_insuficientes_intento_{n}\n"
+                                f"min_digitos_requeridos: {phone_min_digits()}\n"
+                            ),
+                            user_message=latest_user,
+                            fallback=(
+                                f"Escribe solo el telefono en numeros, con al menos {phone_min_digits()} digitos "
+                                "(por ejemplo, 5512345678 o tu numero a 10 digitos)."
+                            ),
+                            temperature=0.35,
                         )
                     else:
-                        msg = (
-                            f"El telefono debe ser solo numeros y al menos {phone_min_digits()} digitos. "
-                            "Cual es tu numero de telefono?"
+                        msg = generate_verified_user_message(
+                            mode="lead_capture_step",
+                            verified_facts_block=(
+                                "campo: telefono\n"
+                                "resultado_validacion: formato_invalido\n"
+                                f"min_digitos_requeridos: {phone_min_digits()}\n"
+                            ),
+                            user_message=latest_user,
+                            fallback=(
+                                f"El telefono debe ser solo numeros y al menos {phone_min_digits()} digitos. "
+                                "Cual es tu numero de telefono?"
+                            ),
+                            temperature=0.35,
                         )
                     return append_assistant_message(state, msg)
             if not info.get("telefono"):
                 return append_assistant_message(
                     state,
-                    "Cual es tu numero de telefono? (Solo numeros, sin letras.)",
+                    generate_verified_user_message(
+                        mode="lead_capture_step",
+                        verified_facts_block="campo: telefono\nsituacion: solicitud_primera\n",
+                        user_message=latest_user,
+                        fallback="Cual es tu numero de telefono? (Solo numeros, sin letras.)",
+                        temperature=0.35,
+                    ),
                 )
 
     # 3) Email
@@ -250,11 +316,28 @@ def lead_capture(state: clientState) -> clientState:
                 _debug("email_rejected", raw=latest_user)
                 return append_assistant_message(
                     state,
-                    "Ese no parece un correo valido. Escribe uno con formato nombre@dominio.com",
+                    generate_verified_user_message(
+                        mode="lead_capture_step",
+                        verified_facts_block=(
+                            "campo: email\n"
+                            "resultado_validacion: formato_invalido\n"
+                            f"ultimo_intento_usuario_literal: {latest_user[:500]}\n"
+                        ),
+                        user_message=latest_user,
+                        fallback="Ese no parece un correo valido. Escribe uno con formato nombre@dominio.com",
+                        temperature=0.35,
+                    ),
                 )
         if not info.get("email"):
             return append_assistant_message(
-                state, "Cual es tu correo electronico?"
+                state,
+                generate_verified_user_message(
+                    mode="lead_capture_step",
+                    verified_facts_block="campo: email\nsituacion: solicitud_primera\n",
+                    user_message=latest_user,
+                    fallback="Cual es tu correo electronico?",
+                    temperature=0.35,
+                ),
             )
 
     payload_info = _clean_customer_info(state.get("customer_info", {}))
@@ -323,8 +406,10 @@ def lead_capture(state: clientState) -> clientState:
         _debug("notify_skipped_missing_owner_user_id")
 
     if notify_success or not owner_user_id:
-        base_text = f"Listo. Recibi tus datos para {selected_car} y ya notifique a un asesor para que se ponga en contacto contigo 😊🛞.\n"
-        "Cualquier duda que tengas, puedo ayudarte con lo que necesites mientras se comunica tu asesor."
+        base_text = (
+            f"Listo. Recibi tus datos para {selected_car} y ya notifique a un asesor para que se ponga en contacto contigo 😊🛞.\n"
+            "Cualquier duda que tengas, puedo ayudarte con lo que necesites mientras se comunica tu asesor."
+        )
         _debug("notify_success")
     else:
         base_text = (
@@ -337,4 +422,21 @@ def lead_capture(state: clientState) -> clientState:
     state["current_node"] = "router"
     state["intent"] = ""
 
-    return append_assistant_message(state, safe_llm_format(base_text))
+    verified_close = "\n".join(
+        [
+            f"vehiculo_etiqueta: {selected_car}",
+            f"notify_advisor_exito: {str(notify_success).lower()}",
+            f"owner_user_id_configurado: {str(bool(owner_user_id)).lower()}",
+            f"customer_info_resumen: {json.dumps(payload_info, ensure_ascii=False)}",
+        ]
+    )
+    return append_assistant_message(
+        state,
+        generate_verified_user_message(
+            mode="lead_capture_close",
+            verified_facts_block=verified_close,
+            user_message=latest_user,
+            fallback=base_text,
+            temperature=0.42,
+        ),
+    )

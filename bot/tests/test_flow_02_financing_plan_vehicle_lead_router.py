@@ -28,14 +28,21 @@ class Flow02FinancingPlanVehicleLeadRouterTests(GraphTestCase):
         state = initial_state()
         state["platform"] = "web"
         state["user_id"] = "5512345678"
+        state["owner_user_id"] = "owner-flow-02"
 
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
             patch("src.nodes.financing.fetch_vehicles", return_value=vehicle_hint),
             patch("src.nodes.financing.search_vehicles", return_value=vehicle_hint),
             patch("src.nodes.financing.fetch_financing_plans_by_vehicle", return_value=[plan_a, plan_b]),
-            patch("src.nodes.financing.safe_llm_format", side_effect=lambda text: text),
-            patch("src.nodes.lead_capture.safe_llm_format", side_effect=lambda text: text),
+            patch(
+                "src.nodes.financing.generate_verified_user_message",
+                side_effect=lambda **kw: kw["fallback"],
+            ),
+            patch(
+                "src.nodes.lead_capture.generate_verified_user_message",
+                side_effect=lambda **kw: kw["fallback"],
+            ),
             patch("src.nodes.lead_capture.notify_advisor") as notify_mock,
             patch("src.nodes.lead_capture.push_event_to_backend") as event_mock,
         ):

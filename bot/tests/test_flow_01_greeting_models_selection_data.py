@@ -43,12 +43,18 @@ class Flow01GreetingModelsSelectionDataTests(GraphTestCase):
             patch("src.nodes.car_selection.search_vehicles", side_effect=[[versa_2011, versa_2001], [versa_2011]]),
             patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=versa_2011),
             patch("src.nodes.car_selection.generate_vehicle_candidates_selection_message", return_value="1. Nissan Versa 2011\n2. Nissan Versa 2001"),
-            patch("src.nodes.car_selection.generate_vehicle_detail_intro", return_value="Aqui tienes la informacion completa del Nissan Versa 2011."),
+            patch(
+                "src.nodes.car_selection.generate_vehicle_detail_conversation",
+                return_value="Aqui tienes la informacion completa del Nissan Versa 2011.",
+            ),
             patch(
                 "src.nodes.car_selection.fetch_vehicle_images",
                 return_value={"images": ["/img/versa-2011-1.jpg"], "nextCursor": 1, "hasMore": False, "mode": "top"},
             ),
-            patch("src.nodes.car_selection.safe_llm_format", side_effect=lambda text: text),
+            patch(
+                "src.nodes.car_selection.generate_verified_user_message",
+                side_effect=lambda **kw: kw["fallback"],
+            ),
         ):
             state = self.graph.invoke(with_user_message(state, "hola"))
             self.assertEqual(state.get("intent"), "other")

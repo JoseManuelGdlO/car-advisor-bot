@@ -13,12 +13,10 @@ from src.state import clientState
 from src.services.llm_responses import (
     classify_vehicle_step_flags,
     classify_purchase_confirmation_intent,
-    compose_answer_first_response,
-    generate_available_models_intro,
     generate_vehicle_candidates_selection_message,
-    generate_vehicle_detail_intro,
-    generate_grounded_answer,
-    safe_llm_format,
+    generate_vehicle_detail_conversation,
+    generate_vehicle_purchase_question,
+    generate_verified_user_message,
 )
 from src.tools.vehicles import (
     build_whatsapp_image_messages,
@@ -246,8 +244,17 @@ def _find_candidate_from_pending(state: clientState, user_text: str) -> dict[str
     picked_label = canonicalize_with_typo_support(user_text, options, threshold=0.72)
     if not picked_label:
         normalized = normalize_user_text(user_text)
+        # Evita falsas selecciones por numeros de modelos (p. ej. "mazda 3"):
+        # solo usamos seleccion por indice cuando el usuario realmente esta eligiendo opcion.
+        explicit_index_selection = bool(
+            re.fullmatch(r"\d{1,2}", normalized)
+            or re.search(
+                r"\b(opcion|opción|numero|número|num|elijo|selecciono|me quedo con|quiero la|quiero el)\b",
+                normalized,
+            )
+        )
         index_match = re.search(r"\b(\d{1,2})\b", normalized)
-        if index_match:
+        if explicit_index_selection and index_match:
             idx = int(index_match.group(1)) - 1
             if 0 <= idx < len(pending) and isinstance(pending[idx], dict):
                 _debug("pending_candidate_selected_by_index", index=idx, value=_format_vehicle_name(pending[idx]))
@@ -267,7 +274,16 @@ def _find_candidate_from_pending(state: clientState, user_text: str) -> dict[str
 def _format_images_block(images: list[str]) -> str:
     """Formatea images block para salida de chat."""
     if not images:
-        return safe_llm_format(_NO_IMAGES_AVAILABLE_MESSAGE)
+        return generate_verified_user_message(
+            mode="operational",
+            verified_facts_block=(
+                "tipo: bloque_imagenes_vacio\n"
+                f"texto_literal_sistema: {_NO_IMAGES_AVAILABLE_MESSAGE}\n"
+            ),
+            user_message="",
+            fallback=_NO_IMAGES_AVAILABLE_MESSAGE,
+            temperature=0.35,
+        )
     formatted = "\n".join(f"- {_image_url_for_chat(url)}" for url in images)
     return f"Imagenes del vehiculo:\n{formatted}"
 
@@ -293,15 +309,19 @@ def _build_whatsapp_image_marker_block(state: clientState, vehicle_id: str, imag
 
 def _build_purchase_question(include_images_option: bool) -> str:
     """Construye purchase question para la respuesta."""
-    if include_images_option:
-        return safe_llm_format(_PURCHASE_WITH_IMAGES_QUESTION)
-    return safe_llm_format(_PURCHASE_ONLY_QUESTION)
+    return generate_vehicle_purchase_question(include_images_option=include_images_option)
 
 
 def _build_no_more_images_message() -> str:
     """Genera mensaje cuando no hay mas imagenes por mostrar."""
 
-    return safe_llm_format(_NO_MORE_IMAGES_MESSAGE)
+    return generate_verified_user_message(
+        mode="operational",
+        verified_facts_block=f"tipo: sin_mas_imagenes\ntexto_literal_sistema: {_NO_MORE_IMAGES_MESSAGE}\n",
+        user_message="",
+        fallback=_NO_MORE_IMAGES_MESSAGE,
+        temperature=0.35,
+    )
 
 
 def _append_assistant_blocks(state: clientState, blocks: list[str]) -> clientState:
@@ -465,9 +485,20 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
         state["financing_vehicle_candidates"] = []
         state["awaiting_financing_plan_selection"] = False
         state["awaiting_financing_vehicle_selection"] = False
-        financing_removed_notice = safe_llm_format(
-            f"Cambiamos de vehiculo, por lo que quite {previous_plan_name}. "
-            "Si quieres, te ayudo a revisar financiamiento para este nuevo carro."
+        financing_removed_notice = generate_verified_user_message(
+            mode="operational",
+            verified_facts_block=(
+                "evento: plan_financiamiento_removido_por_cambio_de_vehiculo\n"
+                f"plan_anterior: {previous_plan_name}\n"
+                f"vehicle_id_anterior: {previous_vehicle_id}\n"
+                f"vehicle_id_nuevo: {vehicle_id}\n"
+            ),
+            user_message=latest_user_message(state),
+            fallback=(
+                f"Cambiamos de vehiculo, por lo que quite {previous_plan_name}. "
+                "Si quieres, te ayudo a revisar financiamiento para este nuevo carro."
+            ),
+            temperature=0.35,
         )
     if has_selected_promotion:
         promotion_vehicle_ids = state.get("selected_promotion_vehicle_ids", [])
@@ -488,23 +519,47 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
             state["awaiting_promotion_selection"] = False
             state["awaiting_promotion_vehicle_selection"] = False
             state["awaiting_promotion_vehicle_interest_confirmation"] = False
-            promotion_removed_notice = safe_llm_format(
-                f"Este vehiculo no aplica para {previous_promotion}, por eso quite esa promocion. "
-                "Si quieres, puedo mostrarte otras promociones disponibles."
+            promotion_removed_notice = generate_verified_user_message(
+                mode="operational",
+                verified_facts_block=(
+                    "evento: promocion_removida_por_vehiculo_no_aplicable\n"
+                    f"promocion_anterior: {previous_promotion}\n"
+                    f"vehicle_id_nuevo: {vehicle_id}\n"
+                ),
+                user_message=latest_user_message(state),
+                fallback=(
+                    f"Este vehiculo no aplica para {previous_promotion}, por eso quite esa promocion. "
+                    "Si quieres, puedo mostrarte otras promociones disponibles."
+                ),
+                temperature=0.35,
             )
 
     _debug("vehicle_detail_requested", vehicle_id=vehicle_id, summary=_format_vehicle_name(vehicle_summary))
     if not vehicle_id:
         _debug("vehicle_detail_missing_id")
-        message = safe_llm_format("No pude identificar ese vehiculo. Te muestro disponibles.")
+        message = generate_verified_user_message(
+            mode="operational",
+            verified_facts_block="error: vehicle_id_vacio_en_resumen\n",
+            user_message=latest_user_message(state),
+            fallback="No pude identificar ese vehiculo. Te muestro disponibles.",
+            temperature=0.35,
+        )
         state["awaiting_purchase_confirmation"] = False
         state["last_vehicle_candidates"] = []
         return append_assistant_message(state, message)
     detail = fetch_vehicle_by_id(vehicle_id)
     if not detail:
         _debug("vehicle_detail_not_found", vehicle_id=vehicle_id)
-        message = safe_llm_format(
-            "No pude obtener el detalle de ese carro en este momento. Te muestro otras opciones disponibles.",
+        message = generate_verified_user_message(
+            mode="operational",
+            verified_facts_block=(
+                "operacion: fetch_vehicle_by_id\n"
+                f"vehicle_id_solicitado: {vehicle_id}\n"
+                "resultado: sin_detalle\n"
+            ),
+            user_message=latest_user_message(state),
+            fallback="No pude obtener el detalle de ese carro en este momento. Te muestro otras opciones disponibles.",
+            temperature=0.35,
         )
         state["awaiting_purchase_confirmation"] = False
         state["last_vehicle_candidates"] = []
@@ -522,10 +577,9 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
         next_step="awaiting_purchase_confirmation",
     )
 
-    detail_intro = generate_vehicle_detail_intro(state["selected_car"])
     platform = str(state.get("platform", "web")).strip().lower() or "web"
-    detail_text = format_vehicle_detail(detail, platform=platform)
-    platform = str(state.get("platform", "web")).strip().lower() or "web"
+    grounded_vehicle_facts = format_vehicle_detail(detail, platform=platform)
+    detail_narrative = generate_vehicle_detail_conversation(state["selected_car"], grounded_vehicle_facts)
     if platform == "whatsapp":
         images_block = _build_whatsapp_image_marker_block(state, vehicle_id, top_images) or _format_images_block(top_images)
     else:
@@ -533,7 +587,7 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
     if state.get("vehicle_images_has_more"):
         images_block = f"{images_block}\nSi quieres ver mas imagenes, dímelo."
     purchase_question = _build_purchase_question(include_images_option=bool(top_images))
-    first_block = f"{detail_intro}\n{detail_text}"
+    first_block = detail_narrative
     blocks: list[str] = []
     if financing_removed_notice:
         blocks.append(financing_removed_notice)
@@ -567,31 +621,26 @@ def _respond_available_list(
         pending_candidates=len(state["last_vehicle_candidates"]),
     )
     available_list = format_available_vehicles_grouped(vehicles)
-    if available_list.startswith("No tengo vehiculos disponibles"):
-        message = available_list
-    else:
-        semantic_intro = ""
-        if unavailable_request:
-            fallback_semantic = (
-                "No tengo informacion suficiente para responder por completo esa duda tecnica. "
-                "Ademas, ese modelo no lo tenemos disponible ahora."
-            )
-            semantic_intro = generate_grounded_answer(
-                user_question=latest_user_message(state),
-                context_blocks=(
-                    "Contexto inventario:\n"
-                    f"{available_list}\n\n"
-                    "Indicacion: si el modelo preguntado no esta disponible, dilo con claridad "
-                    "y ofrece alternativas disponibles."
-                ),
-                mode="inventory",
-                fallback=fallback_semantic,
-            )
-            intro = safe_llm_format("Estos son todos los modelos disponibles en este momento:")
-        else:
-            intro = generate_available_models_intro()
-        close = "Si quieres, te ayudo a comparar cual te conviene mas."
-        message = compose_answer_first_response(semantic_intro or intro, available_list, close)
+    user_q = latest_user_message(state)
+    verified = "\n".join(
+        [
+            f"consulta_usuario: {user_q}",
+            f"consulta_especifica_sin_stock_conocido: {str(unavailable_request).lower()}",
+            f"vehiculos_disponibles_contados: {available_count}",
+            "",
+            "LISTADO_INVENTARIO_AGRUPADO:",
+            available_list,
+            "",
+            "cierre_sugerido_literal: Si quieres, te ayudo a comparar cual te conviene mas.",
+        ]
+    )
+    message = generate_verified_user_message(
+        mode="catalog_availability",
+        verified_facts_block=verified,
+        user_message=user_q,
+        fallback=available_list,
+        temperature=0.42,
+    )
     return append_assistant_message(state, message)
 
 
@@ -619,8 +668,12 @@ def car_selection(state: clientState) -> clientState:
         _debug("catalog_loaded", total_vehicles=len(vehicles))
     except Exception:
         _debug("catalog_fetch_error")
-        message = safe_llm_format(
-            "No pude consultar el catalogo en este momento. Intenta nuevamente en unos segundos.",
+        message = generate_verified_user_message(
+            mode="operational",
+            verified_facts_block="operacion: fetch_vehicles_catalogo\nexito: false\n",
+            user_message=user_text,
+            fallback="No pude consultar el catalogo en este momento. Intenta nuevamente en unos segundos.",
+            temperature=0.35,
         )
         return append_assistant_message(state, message)
 
@@ -719,8 +772,15 @@ def car_selection(state: clientState) -> clientState:
             filtered = []
         if not filtered:
             _debug("search_empty", filters=filters)
-            message = safe_llm_format(
-                "No encontre carros con esas caracteristicas. Quieres que te muestre todos los disponibles?",
+            message = generate_verified_user_message(
+                mode="inventory_search_empty",
+                verified_facts_block=(
+                    f"criterios_busqueda_json: {json.dumps(filters, default=str, ensure_ascii=False)}\n"
+                    "vehiculos_encontrados: 0\n"
+                ),
+                user_message=user_text,
+                fallback="No encontre carros con esas caracteristicas. Quieres que te muestre todos los disponibles?",
+                temperature=0.35,
             )
             return append_assistant_message(state, message)
         if len(filtered) == 1:
@@ -729,17 +789,37 @@ def car_selection(state: clientState) -> clientState:
         if _looks_like_feature_request(user_text):
             _debug("search_multiple_feature_request", count=len(filtered))
             platform = str(state.get("platform", "web")).strip().lower() or "web"
-            message = format_filtered_vehicles(filtered, platform=platform)
-            message = f"{message}\n\nSi te interesa uno de estos, dime por favor el nombre exacto del vehiculo."
+            listing = format_filtered_vehicles(filtered, platform=platform)
+            verified = "\n".join(
+                [
+                    "LISTADO_RESULTADO_BUSQUEDA:",
+                    listing,
+                    "",
+                    "instruccion_cierre_literal: Si te interesa uno de estos, dime por favor el nombre exacto del vehiculo.",
+                ]
+            )
+            message = generate_verified_user_message(
+                mode="filtered_vehicles_followup",
+                verified_facts_block=verified,
+                user_message=user_text,
+                fallback=f"{listing}\n\nSi te interesa uno de estos, dime por favor el nombre exacto del vehiculo.",
+                temperature=0.42,
+            )
         else:
             _debug("search_multiple_specific_request", count=len(filtered))
             options = _format_candidate_options(filtered)
             if options:
-                message = generate_vehicle_candidates_selection_message(options)
+                message = generate_vehicle_candidates_selection_message(options, user_message=user_text)
             else:
-                message = (
-                    "Encontre varios carros similares. "
-                    "¿Cual te interesa? Puedes responder con el nombre o el numero."
+                message = generate_verified_user_message(
+                    mode="operational",
+                    verified_facts_block="situacion: multiples_matches_sin_lista_formateada\n",
+                    user_message=user_text,
+                    fallback=(
+                        "Encontre varios carros similares. "
+                        "¿Cual te interesa? Puedes responder con el nombre o el numero."
+                    ),
+                    temperature=0.35,
                 )
         state["last_vehicle_candidates"] = filtered[:8]
         _debug("pending_candidates_saved", count=len(state["last_vehicle_candidates"]))

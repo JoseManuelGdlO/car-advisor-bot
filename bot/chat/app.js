@@ -16,6 +16,8 @@ class ChatInterface {
 
     this.currentNodeElement = document.getElementById("current-node");
     this.selectedCarElement = document.getElementById("selected-car");
+    this.financingPlanElement = document.getElementById("financing-plan");
+    this.promotionElement = document.getElementById("promotion");
 
     this.init();
   }
@@ -172,6 +174,12 @@ class ChatInterface {
     if (this.selectedCarElement) {
       this.selectedCarElement.textContent = data.selected_car || "-";
     }
+    if (this.financingPlanElement) {
+      this.financingPlanElement.textContent = data.financing_plan || "-";
+    }
+    if (this.promotionElement) {
+      this.promotionElement.textContent = data.promotion || "-";
+    }
   }
 
   async resetConversation() {
@@ -220,6 +228,12 @@ class ChatInterface {
       }
       if (this.selectedCarElement) {
         this.selectedCarElement.textContent = "-";
+      }
+      if (this.financingPlanElement) {
+        this.financingPlanElement.textContent = "-";
+      }
+      if (this.promotionElement) {
+        this.promotionElement.textContent = "-";
       }
       this.userInput.value = "";
       this.updateCharCount();

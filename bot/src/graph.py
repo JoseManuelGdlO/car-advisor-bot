@@ -104,6 +104,9 @@ def _route_after_financing(state: clientState) -> str:
     if node == "lead_capture":
         _log_transition("financing", "lead_capture", "continuacion de compra")
         return "lead_capture"
+    if node == "promotions":
+        _log_transition("financing", "promotions", "consulta de promociones")
+        return "promotions"
     _log_transition("financing", "end")
     return "end"
 
@@ -201,6 +204,7 @@ def build_graph():
         {
             "car_selection": "car_selection",
             "lead_capture": "lead_capture",
+            "promotions": "promotions",
             "end": END,
         },
     )

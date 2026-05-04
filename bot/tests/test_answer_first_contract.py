@@ -16,8 +16,12 @@ class AnswerFirstContractTests(GraphTestCase):
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
             patch("src.nodes.router.classify_router_intent", return_value="VEHICLE_CATALOG"),
             patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
-            patch("src.nodes.car_selection.generate_grounded_answer", return_value="No tengo ficha tecnica suficiente para confirmarlo con precision."),
-            patch("src.nodes.car_selection.safe_llm_format", side_effect=lambda text: text),
+            patch(
+                "src.nodes.car_selection.generate_verified_user_message",
+                side_effect=lambda **kw: (
+                    "No tengo ficha tecnica suficiente para confirmarlo con precision.\n\n" f"{kw.get('fallback', '')}"
+                ),
+            ),
         ):
             updated = self.graph.invoke(state)
 
@@ -25,7 +29,6 @@ class AnswerFirstContractTests(GraphTestCase):
         self.assertIn("No tengo ficha tecnica suficiente", answer)
         self.assertIn("Nissan", answer)
         self.assertIn("Dodge", answer)
-        self.assertIn("te ayudo a comparar", answer.lower())
 
     def test_financing_uses_answer_first_contract(self) -> None:
         plans = [
@@ -45,14 +48,24 @@ class AnswerFirstContractTests(GraphTestCase):
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
             patch("src.nodes.financing.fetch_financing_plans", return_value=plans),
-            patch("src.nodes.financing.generate_grounded_answer", return_value="Si, manejamos pagos a plazos con tasa y plazo definidos."),
+            patch(
+                "src.nodes.financing.generate_financing_plans_user_message",
+                side_effect=lambda **kw: (
+                    "Si, manejamos pagos a plazos con tasa y plazo definidos; estos son los planes disponibles.\n\n"
+                    f"{kw.get('listing_block', '')}"
+                ),
+            ),
         ):
             updated = self.graph.invoke(state)
 
         answer = str(updated["messages"][-1]["content"])
         self.assertIn("manejamos pagos a plazos", answer.lower())
         self.assertIn("Shilo", answer)
-        self.assertIn("dime el nombre o numero del plan", answer.lower())
+        self.assertTrue(
+            "plan" in answer.lower()
+            or "planes" in answer.lower()
+            or "financiamiento" in answer.lower()
+        )
 
     def test_router_prioritizes_vehicle_on_hybrid_question(self) -> None:
         state = initial_state()

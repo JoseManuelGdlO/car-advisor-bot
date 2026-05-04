@@ -25,7 +25,10 @@ class PurchaseFlowTests(GraphTestCase):
                 "src.nodes.lead_capture.generate_lead_capture_intro",
                 return_value="Necesitamos datos para un asesor (Nissan Versa 2004). Cual es tu nombre completo?",
             ),
-            patch("src.nodes.lead_capture.safe_llm_format", side_effect=lambda text: text),
+            patch(
+                "src.nodes.lead_capture.generate_verified_user_message",
+                side_effect=lambda **kw: kw["fallback"],
+            ),
         ):
             updated = self.graph.invoke(state)
 
@@ -115,7 +118,10 @@ class PurchaseFlowTests(GraphTestCase):
             patch("src.nodes.car_selection.classify_purchase_confirmation_intent", return_value="VER_MODELO"),
             patch("src.nodes.car_selection.search_vehicles", return_value=[versa_detail]),
             patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=versa_detail),
-            patch("src.nodes.car_selection.generate_vehicle_detail_intro", return_value="Detalle del vehiculo:"),
+            patch(
+                "src.nodes.car_selection.generate_vehicle_detail_conversation",
+                return_value="Detalle del vehiculo: Nissan Versa 2011.",
+            ),
             patch(
                 "src.nodes.car_selection.fetch_vehicle_images",
                 return_value={"images": ["/img/versa-1.jpg", "/img/versa-2.jpg"], "nextCursor": 2, "hasMore": True, "mode": "top"},
