@@ -80,10 +80,16 @@ class PurchaseFlowTests(GraphTestCase):
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
             patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
             patch("src.nodes.car_selection.classify_purchase_confirmation_intent", return_value="VER_MAS_IMAGENES"),
+            patch(
+                "src.nodes.car_selection.generate_verified_user_message",
+                side_effect=lambda **kw: kw["fallback"],
+            ),
         ):
             updated = self.graph.invoke(state)
 
-        self.assertIn("Ya no hay mas imagenes", updated["messages"][-1]["content"])
+        last = str(updated["messages"][-1]["content"]).lower()
+        self.assertIn("ya no hay", last)
+        self.assertIn("imagen", last)
 
     def test_price_question_while_awaiting_confirmation_keeps_selection(self) -> None:
         """Pregunta por precio del vehiculo mostrado no debe listar todo el catalogo."""
@@ -208,9 +214,18 @@ class PurchaseFlowTests(GraphTestCase):
             "color": "blanco",
             "description": "",
         }
+        step_neutral = {
+            "ask_promotions": False,
+            "ask_financing": False,
+            "ask_more_images": False,
+            "wants_other_vehicles": False,
+            "confirm_purchase": False,
+            "reject_purchase": False,
+        }
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
             patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.classify_vehicle_step_flags", return_value=step_neutral),
             patch("src.nodes.car_selection.classify_purchase_confirmation_intent", return_value="VER_MODELO"),
             patch("src.nodes.car_selection.search_vehicles", return_value=[versa_detail]),
             patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=versa_detail),
