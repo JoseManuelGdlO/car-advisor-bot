@@ -170,6 +170,12 @@ def _looks_like_specific_vehicle_request(user_text: str) -> bool:
     # Ejemplos: "tienes chevrolet?", "hay chevrolet?"
     if re.search(r"\b(tienes|hay|busco|quiero)\s+[a-z0-9]+\b", normalized):
         return not _is_general_request(user_text)
+    # Ejemplos sin keyword explicita: "el mazda 3 sirve para ciudad o carretera?"
+    if re.search(r"\b(?:el|la|un|una)\s+[a-z]{3,}\s+\d{1,4}\b", normalized):
+        return True
+    # Ejemplos: "mazda 3 es bueno?", "civic 2018 conviene?"
+    if _looks_like_feature_request(user_text) and re.search(r"\b[a-z]{3,}\s+\d{1,4}\b", normalized):
+        return True
     return False
 
 

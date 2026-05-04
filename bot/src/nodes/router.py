@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from src.state import clientState
 
 from src.services.llm_responses import classify_router_intent, generate_other_response
@@ -47,6 +49,21 @@ def _is_vehicle_request(text: str) -> bool:
         "catalogo",
     ]
     return any(signal in normalized for signal in signals)
+
+
+def _looks_like_specific_vehicle_request(text: str) -> bool:
+    """Detecta menciones de un vehiculo puntual aunque no traiga keywords de catalogo."""
+
+    normalized = normalize_user_text(text)
+    if not normalized:
+        return False
+    if re.search(r"\b(?:el|la|un|una)\s+[a-z]{3,}\s+\d{1,4}\b", normalized):
+        return True
+    if re.search(r"\b[a-z]{3,}\s+\d{1,4}\b", normalized):
+        return True
+    if re.search(r"\b(tienes|hay|busco|quiero)\s+[a-z0-9]{3,}\b", normalized):
+        return True
+    return False
 
 
 def _is_financing_request(text: str) -> bool:
@@ -141,7 +158,7 @@ def router(state: clientState) -> clientState:
         return state
 
     faq_like = is_faq_intent(text)
-    vehicle_like = _is_vehicle_request(text)
+    vehicle_like = _is_vehicle_request(text) or _looks_like_specific_vehicle_request(text)
     if faq_like and vehicle_like:
         state["intent"] = "vehicle_catalog"
         state["current_node"] = "car_selection"
@@ -201,6 +218,11 @@ def router(state: clientState) -> clientState:
         return state
 
     if classified_intent == "FAQ":
+        if vehicle_like:
+            state["intent"] = "vehicle_catalog"
+            state["current_node"] = "car_selection"
+            _debug_router("route_to_car_selection", reason="faq_classified_but_vehicle_detected")
+            return state
         state["intent"] = "faq"
         state["current_node"] = "faq"
         _debug_router("route_to_faq", reason="llm_classifier")

@@ -6,6 +6,30 @@ from tests.test_helpers import GraphTestCase, initial_state, with_user_message
 
 
 class VehicleCatalogFlowTests(GraphTestCase):
+    def test_specific_model_question_overrides_faq_classifier_and_routes_catalog(self) -> None:
+        vehicles = [
+            {"id": "veh-1", "brand": "Nissan", "model": "Versa", "year": 2011, "status": "available"},
+            {"id": "veh-2", "brand": "Dodge", "model": "Ram", "year": 2015, "status": "available"},
+        ]
+        state = with_user_message(initial_state(), "el mazda 3 sirve para ciudad o carretera?")
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.router.classify_router_intent", return_value="FAQ"),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch(
+                "src.nodes.car_selection.generate_grounded_answer",
+                return_value="No tengo ficha tecnica suficiente para confirmarlo con precision. Ese modelo no esta disponible.",
+            ),
+            patch("src.nodes.car_selection.safe_llm_format", side_effect=lambda text: text),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertEqual(updated.get("current_node"), "car_selection")
+        answer = str(updated["messages"][-1]["content"])
+        self.assertIn("No tengo ficha tecnica suficiente", answer)
+        self.assertIn("Nissan", answer)
+        self.assertIn("Dodge", answer)
+
     def test_promotions_request_from_start_routes_to_promotions(self) -> None:
         state = with_user_message(initial_state(), "hola tienes promociones disponibles?")
         with (
