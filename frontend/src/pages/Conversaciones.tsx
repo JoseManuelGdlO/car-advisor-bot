@@ -14,6 +14,7 @@ const channelFilters: { key: "all" | Channel; label: string }[] = [
   { key: "all", label: "Todos" },
   { key: "whatsapp", label: "WhatsApp" },
   { key: "facebook", label: "Facebook" },
+  { key: "instagram", label: "Instagram" },
 ];
 
 export default function Conversaciones() {

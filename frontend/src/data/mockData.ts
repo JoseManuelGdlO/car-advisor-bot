@@ -1,6 +1,6 @@
 // Mock data for the AutoBot chatbot manager demo
 
-export type Channel = "whatsapp" | "facebook";
+export type Channel = "whatsapp" | "facebook" | "instagram";
 export type ClientStatus = "lead" | "negotiation" | "sold" | "lost";
 export type CarStatus = "available" | "reserved" | "sold";
 

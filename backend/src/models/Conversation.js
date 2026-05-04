@@ -18,7 +18,7 @@ export default function ConversationModel(sequelize) {
       field: "client_lead_id",
     },
     channel: {
-      type: DataTypes.ENUM("whatsapp", "facebook", "telegram", "web", "api"),
+      type: DataTypes.ENUM("whatsapp", "facebook", "telegram", "web", "api", "instagram"),
       allowNull: false,
       defaultValue: "web",
     },

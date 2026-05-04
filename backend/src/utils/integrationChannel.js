@@ -1,7 +1,7 @@
 import { ChannelCredential, ChannelIntegration } from "../models/index.js";
 import { decryptCredentialsPayload } from "./credentialsCrypto.js";
 
-const CHANNELS_REQUIRING_CONFIG = new Set(["whatsapp", "facebook", "telegram"]);
+const CHANNELS_REQUIRING_CONFIG = new Set(["whatsapp", "facebook", "telegram", "instagram"]);
 
 /**
  * @param {string | undefined} platform
@@ -10,7 +10,7 @@ export const normalizeInboundChannel = (platform) => {
   const p = String(platform || "api")
     .toLowerCase()
     .trim();
-  if (["whatsapp", "facebook", "telegram", "web", "api"].includes(p)) return p;
+  if (["whatsapp", "facebook", "telegram", "web", "api", "instagram"].includes(p)) return p;
   return "api";
 };
 

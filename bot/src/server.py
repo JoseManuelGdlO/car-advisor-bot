@@ -25,7 +25,7 @@ load_dotenv()
 app = FastAPI(title="Car Advisor Bot API", version="0.1.0")
 graph = build_graph()
 logger = logging.getLogger(__name__)
-ALLOWED_PLATFORMS = {"web", "whatsapp", "telegram", "facebook", "api"}
+ALLOWED_PLATFORMS = {"web", "whatsapp", "telegram", "facebook", "instagram", "api"}
 MAX_MESSAGES_HISTORY = 50
 BOT_MESSAGE_SEPARATOR = "\n\n<<BOT_MSG_BREAK>>\n\n"
 _default_platform_candidate = (os.getenv("BOT_DEFAULT_INBOUND_CHANNEL", "web") or "web").strip().lower()
@@ -67,7 +67,7 @@ class ChatRequest(BaseModel):
         normalized = value.strip().lower()
         if normalized not in ALLOWED_PLATFORMS:
             raise ValueError(
-                "Plataforma invalida. Usa: web, whatsapp, telegram, facebook o api."
+                "Plataforma invalida. Usa: web, whatsapp, telegram, facebook, instagram o api."
             )
         return normalized
 
@@ -104,7 +104,7 @@ class ResetRequest(BaseModel):
         normalized = value.strip().lower()
         if normalized not in ALLOWED_PLATFORMS:
             raise ValueError(
-                "Plataforma invalida. Usa: web, whatsapp, telegram, facebook o api."
+                "Plataforma invalida. Usa: web, whatsapp, telegram, facebook, instagram o api."
             )
         return normalized
 

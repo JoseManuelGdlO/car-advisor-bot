@@ -36,6 +36,14 @@ export const env = {
     firebaseClientEmail: must("FIREBASE_CLIENT_EMAIL", ""),
     firebasePrivateKey: must("FIREBASE_PRIVATE_KEY", ""),
   },
+  meta: {
+    /** App Secret de la app Meta (firma X-Hub-Signature-256 en webhooks). */
+    appSecret: must("META_APP_SECRET", ""),
+    /** Token que configuras en Meta al suscribir el webhook (GET challenge). */
+    webhookVerifyToken: must("META_WEBHOOK_VERIFY_TOKEN", ""),
+    graphApiVersion: must("META_GRAPH_API_VERSION", "v21.0"),
+    webhookEnabled: must("META_WEBHOOK_ENABLED", "true") === "true",
+  },
   wc: {
     // URL base del servicio WhatsApp Connect (mismo host para todos los tenants).
     apiUrl: must("WC_API_URL", ""),

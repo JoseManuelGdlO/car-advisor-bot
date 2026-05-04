@@ -1,6 +1,6 @@
 import { apiRequest } from "@/lib/api";
 
-export type IntegrationChannel = "whatsapp" | "facebook" | "telegram" | "web" | "api";
+export type IntegrationChannel = "whatsapp" | "facebook" | "telegram" | "web" | "api" | "instagram";
 
 export type IntegrationDto = {
   id: string;

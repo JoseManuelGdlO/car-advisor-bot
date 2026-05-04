@@ -23,7 +23,7 @@ const userPatchSchema = z
   .object({
     name: z.string().min(2).max(120).optional(),
     phone: z.string().max(32).optional().nullable(),
-    defaultPlatform: z.enum(["whatsapp", "facebook", "telegram", "web", "api"]).optional().nullable(),
+    defaultPlatform: z.enum(["whatsapp", "facebook", "telegram", "web", "api", "instagram"]).optional().nullable(),
   })
   .strict();
 

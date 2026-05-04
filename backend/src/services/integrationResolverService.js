@@ -63,3 +63,39 @@ export const resolveWhatsappConnectIntegrationByDevice = async ({ deviceId }) =>
 
   throw new ApiError(404, "No active whatsapp-connect integration for device");
 };
+
+const META_PROVIDER = "meta";
+
+export const normalizeInstagramMetaCredentials = (payload = {}) => ({
+  instagramBusinessAccountId: String(payload.instagramBusinessAccountId || "").trim(),
+  pageId: String(payload.pageId || "").trim(),
+  pageAccessToken: String(payload.pageAccessToken || "").trim(),
+});
+
+// Cada vendedor (ownerUserId) tiene su fila channel_integrations + credenciales; el id de negocio de IG del webhook elige a quién pertenece el mensaje.
+export const resolveInstagramMetaIntegrationByBusinessAccountId = async ({ instagramBusinessAccountId }) => {
+  const target = String(instagramBusinessAccountId || "").trim();
+  if (!target) throw new ApiError(400, "Missing Instagram business account id");
+
+  const integrations = await ChannelIntegration.findAll({
+    where: { channel: "instagram", provider: META_PROVIDER, status: "active" },
+    order: [["updatedAt", "DESC"]],
+  });
+
+  for (const integration of integrations) {
+    try {
+      const payload = await getActiveCredentialPayload(integration.ownerUserId, integration.id);
+      const credentials = normalizeInstagramMetaCredentials(payload);
+      if (credentials.instagramBusinessAccountId && credentials.instagramBusinessAccountId === target) {
+        if (!credentials.pageId || !credentials.pageAccessToken) {
+          continue;
+        }
+        return { integration, credentials };
+      }
+    } catch {
+      // Ignore invalid credential rows and continue scanning.
+    }
+  }
+
+  throw new ApiError(404, "No active instagram meta integration for this account");
+};

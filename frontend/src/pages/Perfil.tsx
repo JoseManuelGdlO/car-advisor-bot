@@ -85,6 +85,11 @@ export default function Perfil() {
     webhookSecret: "",
     tenantId: "",
   });
+  const [igCredForm, setIgCredForm] = useState({
+    instagramBusinessAccountId: "",
+    pageId: "",
+    pageAccessToken: "",
+  });
   const [newTokenName, setNewTokenName] = useState("");
   const [tokenDialogOpen, setTokenDialogOpen] = useState(false);
   const [lastCreatedToken, setLastCreatedToken] = useState<string | null>(null);
@@ -120,7 +125,7 @@ export default function Perfil() {
         user: {
           name: userForm.name.trim(),
           phone: userForm.phone.trim() || null,
-          defaultPlatform: (userForm.defaultPlatform || null) as "whatsapp" | "facebook" | "telegram" | "web" | "api" | null,
+          defaultPlatform: (userForm.defaultPlatform || null) as "whatsapp" | "facebook" | "telegram" | "web" | "api" | "instagram" | null,
         },
         business: {
           ...bizForm,
@@ -160,6 +165,11 @@ export default function Perfil() {
         deviceId: "",
         webhookSecret: "",
         tenantId: "",
+      });
+      setIgCredForm({
+        instagramBusinessAccountId: "",
+        pageId: "",
+        pageAccessToken: "",
       });
     },
     onError: (error) => {
@@ -218,9 +228,15 @@ export default function Perfil() {
       telegram: "Telegram",
       web: "Web",
       api: "API",
+      instagram: "Instagram",
     };
     return m[c] || c;
   };
+
+  const metaInstagramWebhookUrl = useMemo(() => {
+    const raw = (import.meta.env.VITE_API_BASE_URL || "http://localhost:4000/api").trim().replace(/\/$/, "");
+    return `${raw}/webhooks/meta/instagram`;
+  }, []);
 
   const qrLinkMutation = useMutation({
     mutationFn: (integrationId: string) => integrationsApi.createWhatsAppQrLink(token!, integrationId),
@@ -267,6 +283,9 @@ export default function Perfil() {
   const activeCredIntegration = credOpenFor ? integrations.find((it) => it.id === credOpenFor) || null : null;
   const isWhatsAppConnectCredModal = Boolean(
     activeCredIntegration && activeCredIntegration.channel === "whatsapp" && activeCredIntegration.provider === "whatsapp-connect"
+  );
+  const isInstagramMetaCredModal = Boolean(
+    activeCredIntegration && activeCredIntegration.channel === "instagram" && activeCredIntegration.provider === "meta"
   );
 
   return (
@@ -322,6 +341,7 @@ export default function Perfil() {
               <option value="telegram">Telegram</option>
               <option value="web">Web</option>
               <option value="api">API</option>
+              <option value="instagram">Instagram</option>
             </select>
           </div>
         </div>
@@ -381,7 +401,10 @@ export default function Perfil() {
             </Dialog>
           </div>
           <p className="text-xs text-muted-foreground">
-            Para WhatsApp/Facebook/Telegram: si creas una integración aquí, el bot solo responderá automáticamente cuando esté <strong>activa</strong> y tenga credenciales guardadas.
+            Para WhatsApp/Facebook/Instagram/Telegram: si creas una integración aquí, el bot solo responderá automáticamente cuando esté <strong>activa</strong> y tenga credenciales guardadas. Cada usuario de la plataforma tiene sus propias integraciones: el usuario A puede conectar su Instagram y el usuario B el suyo, sin mezclar cuentas.
+          </p>
+          <p className="text-[11px] text-muted-foreground font-mono break-all">
+            Webhook Instagram (Meta, una URL para toda la app): <span className="select-all">{metaInstagramWebhookUrl}</span>
           </p>
           <ul className="space-y-2">
             {integrations.map((it) => (
@@ -446,6 +469,11 @@ export default function Perfil() {
                           webhookSecret: "",
                           tenantId: "",
                         });
+                        setIgCredForm({
+                          instagramBusinessAccountId: "",
+                          pageId: "",
+                          pageAccessToken: "",
+                        });
                       }}
                     >
                       Credenciales
@@ -470,6 +498,28 @@ export default function Perfil() {
                     Desactivar
                   </Button>
                 </div>
+                {it.channel === "instagram" && it.provider === "meta" ? (
+                  <div className="space-y-1 rounded-lg border border-border bg-muted/30 p-2">
+                    <p className="text-[11px] text-muted-foreground">
+                      Tus credenciales (Page ID, token, IG Business ID) son solo de <strong>tu</strong> cuenta de Instagram/Página; otro usuario guardará los suyos en su perfil. En Meta Developer (la app de la plataforma), suscribe el webhook <strong>instagram</strong> a esta URL y el verify token global del servidor (<code className="text-[10px]">META_WEBHOOK_VERIFY_TOKEN</code>).
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-[11px]"
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(metaInstagramWebhookUrl);
+                        } catch {
+                          /* ignore */
+                        }
+                      }}
+                    >
+                      Copiar URL webhook
+                    </Button>
+                  </div>
+                ) : null}
                 {it.channel === "whatsapp" && it.provider === "whatsapp-connect" ? (
                   <div className="space-y-1">
                     {lastQrErrorByIntegrationId[it.id] ? <p className="text-[11px] text-destructive">{lastQrErrorByIntegrationId[it.id]}</p> : null}
@@ -508,7 +558,13 @@ export default function Perfil() {
         >
           <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle>{isWhatsAppConnectCredModal ? "Credenciales WhatsApp Connect" : "Credenciales (JSON)"}</DialogTitle>
+              <DialogTitle>
+                {isWhatsAppConnectCredModal
+                  ? "Credenciales WhatsApp Connect"
+                  : isInstagramMetaCredModal
+                    ? "Credenciales Instagram (Meta)"
+                    : "Credenciales (JSON)"}
+              </DialogTitle>
               <DialogDescription>Se guardan cifradas en el servidor. No se vuelven a mostrar.</DialogDescription>
             </DialogHeader>
             {isWhatsAppConnectCredModal ? (
@@ -542,6 +598,42 @@ export default function Perfil() {
                 </div>
                 <p className="text-[11px] text-muted-foreground">El Service JWT se configura en backend (`WC_SERVICE_JWT`), no en este formulario.</p>
               </div>
+            ) : isInstagramMetaCredModal ? (
+              <div className="space-y-2">
+                <div>
+                  <Label className="text-xs">Instagram Business Account ID *</Label>
+                  <Input
+                    className="mt-1"
+                    value={igCredForm.instagramBusinessAccountId}
+                    onChange={(e) => setIgCredForm((s) => ({ ...s, instagramBusinessAccountId: e.target.value }))}
+                    placeholder="Debe coincidir con entry.id del webhook"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Page ID *</Label>
+                  <Input
+                    className="mt-1"
+                    value={igCredForm.pageId}
+                    onChange={(e) => setIgCredForm((s) => ({ ...s, pageId: e.target.value }))}
+                    placeholder="ID de la página de Facebook vinculada"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Page Access Token *</Label>
+                  <Input
+                    className="mt-1"
+                    type="password"
+                    autoComplete="new-password"
+                    value={igCredForm.pageAccessToken}
+                    onChange={(e) => setIgCredForm((s) => ({ ...s, pageAccessToken: e.target.value }))}
+                    placeholder="Token con permisos de mensajería Instagram"
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  URL del webhook (compartida por la app; el ruteo a tu cuenta lo hace el ID de Instagram Business):{" "}
+                  <code className="select-all break-all">{metaInstagramWebhookUrl}</code>
+                </p>
+              </div>
             ) : (
               <Textarea rows={10} className="font-mono text-xs" value={credJson} onChange={(e) => setCredJson(e.target.value)} />
             )}
@@ -565,6 +657,21 @@ export default function Perfil() {
                     ...(tenantId ? { tenantId } : {}),
                   };
                   saveCredsMutation.mutate({ id: credOpenFor, payload });
+                  return;
+                }
+                if (isInstagramMetaCredModal) {
+                  const instagramBusinessAccountId = igCredForm.instagramBusinessAccountId.trim();
+                  const pageId = igCredForm.pageId.trim();
+                  const pageAccessToken = igCredForm.pageAccessToken.trim();
+                  if (!instagramBusinessAccountId || !pageId || !pageAccessToken) {
+                    setCredError("Instagram Business Account ID, Page ID y Page Access Token son obligatorios.");
+                    return;
+                  }
+                  setCredError("");
+                  saveCredsMutation.mutate({
+                    id: credOpenFor,
+                    payload: { instagramBusinessAccountId, pageId, pageAccessToken },
+                  });
                   return;
                 }
                 try {
@@ -797,10 +904,15 @@ function NewIntegrationForm({
       setProvider((prev) => (prev === "meta" || prev === "whatsapp-connect" ? prev : "meta"));
       return;
     }
+    if (channel === "instagram") {
+      setProvider("meta");
+      return;
+    }
     if (!provider.trim()) setProvider("meta");
   }, [channel, provider]);
 
   const isWhatsApp = channel === "whatsapp";
+  const isInstagram = channel === "instagram";
 
   return (
     <div className="space-y-3">
@@ -809,6 +921,7 @@ function NewIntegrationForm({
         <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm mt-1" value={channel} onChange={(e) => setChannel(e.target.value as IntegrationDto["channel"])}>
           <option value="whatsapp">WhatsApp</option>
           <option value="facebook">Facebook</option>
+          <option value="instagram">Instagram</option>
           <option value="telegram">Telegram</option>
           <option value="web">Web</option>
           <option value="api">API</option>
@@ -821,6 +934,8 @@ function NewIntegrationForm({
             <option value="meta">meta</option>
             <option value="whatsapp-connect">whatsapp-connect</option>
           </select>
+        ) : isInstagram ? (
+          <Input className="mt-1 bg-muted" value="meta" readOnly />
         ) : (
           <Input className="mt-1" value={provider} onChange={(e) => setProvider(e.target.value)} />
         )}

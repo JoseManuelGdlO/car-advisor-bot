@@ -5,6 +5,7 @@ import { normalizeInboundChannel } from "./integrationChannel.js";
 test("normalizeInboundChannel maps known values", () => {
   assert.equal(normalizeInboundChannel("WhatsApp"), "whatsapp");
   assert.equal(normalizeInboundChannel("api"), "api");
+  assert.equal(normalizeInboundChannel("instagram"), "instagram");
 });
 
 test("normalizeInboundChannel defaults unknown to api", () => {

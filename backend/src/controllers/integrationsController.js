@@ -3,7 +3,7 @@ import { ChannelCredential, ChannelIntegration } from "../models/index.js";
 import { ApiError } from "../utils/errors.js";
 import { encryptCredentialsPayload, decryptCredentialsPayload } from "../utils/credentialsCrypto.js";
 
-const channelEnum = z.enum(["whatsapp", "facebook", "telegram", "web", "api"]);
+const channelEnum = z.enum(["whatsapp", "facebook", "telegram", "web", "api", "instagram"]);
 
 const createSchema = z
   .object({
