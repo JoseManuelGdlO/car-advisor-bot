@@ -105,7 +105,15 @@ def _log_llm_invoke_failure(
         bits.append(http_extra)
     ctx = " ".join(bits)
     detail = str(exc).strip().replace("\n", " ")[:500]
-    logger.warning("%s | exc_type=%s | %s", ctx, type(exc).__name__, detail, exc_info=exc)
+    # Evita un traceback enorme en logs cuando solo falta configurar la clave (muy ruidoso en tests).
+    missing_key = type(exc).__name__ == "OpenAIError" and "api_key" in detail.lower()
+    logger.warning(
+        "%s | exc_type=%s | %s",
+        ctx,
+        type(exc).__name__,
+        detail,
+        exc_info=False if missing_key else exc,
+    )
 
 
 def generate_verified_user_message(

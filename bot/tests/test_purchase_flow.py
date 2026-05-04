@@ -117,6 +117,10 @@ class PurchaseFlowTests(GraphTestCase):
             patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
             patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=ram_detail),
             patch(
+                "src.nodes.car_selection.classify_purchase_confirmation_intent",
+                return_value="PREGUNTA_MODELO",
+            ),
+            patch(
                 "src.nodes.car_selection.generate_selected_vehicle_qa_response",
                 return_value="El precio listado es $450,000.00.",
             ),
