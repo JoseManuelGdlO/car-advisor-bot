@@ -16,7 +16,7 @@ from src.services.llm_responses import (
     compose_answer_first_response,
     generate_available_models_intro,
     generate_vehicle_candidates_selection_message,
-    generate_vehicle_detail_intro,
+    generate_vehicle_detail_conversation,
     generate_grounded_answer,
     safe_llm_format,
 )
@@ -522,10 +522,9 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
         next_step="awaiting_purchase_confirmation",
     )
 
-    detail_intro = generate_vehicle_detail_intro(state["selected_car"])
     platform = str(state.get("platform", "web")).strip().lower() or "web"
-    detail_text = format_vehicle_detail(detail, platform=platform)
-    platform = str(state.get("platform", "web")).strip().lower() or "web"
+    grounded_vehicle_facts = format_vehicle_detail(detail, platform=platform)
+    detail_narrative = generate_vehicle_detail_conversation(state["selected_car"], grounded_vehicle_facts)
     if platform == "whatsapp":
         images_block = _build_whatsapp_image_marker_block(state, vehicle_id, top_images) or _format_images_block(top_images)
     else:
@@ -533,7 +532,7 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
     if state.get("vehicle_images_has_more"):
         images_block = f"{images_block}\nSi quieres ver mas imagenes, dímelo."
     purchase_question = _build_purchase_question(include_images_option=bool(top_images))
-    first_block = f"{detail_intro}\n{detail_text}"
+    first_block = detail_narrative
     blocks: list[str] = []
     if financing_removed_notice:
         blocks.append(financing_removed_notice)

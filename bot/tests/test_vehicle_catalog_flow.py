@@ -67,7 +67,10 @@ class VehicleCatalogFlowTests(GraphTestCase):
             patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
             patch("src.nodes.car_selection.search_vehicles", return_value=vehicles),
             patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=vehicles[0]),
-            patch("src.nodes.car_selection.generate_vehicle_detail_intro", return_value="Detalle del vehiculo:"),
+            patch(
+                "src.nodes.car_selection.generate_vehicle_detail_conversation",
+                return_value="Detalle del vehiculo: Nissan Versa 2004, color blanco.",
+            ),
             patch(
                 "src.nodes.car_selection.fetch_vehicle_images",
                 return_value={"images": ["/img/1.jpg", "/img/2.jpg"], "nextCursor": 2, "hasMore": True, "mode": "top"},
@@ -81,7 +84,7 @@ class VehicleCatalogFlowTests(GraphTestCase):
         assistant_texts = [str(m.get("content", "")) for m in updated.get("messages", []) if m.get("role") == "assistant"]
         joined = "\n".join(assistant_texts)
         self.assertIn("Detalle del vehiculo:", joined)
-        self.assertIn("**Marca**: Nissan", joined)
+        self.assertIn("Nissan Versa", joined)
 
     def test_whatsapp_uses_single_asterisk_for_vehicle_detail(self) -> None:
         vehicles = [
@@ -108,7 +111,10 @@ class VehicleCatalogFlowTests(GraphTestCase):
             patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
             patch("src.nodes.car_selection.search_vehicles", return_value=vehicles),
             patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=vehicles[0]),
-            patch("src.nodes.car_selection.generate_vehicle_detail_intro", return_value="Detalle del vehiculo:"),
+            patch(
+                "src.nodes.car_selection.generate_vehicle_detail_conversation",
+                return_value="Detalle del vehiculo: Nissan Versa 2004, color blanco.",
+            ),
             patch(
                 "src.nodes.car_selection.fetch_vehicle_images",
                 return_value={"images": ["/img/1.jpg", "/img/2.jpg"], "nextCursor": 2, "hasMore": True, "mode": "top"},
@@ -118,8 +124,7 @@ class VehicleCatalogFlowTests(GraphTestCase):
 
         assistant_texts = [str(m.get("content", "")) for m in updated.get("messages", []) if m.get("role") == "assistant"]
         joined = "\n".join(assistant_texts)
-        self.assertIn("*Marca*: Nissan", joined)
-        self.assertNotIn("**Marca**: Nissan", joined)
+        self.assertIn("Nissan Versa", joined)
 
     def test_vehicle_detail_without_images_uses_no_images_copy(self) -> None:
         vehicles = [
@@ -145,7 +150,10 @@ class VehicleCatalogFlowTests(GraphTestCase):
             patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
             patch("src.nodes.car_selection.search_vehicles", return_value=vehicles),
             patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=vehicles[0]),
-            patch("src.nodes.car_selection.generate_vehicle_detail_intro", return_value="Detalle del vehiculo:"),
+            patch(
+                "src.nodes.car_selection.generate_vehicle_detail_conversation",
+                return_value="Detalle del vehiculo: Nissan Versa 2004, color blanco.",
+            ),
             patch("src.nodes.car_selection.fetch_vehicle_images", return_value={"images": [], "hasMore": False, "mode": "top"}),
             patch("src.nodes.car_selection.safe_llm_format", side_effect=lambda text: text),
         ):
@@ -193,7 +201,10 @@ class VehicleCatalogFlowTests(GraphTestCase):
             patch("src.nodes.car_selection.search_vehicles", side_effect=[[versa_2011, versa_2001], [versa_2011]]),
             patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=versa_2011),
             patch("src.nodes.car_selection.generate_vehicle_candidates_selection_message", return_value="1. Nissan Versa 2011\n2. Nissan Versa 2001"),
-            patch("src.nodes.car_selection.generate_vehicle_detail_intro", return_value="Aqui tienes la informacion completa del Nissan Versa 2011."),
+            patch(
+                "src.nodes.car_selection.generate_vehicle_detail_conversation",
+                return_value="Aqui tienes la informacion completa del Nissan Versa 2011.",
+            ),
             patch(
                 "src.nodes.car_selection.fetch_vehicle_images",
                 return_value={"images": ["/img/versa-2011-1.jpg"], "nextCursor": 1, "hasMore": False, "mode": "top"},

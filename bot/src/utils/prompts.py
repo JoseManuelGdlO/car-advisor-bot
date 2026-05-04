@@ -170,6 +170,38 @@ def build_vehicle_detail_intro_prompt(vehicle_name: str, bot_settings: dict[str,
     )
 
 
+def build_vehicle_detail_conversation_prompt(
+    vehicle_name: str,
+    grounded_facts_block: str,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Prompt para narrar el detalle del vehiculo con tono de vendedor, anclado solo a hechos verificados."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    name = vehicle_name.strip() or "este vehiculo"
+    facts = str(grounded_facts_block or "").strip()
+    return (
+        f"{system_prompt}\n\n"
+        "NARRATIVA_DETALLE_VEHICULO (solo datos verificados):\n"
+        f"Nombre del vehiculo en inventario: {name}\n\n"
+        "A continuacion aparece el bloque DATOS_VERIFICADOS. Es la UNICA fuente de verdad. "
+        "Proviene del sistema/inventario; no contiene opiniones externas.\n\n"
+        "DATOS_VERIFICADOS:\n"
+        f"{facts}\n\n"
+        "Instrucciones obligatorias:\n"
+        "- Redacta en espanol (Mexico) un texto conversacional, como un asesor de agencia presentando el auto en chat.\n"
+        "- Usa SOLO informacion que aparezca literalmente en DATOS_VERIFICADOS (mismos valores: precio, km, motor, etc.). "
+        "No inventes equipamiento, garantias, historial, consumo, seguridad, financiamiento, promociones ni disponibilidad extra.\n"
+        "- No agregues cifras, fechas ni hechos que no esten en el bloque.\n"
+        "- Incluye de forma natural todos los campos que aparezcan en DATOS_VERIFICADOS (marca, modelo, año, precio, kilometraje, "
+        "transmision, motor, color y descripcion). Si algun valor es N/D o indica que no hay descripcion, dilo con naturalidad sin inventar detalles.\n"
+        "- No uses listas con viñetas ni formato 'Etiqueta: valor' en lineas separadas; integra todo en parrafos o frases enlazadas.\n"
+        "- Evita markdown de tablas o listas; maximo un salto de linea entre dos parrafos cortos si ayuda a la lectura.\n"
+        "- Cierra con una invitacion breve a seguir platicando (por ejemplo caracteristicas o ver otros modelos), sin prometer cosas no respaldadas por DATOS_VERIFICADOS.\n"
+        "- Devuelve UNICAMENTE el mensaje para el usuario, sin titulos, sin prefijos tipo 'Respuesta:' ni comillas."
+    )
+
+
 def build_lead_capture_intro_prompt(
     vehicle_name: str,
     bot_settings: dict[str, Any] | None,

@@ -24,6 +24,7 @@ from src.utils.prompts import (
     build_router_intent_classifier_prompt,
     build_rewrite_prompt,
     build_lead_capture_intro_prompt,
+    build_vehicle_detail_conversation_prompt,
     build_vehicle_detail_intro_prompt,
     build_vehicle_candidates_selection_prompt,
     build_vehicle_purchase_question_prompt,
@@ -143,6 +144,58 @@ def generate_vehicle_detail_intro(vehicle_name: str) -> str:
         if not normalized:
             return fallback
         return normalized.replace("\n", " ").strip()
+    except Exception:
+        return fallback
+
+
+def _grounded_facts_to_fallback_paragraph(vehicle_name: str, facts_block: str) -> str:
+    """Convierte lineas etiquetadas del formateador en un unico parrafo, sin lista, para fallback sin LLM."""
+
+    name = vehicle_name.strip() or "este vehiculo"
+    pairs: list[str] = []
+    for raw in facts_block.splitlines():
+        line = str(raw or "").strip()
+        if not line:
+            continue
+        m = re.match(r"^\*{1,2}([^*]+)\*{1,2}:\s*(.+)$", line)
+        if m:
+            label = m.group(1).strip()
+            value = re.sub(r"\*+", "", m.group(2)).strip()
+            if value:
+                pairs.append(f"{label.lower()} {value}")
+            continue
+        if ":" in line:
+            label, _, rest = line.partition(":")
+            label, rest = label.strip(), rest.strip()
+            if label and rest:
+                pairs.append(f"{label.lower()} {rest}")
+    if not pairs:
+        return f"Te comparto lo que tenemos de {name}. {facts_block.strip()}"
+    body = ". ".join(pairs)
+    return (
+        f"Con gusto te platico del {name}: {body}. "
+        "Si quieres, seguimos con mas detalles o vemos otro modelo."
+    )
+
+
+def generate_vehicle_detail_conversation(vehicle_name: str, grounded_facts_block: str) -> str:
+    """Genera texto conversacional tipo vendedor usando solo hechos del bloque de inventario (p. ej. format_vehicle_detail)."""
+
+    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
+    normalized_name = vehicle_name.strip() or "este vehiculo"
+    facts = str(grounded_facts_block or "").strip()
+    if not facts:
+        return safe_llm_format(f"No tengo ficha detallada para {normalized_name} en este momento.")
+    fallback = _grounded_facts_to_fallback_paragraph(normalized_name, facts)
+    try:
+        settings = get_bot_settings()
+        llm = ChatOpenAI(model=model_name, temperature=0.45)
+        prompt = build_vehicle_detail_conversation_prompt(normalized_name, facts, settings)
+        content = llm.invoke(prompt).content
+        normalized = str(content).strip()
+        if not normalized:
+            return fallback
+        return normalized
     except Exception:
         return fallback
 
