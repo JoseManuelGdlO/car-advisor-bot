@@ -315,7 +315,16 @@ def promotions(state: clientState) -> clientState:
         _debug("route_change", next_node="financing", reason="financing_requested")
         return state
 
-    if nav_flags.get("ask_other_vehicles") and not nav_flags.get("ask_promotions"):
+    _promotion_flow_active = bool(
+        state.get("awaiting_promotion_selection")
+        or state.get("awaiting_promotion_vehicle_selection")
+        or state.get("awaiting_promotion_vehicle_interest_confirmation")
+    )
+    if (
+        nav_flags.get("ask_other_vehicles")
+        and not nav_flags.get("ask_promotions")
+        and not _promotion_flow_active
+    ):
         state["current_node"] = "car_selection"
         state["intent"] = "vehicle_catalog"
         _debug("route_change", next_node="car_selection", reason="other_cars_requested")

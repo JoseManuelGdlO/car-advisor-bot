@@ -115,6 +115,53 @@ def _is_catalog_query(user_text: str) -> bool:
     return any(_contains_signal_phrase(normalized, signal) for signal in _CATALOG_SIGNALS)
 
 
+def _is_explicit_catalog_browse_request(user_text: str) -> bool:
+    """Pedido claro de ver catalogo/listado (no basta 'carro' en 'quiero comprar el carro')."""
+    n = normalize_user_text(user_text)
+    if not n:
+        return False
+    if any(
+        token in n
+        for token in (
+            "catalogo",
+            "modelos",
+            "marcas",
+            "disponibles",
+            "inventario",
+            "vehiculos",
+            "autos",
+            "listado",
+        )
+    ):
+        return True
+    if "muestra" in n and any(x in n for x in ("modelo", "disponible", "opciones", "catalogo")):
+        return True
+    if "ver" in n and any(x in n for x in ("modelo", "opciones", "catalogo", "disponible", "otros")):
+        return True
+    if "otros" in n and any(x in n for x in ("modelo", "carro", "auto", "vehiculo", "opciones")):
+        return True
+    return False
+
+
+def _digit_message_selects_financing_plan(
+    state: clientState, user_text: str, selected_plan: dict[str, Any]
+) -> bool:
+    """True si el mensaje es solo un indice numerico de la lista de planes (no debe reusarse como indice de vehiculo)."""
+    candidates = state.get("financing_plan_candidates", [])
+    if not isinstance(candidates, list) or not candidates or not isinstance(selected_plan, dict):
+        return False
+    normalized = normalize_user_text(user_text)
+    if not normalized.isdigit():
+        return False
+    idx = int(normalized) - 1
+    if idx < 0 or idx >= len(candidates):
+        return False
+    picked = candidates[idx]
+    if not isinstance(picked, dict):
+        return False
+    return str(picked.get("id", "")).strip() == str(selected_plan.get("id", "")).strip()
+
+
 def _contains_signal_phrase(normalized_text: str, signal: str) -> bool:
     """Verifica si el texto contiene signal phrase."""
     parts = [part for part in normalize_user_text(signal).split() if part]
@@ -553,7 +600,15 @@ def financing(state: clientState) -> clientState:
         state["intent"] = "promotions"
         _debug("route_change", next_node="promotions", reason="promotions_requested")
         return state
-    if _is_catalog_query(user_text) and not _is_financing_query(user_text):
+    catalog_browse = _is_catalog_query(user_text) and not _is_financing_query(user_text)
+    if catalog_browse:
+        in_plan_flow = bool(
+            state.get("awaiting_financing_plan_selection")
+            or state.get("awaiting_financing_vehicle_selection")
+        )
+        if in_plan_flow and not _is_explicit_catalog_browse_request(user_text):
+            catalog_browse = False
+    if catalog_browse:
         state["awaiting_financing_plan_selection"] = False
         state["awaiting_financing_vehicle_selection"] = False
         state["financing_plan_candidates"] = []
@@ -718,7 +773,12 @@ def financing(state: clientState) -> clientState:
         )
         plan_vehicles = _available_plan_vehicles(selected_plan)
         if plan_vehicles:
-            requested_vehicle = _pick_vehicle_from_candidates(plan_vehicles, user_text)
+            digit_was_plan_choice = _digit_message_selects_financing_plan(state, user_text, selected_plan)
+            requested_vehicle = (
+                None
+                if digit_was_plan_choice
+                else _pick_vehicle_from_candidates(plan_vehicles, user_text)
+            )
             if not requested_vehicle:
                 requested_vehicle = _maybe_resolve_vehicle_from_query(user_text)
                 if requested_vehicle:

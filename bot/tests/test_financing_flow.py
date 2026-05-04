@@ -55,7 +55,15 @@ class FinancingFlowTests(GraphTestCase):
         self.assertEqual(updated.get("intent"), "lead_capture")
         self.assertFalse(updated.get("awaiting_financing_plan_selection"))
         self.assertEqual(updated.get("selected_financing_plan_id"), "")
-        self.assertIn("sin plan de financiamiento", str(updated["messages"][-1]["content"]).lower())
+        assistant_texts = [
+            str(m.get("content", "")).lower()
+            for m in updated.get("messages", [])
+            if m.get("role") == "assistant"
+        ]
+        self.assertTrue(
+            any("sin plan de financiamiento" in t for t in assistant_texts),
+            msg="financing debe anunciar compra sin plan antes de que lead_capture siga en el mismo invoke",
+        )
 
     def test_financing_requests_catalog_routes_to_car_selection(self) -> None:
         state = initial_state()
