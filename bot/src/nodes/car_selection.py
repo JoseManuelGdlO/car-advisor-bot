@@ -104,19 +104,6 @@ _PROMOTIONS_SIGNALS = {
     "bono",
     "bonos",
 }
-_PRICE_INFO_SUBSTRINGS = (
-    "precio",
-    "cotizacion",
-    "cuanto cuesta",
-    "cuanto vale",
-    "cuanto es",
-    "cuanto sale",
-    "en cuanto",
-    "valor del",
-    "costo del",
-    "cuanto sale el",
-    "cuanto cuesta el",
-)
 _PURCHASE_WITH_IMAGES_QUESTION = (
     "¿Te interesa comprar este vehículo o quieres ver más imágenes del mismo? 🚗✨ "
 )
@@ -143,7 +130,6 @@ _FEATURE_SIGNALS_NORMALIZED = _normalize_signal_set(_FEATURE_SIGNALS)
 _MORE_IMAGES_SIGNALS_NORMALIZED = _normalize_signal_set(_MORE_IMAGES_SIGNALS)
 _FINANCING_SIGNALS_NORMALIZED = _normalize_signal_set(_FINANCING_SIGNALS)
 _PROMOTIONS_SIGNALS_NORMALIZED = _normalize_signal_set(_PROMOTIONS_SIGNALS)
-_PRICE_INFO_SUBSTRINGS_NORMALIZED = tuple(normalize_user_text(s) for s in _PRICE_INFO_SUBSTRINGS)
 
 
 def _debug(event: str, **payload: Any) -> None:
@@ -206,22 +192,6 @@ def _is_financing_request(user_text: str) -> bool:
     if not normalized:
         return False
     return any(_contains_signal_phrase(normalized, signal) for signal in _FINANCING_SIGNALS_NORMALIZED)
-
-
-def _is_price_info_request(user_text: str) -> bool:
-    """True si el usuario pregunta por precio/costo del vehiculo en contexto (no cambio de modelo)."""
-
-    normalized = normalize_user_text(user_text)
-    if not normalized:
-        return False
-    if any(fragment in normalized for fragment in _PRICE_INFO_SUBSTRINGS_NORMALIZED):
-        return True
-    if re.search(r"\bcuanto\b", normalized) and re.search(
-        r"\b(cuesta|vale|sale|es|esta|salen|estan|costaria)\b",
-        normalized,
-    ):
-        return True
-    return False
 
 
 def _is_promotions_request(user_text: str) -> bool:
@@ -782,13 +752,6 @@ def car_selection(state: clientState) -> clientState:
             return state
         if step_flags.get("reject_purchase"):
             return _respond_available_list(state, vehicles)
-        if _is_price_info_request(user_text):
-            other = _pick_vehicle_from_filters(user_text, vehicles)
-            cur_id = str(state.get("selected_vehicle_id", "")).strip()
-            other_id = str(other.get("id", "")).strip() if isinstance(other, dict) else ""
-            if other_id and other_id != cur_id:
-                return _respond_with_vehicle_detail(state, other)
-            return _respond_selected_vehicle_inventory_qa(state, user_text)
         decision = classify_purchase_confirmation_intent(previous_bot_message, user_text)
         _debug(
             "purchase_confirmation_classified",
