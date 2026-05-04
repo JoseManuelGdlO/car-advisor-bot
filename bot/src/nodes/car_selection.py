@@ -11,8 +11,9 @@ from typing import Any
 from src.state import clientState
 
 from src.services.llm_responses import (
-    classify_vehicle_step_flags,
     classify_purchase_confirmation_intent,
+    classify_vehicle_step_flags,
+    generate_selected_vehicle_qa_response,
     generate_vehicle_candidates_selection_message,
     generate_vehicle_detail_conversation,
     generate_vehicle_purchase_question,
@@ -103,6 +104,19 @@ _PROMOTIONS_SIGNALS = {
     "bono",
     "bonos",
 }
+_PRICE_INFO_SUBSTRINGS = (
+    "precio",
+    "cotizacion",
+    "cuanto cuesta",
+    "cuanto vale",
+    "cuanto es",
+    "cuanto sale",
+    "en cuanto",
+    "valor del",
+    "costo del",
+    "cuanto sale el",
+    "cuanto cuesta el",
+)
 _PURCHASE_WITH_IMAGES_QUESTION = (
     "¿Te interesa comprar este vehículo o quieres ver más imágenes del mismo? 🚗✨ "
 )
@@ -129,6 +143,7 @@ _FEATURE_SIGNALS_NORMALIZED = _normalize_signal_set(_FEATURE_SIGNALS)
 _MORE_IMAGES_SIGNALS_NORMALIZED = _normalize_signal_set(_MORE_IMAGES_SIGNALS)
 _FINANCING_SIGNALS_NORMALIZED = _normalize_signal_set(_FINANCING_SIGNALS)
 _PROMOTIONS_SIGNALS_NORMALIZED = _normalize_signal_set(_PROMOTIONS_SIGNALS)
+_PRICE_INFO_SUBSTRINGS_NORMALIZED = tuple(normalize_user_text(s) for s in _PRICE_INFO_SUBSTRINGS)
 
 
 def _debug(event: str, **payload: Any) -> None:
@@ -191,6 +206,22 @@ def _is_financing_request(user_text: str) -> bool:
     if not normalized:
         return False
     return any(_contains_signal_phrase(normalized, signal) for signal in _FINANCING_SIGNALS_NORMALIZED)
+
+
+def _is_price_info_request(user_text: str) -> bool:
+    """True si el usuario pregunta por precio/costo del vehiculo en contexto (no cambio de modelo)."""
+
+    normalized = normalize_user_text(user_text)
+    if not normalized:
+        return False
+    if any(fragment in normalized for fragment in _PRICE_INFO_SUBSTRINGS_NORMALIZED):
+        return True
+    if re.search(r"\bcuanto\b", normalized) and re.search(
+        r"\b(cuesta|vale|sale|es|esta|salen|estan|costaria)\b",
+        normalized,
+    ):
+        return True
+    return False
 
 
 def _is_promotions_request(user_text: str) -> bool:
@@ -430,6 +461,40 @@ def _respond_with_more_images(state: clientState) -> clientState:
         else:
             message = f"{message}\n\nEstas son todas las imagenes disponibles de este vehiculo."
     return append_assistant_message(state, message)
+
+
+def _respond_selected_vehicle_inventory_qa(state: clientState, user_text: str) -> clientState:
+    """Responde preguntas sobre el vehiculo seleccionado (ficha BD) sin salir de confirmacion de compra."""
+
+    vehicle_id = str(state.get("selected_vehicle_id", "")).strip()
+    selected_label = str(state.get("selected_car", "")).strip()
+    include_images_option = bool(state.get("vehicle_images_last_batch"))
+    if not vehicle_id:
+        _debug("inventory_qa_missing_selected_id")
+        question = _build_purchase_question(include_images_option=include_images_option)
+        return append_assistant_message(state, question)
+
+    detail = fetch_vehicle_by_id(vehicle_id)
+    if not isinstance(detail, dict):
+        _debug("inventory_qa_fetch_detail_failed", vehicle_id=vehicle_id)
+        msg = generate_verified_user_message(
+            mode="operational",
+            verified_facts_block="operacion: fetch_vehicle_by_id_qa\nexito: false\n",
+            user_message=user_text,
+            fallback="No pude consultar la ficha en este momento. Intenta de nuevo en unos segundos.",
+            temperature=0.35,
+        )
+        question = _build_purchase_question(include_images_option=include_images_option)
+        return _append_assistant_blocks(state, [msg, question])
+
+    platform = str(state.get("platform", "web")).strip().lower() or "web"
+    grounded = format_vehicle_detail(detail, platform=platform)
+    name = selected_label or _format_vehicle_name(detail)
+    body = generate_selected_vehicle_qa_response(name, grounded, user_text)
+    question = _build_purchase_question(include_images_option=include_images_option)
+    state["awaiting_purchase_confirmation"] = True
+    _debug("answered_inventory_qa_while_awaiting_confirmation", vehicle_id=vehicle_id)
+    return _append_assistant_blocks(state, [body, question])
 
 
 def _pick_vehicle_from_filters(
@@ -717,6 +782,13 @@ def car_selection(state: clientState) -> clientState:
             return state
         if step_flags.get("reject_purchase"):
             return _respond_available_list(state, vehicles)
+        if _is_price_info_request(user_text):
+            other = _pick_vehicle_from_filters(user_text, vehicles)
+            cur_id = str(state.get("selected_vehicle_id", "")).strip()
+            other_id = str(other.get("id", "")).strip() if isinstance(other, dict) else ""
+            if other_id and other_id != cur_id:
+                return _respond_with_vehicle_detail(state, other)
+            return _respond_selected_vehicle_inventory_qa(state, user_text)
         decision = classify_purchase_confirmation_intent(previous_bot_message, user_text)
         _debug(
             "purchase_confirmation_classified",
@@ -725,6 +797,13 @@ def car_selection(state: clientState) -> clientState:
         )
         if decision == "VER_MAS_IMAGENES" or _is_more_images_request(user_text):
             return _respond_with_more_images(state)
+        if decision == "PREGUNTA_MODELO":
+            other = _pick_vehicle_from_filters(user_text, vehicles)
+            cur_id = str(state.get("selected_vehicle_id", "")).strip()
+            other_id = str(other.get("id", "")).strip() if isinstance(other, dict) else ""
+            if other_id and other_id != cur_id:
+                return _respond_with_vehicle_detail(state, other)
+            return _respond_selected_vehicle_inventory_qa(state, user_text)
         if decision == "VER_MODELO":
             selected_vehicle = _pick_vehicle_from_filters(user_text, vehicles)
             if selected_vehicle:

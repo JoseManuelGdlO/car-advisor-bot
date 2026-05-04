@@ -400,6 +400,37 @@ def build_vehicle_purchase_question_prompt(bot_settings: dict[str, Any] | None) 
     )
 
 
+def build_selected_vehicle_qa_prompt(
+    vehicle_name: str,
+    grounded_facts_block: str,
+    user_message: str,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Prompt para responder dudas puntuales del vehiculo en pantalla usando solo la ficha de inventario."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    name = vehicle_name.strip() or "este vehiculo"
+    facts = str(grounded_facts_block or "").strip()
+    question = user_message.strip() or "(mensaje vacio)"
+    return (
+        f"{system_prompt}\n\n"
+        "RESPUESTA_PREGUNTAS_SOBRE_VEHICULO (fuente inventario / BD):\n"
+        f"El usuario esta viendo el vehiculo: {name}\n\n"
+        "DATOS_VERIFICADOS (unica fuente de verdad):\n"
+        f"{facts}\n\n"
+        f"PREGUNTA_DEL_USUARIO: {question}\n\n"
+        "Instrucciones obligatorias:\n"
+        "- Responde en espanol (Mexico), tono claro y breve (1-3 oraciones salvo que la pregunta exija un poco mas).\n"
+        "- Usa EXCLUSIVAMENTE informacion que aparezca en DATOS_VERIFICADOS (mismos valores: precio, kilometraje, motor, color, etc.). "
+        "No inventes equipamiento, garantias, historial, consumo, revisiones, financiamiento ni promociones.\n"
+        "- Si el dato no esta en DATOS_VERIFICADOS o figura como N/D, dilo con naturalidad y sugiere que un asesor pueda confirmarlo.\n"
+        "- No repitas toda la ficha: centrate en lo que pregunto el usuario.\n"
+        "- No saludes ni menciones que eres una IA.\n"
+        "- Evita listas largas con viñetas; texto corrido.\n"
+        "- Devuelve UNICAMENTE el mensaje para el usuario, sin prefijos tipo 'Respuesta:'.\n"
+    )
+
+
 def build_purchase_confirmation_classifier_prompt(
     previous_bot_message: str,
     user_message: str,
@@ -417,9 +448,14 @@ def build_purchase_confirmation_classifier_prompt(
         "Categorias validas:\n"
         "- SI: el usuario confirma compra o quiere avanzar con apartar/comprar.\n"
         "- NO: el usuario rechaza compra.\n"
-        "- VER_MODELO: el usuario quiere seguir viendo opciones, otros modelos, o cambiar de vehiculo.\n"
+        "- VER_MODELO: el usuario quiere seguir viendo opciones, otros modelos, o cambiar de vehiculo (incluye preguntas "
+        "centradas en otro modelo distinto al que se esta mostrando).\n"
         "- VER_MAS_IMAGENES: el usuario pide ver mas fotos/imagenes del vehiculo actual.\n"
-        "Responde SOLO con una de estas etiquetas exactas: SI, NO, VER_MODELO, VER_MAS_IMAGENES.\n\n"
+        "- PREGUNTA_MODELO: el usuario pregunta datos del vehiculo que ya esta en contexto (precio, kilometraje, motor, "
+        "transmision, color, descripcion, año, etc.) sin confirmar ni rechazar compra, similar a una mini-FAQ anclada al inventario. "
+        "No uses PREGUNTA_MODELO si claramente pide otro carro distinto (eso es VER_MODELO).\n"
+        "- UNKNOWN: no encaja en ninguna categoria anterior o es ambiguo.\n"
+        "Responde SOLO con una de estas etiquetas exactas: SI, NO, VER_MODELO, VER_MAS_IMAGENES, PREGUNTA_MODELO, UNKNOWN.\n\n"
         f"Mensaje previo del bot: {previous}\n"
         f"Mensaje del usuario: {current}\n"
     )

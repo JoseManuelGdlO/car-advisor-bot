@@ -21,6 +21,7 @@ from src.utils.prompts import (
     build_promotion_selection_classifier_prompt,
     build_other_response_prompt,
     build_purchase_confirmation_classifier_prompt,
+    build_selected_vehicle_qa_prompt,
     build_router_intent_classifier_prompt,
     build_rewrite_prompt,
     build_vehicle_detail_conversation_prompt,
@@ -599,8 +600,44 @@ def generate_vehicle_purchase_question(*, include_images_option: bool) -> str:
     )
 
 
+def generate_selected_vehicle_qa_response(
+    vehicle_name: str,
+    grounded_facts_block: str,
+    user_message: str,
+) -> str:
+    """Responde una pregunta puntual sobre el vehiculo usando solo la ficha verificada (inventario)."""
+
+    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
+    normalized_name = vehicle_name.strip() or "este vehiculo"
+    facts = str(grounded_facts_block or "").strip()
+    question = str(user_message or "").strip()
+    if not facts:
+        operational = (
+            f"vehicle_name: {normalized_name}\n"
+            "ficha_disponible: false\n"
+            "motivo: sin bloque de inventario\n"
+        )
+        return generate_verified_user_message(
+            mode="operational",
+            verified_facts_block=operational,
+            user_message=question,
+            fallback=f"No tengo la ficha de {normalized_name} para responder eso en este momento.",
+            temperature=0.35,
+        )
+    fallback = _grounded_facts_to_fallback_paragraph(normalized_name, facts)
+    try:
+        settings = get_bot_settings()
+        llm = ChatOpenAI(model=model_name, temperature=0.35)
+        prompt = build_selected_vehicle_qa_prompt(normalized_name, facts, question, settings)
+        content = llm.invoke(prompt).content
+        normalized = str(content).strip()
+        return normalized or fallback
+    except Exception:
+        return fallback
+
+
 def classify_purchase_confirmation_intent(previous_bot_message: str, user_message: str) -> str:
-    """Clasifica confirmacion de compra: SI, NO, VER_MODELO o VER_MAS_IMAGENES."""
+    """Clasifica confirmacion de compra: SI, NO, VER_MODELO, VER_MAS_IMAGENES, PREGUNTA_MODELO o UNKNOWN."""
 
     model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
     try:
@@ -609,7 +646,7 @@ def classify_purchase_confirmation_intent(previous_bot_message: str, user_messag
         prompt = build_purchase_confirmation_classifier_prompt(previous_bot_message, user_message, settings)
         content = llm.invoke(prompt).content
         normalized = str(content).strip().upper()
-        if normalized in {"SI", "NO", "VER_MODELO", "VER_MAS_IMAGENES"}:
+        if normalized in {"SI", "NO", "VER_MODELO", "VER_MAS_IMAGENES", "PREGUNTA_MODELO", "UNKNOWN"}:
             return normalized
         return "UNKNOWN"
     except Exception:

@@ -85,6 +85,98 @@ class PurchaseFlowTests(GraphTestCase):
 
         self.assertIn("Ya no hay mas imagenes", updated["messages"][-1]["content"])
 
+    def test_price_question_while_awaiting_confirmation_keeps_selection(self) -> None:
+        """Pregunta por precio del vehiculo mostrado no debe listar todo el catalogo."""
+
+        state = initial_state()
+        state["current_node"] = "car_selection"
+        state["intent"] = "vehicle_catalog"
+        state["selected_car"] = "Dodge Ram 2015"
+        state["selected_vehicle_id"] = "veh-ram"
+        state["awaiting_purchase_confirmation"] = True
+        state["vehicle_images_last_batch"] = ["/img/1.jpg"]
+        state["last_bot_message"] = "¿Te interesa comprar este vehículo o quieres ver más imágenes del mismo?"
+        state = with_user_message(state, "que precio tiene?")
+
+        vehicles = [{"id": "veh-ram", "brand": "Dodge", "model": "Ram", "year": 2015, "status": "available"}]
+        ram_detail = {
+            "id": "veh-ram",
+            "brand": "Dodge",
+            "model": "Ram",
+            "year": 2015,
+            "status": "available",
+            "price": 450000,
+            "km": 120000,
+            "transmission": "automatica",
+            "engine": "5.7",
+            "color": "negro",
+            "description": "",
+        }
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=ram_detail),
+            patch(
+                "src.nodes.car_selection.generate_selected_vehicle_qa_response",
+                return_value="El precio listado es $450,000.00.",
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertTrue(updated.get("awaiting_purchase_confirmation"))
+        self.assertEqual(updated.get("selected_vehicle_id"), "veh-ram")
+        self.assertEqual(updated.get("selected_car"), "Dodge Ram 2015")
+        tail = "\n".join(m["content"] for m in updated["messages"][-2:])
+        self.assertIn("450", tail)
+        self.assertNotIn("Nissan", tail)
+
+    def test_pregunta_modelo_km_while_awaiting_confirmation(self) -> None:
+        """PREGUNTA_MODELO responde desde ficha sin listar catalogo."""
+
+        state = initial_state()
+        state["current_node"] = "car_selection"
+        state["intent"] = "vehicle_catalog"
+        state["selected_car"] = "Dodge Ram 2015"
+        state["selected_vehicle_id"] = "veh-ram"
+        state["awaiting_purchase_confirmation"] = True
+        state["vehicle_images_last_batch"] = []
+        state["last_bot_message"] = "¿Te interesa comprar este vehículo o quieres ver más imágenes del mismo?"
+        state = with_user_message(state, "cuantos kilometros tiene?")
+
+        vehicles = [{"id": "veh-ram", "brand": "Dodge", "model": "Ram", "year": 2015, "status": "available"}]
+        ram_detail = {
+            "id": "veh-ram",
+            "brand": "Dodge",
+            "model": "Ram",
+            "year": 2015,
+            "status": "available",
+            "price": 450000,
+            "km": 120000,
+            "transmission": "automatica",
+            "engine": "5.7",
+            "color": "negro",
+            "description": "",
+        }
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=ram_detail),
+            patch(
+                "src.nodes.car_selection.classify_purchase_confirmation_intent",
+                return_value="PREGUNTA_MODELO",
+            ),
+            patch(
+                "src.nodes.car_selection.generate_selected_vehicle_qa_response",
+                return_value="Tiene 120,000 km registrados.",
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertTrue(updated.get("awaiting_purchase_confirmation"))
+        self.assertEqual(updated.get("selected_vehicle_id"), "veh-ram")
+        tail = "\n".join(m["content"] for m in updated["messages"][-2:])
+        self.assertIn("120", tail)
+
     def test_purchase_classifier_view_model_shows_requested_vehicle_detail(self) -> None:
         state = initial_state()
         state["current_node"] = "car_selection"
