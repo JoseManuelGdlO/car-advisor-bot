@@ -179,11 +179,11 @@ _VERIFIED_MODE_INSTRUCTIONS: dict[str, str] = {
         "Sé breve, empatico y claro. Espanol (Mexico). Un solo mensaje. Sin prefijos."
     ),
     "financing_prose_only": (
-        "TAREA: Escribe SOLO texto de enlace (maximo 3 oraciones) para acompanar un listado de planes de financiamiento "
-        "que el sistema mostrara justo despues.\n"
-        "NO copies ni enumeres planes, montos ni tablas del bloque DATOS_VERIFICADOS; solo contexto y tono.\n"
-        "Responde a la intencion del usuario usando solo lo que conste en DATOS_VERIFICADOS.\n"
-        "Espanol (Mexico). Sin prefijos."
+        "TAREA: Redacta un mensaje CONVERSACIONAL (en parrafos) que explique los planes de financiamiento del bloque "
+        "DATOS_VERIFICADOS, incluyendo los datos clave de cada plan (nombre, tasa, plazo y requisitos cuando existan).\n"
+        "NO uses formato de lista ni numeracion en la salida (sin bullets, sin 1., 2., etc.).\n"
+        "No inventes planes, condiciones ni requisitos. Usa solo lo que conste en DATOS_VERIFICADOS.\n"
+        "Cierra con una invitacion breve para que el usuario elija un plan. Espanol (Mexico). Sin prefijos."
     ),
     "financing_plan_vehicle": (
         "TAREA: Presentar el vehiculo vinculado a un plan de financiamiento y motivar la siguiente accion.\n"
@@ -193,8 +193,11 @@ _VERIFIED_MODE_INSTRUCTIONS: dict[str, str] = {
         "No inventes condiciones de credito no listadas. Espanol (Mexico). Un solo mensaje."
     ),
     "promotion_prose_only": (
-        "TAREA: Escribe SOLO texto de enlace (maximo 3 oraciones) antes de un listado de promociones que el sistema mostrara despues.\n"
-        "NO copies listados del bloque. Usa solo hechos permitidos por DATOS_VERIFICADOS.\n"
+        "TAREA: Redacta un mensaje CONVERSACIONAL (en parrafos) que explique las promociones del bloque "
+        "DATOS_VERIFICADOS, incluyendo para cada una los datos clave (titulo, descripcion, vigencia y vehiculos aplicables cuando existan).\n"
+        "NO uses formato de lista ni numeracion en la salida (sin bullets, sin 1., 2., etc.).\n"
+        "No inventes promociones, vigencias ni vehiculos aplicables. Usa solo lo que conste en DATOS_VERIFICADOS.\n"
+        "Cierra con una invitacion breve para que el usuario indique cual promocion le interesa aplicar. "
         "Espanol (Mexico). Sin prefijos."
     ),
     "promotion_vehicle_confirm": (
@@ -568,6 +571,46 @@ def build_promotions_step_flags_prompt(
         "- Si no aplica, deja false.\n\n"
         f"Promocion actual: {promotion}\n"
         f"Mensaje del usuario: {current}\n"
+    )
+
+
+def build_financing_step_flags_prompt(
+    previous_bot_message: str,
+    user_message: str,
+    selected_vehicle_name: str,
+    has_selected_vehicle: bool,
+    has_selected_promotion: bool,
+    awaiting_plan_selection: bool,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Prompt clasificador por flags para navegacion en seleccion de plan de financing."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    previous = previous_bot_message.strip() or "(sin mensaje previo)"
+    current = user_message.strip() or "(mensaje vacio)"
+    vehicle = selected_vehicle_name.strip() or "(sin vehiculo seleccionado)"
+    return (
+        f"{system_prompt}\n\n"
+        "CLASIFICADOR_FLAGS_FINANCING_STEP:\n"
+        "Responde SOLO con JSON de una linea con estas claves booleanas exactas:\n"
+        '{ "reject_financing_keep_purchase": <bool>, "ask_explicit_plan": <bool> }\n'
+        "Contexto de negocio:\n"
+        "- Estamos en el nodo financing, esperando seleccion explicita de un plan.\n"
+        "- Si el usuario rechaza los planes pero mantiene intencion de compra del vehiculo actual, "
+        "entonces reject_financing_keep_purchase=true.\n"
+        "- Si el usuario sigue ambiguo o no confirma compra sin plan, ask_explicit_plan=true.\n"
+        "Reglas criticas:\n"
+        "- reject_financing_keep_purchase=true cuando haya rechazo claro de planes "
+        "(ej. no me interesa ninguno, sin financiamiento, no quiero plan) y al mismo tiempo intencion de compra "
+        "del carro actual (ej. solo quiero comprar el carro, si quiero ese carro).\n"
+        "- Si no hay evidencia de ambas cosas a la vez, usa reject_financing_keep_purchase=false.\n"
+        "- ask_explicit_plan=false solo cuando reject_financing_keep_purchase=true.\n\n"
+        f"awaiting_plan_selection: {str(awaiting_plan_selection).lower()}\n"
+        f"has_selected_vehicle: {str(has_selected_vehicle).lower()}\n"
+        f"has_selected_promotion: {str(has_selected_promotion).lower()}\n"
+        f"vehiculo_actual: {vehicle}\n"
+        f"mensaje_previo_bot: {previous}\n"
+        f"mensaje_usuario: {current}\n"
     )
 
 

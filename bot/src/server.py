@@ -78,6 +78,8 @@ class ChatResponse(BaseModel):
     reply: str
     current_node: str
     selected_car: str
+    financing_plan: str
+    promotion: str
 
 
 class ResetRequest(BaseModel):
@@ -230,6 +232,8 @@ def chat(payload: ChatRequest) -> ChatResponse:
             reply=reply,
             current_node=str(updated_state.get("current_node", "router")),
             selected_car=str(updated_state.get("selected_car", "")),
+            financing_plan=str(updated_state.get("selected_financing_plan_name", "")),
+            promotion=str(updated_state.get("selected_promotion_title", "")),
         )
     except Exception as exc:
         logger.exception("Error procesando /chat")

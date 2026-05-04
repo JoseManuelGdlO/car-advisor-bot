@@ -6,6 +6,57 @@ from tests.test_helpers import GraphTestCase, initial_state, with_user_message
 
 
 class FinancingFlowTests(GraphTestCase):
+    def test_financing_rejects_plans_but_keeps_purchase_routes_to_lead_capture(self) -> None:
+        state = initial_state()
+        state["current_node"] = "financing"
+        state["intent"] = "financing"
+        state["awaiting_financing_plan_selection"] = True
+        state["selected_vehicle_id"] = "veh-versa-2011"
+        state["selected_car"] = "Nissan Versa 2011"
+        state["financing_plan_candidates"] = [
+            {
+                "id": "plan-1",
+                "name": "Financiamiento Shilo",
+                "lender": "BBVA",
+                "active": True,
+                "vehicles": [{"id": "veh-versa-2011", "brand": "Nissan", "model": "Versa", "year": 2011, "status": "available"}],
+            },
+            {
+                "id": "plan-2",
+                "name": "Test",
+                "lender": "Test",
+                "active": True,
+                "vehicles": [{"id": "veh-versa-2011", "brand": "Nissan", "model": "Versa", "year": 2011, "status": "available"}],
+            },
+        ]
+        state["messages"] = [
+            {
+                "role": "assistant",
+                "content": "Si te interesa alguno, dime el nombre o numero del plan.",
+                "type": "AIMessage",
+            }
+        ]
+
+        state = with_user_message(state, "no pero no me interesa ninguno, solo quiero comprar el carro")
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch(
+                "src.nodes.financing.classify_financing_step_flags",
+                return_value={"reject_financing_keep_purchase": True, "ask_explicit_plan": False},
+            ),
+            patch(
+                "src.nodes.financing.generate_verified_user_message",
+                side_effect=lambda **kw: kw["fallback"],
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertEqual(updated.get("current_node"), "lead_capture")
+        self.assertEqual(updated.get("intent"), "lead_capture")
+        self.assertFalse(updated.get("awaiting_financing_plan_selection"))
+        self.assertEqual(updated.get("selected_financing_plan_id"), "")
+        self.assertIn("sin plan de financiamiento", str(updated["messages"][-1]["content"]).lower())
+
     def test_financing_requests_catalog_routes_to_car_selection(self) -> None:
         state = initial_state()
         state["current_node"] = "financing"

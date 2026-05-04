@@ -29,6 +29,7 @@ from src.utils.prompts import (
     build_faq_response_prompt,
     build_vehicle_step_flags_prompt,
     build_promotions_step_flags_prompt,
+    build_financing_step_flags_prompt,
     build_lead_capture_navigation_classifier_prompt,
     build_settings_block,
     build_verified_user_message_prompt,
@@ -97,6 +98,193 @@ def compose_verified_prose_and_appendix(*, prose: str, appendix: str) -> str:
     return p or a
 
 
+def _financing_listing_to_conversation(listing_block: str, follow_up_hint: str) -> str:
+    """Convierte un listado de planes a texto conversacional sin vinetas."""
+
+    lines = [str(line or "").rstrip() for line in str(listing_block or "").splitlines()]
+    if not lines:
+        return str(follow_up_hint or "").strip()
+
+    header = ""
+    plans: list[dict[str, Any]] = []
+    current: dict[str, Any] | None = None
+    collecting_requirements = False
+
+    for raw in lines:
+        cleaned = re.sub(r"\*+", "", raw).strip()
+        if not cleaned:
+            collecting_requirements = False
+            continue
+        if cleaned.lower().startswith("planes de financiamiento para "):
+            header = cleaned
+            continue
+        if cleaned.lower().startswith("estos son los planes de financiamiento"):
+            header = cleaned
+            continue
+
+        plan_match = re.match(r"^(\d+)\.\s+(.+)$", cleaned)
+        if plan_match:
+            current = {
+                "name": plan_match.group(2).strip(),
+                "rate": "",
+                "term": "",
+                "requirements": [],
+            }
+            plans.append(current)
+            collecting_requirements = False
+
+            # Soporta formato en una sola linea: "Plan - Tasa: x - Plazo maximo: y"
+            segments = [segment.strip() for segment in current["name"].split(" - ") if segment.strip()]
+            if segments:
+                current["name"] = segments[0]
+            for segment in segments[1:]:
+                lower_seg = segment.lower()
+                if lower_seg.startswith("tasa:"):
+                    current["rate"] = segment.split(":", 1)[1].strip()
+                elif lower_seg.startswith("plazo maximo:"):
+                    current["term"] = segment.split(":", 1)[1].strip()
+            continue
+
+        if not current:
+            continue
+
+        if cleaned.lower().startswith("requisitos:"):
+            collecting_requirements = True
+            continue
+
+        if cleaned.startswith("-"):
+            value = cleaned[1:].strip()
+            lower_value = value.lower()
+            if lower_value.startswith("tasa:"):
+                current["rate"] = value.split(":", 1)[1].strip()
+                collecting_requirements = False
+            elif lower_value.startswith("plazo maximo:"):
+                current["term"] = value.split(":", 1)[1].strip()
+                collecting_requirements = False
+            elif collecting_requirements and value:
+                reqs = current.get("requirements", [])
+                if isinstance(reqs, list):
+                    reqs.append(value)
+            continue
+
+        if collecting_requirements and cleaned:
+            reqs = current.get("requirements", [])
+            if isinstance(reqs, list):
+                reqs.append(cleaned)
+
+    if not plans:
+        return str(follow_up_hint or "").strip()
+
+    intro = "Claro, te cuento las opciones de financiamiento disponibles."
+    if header.lower().startswith("planes de financiamiento para "):
+        vehicle = header.split("para", 1)[1].strip(" :")
+        if vehicle:
+            intro = f"Claro, para {vehicle} tenemos estas opciones de financiamiento."
+
+    plan_sentences: list[str] = []
+    for plan in plans:
+        name = str(plan.get("name", "")).strip() or "un plan disponible"
+        rate = str(plan.get("rate", "")).strip()
+        term = str(plan.get("term", "")).strip()
+        reqs = [str(item).strip() for item in plan.get("requirements", []) if str(item).strip()]
+
+        details: list[str] = []
+        if rate:
+            details.append(f"una tasa de {rate}")
+        if term:
+            details.append(f"un plazo maximo de {term}")
+        if reqs:
+            details.append(f"requisitos como {', '.join(reqs)}")
+
+        if details:
+            plan_sentences.append(f"{name} maneja {', '.join(details)}.")
+        else:
+            plan_sentences.append(f"{name} esta disponible en este momento.")
+
+    close = str(follow_up_hint or "").strip()
+    body = " ".join(plan_sentences).strip()
+    if close:
+        return f"{intro} {body} {close}".strip()
+    return f"{intro} {body}".strip()
+
+
+def _promotion_listing_to_conversation(listing_block: str, closing_hint: str) -> str:
+    """Convierte un listado de promociones a texto conversacional sin vinetas."""
+
+    lines = [str(line or "").rstrip() for line in str(listing_block or "").splitlines()]
+    if not lines:
+        return str(closing_hint or "").strip()
+
+    promotions: list[dict[str, Any]] = []
+    current: dict[str, Any] | None = None
+    collecting_vehicles = False
+
+    for raw in lines:
+        cleaned = re.sub(r"\*+", "", raw).strip()
+        if not cleaned:
+            collecting_vehicles = False
+            continue
+        if cleaned.lower().startswith("estas son las promociones disponibles"):
+            continue
+        match = re.match(r"^(\d+)\.\s+(.+)$", cleaned)
+        if match:
+            current = {
+                "title": match.group(2).strip(),
+                "description": "",
+                "valid_until": "",
+                "vehicles": [],
+            }
+            promotions.append(current)
+            collecting_vehicles = False
+            continue
+        if not current:
+            continue
+        if cleaned.startswith("-"):
+            value = cleaned[1:].strip()
+            lower_value = value.lower()
+            if lower_value.startswith("vigencia:"):
+                current["valid_until"] = value.split(":", 1)[1].strip()
+                collecting_vehicles = False
+            elif lower_value.startswith("vehiculos aplicables:"):
+                collecting_vehicles = True
+            elif not current.get("description"):
+                current["description"] = value
+            elif collecting_vehicles and value:
+                vehicles = current.get("vehicles", [])
+                if isinstance(vehicles, list):
+                    vehicles.append(value)
+            continue
+        if collecting_vehicles and current:
+            vehicles = current.get("vehicles", [])
+            if isinstance(vehicles, list):
+                vehicles.append(cleaned)
+
+    if not promotions:
+        return str(closing_hint or "").strip()
+
+    parts: list[str] = ["Claro, te cuento las promociones disponibles."]
+    for promo in promotions:
+        title = str(promo.get("title", "")).strip() or "una promocion activa"
+        description = str(promo.get("description", "")).strip()
+        valid_until = str(promo.get("valid_until", "")).strip()
+        vehicles = [str(item).strip() for item in promo.get("vehicles", []) if str(item).strip()]
+
+        sentence = f"{title}"
+        if description:
+            sentence += f" ofrece {description}"
+        if valid_until:
+            sentence += f" y su vigencia es hasta {valid_until}"
+        if vehicles:
+            sentence += f". Aplica para vehiculos como {', '.join(vehicles)}"
+        sentence += "."
+        parts.append(sentence)
+
+    close = str(closing_hint or "").strip()
+    if close:
+        parts.append(close)
+    return " ".join(part for part in parts if part).strip()
+
+
 def generate_financing_plans_user_message(
     *,
     user_text: str,
@@ -104,7 +292,7 @@ def generate_financing_plans_user_message(
     follow_up_hint: str,
     fallback_semantic: str,
 ) -> str:
-    """Prosa LLM anclada a planes + listado exacto del formatter (opcion B del plan)."""
+    """Mensaje conversacional de planes (sin pegar listado literal en la salida)."""
 
     listing = str(listing_block or "").strip()
     if not listing:
@@ -115,19 +303,20 @@ def generate_financing_plans_user_message(
             fallback=fallback_semantic,
             temperature=0.35,
         )
+    fallback_conversation = _financing_listing_to_conversation(listing, follow_up_hint)
     prose = generate_verified_user_message(
         mode="financing_prose_only",
         verified_facts_block=(
             f"ultimo_mensaje_usuario:\n{user_text}\n\n"
-            "contexto_interno_planes (no reproducir textualmente en la salida; solo para entender):\n"
+            "contexto_planes_verificados:\n"
             f"{listing}\n\n"
             f"cierre_sugerido_literal:\n{follow_up_hint}\n"
         ),
         user_message=user_text,
-        fallback=fallback_semantic,
+        fallback=fallback_conversation or fallback_semantic,
         temperature=0.38,
     )
-    return compose_verified_prose_and_appendix(prose=prose, appendix=listing)
+    return prose
 
 
 def generate_promotion_listing_user_message(
@@ -137,7 +326,7 @@ def generate_promotion_listing_user_message(
     closing_hint: str,
     fallback_semantic: str,
 ) -> str:
-    """Prosa LLM anclada a promociones + listado exacto del formatter."""
+    """Mensaje conversacional de promociones (sin pegar listado literal en la salida)."""
 
     listing = str(listing_block or "").strip()
     if not listing:
@@ -148,19 +337,20 @@ def generate_promotion_listing_user_message(
             fallback=fallback_semantic,
             temperature=0.35,
         )
+    fallback_conversation = _promotion_listing_to_conversation(listing, closing_hint)
     prose = generate_verified_user_message(
         mode="promotion_prose_only",
         verified_facts_block=(
             f"ultimo_mensaje_usuario:\n{user_text}\n\n"
-            "contexto_interno_promociones (no reproducir listado en la salida):\n"
+            "contexto_promociones_verificadas:\n"
             f"{listing}\n\n"
             f"cierre_sugerido_literal:\n{closing_hint}\n"
         ),
         user_message=user_text,
-        fallback=fallback_semantic,
+        fallback=fallback_conversation or fallback_semantic,
         temperature=0.38,
     )
-    return compose_verified_prose_and_appendix(prose=prose, appendix=listing)
+    return prose
 
 
 def _parse_json_object_from_llm(text: str) -> dict[str, Any] | None:
@@ -577,6 +767,44 @@ def classify_promotions_step_flags(user_message: str, current_promotion_title: s
         prompt = build_promotions_step_flags_prompt(
             user_message=user_message,
             current_promotion_title=current_promotion_title,
+            bot_settings=settings,
+        )
+        parsed = _parse_json_object_from_llm(str(llm.invoke(prompt).content or ""))
+        if not parsed:
+            return out
+        for key in out:
+            out[key] = _coerce_to_bool(parsed.get(key))
+    except Exception:
+        pass
+    return out
+
+
+def classify_financing_step_flags(
+    *,
+    previous_bot_message: str,
+    user_message: str,
+    selected_vehicle_name: str = "",
+    has_selected_vehicle: bool = False,
+    has_selected_promotion: bool = False,
+    awaiting_plan_selection: bool = False,
+) -> dict[str, bool]:
+    """Clasifica flags de navegacion dentro del paso de seleccion de plan en financing."""
+
+    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
+    out = {
+        "reject_financing_keep_purchase": False,
+        "ask_explicit_plan": True,
+    }
+    try:
+        settings = get_bot_settings()
+        llm = ChatOpenAI(model=model_name, temperature=0)
+        prompt = build_financing_step_flags_prompt(
+            previous_bot_message=previous_bot_message,
+            user_message=user_message,
+            selected_vehicle_name=selected_vehicle_name,
+            has_selected_vehicle=has_selected_vehicle,
+            has_selected_promotion=has_selected_promotion,
+            awaiting_plan_selection=awaiting_plan_selection,
             bot_settings=settings,
         )
         parsed = _parse_json_object_from_llm(str(llm.invoke(prompt).content or ""))
