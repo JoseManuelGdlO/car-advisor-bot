@@ -48,6 +48,7 @@ class ChatRequest(BaseModel):
     user_id: str = Field(..., min_length=1, max_length=255)
     message: str = Field(..., min_length=1)
     platform: str = Field(default=DEFAULT_INBOUND_PLATFORM)
+    persist_to_backend: bool = Field(default=True)
 
     @field_validator("user_id", "message")
     @classmethod
@@ -188,7 +189,11 @@ def chat(payload: ChatRequest) -> ChatResponse:
         state["user_id"] = payload.user_id
         # 2) Registrar mensaje entrante en backend CRM y obtener IDs de relacion.
         conversation_id = conv_from_session
-        crm = upsert_inbound_user_message(payload.user_id, payload.message, payload.platform)
+        crm = (
+            upsert_inbound_user_message(payload.user_id, payload.message, payload.platform)
+            if payload.persist_to_backend
+            else None
+        )
         if crm:
             conversation_id = crm["conversation_id"]
             state["owner_user_id"] = str(crm.get("owner_user_id", "")).strip()
@@ -218,16 +223,17 @@ def chat(payload: ChatRequest) -> ChatResponse:
         updated_messages = list(updated_state.get("messages", []))
 
         # Capa 2: persistir mensajes assistant en backend (fuente de verdad).
-        try:
-            for message in updated_messages[previous_len:]:
-                if message.get("role") == "assistant":
-                    push_assistant_message_to_backend(
-                        payload.user_id,
-                        str(message.get("content", "")),
-                        platform=payload.platform,
-                    )
-        except Exception:
-            logger.exception("No se pudo persistir mensaje assistant en backend")
+        if payload.persist_to_backend:
+            try:
+                for message in updated_messages[previous_len:]:
+                    if message.get("role") == "assistant":
+                        push_assistant_message_to_backend(
+                            payload.user_id,
+                            str(message.get("content", "")),
+                            platform=payload.platform,
+                        )
+            except Exception:
+                logger.exception("No se pudo persistir mensaje assistant en backend")
 
         upsert_bot_session_state(
             payload.user_id,

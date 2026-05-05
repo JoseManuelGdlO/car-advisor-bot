@@ -20,6 +20,7 @@ export const runBotChat = async ({ userId, platform, message }) => {
       user_id: String(userId || "").trim(),
       platform: String(platform || "web").trim().toLowerCase(),
       message: String(message || "").trim(),
+      persist_to_backend: false,
     }),
   }).catch((err) => {
     logWcWebhook("bot engine: network error", { message: err?.message || String(err) });
