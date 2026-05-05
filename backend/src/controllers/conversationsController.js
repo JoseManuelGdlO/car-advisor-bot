@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ClientLead, Conversation, Message } from "../models/index.js";
 import { ApiError } from "../utils/errors.js";
 import { sendConversationAttachmentMessage, sendConversationTextMessage } from "../services/conversationService.js";
+import { normalizePublicImageUrl } from "../utils/publicUrl.js";
 
 // Scope multi-tenant por propietario autenticado.
 const ownerWhere = (userId) => ({ ownerUserId: userId });
@@ -61,7 +62,8 @@ export const sendConversationAttachment = async (req, res) => {
   const protocol = req.get("x-forwarded-proto") || req.protocol || "http";
   const host = req.get("x-forwarded-host") || req.get("host");
   if (!host) throw new ApiError(400, "Unable to build attachment URL");
-  const imageUrl = `${protocol}://${host}/uploads/autobot/${file.filename}`;
+  const fallbackBase = `${protocol}://${host}`;
+  const imageUrl = normalizePublicImageUrl(`/uploads/autobot/${file.filename}`, { fallbackBase });
   const message = await sendConversationAttachmentMessage({
     ownerUserId: req.auth.userId,
     conversationId: req.params.id,

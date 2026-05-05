@@ -43,6 +43,29 @@ type ChatMessageRow = {
   time: string;
 };
 
+type ParsedAttachmentText = {
+  imageUrl: string;
+  caption: string;
+};
+
+function parseAttachmentText(text: string): ParsedAttachmentText | null {
+  const raw = String(text || "").trim();
+  if (!raw) return null;
+
+  const imageOnlyMatch = raw.match(/^\[Imagen\]\s+(https?:\/\/\S+)$/i);
+  if (imageOnlyMatch) {
+    return { imageUrl: imageOnlyMatch[1], caption: "" };
+  }
+
+  const captionAndUrlMatch = raw.match(/^(.*)\n(https?:\/\/\S+)$/s);
+  if (!captionAndUrlMatch) return null;
+
+  const caption = captionAndUrlMatch[1].trim();
+  const imageUrl = captionAndUrlMatch[2].trim();
+  if (!imageUrl) return null;
+  return { imageUrl, caption };
+}
+
 function normalizeConversationChannel(value: string): Channel {
   if (value === "whatsapp" || value === "instagram" || value === "facebook") return value;
   return "facebook";
@@ -283,6 +306,7 @@ export default function ChatDetalle() {
         {((messages || []) as ChatMessageRow[]).map((m) => {
           const mine = m.from !== "client";
           const isBot = m.from === "bot";
+          const attachment = parseAttachmentText(m.text);
           return (
             <div key={m.id} className={cn("flex", mine ? "justify-end" : "justify-start")}>
               <div
@@ -303,7 +327,21 @@ export default function ChatDetalle() {
                 {!isBot && mine && (
                   <p className="text-[10px] font-bold text-primary-dark mb-1 uppercase tracking-wide">Tú (vendedor)</p>
                 )}
-                <p className="leading-relaxed whitespace-pre-wrap">{m.text}</p>
+                {attachment ? (
+                  <div className="space-y-2">
+                    {attachment.caption ? <p className="leading-relaxed whitespace-pre-wrap">{attachment.caption}</p> : null}
+                    <a href={attachment.imageUrl} target="_blank" rel="noreferrer" className="block">
+                      <img
+                        src={attachment.imageUrl}
+                        alt={attachment.caption || "Imagen adjunta"}
+                        loading="lazy"
+                        className="max-h-64 w-auto rounded-lg border border-border/50"
+                      />
+                    </a>
+                  </div>
+                ) : (
+                  <p className="leading-relaxed whitespace-pre-wrap">{m.text}</p>
+                )}
                 <p className="text-[10px] text-muted-foreground text-right mt-1">{m.time}</p>
               </div>
             </div>
