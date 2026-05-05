@@ -1,8 +1,9 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Phone, MoreVertical, Send, Bot, Smile, Paperclip, User, Copy } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
 import { ChannelIcon } from "@/components/ChannelIcon";
+import type { Channel } from "@/data/mockData";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import { useQuery } from "@tanstack/react-query";
@@ -42,6 +43,11 @@ type ChatMessageRow = {
   time: string;
 };
 
+function normalizeConversationChannel(value: string): Channel {
+  if (value === "whatsapp" || value === "instagram" || value === "facebook") return value;
+  return "facebook";
+}
+
 function buildTelHref(phone: string | undefined): string | null {
   if (!phone?.trim()) return null;
   const compact = phone.replace(/\s/g, "");
@@ -71,6 +77,8 @@ export default function ChatDetalle() {
   const [draft, setDraft] = useState("");
   const [emojiOpen, setEmojiOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const hasAutoScrolledRef = useRef(false);
   const refreshConversationData = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["messages", id] }),
@@ -163,6 +171,21 @@ export default function ChatDetalle() {
     controlMutation.mutate(!conv.isHumanControlled);
   };
 
+  useEffect(() => {
+    hasAutoScrolledRef.current = false;
+  }, [id]);
+
+  useEffect(() => {
+    if (hasAutoScrolledRef.current) return;
+    const messageList = (messages || []) as ChatMessageRow[];
+    if (!messageList.length) return;
+    messagesContainerRef.current?.scrollTo({
+      top: messagesContainerRef.current.scrollHeight,
+      behavior: "auto",
+    });
+    hasAutoScrolledRef.current = true;
+  }, [messages]);
+
   if (!conv || !client) {
     return (
       <div className="p-6 text-center text-sm text-muted-foreground">
@@ -190,7 +213,7 @@ export default function ChatDetalle() {
         </button>
         <div className="relative shrink-0">
           <Avatar name={client.name} color={client.avatarColor} size="sm" />
-          <ChannelIcon channel={conv.channel} size={9} className="absolute -bottom-0.5 -right-0.5 ring-2 ring-primary-dark" />
+          <ChannelIcon channel={normalizeConversationChannel(conv.channel)} size={9} className="absolute -bottom-0.5 -right-0.5 ring-2 ring-primary-dark" />
         </div>
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-sm truncate">{client.name}</p>
@@ -256,7 +279,7 @@ export default function ChatDetalle() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto bg-chat-pattern px-3 py-4 space-y-2">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto bg-chat-pattern px-3 py-4 space-y-2">
         {((messages || []) as ChatMessageRow[]).map((m) => {
           const mine = m.from !== "client";
           const isBot = m.from === "bot";
