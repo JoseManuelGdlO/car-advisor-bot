@@ -42,6 +42,21 @@ export const resolveWhatsappConnectIntegrationById = async ({ ownerUserId, integ
   };
 };
 
+export const resolveInstagramMetaIntegrationById = async ({ ownerUserId, integrationId }) => {
+  const integration = await ChannelIntegration.findOne({
+    where: { id: integrationId, ownerUserId },
+  });
+  if (!integration) throw new ApiError(404, "Integration not found");
+  if (integration.channel !== "instagram") throw new ApiError(400, "Integration channel must be instagram");
+  if (integration.provider !== META_PROVIDER) throw new ApiError(400, "Integration provider must be meta");
+  const credentialsPayload = await getActiveCredentialPayload(ownerUserId, integration.id);
+  const credentials = normalizeInstagramMetaCredentials(credentialsPayload);
+  if (!credentials.pageId || !credentials.pageAccessToken) {
+    throw new ApiError(400, "Instagram integration is missing required credentials");
+  }
+  return { integration, credentials };
+};
+
 export const resolveWhatsappConnectIntegrationByDevice = async ({ deviceId }) => {
   // Resolve fallback para webhooks públicos cuando sólo llega deviceId.
   const integrations = await ChannelIntegration.findAll({

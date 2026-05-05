@@ -1,10 +1,17 @@
 import { Op } from "sequelize";
-import { ClientLead, Conversation, Message } from "../models/index.js";
+import { ChannelConversationContext, ClientLead, Conversation, Message } from "../models/index.js";
 import { ApiError } from "../utils/errors.js";
 import { isWithinBotSchedule } from "../utils/botSettings.js";
 import { channelAllowsAutoReply, normalizeInboundChannel } from "../utils/integrationChannel.js";
 import { getOrCreateBotSettings } from "./botSettingsService.js";
+import {
+  resolveInstagramMetaIntegrationById,
+  resolveWhatsappConnectIntegrationById,
+} from "./integrationResolverService.js";
+import { sendInstagramImageMessage, sendInstagramTextMessage } from "./metaInstagramClient.js";
 import { sendPushToOwner } from "./pushService.js";
+import { runWithWcToken } from "./wcAuthCache.js";
+import { wcClient } from "./wcClient.js";
 
 const hasUsableCustomerInfo = (c) => {
   if (c == null || typeof c !== "object") return false;
@@ -122,6 +129,7 @@ export const upsertConversationEvent = async ({
       unread: 0,
     },
   });
+  const isHumanControlled = Boolean(conv.isHumanControlled);
   await conv.update({
     lastMessage: isInboundClientMessage ? normalizedMessage : conv.lastMessage,
     lastTime: isInboundClientMessage ? new Date() : conv.lastTime,
@@ -162,9 +170,162 @@ export const upsertConversationEvent = async ({
   return {
     conversationId: conv.id,
     clientId: lead.id,
-    shouldAutoReply,
-    botSuppressed: !shouldAutoReply,
-    suppressedReason,
+    shouldAutoReply: shouldAutoReply && !isHumanControlled,
+    botSuppressed: !shouldAutoReply || isHumanControlled,
+    suppressedReason: isHumanControlled ? "human_control" : suppressedReason,
     ownerUserId,
   };
+};
+
+const formatMessageTime = () => new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
+
+const getOwnedConversation = async ({ ownerUserId, conversationId }) => {
+  const conv = await Conversation.findOne({
+    where: { id: conversationId, ownerUserId },
+    include: [{ model: ClientLead, as: "client" }],
+  });
+  if (!conv) throw new ApiError(404, "Conversation not found");
+  return conv;
+};
+
+const getConversationContext = async ({ ownerUserId, conversationId }) => {
+  return ChannelConversationContext.findOne({
+    where: { ownerUserId, conversationId },
+    order: [["updatedAt", "DESC"]],
+  });
+};
+
+const persistSellerMessage = async ({ ownerUserId, conversationId, channel, text, phone }) => {
+  const msg = await Message.create({
+    ownerUserId,
+    conversationId,
+    from: "seller",
+    text: String(text || "").trim(),
+    platform: channel,
+    phone: String(phone || "").trim() || null,
+    time: formatMessageTime(),
+  });
+  await Conversation.update(
+    {
+      lastMessage: msg.text,
+      lastTime: new Date(),
+    },
+    { where: { id: conversationId, ownerUserId } }
+  );
+  return msg;
+};
+
+export const sendConversationTextMessage = async ({ ownerUserId, conversationId, text }) => {
+  const normalizedText = String(text || "").trim();
+  if (!normalizedText) throw new ApiError(400, "text is required");
+  const conversation = await getOwnedConversation({ ownerUserId, conversationId });
+  const context = await getConversationContext({ ownerUserId, conversationId });
+  const channel = String(conversation.channel || "web").toLowerCase();
+  const recipient = String(context?.externalUserId || conversation.client?.phone || "").trim();
+  if (!recipient) throw new ApiError(400, "Conversation recipient is not available");
+
+  if (channel === "whatsapp") {
+    if (!context?.channelIntegrationId) throw new ApiError(400, "Conversation is missing WhatsApp integration context");
+    const { credentials } = await resolveWhatsappConnectIntegrationById({
+      ownerUserId,
+      integrationId: context.channelIntegrationId,
+    });
+    await runWithWcToken(() =>
+      wcClient.sendMessageWithRetry({
+        deviceId: context.deviceId || credentials.deviceId,
+        to: recipient,
+        type: "text",
+        text: normalizedText,
+        tenantId: context.tenantId || credentials.tenantId,
+      })
+    );
+  } else if (channel === "instagram") {
+    if (!context?.channelIntegrationId) throw new ApiError(400, "Conversation is missing Instagram integration context");
+    const { credentials } = await resolveInstagramMetaIntegrationById({
+      ownerUserId,
+      integrationId: context.channelIntegrationId,
+    });
+    await sendInstagramTextMessage({
+      pageId: credentials.pageId,
+      pageAccessToken: credentials.pageAccessToken,
+      recipientIgsid: recipient,
+      text: normalizedText,
+    });
+  } else {
+    throw new ApiError(400, `Outbound send is not supported for channel: ${channel}`);
+  }
+
+  return persistSellerMessage({
+    ownerUserId,
+    conversationId,
+    channel,
+    text: normalizedText,
+    phone: recipient,
+  });
+};
+
+export const sendConversationAttachmentMessage = async ({
+  ownerUserId,
+  conversationId,
+  imageUrl,
+  caption,
+}) => {
+  const url = String(imageUrl || "").trim();
+  if (!url) throw new ApiError(400, "imageUrl is required");
+  const conversation = await getOwnedConversation({ ownerUserId, conversationId });
+  const context = await getConversationContext({ ownerUserId, conversationId });
+  const channel = String(conversation.channel || "web").toLowerCase();
+  const recipient = String(context?.externalUserId || conversation.client?.phone || "").trim();
+  if (!recipient) throw new ApiError(400, "Conversation recipient is not available");
+  const normalizedCaption = String(caption || "").trim();
+
+  if (channel === "whatsapp") {
+    if (!context?.channelIntegrationId) throw new ApiError(400, "Conversation is missing WhatsApp integration context");
+    const { credentials } = await resolveWhatsappConnectIntegrationById({
+      ownerUserId,
+      integrationId: context.channelIntegrationId,
+    });
+    await runWithWcToken(() =>
+      wcClient.sendMessageWithRetry({
+        deviceId: context.deviceId || credentials.deviceId,
+        to: recipient,
+        type: "image",
+        imageUrl: url,
+        ...(normalizedCaption ? { caption: normalizedCaption } : {}),
+        tenantId: context.tenantId || credentials.tenantId,
+      })
+    );
+  } else if (channel === "instagram") {
+    if (!context?.channelIntegrationId) throw new ApiError(400, "Conversation is missing Instagram integration context");
+    const { credentials } = await resolveInstagramMetaIntegrationById({
+      ownerUserId,
+      integrationId: context.channelIntegrationId,
+    });
+    await sendInstagramImageMessage({
+      pageId: credentials.pageId,
+      pageAccessToken: credentials.pageAccessToken,
+      recipientIgsid: recipient,
+      imageUrl: url,
+      caption: normalizedCaption,
+    });
+    if (normalizedCaption) {
+      await sendInstagramTextMessage({
+        pageId: credentials.pageId,
+        pageAccessToken: credentials.pageAccessToken,
+        recipientIgsid: recipient,
+        text: normalizedCaption,
+      });
+    }
+  } else {
+    throw new ApiError(400, `Outbound attachment is not supported for channel: ${channel}`);
+  }
+
+  const storedText = normalizedCaption ? `${normalizedCaption}\n${url}` : `[Imagen] ${url}`;
+  return persistSellerMessage({
+    ownerUserId,
+    conversationId,
+    channel,
+    text: storedText,
+    phone: recipient,
+  });
 };

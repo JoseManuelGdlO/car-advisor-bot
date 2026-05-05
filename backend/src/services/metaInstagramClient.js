@@ -46,3 +46,49 @@ export const sendInstagramTextMessage = async ({ pageId, pageAccessToken, recipi
     return { raw };
   }
 };
+
+/**
+ * Envía una imagen por Instagram Messaging API.
+ * @param {{ pageId: string; pageAccessToken: string; recipientIgsid: string; imageUrl: string; caption?: string }} params
+ */
+export const sendInstagramImageMessage = async ({ pageId, pageAccessToken, recipientIgsid, imageUrl, caption: _caption }) => {
+  const pid = String(pageId || "").trim();
+  const token = String(pageAccessToken || "").trim();
+  const to = String(recipientIgsid || "").trim();
+  const mediaUrl = String(imageUrl || "").trim();
+  if (!pid || !token || !to || !mediaUrl) throw new ApiError(400, "Missing Instagram image send parameters");
+
+  const url = `${graphBase()}/${encodeURIComponent(pid)}/messages`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      recipient: { id: to },
+      messaging_type: "RESPONSE",
+      message: {
+        attachment: {
+          type: "image",
+          payload: { url: mediaUrl },
+        },
+      },
+    }),
+  }).catch((err) => {
+    throw new ApiError(502, `Instagram Graph network error: ${err?.message || String(err)}`);
+  });
+
+  const raw = await response.text();
+  if (!response.ok) {
+    throw new ApiError(
+      response.status >= 500 ? 502 : response.status,
+      `Instagram Graph image send failed: ${String(raw).slice(0, 400)}`
+    );
+  }
+  try {
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return { raw };
+  }
+};

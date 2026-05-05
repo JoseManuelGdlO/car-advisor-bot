@@ -68,6 +68,16 @@ export const crmApi = {
   getClient: (token: string, id: string) => apiRequest(`/clients/${id}`, "GET", undefined, token),
   getConversations: (token: string) => apiRequest("/conversations", "GET", undefined, token),
   getConversationMessages: (token: string, id: string) => apiRequest(`/conversations/${id}/messages`, "GET", undefined, token),
+  sendConversationMessage: (token: string, id: string, payload: { text: string }) =>
+    apiRequest(`/conversations/${id}/messages`, "POST", payload, token),
+  sendConversationAttachment: (token: string, id: string, file: File, caption?: string) => {
+    const formData = new FormData();
+    formData.append("attachment", file);
+    if (caption?.trim()) formData.append("caption", caption.trim());
+    return apiRequestFormData(`/conversations/${id}/attachments`, formData, token);
+  },
+  setConversationControl: (token: string, id: string, payload: { isHumanControlled: boolean }) =>
+    apiRequest(`/conversations/${id}/control`, "PATCH", payload, token),
   getBotSettings: (token: string) => apiRequest<BotSettingsDto>("/bot/settings", "GET", undefined, token),
   updateBotSettings: (token: string, payload: Partial<BotSettingsDto>) => apiRequest<BotSettingsDto>("/bot/settings", "PATCH", payload, token),
   getVehicles: (token: string) => apiRequest("/vehicles", "GET", undefined, token),

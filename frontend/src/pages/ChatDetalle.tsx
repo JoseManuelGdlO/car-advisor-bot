@@ -6,6 +6,7 @@ import { ChannelIcon } from "@/components/ChannelIcon";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { crmApi } from "@/services/crm";
 import { toast } from "sonner";
 import {
@@ -30,6 +31,7 @@ type ChatClient = {
 type ConversationWithClient = {
   id: string;
   channel: string;
+  isHumanControlled?: boolean;
   client?: ChatClient;
 };
 
@@ -53,6 +55,7 @@ export default function ChatDetalle() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { token } = useAuth();
+  const queryClient = useQueryClient();
   const { data: conversations } = useQuery({
     queryKey: ["conversations"],
     queryFn: () => crmApi.getConversations(token!),
@@ -68,19 +71,14 @@ export default function ChatDetalle() {
   const [draft, setDraft] = useState("");
   const [emojiOpen, setEmojiOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const refreshConversationData = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["messages", id] }),
+      queryClient.invalidateQueries({ queryKey: ["conversations"] }),
+    ]);
+  };
 
-  if (!conv || !client) {
-    return (
-      <div className="p-6 text-center text-sm text-muted-foreground">
-        Chat no encontrado.
-        <button type="button" onClick={() => navigate(-1)} className="block mx-auto mt-3 text-primary font-semibold">
-          Volver
-        </button>
-      </div>
-    );
-  }
-
-  const telHref = buildTelHref(client.phone);
+  const telHref = buildTelHref(client?.phone);
 
   const handleCall = () => {
     if (!telHref) {
@@ -107,11 +105,48 @@ export default function ChatDetalle() {
     fileInputRef.current?.click();
   };
 
+  const sendMessageMutation = useMutation({
+    mutationFn: (text: string) => crmApi.sendConversationMessage(token!, id!, { text }),
+    onSuccess: async () => {
+      setDraft("");
+      await refreshConversationData();
+      toast.success("Mensaje enviado.");
+    },
+    onError: (error: Error) => toast.error(error.message || "No se pudo enviar el mensaje."),
+  });
+
+  const sendAttachmentMutation = useMutation({
+    mutationFn: (file: File) => crmApi.sendConversationAttachment(token!, id!, file),
+    onSuccess: async () => {
+      await refreshConversationData();
+      toast.success("Adjunto enviado.");
+    },
+    onError: (error: Error) => toast.error(error.message || "No se pudo enviar el adjunto."),
+  });
+
+  const controlMutation = useMutation({
+    mutationFn: (isHumanControlled: boolean) => crmApi.setConversationControl(token!, id!, { isHumanControlled }),
+    onSuccess: async (_data, isHumanControlled) => {
+      await refreshConversationData();
+      toast.success(isHumanControlled ? "Tomaste el control de la conversación." : "Devolviste el control al bot.");
+    },
+    onError: (error: Error) => toast.error(error.message || "No se pudo actualizar el control de la conversación."),
+  });
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    toast.success(`Archivo seleccionado: ${file.name}. El envío por canal se gestiona desde tu integración de WhatsApp.`);
+    if (!file.type.startsWith("image/")) {
+      toast.error("Solo se permiten imágenes para envío por canal.");
+      return;
+    }
+    const maxBytes = 8 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      toast.error("La imagen es muy grande. Máximo 8 MB.");
+      return;
+    }
+    sendAttachmentMutation.mutate(file);
   };
 
   const handleSend = async () => {
@@ -120,18 +155,24 @@ export default function ChatDetalle() {
       toast.error("Escribe un mensaje antes de enviar.");
       return;
     }
-    try {
-      await navigator.clipboard.writeText(text);
-      toast.success("Texto copiado. Pégalo en WhatsApp (o tu canal) para enviarlo al cliente.");
-      setDraft("");
-    } catch {
-      toast.message(text, { description: "Copia manualmente el texto si el portapapeles no está disponible." });
-    }
+    sendMessageMutation.mutate(text);
   };
 
   const handleTakeControl = () => {
-    toast.info("Tomaste el control de la conversación en la app. Configura el handoff en tu panel de bot cuando esté disponible.");
+    if (!conv) return;
+    controlMutation.mutate(!conv.isHumanControlled);
   };
+
+  if (!conv || !client) {
+    return (
+      <div className="p-6 text-center text-sm text-muted-foreground">
+        Chat no encontrado.
+        <button type="button" onClick={() => navigate(-1)} className="block mx-auto mt-3 text-primary font-semibold">
+          Volver
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -201,13 +242,16 @@ export default function ChatDetalle() {
       {/* Bot-active banner */}
       <div className="bg-info/10 border-b border-info/20 px-4 py-2 flex items-center gap-2">
         <Bot className="w-4 h-4 text-info shrink-0" />
-        <p className="text-xs text-foreground flex-1">El bot está respondiendo automáticamente</p>
+        <p className="text-xs text-foreground flex-1">
+          {conv.isHumanControlled ? "Control humano activo para esta conversación" : "El bot está respondiendo automáticamente"}
+        </p>
         <button
           type="button"
           onClick={handleTakeControl}
+          disabled={controlMutation.isPending}
           className="text-[11px] font-bold text-info uppercase touch-manipulation py-2 px-1"
         >
-          Tomar control
+          {controlMutation.isPending ? "Actualizando..." : conv.isHumanControlled ? "Devolver al bot" : "Tomar control"}
         </button>
       </div>
 
@@ -285,6 +329,7 @@ export default function ChatDetalle() {
           <button
             type="button"
             onClick={handleAttachClick}
+            disabled={sendAttachmentMutation.isPending}
             className="min-h-[44px] min-w-[44px] shrink-0 grid place-items-center text-muted-foreground touch-manipulation"
             aria-label="Adjuntar archivo"
           >
@@ -294,6 +339,7 @@ export default function ChatDetalle() {
         <button
           type="button"
           onClick={handleSend}
+          disabled={sendMessageMutation.isPending}
           className="min-h-[44px] min-w-[44px] shrink-0 grid place-items-center rounded-full bg-primary text-primary-foreground shadow-green touch-manipulation"
           aria-label="Enviar"
         >

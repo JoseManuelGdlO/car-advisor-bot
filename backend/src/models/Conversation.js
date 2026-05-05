@@ -34,5 +34,21 @@ export default function ConversationModel(sequelize) {
       type: DataTypes.DATE,
       field: "last_time",
     },
+    isHumanControlled: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      field: "is_human_controlled",
+    },
+    handoffAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: "handoff_at",
+    },
+    handoffByUserId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      field: "handoff_by_user_id",
+    },
   });
 }
