@@ -80,6 +80,7 @@ class ChatResponse(BaseModel):
     selected_car: str
     financing_plan: str
     promotion: str
+    bot_suppressed: bool = False
 
 
 class ResetRequest(BaseModel):
@@ -196,6 +197,22 @@ def chat(payload: ChatRequest) -> ChatResponse:
         # Evita crecimiento ilimitado del estado persistido.
         state["messages"] = messages[-MAX_MESSAGES_HISTORY:]
         previous_len = len(state["messages"])
+
+        if crm and crm.get("should_auto_reply") is False:
+            upsert_bot_session_state(
+                payload.user_id,
+                state,
+                platform=payload.platform,
+                conversation_id=conversation_id,
+            )
+            return ChatResponse(
+                reply="",
+                current_node=str(state.get("current_node", "start")),
+                selected_car=str(state.get("selected_car", "")),
+                financing_plan=str(state.get("selected_financing_plan_name", "")),
+                promotion=str(state.get("selected_promotion_title", "")),
+                bot_suppressed=True,
+            )
 
         updated_state = graph.invoke(state)
         updated_messages = list(updated_state.get("messages", []))

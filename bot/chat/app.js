@@ -122,7 +122,9 @@ class ChatInterface {
       const response = await this.sendToAPI(text, userId);
       this.hideTyping();
 
-      this.addBotReplyBlocks(response.reply || "Sin respuesta.");
+      if (!response.bot_suppressed) {
+        this.addBotReplyBlocks(response.reply || "Sin respuesta.");
+      }
       this.updateSessionInfo(response);
 
       this.setStatus("En línea", "#d1fae5");

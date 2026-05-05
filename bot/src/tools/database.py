@@ -192,7 +192,7 @@ def fetch_promotions_by_vehicle(vehicle_id: str) -> list[dict[str, Any]]:
     return _normalize_promotions_payload(response.json())
 
 
-def upsert_inbound_user_message(phone: str, message: str, platform: str = "web") -> dict[str, str] | None:
+def upsert_inbound_user_message(phone: str, message: str, platform: str = "web") -> dict[str, Any] | None:
     """Registra mensaje entrante en backend y retorna IDs CRM normalizados."""
 
     normalized_phone = str(phone).strip()
@@ -243,6 +243,8 @@ def upsert_inbound_user_message(phone: str, message: str, platform: str = "web")
         result = {"conversation_id": conv, "owner_user_id": owner}
         if lead:
             result["lead_id"] = lead
+        raw_should = data.get("shouldAutoReply")
+        result["should_auto_reply"] = True if not isinstance(raw_should, bool) else raw_should
         return result
     except requests.Timeout:
         logger.exception("Backend inbound upsert timeout")
