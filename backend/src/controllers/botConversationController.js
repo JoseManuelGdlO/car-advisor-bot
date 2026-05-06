@@ -64,7 +64,7 @@ export const botUpsertConversation = async (req, res) => {
   // Delega toda la lógica de persistencia a un servicio reutilizable por otros canales.
   // Este endpoint es la entrada oficial de eventos del bot/canales al CRM.
   const { user_id, platform, message, selected_car, customer_info, financing_selection, promotion_selection } = req.body;
-  const ownerUserId = env.bot.defaultOwnerUserId || req.auth.userId;
+  const ownerUserId = req.auth.userId || env.bot.defaultOwnerUserId;
   const normalizedPlatform = normalizeInboundChannel(platform || env.bot.defaultInboundChannel || "web");
   console.log("[botUpsertConversation] inbound event", {
     user_id: String(user_id || "").trim(),
