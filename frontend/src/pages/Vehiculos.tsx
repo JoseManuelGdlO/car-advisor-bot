@@ -3,7 +3,11 @@ import { Car, ChevronRight, Landmark, Tag } from "lucide-react";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { useAuth } from "@/context/AuthContext";
 import { useQuery } from "@tanstack/react-query";
-import { crmApi } from "@/services/crm";
+import { crmApi, type FinancingPlanDto, type VehicleDto } from "@/services/crm";
+
+type PromotionDto = {
+  active?: boolean;
+};
 
 const sections = [
   {
@@ -35,14 +39,22 @@ const sections = [
 export default function Vehiculos() {
   const navigate = useNavigate();
   const { token } = useAuth();
-  const { data: cars = [] } = useQuery({ queryKey: ["vehicles"], queryFn: () => crmApi.getVehicles(token!), enabled: Boolean(token) });
-  const { data: promos = [] } = useQuery({ queryKey: ["promotions"], queryFn: () => crmApi.getPromotions(token!), enabled: Boolean(token) });
-  const { data: financingPlans = [] } = useQuery({
-    queryKey: ["financing-plans"],
-    queryFn: () => crmApi.getFinancingPlans(token!),
+  const { data: cars = [] } = useQuery<VehicleDto[]>({
+    queryKey: ["vehicles"],
+    queryFn: () => crmApi.getVehicles(token!) as Promise<VehicleDto[]>,
     enabled: Boolean(token),
   });
-  const activePromos = promos.filter((p: { active?: boolean }) => p.active).length;
+  const { data: promos = [] } = useQuery<PromotionDto[]>({
+    queryKey: ["promotions"],
+    queryFn: () => crmApi.getPromotions(token!) as Promise<PromotionDto[]>,
+    enabled: Boolean(token),
+  });
+  const { data: financingPlans = [] } = useQuery<FinancingPlanDto[]>({
+    queryKey: ["financing-plans"],
+    queryFn: () => crmApi.getFinancingPlans(token!) as Promise<FinancingPlanDto[]>,
+    enabled: Boolean(token),
+  });
+  const activePromos = promos.filter((p) => p.active).length;
   const counts = [cars.length, financingPlans.length, activePromos];
 
   return (

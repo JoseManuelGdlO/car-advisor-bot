@@ -1,73 +1,33 @@
 import { apiRequest, apiRequestFormData } from "@/lib/api";
-
-export type FinancingRequirementDto = {
-  id: string;
-  title: string;
-  description: string;
-  ownerUserId: string;
-};
-
-export type FinancingPlanDto = {
-  id: string;
-  name: string;
-  lender: string;
-  rate: number;
-  maxTermMonths: number;
-  active: boolean;
-  showRate: boolean;
-  requirements?: FinancingRequirementDto[];
-  vehicles?: { id: string; brand: string; model: string; year: number }[];
-};
-
-export type VehicleDto = {
-  id: string;
-  brand: string;
-  model: string;
-  year: number;
-  price: number;
-  km: number;
-  transmission: string;
-  engine: string;
-  color: string;
-  status: "available" | "reserved" | "sold";
-  image: string;
-  imageUrls?: string[];
-  metadata?: Record<string, string | number | boolean>;
-  outboundPriority?: number;
-  financingPlans?: (FinancingPlanDto & { vehicle_financing_plans?: { customRate: number | null } })[];
-};
-
-export type BotScheduleRangeDto = {
-  start: string;
-  end: string;
-};
-
-export type BotWeeklyScheduleDto = {
-  monday: BotScheduleRangeDto[];
-  tuesday: BotScheduleRangeDto[];
-  wednesday: BotScheduleRangeDto[];
-  thursday: BotScheduleRangeDto[];
-  friday: BotScheduleRangeDto[];
-  saturday: BotScheduleRangeDto[];
-  sunday: BotScheduleRangeDto[];
-};
-
-export type BotSettingsDto = {
-  isEnabled: boolean;
-  timezone: string;
-  weeklySchedule: BotWeeklyScheduleDto;
-  tone: "formal" | "cercano" | "vendedor" | "tecnico";
-  emojiStyle: "nunca" | "pocos" | "frecuentes";
-  salesProactivity: "bajo" | "medio" | "alto";
-  customInstructions: string;
-};
+import type {
+  BotSettingsDto,
+  ClientDto,
+  ConversationDto,
+  ConversationMessageDto,
+  DashboardKpisDto,
+  FinancingPlanDto,
+  FinancingRequirementDto,
+} from "./crm.dto";
+export type {
+  BotScheduleRangeDto,
+  BotSettingsDto,
+  BotWeeklyScheduleDto,
+  ClientDto,
+  ConversationDto,
+  ConversationMessageDto,
+  DashboardKpisDto,
+  FinancingPlanDto,
+  FinancingRequirementDto,
+  VehicleDto,
+} from "./crm.dto";
 
 export const crmApi = {
-  getKpis: (token: string) => apiRequest("/dashboard/kpis", "GET", undefined, token),
-  getClients: (token: string) => apiRequest("/clients", "GET", undefined, token),
-  getClient: (token: string, id: string) => apiRequest(`/clients/${id}`, "GET", undefined, token),
-  getConversations: (token: string) => apiRequest("/conversations", "GET", undefined, token),
-  getConversationMessages: (token: string, id: string) => apiRequest(`/conversations/${id}/messages`, "GET", undefined, token),
+  getKpis: (token: string) => apiRequest<DashboardKpisDto>("/dashboard/kpis", "GET", undefined, token),
+  getClients: (token: string) => apiRequest<ClientDto[]>("/clients", "GET", undefined, token),
+  getClient: (token: string, id: string) => apiRequest<ClientDto>(`/clients/${id}`, "GET", undefined, token),
+  getConversations: (token: string) => apiRequest<ConversationDto[]>("/conversations", "GET", undefined, token),
+  getConversationMessages: (token: string, id: string) =>
+    apiRequest<ConversationMessageDto[]>(`/conversations/${id}/messages`, "GET", undefined, token),
   sendConversationMessage: (token: string, id: string, payload: { text: string }) =>
     apiRequest(`/conversations/${id}/messages`, "POST", payload, token),
   sendConversationAttachment: (token: string, id: string, file: File, caption?: string) => {

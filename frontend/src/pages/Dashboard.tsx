@@ -5,18 +5,31 @@ import { ScreenHeader } from "@/components/ScreenHeader";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { crmApi } from "@/services/crm";
+import type { DashboardKpisDto } from "@/services/crm";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+
+const DEFAULT_KPIS: DashboardKpisDto = {
+  activeChats: 0,
+  newToday: 0,
+  waiting: 0,
+  newLeads: 0,
+  newLeadsChange: 0,
+  conversions: 0,
+  conversionsChange: 0,
+  weeklyChats: [0, 0, 0, 0, 0, 0, 0],
+  topProducts: [],
+};
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const [notifOpen, setNotifOpen] = useState(false);
   const { token, user } = useAuth();
-  const { data: kpis } = useQuery({
+  const { data: kpis } = useQuery<DashboardKpisDto>({
     queryKey: ["kpis"],
     queryFn: () => crmApi.getKpis(token!),
     enabled: Boolean(token),
   });
-  const safeKpis = kpis || { activeChats: 0, newToday: 0, waiting: 0, newLeads: 0, newLeadsChange: 0, conversions: 0, conversionsChange: 0, weeklyChats: [0, 0, 0, 0, 0, 0, 0], topProducts: [] };
+  const safeKpis = kpis ?? DEFAULT_KPIS;
   const max = Math.max(...safeKpis.weeklyChats, 1);
   const days = ["L", "M", "X", "J", "V", "S", "D"];
   const hasNotifDot =

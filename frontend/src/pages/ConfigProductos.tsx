@@ -31,6 +31,48 @@ const formatPrice = (n: number) =>
   new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 0 }).format(n);
 const mediaBase = (import.meta.env.VITE_API_BASE_URL || "http://localhost:4000/api").replace(/\/api\/?$/, "");
 const toMediaUrl = (value: string) => (value.startsWith("http") ? value : `${mediaBase}${value}`);
+const vehicleEmojis = ["🚗", "🚙", "🚘", "🚕", "🚖", "🚐", "🚚", "🚛", "🛻", "🚜", "🏎️", "🚓", "🚑", "🚒", "🚌"];
+
+const parseMetadataInput = (raw: string): Record<string, string | number | boolean> => {
+  const text = raw.trim();
+  if (!text) return {};
+
+  // Compatibilidad con usuarios avanzados que prefieren JSON.
+  if (text.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, string | number | boolean>;
+      }
+    } catch {
+      return {};
+    }
+    return {};
+  }
+
+  const result: Record<string, string | number | boolean> = {};
+  const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
+  for (const line of lines) {
+    const separatorIndex = line.search(/[:=]/);
+    if (separatorIndex <= 0) continue;
+    const key = line.slice(0, separatorIndex).trim();
+    const rawValue = line.slice(separatorIndex + 1).trim();
+    if (!key || !rawValue) continue;
+
+    const lowerValue = rawValue.toLowerCase();
+    if (["true", "si", "sí", "yes"].includes(lowerValue)) {
+      result[key] = true;
+      continue;
+    }
+    if (["false", "no"].includes(lowerValue)) {
+      result[key] = false;
+      continue;
+    }
+    const numberValue = Number(rawValue);
+    result[key] = Number.isNaN(numberValue) ? rawValue : numberValue;
+  }
+  return result;
+};
 
 export default function ConfigProductos() {
   const { token } = useAuth();
@@ -129,14 +171,7 @@ export default function ConfigProductos() {
         description: form.description.trim(),
         image: form.image.trim() || "🚗",
         imageUrls: [...imageUrls, ...uploaded],
-        metadata: (() => {
-          if (!form.metadataText.trim()) return {};
-          try {
-            return JSON.parse(form.metadataText);
-          } catch {
-            return {};
-          }
-        })(),
+        metadata: parseMetadataInput(form.metadataText),
         outboundPriority: Number(form.outboundPriority || "0"),
       };
       if (editingId) {
@@ -228,59 +263,113 @@ export default function ConfigProductos() {
               </DialogHeader>
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-2">
-                  <Input placeholder="Marca" value={form.brand} onChange={(e) => setForm((s) => ({ ...s, brand: e.target.value }))} />
-                  <Input placeholder="Modelo" value={form.model} onChange={(e) => setForm((s) => ({ ...s, model: e.target.value }))} />
+                  <label className="space-y-1">
+                    <span className="text-xs font-semibold text-muted-foreground">Marca</span>
+                    <Input placeholder="Ej. Volkswagen" value={form.brand} onChange={(e) => setForm((s) => ({ ...s, brand: e.target.value }))} />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-xs font-semibold text-muted-foreground">Modelo</span>
+                    <Input placeholder="Ej. Tiguan Trendline" value={form.model} onChange={(e) => setForm((s) => ({ ...s, model: e.target.value }))} />
+                  </label>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <Input
-                    type="number"
-                    placeholder="Año"
-                    value={form.year}
-                    onChange={(e) => setForm((s) => ({ ...s, year: e.target.value }))}
-                  />
-                  <Input
-                    type="number"
-                    placeholder="Precio"
-                    value={form.price}
-                    onChange={(e) => setForm((s) => ({ ...s, price: e.target.value }))}
-                  />
+                  <label className="space-y-1">
+                    <span className="text-xs font-semibold text-muted-foreground">Año</span>
+                    <Input
+                      type="number"
+                      placeholder="Ej. 2022"
+                      value={form.year}
+                      onChange={(e) => setForm((s) => ({ ...s, year: e.target.value }))}
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-xs font-semibold text-muted-foreground">Precio</span>
+                    <Input
+                      type="number"
+                      placeholder="Ej. 629900"
+                      value={form.price}
+                      onChange={(e) => setForm((s) => ({ ...s, price: e.target.value }))}
+                    />
+                  </label>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <Input type="number" placeholder="KM" value={form.km} onChange={(e) => setForm((s) => ({ ...s, km: e.target.value }))} />
-                  <Input placeholder="Color" value={form.color} onChange={(e) => setForm((s) => ({ ...s, color: e.target.value }))} />
+                  <label className="space-y-1">
+                    <span className="text-xs font-semibold text-muted-foreground">Kilometraje (km)</span>
+                    <Input
+                      type="number"
+                      placeholder="Ej. 22000"
+                      value={form.km}
+                      onChange={(e) => setForm((s) => ({ ...s, km: e.target.value }))}
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-xs font-semibold text-muted-foreground">Color</span>
+                    <Input placeholder="Ej. Gris" value={form.color} onChange={(e) => setForm((s) => ({ ...s, color: e.target.value }))} />
+                  </label>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <Input
-                    placeholder="Transmisión"
-                    value={form.transmission}
-                    onChange={(e) => setForm((s) => ({ ...s, transmission: e.target.value }))}
-                  />
-                  <Input placeholder="Motor" value={form.engine} onChange={(e) => setForm((s) => ({ ...s, engine: e.target.value }))} />
+                  <label className="space-y-1">
+                    <span className="text-xs font-semibold text-muted-foreground">Transmisión</span>
+                    <Input
+                      placeholder="Ej. DSG"
+                      value={form.transmission}
+                      onChange={(e) => setForm((s) => ({ ...s, transmission: e.target.value }))}
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-xs font-semibold text-muted-foreground">Motor</span>
+                    <Input placeholder="Ej. 1.4L Turbo" value={form.engine} onChange={(e) => setForm((s) => ({ ...s, engine: e.target.value }))} />
+                  </label>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <Input placeholder="Emoji/imagen" value={form.image} onChange={(e) => setForm((s) => ({ ...s, image: e.target.value }))} />
-                  <Input
-                    type="number"
-                    placeholder="Prioridad envío"
-                    value={form.outboundPriority}
-                    onChange={(e) => setForm((s) => ({ ...s, outboundPriority: e.target.value }))}
-                  />
+                  <label className="space-y-1">
+                    <span className="text-xs font-semibold text-muted-foreground">Emoji del vehículo</span>
+                    <select
+                      value={form.image}
+                      onChange={(e) => setForm((s) => ({ ...s, image: e.target.value }))}
+                      className="h-10 rounded-md border border-input bg-background px-3 text-sm w-full"
+                    >
+                      {!vehicleEmojis.includes(form.image) ? (
+                        <option value={form.image}>{form.image || "🚗"}</option>
+                      ) : null}
+                      {vehicleEmojis.map((emoji) => (
+                        <option key={emoji} value={emoji}>
+                          {emoji}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-xs font-semibold text-muted-foreground">Prioridad de envío</span>
+                    <Input
+                      type="number"
+                      placeholder="Ej. 10"
+                      value={form.outboundPriority}
+                      onChange={(e) => setForm((s) => ({ ...s, outboundPriority: e.target.value }))}
+                    />
+                  </label>
                 </div>
-                <select
-                  value={form.status}
-                  onChange={(e) => setForm((s) => ({ ...s, status: e.target.value as CarStatus }))}
-                  className="h-10 rounded-md border border-input bg-background px-3 text-sm w-full"
-                >
-                  <option value="available">Disponible</option>
-                  <option value="reserved">Apartado</option>
-                  <option value="sold">Vendido</option>
-                </select>
-                <Input
-                  type="file"
-                  multiple
-                  accept="image/*"
-                  onChange={(e) => setSelectedFiles(Array.from(e.target.files || []))}
-                />
+                <label className="space-y-1 block">
+                  <span className="text-xs font-semibold text-muted-foreground">Estatus</span>
+                  <select
+                    value={form.status}
+                    onChange={(e) => setForm((s) => ({ ...s, status: e.target.value as CarStatus }))}
+                    className="h-10 rounded-md border border-input bg-background px-3 text-sm w-full"
+                  >
+                    <option value="available">Disponible</option>
+                    <option value="reserved">Apartado</option>
+                    <option value="sold">Vendido</option>
+                  </select>
+                </label>
+                <label className="space-y-1 block">
+                  <span className="text-xs font-semibold text-muted-foreground">Imágenes</span>
+                  <Input
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    onChange={(e) => setSelectedFiles(Array.from(e.target.files || []))}
+                  />
+                </label>
                 <p className="text-xs text-muted-foreground">
                   {selectedFiles.length ? `${selectedFiles.length} imagen(es) seleccionadas para subir al servidor/autobot` : "Sin imágenes seleccionadas"}
                 </p>
@@ -304,16 +393,27 @@ export default function ConfigProductos() {
                     ))}
                   </div>
                 ) : null}
-                <Textarea
-                  placeholder={'Metadata JSON opcional (ej: {"owner":"agencia","featured":true})'}
-                  value={form.metadataText}
-                  onChange={(e) => setForm((s) => ({ ...s, metadataText: e.target.value }))}
-                />
-                <Textarea
-                  placeholder="Descripción (opcional)"
-                  value={form.description}
-                  onChange={(e) => setForm((s) => ({ ...s, description: e.target.value }))}
-                />
+                <label className="space-y-1 block">
+                  <span className="text-xs font-semibold text-muted-foreground">Datos adicionales (opcional)</span>
+                  <Textarea
+                    placeholder={`Ejemplos:
+Dueño: Agencia
+Versión: Highline`}
+                    value={form.metadataText}
+                    onChange={(e) => setForm((s) => ({ ...s, metadataText: e.target.value }))}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Escribe un dato por renglón usando "Clave: valor". Si prefieres, también puedes pegar JSON.
+                  </p>
+                </label>
+                <label className="space-y-1 block">
+                  <span className="text-xs font-semibold text-muted-foreground">Descripción (opcional)</span>
+                  <Textarea
+                    placeholder="Agrega detalles del vehículo"
+                    value={form.description}
+                    onChange={(e) => setForm((s) => ({ ...s, description: e.target.value }))}
+                  />
+                </label>
                 <Button
                   onClick={saveVehicle}
                   className="w-full"
