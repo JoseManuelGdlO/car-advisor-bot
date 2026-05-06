@@ -17,6 +17,19 @@ const channelFilters: { key: "all" | Channel; label: string }[] = [
   { key: "instagram", label: "Instagram" },
 ];
 
+const formatDateTime = (value: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("es-MX", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+};
+
 export default function Conversaciones() {
   const navigate = useNavigate();
   const { token } = useAuth();
@@ -86,7 +99,7 @@ export default function Conversaciones() {
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-semibold text-sm truncate">{c.client.name}</p>
                   <span className={cn("text-[10px] shrink-0", c.unread > 0 ? "text-primary font-bold" : "text-muted-foreground")}>
-                    {c.lastTime}
+                    {formatDateTime(c.lastTime)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-2 mt-0.5">
