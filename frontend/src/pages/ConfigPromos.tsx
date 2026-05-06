@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Plus, Tag, Calendar, Pencil } from "lucide-react";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Checkbox } from "@/components/ui/checkbox";
 
 export default function ConfigPromos() {
+  const [searchParams] = useSearchParams();
   const { token } = useAuth();
   const queryClient = useQueryClient();
   const { data = [] } = useQuery({ queryKey: ["promotions"], queryFn: () => crmApi.getPromotions(token!), enabled: Boolean(token) });
@@ -28,6 +30,14 @@ export default function ConfigPromos() {
     vehicleIds: [] as string[],
   });
   const source = items.length ? items : (data as any[]);
+  const focusedPromotionId = searchParams.get("promotionId");
+
+  useEffect(() => {
+    if (!focusedPromotionId) return;
+    const element = document.getElementById(`promotion-${focusedPromotionId}`);
+    if (!element) return;
+    element.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [focusedPromotionId, source.length]);
 
   const toggle = (id: string) =>
     setItems((arr) => {
@@ -158,10 +168,12 @@ export default function ConfigPromos() {
       <ul className="px-4 py-4 space-y-3">
         {source.map((p) => (
           <li
+            id={`promotion-${p.id}`}
             key={p.id}
             className={cn(
               "bg-card rounded-2xl shadow-card border overflow-hidden transition-opacity",
-              p.active ? "border-border" : "border-border opacity-60"
+              p.active ? "border-border" : "border-border opacity-60",
+              focusedPromotionId === p.id ? "ring-2 ring-primary/60" : ""
             )}
           >
             <div className={cn("h-1.5", p.active ? "bg-gradient-primary" : "bg-muted")} />

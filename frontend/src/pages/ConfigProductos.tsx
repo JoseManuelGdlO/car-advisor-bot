@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { ArrowDown, ArrowUp, Check, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { Button } from "@/components/ui/button";
@@ -75,6 +76,7 @@ const parseMetadataInput = (raw: string): Record<string, string | number | boole
 };
 
 export default function ConfigProductos() {
+  const [searchParams] = useSearchParams();
   const { token } = useAuth();
   const queryClient = useQueryClient();
   const { data } = useQuery({ queryKey: ["vehicles"], queryFn: () => crmApi.getVehicles(token!), enabled: Boolean(token) });
@@ -108,6 +110,7 @@ export default function ConfigProductos() {
     metadataText: "",
     outboundPriority: "0",
   });
+  const focusedVehicleId = searchParams.get("vehicleId");
 
   const list = useMemo(() => {
     return cars.filter((c) => {
@@ -116,6 +119,13 @@ export default function ConfigProductos() {
       return okF && okQ;
     });
   }, [cars, filter, q]);
+
+  useEffect(() => {
+    if (!focusedVehicleId) return;
+    const element = document.getElementById(`vehicle-${focusedVehicleId}`);
+    if (!element) return;
+    element.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [focusedVehicleId, list.length]);
 
   const togglePlanForVehicle = async (vehicleId: string, planId: string, selected: boolean) => {
     if (!token) return;
@@ -459,7 +469,14 @@ Versión: Highline`}
 
       <div className="px-4 py-4 grid grid-cols-2 gap-3">
         {list.map((c) => (
-          <div key={c.id} className="bg-card rounded-2xl shadow-card border border-border overflow-hidden">
+          <div
+            id={`vehicle-${c.id}`}
+            key={c.id}
+            className={cn(
+              "bg-card rounded-2xl shadow-card border border-border overflow-hidden",
+              focusedVehicleId === c.id ? "ring-2 ring-primary/60" : ""
+            )}
+          >
             <div className="aspect-[4/3] bg-gradient-soft grid place-items-center text-5xl">
               {c.imageUrls?.[0] ? (
                 <img src={toMediaUrl(c.imageUrls[0])} alt={`${c.brand} ${c.model}`} className="w-full h-full object-cover" />

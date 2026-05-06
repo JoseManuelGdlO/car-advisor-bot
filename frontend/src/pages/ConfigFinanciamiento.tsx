@@ -1,4 +1,5 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Landmark, Pencil, Plus, Trash2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ScreenHeader } from "@/components/ScreenHeader";
@@ -30,6 +31,7 @@ const emptyForm: PlanFormState = {
 };
 
 export default function ConfigFinanciamiento() {
+  const [searchParams] = useSearchParams();
   const { token } = useAuth();
   const queryClient = useQueryClient();
   const [form, setForm] = useState<PlanFormState>(emptyForm);
@@ -50,8 +52,16 @@ export default function ConfigFinanciamiento() {
     enabled: Boolean(token),
   });
   const plans = plansData as FinancingPlanDto[];
+  const focusedPlanId = searchParams.get("planId");
 
   const title = useMemo(() => (form.id ? "Editar plan" : "Nuevo plan"), [form.id]);
+
+  useEffect(() => {
+    if (!focusedPlanId) return;
+    const element = document.getElementById(`plan-${focusedPlanId}`);
+    if (!element) return;
+    element.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [focusedPlanId, plans.length]);
 
   const resetForm = () => setForm(emptyForm);
 
@@ -178,7 +188,13 @@ export default function ConfigFinanciamiento() {
 
         <ul className="space-y-3">
           {plans.map((plan) => (
-            <li key={plan.id} className="bg-card rounded-2xl border border-border p-4 shadow-card">
+            <li
+              id={`plan-${plan.id}`}
+              key={plan.id}
+              className={`bg-card rounded-2xl border border-border p-4 shadow-card ${
+                focusedPlanId === plan.id ? "ring-2 ring-primary/60" : ""
+              }`}
+            >
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="font-bold text-sm flex items-center gap-2">
