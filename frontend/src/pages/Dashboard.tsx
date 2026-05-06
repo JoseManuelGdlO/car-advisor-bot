@@ -30,8 +30,14 @@ export default function Dashboard() {
     enabled: Boolean(token),
   });
   const safeKpis = kpis ?? DEFAULT_KPIS;
-  const max = Math.max(...safeKpis.weeklyChats, 1);
+  const weeklyChats = Array.from({ length: 7 }, (_, i) => safeKpis.weeklyChats[i] ?? 0);
+  const max = Math.max(...weeklyChats, 1);
   const days = ["L", "M", "X", "J", "V", "S", "D"];
+  const currentWeekTotal = weeklyChats.reduce((acc, value) => acc + value, 0);
+  const yesterdayChats = weeklyChats[weeklyChats.length - 2] ?? 0;
+  const todayChats = weeklyChats[weeklyChats.length - 1] ?? 0;
+  const weeklyTrendPct = yesterdayChats > 0 ? Math.round(((todayChats - yesterdayChats) / yesterdayChats) * 100) : 0;
+  const hasWeeklyData = currentWeekTotal > 0;
   const hasNotifDot =
     safeKpis.waiting > 0 || safeKpis.newToday > 0 || safeKpis.newLeads > 0 || safeKpis.activeChats > 0;
 
@@ -115,21 +121,32 @@ export default function Dashboard() {
               <h3 className="text-sm font-bold text-foreground">Conversaciones por día</h3>
               <p className="text-xs text-muted-foreground">Últimos 7 días</p>
             </div>
-            <div className="flex items-center gap-1 text-success text-xs font-semibold bg-success/10 px-2 py-1 rounded-full">
-              <TrendingUp className="w-3 h-3" />
-              +18%
-            </div>
+            {hasWeeklyData ? (
+              <div
+                className={`flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full ${
+                  weeklyTrendPct >= 0 ? "text-success bg-success/10" : "text-warning bg-warning/10"
+                }`}
+              >
+                {weeklyTrendPct >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                {weeklyTrendPct >= 0 ? `+${weeklyTrendPct}%` : `${weeklyTrendPct}%`}
+              </div>
+            ) : (
+              <div className="text-[11px] text-muted-foreground bg-muted px-2 py-1 rounded-full">Sin datos</div>
+            )}
           </div>
           <div className="flex items-end justify-between gap-2 h-28">
-            {safeKpis.weeklyChats.map((v: number, i: number) => {
+            {weeklyChats.map((v: number, i: number) => {
               const h = (v / max) * 100;
-              const isLast = i === safeKpis.weeklyChats.length - 1;
+              const isLast = i === weeklyChats.length - 1;
+              const height = v === 0 ? 8 : Math.max(h, 12);
               return (
-                <div key={i} className="flex-1 flex flex-col items-center gap-2">
-                  <div
-                    className={`w-full rounded-t-md transition-all ${isLast ? "bg-gradient-primary" : "bg-primary/30"}`}
-                    style={{ height: `${h}%` }}
-                  />
+                <div key={i} className="flex-1 h-full flex flex-col items-center gap-2">
+                  <div className="w-full h-full flex items-end">
+                    <div
+                      className={`w-full rounded-t-md transition-all ${isLast ? "bg-gradient-primary" : "bg-primary/30"}`}
+                      style={{ height: `${height}%` }}
+                    />
+                  </div>
                   <span className={`text-[10px] font-medium ${isLast ? "text-primary-dark font-bold" : "text-muted-foreground"}`}>
                     {days[i]}
                   </span>
@@ -149,7 +166,7 @@ export default function Dashboard() {
             {safeKpis.topProducts.map((p: { name: string; queries: number }, i: number) => {
               const pct = safeKpis.topProducts[0]?.queries ? (p.queries / safeKpis.topProducts[0].queries) * 100 : 0;
               return (
-                <li key={p.name}>
+                <li key={`${p.name}-${i}`}>
                   <div className="flex items-center justify-between text-xs mb-1">
                     <span className="font-medium text-foreground flex items-center gap-2">
                       <span className="w-5 h-5 rounded-full bg-accent text-accent-foreground grid place-items-center text-[10px] font-bold">

@@ -34,16 +34,13 @@ type SellerNotesJson = {
   };
 };
 
-function parseSellerNotes(notes: string) {
+function parseSellerNotes(notes: string): SellerNotesJson | null {
   try {
-    const parsed = JSON.parse(notes) as SellerNotesJson;
-    if (parsed && typeof parsed === "object") {
-      return parsed;
-    }
+    const parsed = JSON.parse(notes);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as SellerNotesJson) : null;
   } catch {
     return null;
   }
-  return null;
 }
 
 function buildVehicleHref(vehicleId?: string) {

@@ -24,29 +24,28 @@ const FAQ_QUESTIONS = [
 
 module.exports = {
   async up(queryInterface) {
-    try {
-      const now = new Date();
+    const now = new Date();
 
-      await queryInterface.bulkDelete("faqs", {
-        owner_user_id: OWNER_USER_ID,
-        question: FAQ_QUESTIONS,
-      });
-      await queryInterface.bulkDelete("promotions", {
-        owner_user_id: OWNER_USER_ID,
-        title: PROMOTION_TITLES,
-      });
-      await queryInterface.bulkDelete("financing_plans", {
-        owner_user_id: OWNER_USER_ID,
-        name: PLAN_NAMES,
-      });
-      await queryInterface.bulkDelete("vehicles", {
-        owner_user_id: OWNER_USER_ID,
-        model: VEHICLE_MODELS,
-      });
+    await queryInterface.bulkDelete("faqs", {
+      owner_user_id: OWNER_USER_ID,
+      question: FAQ_QUESTIONS,
+    });
+    await queryInterface.bulkDelete("promotions", {
+      owner_user_id: OWNER_USER_ID,
+      title: PROMOTION_TITLES,
+    });
+    await queryInterface.bulkDelete("financing_plans", {
+      owner_user_id: OWNER_USER_ID,
+      name: PLAN_NAMES,
+    });
+    await queryInterface.bulkDelete("vehicles", {
+      owner_user_id: OWNER_USER_ID,
+      model: VEHICLE_MODELS,
+    });
 
-      await queryInterface.bulkInsert("vehicles", [
+    await queryInterface.bulkInsert("vehicles", [
       {
-          id: randomUUID(),
+        id: randomUUID(),
         owner_user_id: OWNER_USER_ID,
         brand: "Toyota",
         model: "Corolla LE",
@@ -66,7 +65,7 @@ module.exports = {
         updated_at: now,
       },
       {
-          id: randomUUID(),
+        id: randomUUID(),
         owner_user_id: OWNER_USER_ID,
         brand: "Toyota",
         model: "RAV4 XLE",
@@ -86,7 +85,7 @@ module.exports = {
         updated_at: now,
       },
       {
-          id: randomUUID(),
+        id: randomUUID(),
         owner_user_id: OWNER_USER_ID,
         brand: "Nissan",
         model: "Versa Advance",
@@ -106,7 +105,7 @@ module.exports = {
         updated_at: now,
       },
       {
-          id: randomUUID(),
+        id: randomUUID(),
         owner_user_id: OWNER_USER_ID,
         brand: "Nissan",
         model: "Kicks Exclusive",
@@ -126,7 +125,7 @@ module.exports = {
         updated_at: now,
       },
       {
-          id: randomUUID(),
+        id: randomUUID(),
         owner_user_id: OWNER_USER_ID,
         brand: "Mazda",
         model: "Mazda 3 i Touring",
@@ -146,7 +145,7 @@ module.exports = {
         updated_at: now,
       },
       {
-          id: randomUUID(),
+        id: randomUUID(),
         owner_user_id: OWNER_USER_ID,
         brand: "Mazda",
         model: "CX-5 Grand Touring",
@@ -166,7 +165,7 @@ module.exports = {
         updated_at: now,
       },
       {
-          id: randomUUID(),
+        id: randomUUID(),
         owner_user_id: OWNER_USER_ID,
         brand: "Volkswagen",
         model: "Jetta Comfortline",
@@ -186,7 +185,7 @@ module.exports = {
         updated_at: now,
       },
       {
-          id: randomUUID(),
+        id: randomUUID(),
         owner_user_id: OWNER_USER_ID,
         brand: "Volkswagen",
         model: "Tiguan Trendline",
@@ -205,25 +204,25 @@ module.exports = {
         created_at: now,
         updated_at: now,
       },
-      ]);
+    ]);
 
-      const insertedVehicles = await queryInterface.sequelize.query(
-        `SELECT id, model
+    const insertedVehicles = await queryInterface.sequelize.query(
+      `SELECT id, model
          FROM vehicles
          WHERE owner_user_id = :ownerUserId`,
-        {
-          replacements: { ownerUserId: OWNER_USER_ID },
-          type: QueryTypes.SELECT,
-        },
-      );
+      {
+        replacements: { ownerUserId: OWNER_USER_ID },
+        type: QueryTypes.SELECT,
+      },
+    );
 
-      const vehicleIdsByModel = new Map(
-        insertedVehicles
-          .filter((vehicle) => VEHICLE_MODELS.includes(vehicle.model))
-          .map((vehicle) => [vehicle.model, vehicle.id]),
-      );
+    const vehicleIdsByModel = new Map(
+      insertedVehicles
+        .filter((vehicle) => VEHICLE_MODELS.includes(vehicle.model))
+        .map((vehicle) => [vehicle.model, vehicle.id]),
+    );
 
-      await queryInterface.bulkInsert("financing_plans", [
+    await queryInterface.bulkInsert("financing_plans", [
       {
         id: randomUUID(),
         owner_user_id: OWNER_USER_ID,
@@ -260,9 +259,9 @@ module.exports = {
         created_at: now,
         updated_at: now,
       },
-      ]);
+    ]);
 
-      await queryInterface.bulkInsert("promotions", [
+    await queryInterface.bulkInsert("promotions", [
       {
         id: randomUUID(),
         owner_user_id: OWNER_USER_ID,
@@ -309,9 +308,9 @@ module.exports = {
         created_at: now,
         updated_at: now,
       },
-      ]);
+    ]);
 
-      await queryInterface.bulkInsert("faqs", [
+    await queryInterface.bulkInsert("faqs", [
       {
         id: randomUUID(),
         owner_user_id: OWNER_USER_ID,
@@ -339,10 +338,7 @@ module.exports = {
         created_at: now,
         updated_at: now,
       },
-      ]);
-    } catch (error) {
-      throw error;
-    }
+    ]);
   },
 
   async down(queryInterface) {
