@@ -44,7 +44,6 @@ module.exports = {
         model: VEHICLE_MODELS,
       });
 
-      console.log("[seed demo-catalog] inserting vehicles");
       await queryInterface.bulkInsert("vehicles", [
       {
           id: randomUUID(),
@@ -208,7 +207,6 @@ module.exports = {
       },
       ]);
 
-      console.log("[seed demo-catalog] loading inserted vehicle ids");
       const insertedVehicles = await queryInterface.sequelize.query(
         `SELECT id, model
          FROM vehicles
@@ -225,7 +223,6 @@ module.exports = {
           .map((vehicle) => [vehicle.model, vehicle.id]),
       );
 
-      console.log("[seed demo-catalog] inserting financing_plans");
       await queryInterface.bulkInsert("financing_plans", [
       {
         id: randomUUID(),
@@ -265,7 +262,6 @@ module.exports = {
       },
       ]);
 
-      console.log("[seed demo-catalog] inserting promotions");
       await queryInterface.bulkInsert("promotions", [
       {
         id: randomUUID(),
@@ -315,7 +311,6 @@ module.exports = {
       },
       ]);
 
-      console.log("[seed demo-catalog] inserting faqs");
       await queryInterface.bulkInsert("faqs", [
       {
         id: randomUUID(),
@@ -346,9 +341,6 @@ module.exports = {
       },
       ]);
     } catch (error) {
-      console.error("[seed demo-catalog] detailed error:", error);
-      if (error?.parent) console.error("[seed demo-catalog] parent:", error.parent);
-      if (error?.errors) console.error("[seed demo-catalog] errors:", error.errors);
       throw error;
     }
   },
