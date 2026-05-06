@@ -6,7 +6,7 @@ Este documento define el diagrama de estados del flujo conversacional actual.
 
 - `intent_checker`: detecta si la entrada interrumpe un flujo activo con FAQ.
 - `router`: clasifica la intencion principal y decide nodo destino.
-- `car_selection`: explora catalogo, filtra y permite avanzar a compra.
+- `car_selection`: explora catalogo, filtra, compara dos vehiculos (sin cambiar `selected_vehicle_id` hasta nueva eleccion) y permite avanzar a compra.
 - `financing`: consulta planes financieros y cruza con vehiculos.
 - `promotions`: consulta promociones y cruza con vehiculos aplicables.
 - `lead_capture`: captura nombre, telefono y email para notificar al asesor.

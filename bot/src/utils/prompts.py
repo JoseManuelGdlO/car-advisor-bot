@@ -447,16 +447,58 @@ def build_vehicle_step_flags_prompt(
         f"{system_prompt}\n\n"
         "CLASIFICADOR_FLAGS_PASO_VEHICULO:\n"
         "Analiza el mensaje del usuario y responde SOLO con JSON de una linea con estas claves booleanas exactas:\n"
-        '{ "ask_promotions": <bool>, "ask_financing": <bool>, "ask_more_images": <bool>, "wants_other_vehicles": <bool>, "confirm_purchase": <bool>, "reject_purchase": <bool> }\n'
+        '{ "ask_promotions": <bool>, "ask_financing": <bool>, "ask_more_images": <bool>, '
+        '"wants_compare_two_vehicles": <bool>, "wants_other_vehicles": <bool>, "confirm_purchase": <bool>, "reject_purchase": <bool> }\n'
         "Reglas:\n"
+        "- wants_compare_two_vehicles=true cuando quiere comparar dos carros (compara, vs, diferencias, cual conviene mas, "
+        "entre X y Y, este contra otro modelo, compara con otro que nombra por marca/modelo, etc.).\n"
         "- ask_promotions=true cuando pide promociones/ofertas/descuentos para el vehiculo actual o en general.\n"
         "- ask_financing=true cuando pide credito/financiamiento/tasa/plazo/mensualidades.\n"
         "- ask_more_images=true cuando pide mas fotos/imagenes del vehiculo actual.\n"
-        "- wants_other_vehicles=true cuando quiere ver otro modelo/u otro carro/catalogo.\n"
+        "- wants_other_vehicles=true cuando quiere ver otro modelo/u otro carro/catalogo sin pedir comparacion explícita.\n"
+        "- wants_other_vehicles=false si solo pide datos/ficha/informacion/especificaciones/caracteristicas del modelo o vehiculo "
+        "ya mostrado (ej. 'dame los datos del modelo', 'muestrame la ficha') sin pedir otro carro ni el catalogo.\n"
         "- confirm_purchase=true cuando confirma avanzar o comprar el vehiculo actual.\n"
         "- reject_purchase=true cuando rechaza comprar el vehiculo actual.\n"
         "- Si faltan señales claras, usa false en esas claves.\n\n"
         f"Vehiculo actual: {vehicle}\n"
+        f"Mensaje previo del bot: {previous}\n"
+        f"Mensaje del usuario: {current}\n"
+    )
+
+
+def build_vehicle_comparison_extract_prompt(
+    *,
+    previous_bot_message: str,
+    user_message: str,
+    selected_vehicle_name: str,
+    numbered_candidate_lines: str,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Extrae intencion de comparar y consultas para dos vehiculos (JSON)."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    previous = previous_bot_message.strip() or "(sin mensaje previo)"
+    current = user_message.strip() or "(mensaje vacio)"
+    vehicle = selected_vehicle_name.strip() or "(sin vehiculo seleccionado)"
+    candidates = numbered_candidate_lines.strip() or "(sin lista numerada reciente)"
+    return (
+        f"{system_prompt}\n\n"
+        "EXTRACTOR_COMPARACION_VEHICULOS:\n"
+        "Responde SOLO con JSON de una linea con estas claves exactas:\n"
+        '{ "wants_compare": <bool>, "query_left": <string>, "query_right": <string>, '
+        '"use_selected_as_left": <bool>, "use_candidate_indices": <bool>, '
+        '"index_left": <number|null>, "index_right": <number|null> }\n'
+        "Reglas:\n"
+        "- wants_compare=true si el usuario quiere comparar dos vehiculos o ver diferencias entre dos modelos.\n"
+        "- use_selected_as_left=true cuando el primer vehiculo es el que ya esta en contexto (vehiculo actual) y el usuario "
+        "nombra solo el otro (ej. compara con el que dije antes, vs el de la lista). Entonces query_left debe ser \"\".\n"
+        "- query_left y query_right: texto corto para buscar en inventario (marca modelo año). Vacio si no aplica.\n"
+        "- use_candidate_indices=true SOLO si hay lista numerada reciente y el usuario elige por numero (ej. compara 1 y 3, el 2 vs 4).\n"
+        "- index_left e index_right: numeros 1-based alineados con la lista numerada; null si no usa indices.\n"
+        "- Si no es comparacion, wants_compare=false y deja strings vacios y indices null.\n\n"
+        f"Vehiculo actual (si aplica): {vehicle}\n"
+        f"Lista numerada reciente (si aplica):\n{candidates}\n\n"
         f"Mensaje previo del bot: {previous}\n"
         f"Mensaje del usuario: {current}\n"
     )
@@ -476,11 +518,13 @@ def build_promotions_step_flags_prompt(
         f"{system_prompt}\n\n"
         "CLASIFICADOR_FLAGS_PROMOTIONS:\n"
         "Responde SOLO con JSON de una linea con estas claves booleanas exactas:\n"
-        '{ "ask_financing": <bool>, "ask_other_vehicles": <bool>, "ask_promotions": <bool>, "confirm_yes": <bool>, "confirm_no": <bool> }\n'
+        '{ "ask_financing": <bool>, "ask_other_vehicles": <bool>, "ask_promotions": <bool>, '
+        '"wants_compare_two_promotions": <bool>, "confirm_yes": <bool>, "confirm_no": <bool> }\n'
         "Reglas:\n"
         "- ask_financing=true cuando pide planes/tasas/credito.\n"
         "- ask_other_vehicles=true cuando pide ver otros carros/modelos/catalogo.\n"
         "- ask_promotions=true cuando sigue en tema promociones (listar/ver/consultar).\n"
+        "- wants_compare_two_promotions=true cuando pide comparar dos promociones u ofertas (compara la 1 y la 2, diferencias entre promos).\n"
         "- confirm_yes=true cuando confirma afirmativamente una pregunta de decision.\n"
         "- confirm_no=true cuando responde negativamente una pregunta de decision.\n"
         "- Si no aplica, deja false.\n\n"
@@ -508,24 +552,89 @@ def build_financing_step_flags_prompt(
         f"{system_prompt}\n\n"
         "CLASIFICADOR_FLAGS_FINANCING_STEP:\n"
         "Responde SOLO con JSON de una linea con estas claves booleanas exactas:\n"
-        '{ "reject_financing_keep_purchase": <bool>, "ask_explicit_plan": <bool> }\n'
+        '{ "reject_financing_keep_purchase": <bool>, "ask_explicit_plan": <bool>, "wants_compare_two_plans": <bool> }\n'
         "Contexto de negocio:\n"
         "- Estamos en el nodo financing, esperando seleccion explicita de un plan.\n"
         "- Si el usuario rechaza los planes pero mantiene intencion de compra del vehiculo actual, "
         "entonces reject_financing_keep_purchase=true.\n"
         "- Si el usuario sigue ambiguo o no confirma compra sin plan, ask_explicit_plan=true.\n"
+        "- wants_compare_two_plans=true cuando pide comparar dos planes de financiamiento (compara plan 1 y 2, diferencias entre planes, vs, "
+        "cual conviene mas, en que se diferencian X y Y, ventajas de un plan sobre otro).\n"
+        "- wants_compare_two_plans=true si en un solo mensaje nombra o alude claramente a DOS planes distintos para contrastarlos "
+        "(ej. menciona dos nombres o apodos de plan distintos, o 'diferencias entre el plan de la fila 1 y el de la fila 3'). "
+        "En ese caso NO es seleccion de un solo plan: quiere comparacion.\n"
         "Reglas criticas:\n"
         "- reject_financing_keep_purchase=true cuando haya rechazo claro de planes "
         "(ej. no me interesa ninguno, sin financiamiento, no quiero plan) y al mismo tiempo intencion de compra "
         "del carro actual (ej. solo quiero comprar el carro, si quiero ese carro).\n"
         "- Si no hay evidencia de ambas cosas a la vez, usa reject_financing_keep_purchase=false.\n"
-        "- ask_explicit_plan=false solo cuando reject_financing_keep_purchase=true.\n\n"
+        "- ask_explicit_plan=false solo cuando reject_financing_keep_purchase=true.\n"
+        "- Si wants_compare_two_plans=true, pon ask_explicit_plan=false salvo que tambien sea ambiguo sin numeros.\n\n"
         f"awaiting_plan_selection: {str(awaiting_plan_selection).lower()}\n"
         f"has_selected_vehicle: {str(has_selected_vehicle).lower()}\n"
         f"has_selected_promotion: {str(has_selected_promotion).lower()}\n"
         f"vehiculo_actual: {vehicle}\n"
         f"mensaje_previo_bot: {previous}\n"
         f"mensaje_usuario: {current}\n"
+    )
+
+
+def build_financing_plan_comparison_extract_prompt(
+    *,
+    previous_bot_message: str,
+    user_message: str,
+    numbered_plan_lines: str,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Extrae indices o nombres de dos planes a comparar."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    previous = previous_bot_message.strip() or "(sin mensaje previo)"
+    current = user_message.strip() or "(mensaje vacio)"
+    lines = numbered_plan_lines.strip() or "(sin lista numerada)"
+    return (
+        f"{system_prompt}\n\n"
+        "EXTRACTOR_COMPARACION_PLANES:\n"
+        "Responde SOLO con JSON de una linea:\n"
+        '{ "wants_compare": <bool>, "index_left": <number|null>, "index_right": <number|null>, '
+        '"name_left": <string>, "name_right": <string> }\n'
+        "Reglas:\n"
+        "- wants_compare=true si el usuario quiere comparar dos planes listados o contrastar dos opciones de credito "
+        "(diferencias, en que se diferencian, cual es mejor, vs, o typos como 'difetencian').\n"
+        "- index_left/index_right: numeros 1-based segun la lista numerada; null si usa nombres.\n"
+        "- name_left/name_right: fragmento corto del nombre de cada plan tal como lo dijo el usuario "
+        "(debe alinearse con los textos en 'Planes listados', sin inventar nombres); vacio si usa indices.\n"
+        "- Si el mensaje solo elige UN plan sin pedir comparacion, wants_compare=false.\n"
+        "- Si no es comparacion, wants_compare=false y null/ vacios.\n\n"
+        f"Planes listados:\n{lines}\n\n"
+        f"Mensaje previo del bot: {previous}\n"
+        f"Mensaje del usuario: {current}\n"
+    )
+
+
+def build_promotion_comparison_extract_prompt(
+    *,
+    previous_bot_message: str,
+    user_message: str,
+    numbered_promotion_lines: str,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Extrae indices o titulos de dos promociones a comparar."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    previous = previous_bot_message.strip() or "(sin mensaje previo)"
+    current = user_message.strip() or "(mensaje vacio)"
+    lines = numbered_promotion_lines.strip() or "(sin lista numerada)"
+    return (
+        f"{system_prompt}\n\n"
+        "EXTRACTOR_COMPARACION_PROMOCIONES:\n"
+        "Responde SOLO con JSON de una linea:\n"
+        '{ "wants_compare": <bool>, "index_left": <number|null>, "index_right": <number|null>, '
+        '"title_left": <string>, "title_right": <string> }\n'
+        "Reglas analogas a planes: indices 1-based o titulos parciales; vacio si no aplica.\n\n"
+        f"Promociones listadas:\n{lines}\n\n"
+        f"Mensaje previo del bot: {previous}\n"
+        f"Mensaje del usuario: {current}\n"
     )
 
 

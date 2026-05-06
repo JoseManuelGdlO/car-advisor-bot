@@ -137,6 +137,147 @@ def format_vehicle_detail(vehicle: dict[str, Any], platform: str = "web") -> str
     return "\n".join(lines)
 
 
+def format_vehicle_comparison_table(
+    vehicle_a: dict[str, Any],
+    vehicle_b: dict[str, Any],
+    platform: str = "web",
+) -> str:
+    """Compara dos fichas de vehiculo en filas (atributo / A / B)."""
+
+    def _row(label: str, val_a: str, val_b: str) -> str:
+        bl = _bold_label(label, platform)
+        return f"{bl}: {val_a} | {val_b}"
+
+    def _field_values(vehicle: dict[str, Any], field: str) -> str:
+        if field == "brand":
+            return _title_or_default(vehicle.get("brand"))
+        if field == "model":
+            return _title_or_default(vehicle.get("model"))
+        if field == "year":
+            y = vehicle.get("year")
+            return str(y) if isinstance(y, int) else "N/D"
+        if field == "price":
+            return _format_currency(vehicle.get("price"))
+        if field == "km":
+            return _format_int(vehicle.get("km"), "km")
+        if field == "transmission":
+            return _title_or_default(vehicle.get("transmission"))
+        if field == "engine":
+            return _title_or_default(vehicle.get("engine"))
+        if field == "color":
+            return _title_or_default(vehicle.get("color"))
+        if field == "status":
+            return _status_label(vehicle.get("status"))
+        if field == "description":
+            text = str(vehicle.get("description", "")).strip()
+            return text or "Sin descripcion disponible"
+        return "N/D"
+
+    title_a = _vehicle_label(vehicle_a) if isinstance(vehicle_a, dict) else "A"
+    title_b = _vehicle_label(vehicle_b) if isinstance(vehicle_b, dict) else "B"
+    header = _row("Vehiculo", title_a, title_b)
+    rows = [
+        _row("Marca", _field_values(vehicle_a, "brand"), _field_values(vehicle_b, "brand")),
+        _row("Modelo", _field_values(vehicle_a, "model"), _field_values(vehicle_b, "model")),
+        _row("Año", _field_values(vehicle_a, "year"), _field_values(vehicle_b, "year")),
+        _row("Precio", _field_values(vehicle_a, "price"), _field_values(vehicle_b, "price")),
+        _row("Kilometraje", _field_values(vehicle_a, "km"), _field_values(vehicle_b, "km")),
+        _row("Transmision", _field_values(vehicle_a, "transmission"), _field_values(vehicle_b, "transmission")),
+        _row("Motor", _field_values(vehicle_a, "engine"), _field_values(vehicle_b, "engine")),
+        _row("Color", _field_values(vehicle_a, "color"), _field_values(vehicle_b, "color")),
+        _row("Estado", _field_values(vehicle_a, "status"), _field_values(vehicle_b, "status")),
+        _row("Descripcion", _field_values(vehicle_a, "description"), _field_values(vehicle_b, "description")),
+    ]
+    return "\n".join(["Comparacion lado a lado:", "", header, *rows])
+
+
+def format_financing_plan_comparison(
+    plan_a: dict[str, Any],
+    plan_b: dict[str, Any],
+    platform: str = "web",
+) -> str:
+    """Compara dos planes de financiamiento en filas paralelas."""
+
+    def _req_line(plan: dict[str, Any]) -> str:
+        requirements = plan.get("requirements")
+        req_values = [
+            str(item.get("title", "")).strip()
+            for item in requirements
+            if isinstance(item, dict) and str(item.get("title", "")).strip()
+        ] if isinstance(requirements, list) else []
+        return ", ".join(req_values) if req_values else "N/D"
+
+    def _veh_line(plan: dict[str, Any]) -> str:
+        avail = _available_plan_vehicles(plan)
+        labels = [_vehicle_label(v) for v in avail]
+        return "; ".join(labels) if labels else "N/D"
+
+    bold = _bold_labels(["Plan", "Financiera", "Tasa", "Plazo maximo", "Requisitos", "Vehiculos"], platform)
+
+    def _name(plan: dict[str, Any], idx: int) -> str:
+        n = str(plan.get("name", "")).strip() or f"Plan {idx}"
+        return n
+
+    rows = [
+        f"{bold['Plan']}: {_name(plan_a, 1)} | {_name(plan_b, 2)}",
+        (
+            f"{bold['Financiera']}: "
+            f"{str(plan_a.get('lender', '')).strip() or 'N/D'} | "
+            f"{str(plan_b.get('lender', '')).strip() or 'N/D'}"
+        ),
+        (
+            f"{bold['Tasa']}: "
+            f"{_format_rate(plan_a.get('rate'), bool(plan_a.get('showRate', True)))} | "
+            f"{_format_rate(plan_b.get('rate'), bool(plan_b.get('showRate', True)))}"
+        ),
+        (
+            f"{bold['Plazo maximo']}: "
+            f"{_format_int(plan_a.get('maxTermMonths'), 'meses')} | "
+            f"{_format_int(plan_b.get('maxTermMonths'), 'meses')}"
+        ),
+        f"{bold['Requisitos']}: {_req_line(plan_a)} | {_req_line(plan_b)}",
+        f"{bold['Vehiculos']}: {_veh_line(plan_a)} | {_veh_line(plan_b)}",
+    ]
+    return "\n".join(["Comparacion de planes de financiamiento:", "", *rows])
+
+
+def format_promotion_comparison(
+    promo_a: dict[str, Any],
+    promo_b: dict[str, Any],
+    platform: str = "web",
+) -> str:
+    """Compara dos promociones en filas paralelas."""
+
+    bold = _bold_labels(["Titulo", "Descripcion", "Vigencia", "Vehiculos aplicables"], platform)
+
+    def _title(p: dict[str, Any], fallback: str) -> str:
+        return str(p.get("title", "")).strip() or fallback
+
+    def _desc(p: dict[str, Any]) -> str:
+        return str(p.get("description", "")).strip() or "Sin descripcion"
+
+    def _until(p: dict[str, Any]) -> str:
+        u = str(p.get("validUntil", "")).strip()
+        return u or "Sin fecha de expiracion"
+
+    def _vlabels(p: dict[str, Any]) -> str:
+        vehicle_labels = p.get("vehicleLabels")
+        vals = [
+            str(label).strip()
+            for label in vehicle_labels
+            if str(label).strip()
+        ] if isinstance(vehicle_labels, list) else []
+        return ", ".join(vals) if vals else "N/D"
+
+    rows = [
+        f"{bold['Titulo']}: {_title(promo_a, 'A')} | {_title(promo_b, 'B')}",
+        f"{bold['Descripcion']}: {_desc(promo_a)} | {_desc(promo_b)}",
+        f"{bold['Vigencia']}: {_until(promo_a)} | {_until(promo_b)}",
+        f"{bold['Vehiculos aplicables']}: {_vlabels(promo_a)} | {_vlabels(promo_b)}",
+    ]
+    return "\n".join(["Comparacion de promociones:", "", *rows])
+
+
 def _format_rate(rate: Any, show_rate: bool = True) -> str:
     """Formatea rate para salida de chat."""
     if not show_rate:

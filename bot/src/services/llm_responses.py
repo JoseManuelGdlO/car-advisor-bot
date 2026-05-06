@@ -17,7 +17,9 @@ from src.utils.prompts import (
     build_answer_first_inventory_prompt,
     build_answer_first_promotion_prompt,
     build_faq_interrupt_flags_prompt,
+    build_financing_plan_comparison_extract_prompt,
     build_financing_plan_selection_classifier_prompt,
+    build_promotion_comparison_extract_prompt,
     build_promotion_selection_classifier_prompt,
     build_other_response_prompt,
     build_purchase_confirmation_classifier_prompt,
@@ -25,6 +27,7 @@ from src.utils.prompts import (
     build_router_intent_classifier_prompt,
     build_vehicle_detail_conversation_prompt,
     build_faq_response_prompt,
+    build_vehicle_comparison_extract_prompt,
     build_vehicle_step_flags_prompt,
     build_promotions_step_flags_prompt,
     build_financing_step_flags_prompt,
@@ -857,6 +860,7 @@ def classify_vehicle_step_flags(
         "ask_promotions": False,
         "ask_financing": False,
         "ask_more_images": False,
+        "wants_compare_two_vehicles": False,
         "wants_other_vehicles": False,
         "confirm_purchase": False,
         "reject_purchase": False,
@@ -887,6 +891,156 @@ def classify_vehicle_step_flags(
     return out
 
 
+def classify_vehicle_comparison_payload(
+    *,
+    previous_bot_message: str,
+    user_message: str,
+    selected_vehicle_name: str = "",
+    numbered_candidate_lines: str = "",
+) -> dict[str, Any]:
+    """Clasifica y extrae consultas para comparar dos vehiculos (JSON unificado)."""
+
+    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
+    default: dict[str, Any] = {
+        "wants_compare": False,
+        "query_left": "",
+        "query_right": "",
+        "use_selected_as_left": False,
+        "use_candidate_indices": False,
+        "index_left": None,
+        "index_right": None,
+    }
+    try:
+        settings = get_bot_settings()
+        llm = ChatOpenAI(model=model_name, temperature=0)
+        prompt = build_vehicle_comparison_extract_prompt(
+            previous_bot_message=previous_bot_message,
+            user_message=user_message,
+            selected_vehicle_name=selected_vehicle_name,
+            numbered_candidate_lines=numbered_candidate_lines,
+            bot_settings=settings,
+        )
+        parsed = _parse_json_object_from_llm(str(llm.invoke(prompt).content or ""))
+        if not parsed:
+            return default
+        out = dict(default)
+        out["wants_compare"] = _coerce_to_bool(parsed.get("wants_compare"))
+        out["query_left"] = str(parsed.get("query_left") or "").strip()
+        out["query_right"] = str(parsed.get("query_right") or "").strip()
+        out["use_selected_as_left"] = _coerce_to_bool(parsed.get("use_selected_as_left"))
+        out["use_candidate_indices"] = _coerce_to_bool(parsed.get("use_candidate_indices"))
+        il = parsed.get("index_left")
+        ir = parsed.get("index_right")
+        out["index_left"] = int(il) if isinstance(il, (int, float)) and not isinstance(il, bool) and int(il) == il else None
+        out["index_right"] = int(ir) if isinstance(ir, (int, float)) and not isinstance(ir, bool) and int(ir) == ir else None
+        return out
+    except Exception as exc:
+        _log_llm_invoke_failure(
+            "classify_vehicle_comparison_payload",
+            exc,
+            model_name=model_name,
+            prompt_kind="vehicle_comparison_extract",
+            temperature=0.0,
+        )
+        return default
+
+
+def classify_financing_plan_comparison_payload(
+    *,
+    previous_bot_message: str,
+    user_message: str,
+    numbered_plan_lines: str,
+) -> dict[str, Any]:
+    """Extrae comparacion de dos planes de financiamiento."""
+
+    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
+    default: dict[str, Any] = {
+        "wants_compare": False,
+        "index_left": None,
+        "index_right": None,
+        "name_left": "",
+        "name_right": "",
+    }
+    try:
+        settings = get_bot_settings()
+        llm = ChatOpenAI(model=model_name, temperature=0)
+        prompt = build_financing_plan_comparison_extract_prompt(
+            previous_bot_message=previous_bot_message,
+            user_message=user_message,
+            numbered_plan_lines=numbered_plan_lines,
+            bot_settings=settings,
+        )
+        parsed = _parse_json_object_from_llm(str(llm.invoke(prompt).content or ""))
+        if not parsed:
+            return default
+        out = dict(default)
+        out["wants_compare"] = _coerce_to_bool(parsed.get("wants_compare"))
+        out["name_left"] = str(parsed.get("name_left") or "").strip()
+        out["name_right"] = str(parsed.get("name_right") or "").strip()
+        for key in ("index_left", "index_right"):
+            raw = parsed.get(key)
+            if isinstance(raw, (int, float)) and not isinstance(raw, bool) and int(raw) == raw:
+                out[key] = int(raw)
+        return out
+    except Exception as exc:
+        _log_llm_invoke_failure(
+            "classify_financing_plan_comparison_payload",
+            exc,
+            model_name=model_name,
+            prompt_kind="financing_plan_comparison_extract",
+            temperature=0.0,
+        )
+        return default
+
+
+def classify_promotion_comparison_payload(
+    *,
+    previous_bot_message: str,
+    user_message: str,
+    numbered_promotion_lines: str,
+) -> dict[str, Any]:
+    """Extrae comparacion de dos promociones."""
+
+    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
+    default: dict[str, Any] = {
+        "wants_compare": False,
+        "index_left": None,
+        "index_right": None,
+        "title_left": "",
+        "title_right": "",
+    }
+    try:
+        settings = get_bot_settings()
+        llm = ChatOpenAI(model=model_name, temperature=0)
+        prompt = build_promotion_comparison_extract_prompt(
+            previous_bot_message=previous_bot_message,
+            user_message=user_message,
+            numbered_promotion_lines=numbered_promotion_lines,
+            bot_settings=settings,
+        )
+        parsed = _parse_json_object_from_llm(str(llm.invoke(prompt).content or ""))
+        if not parsed:
+            return default
+        out = dict(default)
+        out["wants_compare"] = _coerce_to_bool(parsed.get("wants_compare"))
+        out["title_left"] = str(parsed.get("title_left") or "").strip()
+        out["title_right"] = str(parsed.get("title_right") or "").strip()
+        for key in ("index_left", "index_right"):
+            raw = parsed.get(key)
+            if isinstance(raw, (int, float)) and not isinstance(raw, bool) and int(raw) == raw:
+                out[key] = int(raw)
+        return out
+    except Exception as exc:
+        _log_llm_invoke_failure(
+            "classify_promotion_comparison_payload",
+            exc,
+            model_name=model_name,
+            prompt_kind="promotion_comparison_extract",
+            temperature=0.0,
+        )
+        return default
+
+
 def classify_promotions_step_flags(user_message: str, current_promotion_title: str = "") -> dict[str, bool]:
     """Clasifica flags de navegacion dentro del nodo promotions."""
 
@@ -895,6 +1049,7 @@ def classify_promotions_step_flags(user_message: str, current_promotion_title: s
         "ask_financing": False,
         "ask_other_vehicles": False,
         "ask_promotions": False,
+        "wants_compare_two_promotions": False,
         "confirm_yes": False,
         "confirm_no": False,
     }
@@ -938,6 +1093,7 @@ def classify_financing_step_flags(
     out = {
         "reject_financing_keep_purchase": False,
         "ask_explicit_plan": True,
+        "wants_compare_two_plans": False,
     }
     try:
         settings = get_bot_settings()

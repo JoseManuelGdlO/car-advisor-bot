@@ -41,6 +41,8 @@ class clientState(TypedDict, total=False):
     - promotion_candidates / promotion_vehicle_candidates: listas temporales para seleccion.
     - awaiting_promotion_selection / awaiting_promotion_vehicle_selection / awaiting_promotion_vehicle_interest_confirmation:
       banderas de paso para nodo promotions.
+    - vehicle_comparison_ctx: contexto opcional para desambiguar comparacion de dos vehiculos
+      (claves: other_query str, peer_resolved_id str opcional).
     """
 
     messages: list[dict[str, Any]]
@@ -82,3 +84,4 @@ class clientState(TypedDict, total=False):
     awaiting_promotion_selection: bool
     awaiting_promotion_vehicle_selection: bool
     awaiting_promotion_vehicle_interest_confirmation: bool
+    vehicle_comparison_ctx: dict[str, Any]

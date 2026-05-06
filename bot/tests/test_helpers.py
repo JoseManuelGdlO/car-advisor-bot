@@ -35,6 +35,7 @@ def initial_state() -> dict:
         "awaiting_financing_plan_selection": False,
         "awaiting_financing_vehicle_selection": False,
         "show_selected_vehicle_detail_once": False,
+        "vehicle_comparison_ctx": {},
     }
 
 

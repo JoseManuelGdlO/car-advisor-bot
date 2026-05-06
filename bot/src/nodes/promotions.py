@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.services.llm_responses import (
+    classify_promotion_comparison_payload,
     classify_promotions_step_flags,
     classify_promotion_selection_intent,
     generate_promotion_listing_user_message,
@@ -20,7 +21,7 @@ from src.tools.vehicles import (
     normalize_user_text,
     search_vehicles,
 )
-from src.utils.formatters import format_promotions, format_vehicle_detail
+from src.utils.formatters import format_promotion_comparison, format_promotions, format_vehicle_detail
 from src.utils.state_helpers import append_assistant_message, latest_user_message
 
 _YES_SIGNALS = {"si", "sí", "claro", "acepto", "me interesa", "quiero", "va", "dale"}
@@ -63,6 +64,101 @@ def _filter_active_promotions(items: list[dict[str, Any]]) -> list[dict[str, Any
             continue
         out.append(item)
     return out
+
+
+def _numbered_promotion_lines(promotions: list[dict[str, Any]]) -> str:
+    lines: list[str] = []
+    for idx, p in enumerate(promotions, start=1):
+        title = str(p.get("title", "")).strip()
+        if title:
+            lines.append(f"{idx}. {title}")
+    return "\n".join(lines)
+
+
+def _resolve_two_promotions_for_compare(
+    promotions: list[dict[str, Any]], payload: dict[str, Any]
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    il_raw, ir_raw = payload.get("index_left"), payload.get("index_right")
+    il: int | None
+    ir: int | None
+    if isinstance(il_raw, (int, float)) and not isinstance(il_raw, bool) and int(il_raw) == il_raw:
+        il = int(il_raw)
+    else:
+        il = None
+    if isinstance(ir_raw, (int, float)) and not isinstance(ir_raw, bool) and int(ir_raw) == ir_raw:
+        ir = int(ir_raw)
+    else:
+        ir = None
+    if isinstance(il, int) and isinstance(ir, int):
+        i, j = il - 1, ir - 1
+        if 0 <= i < len(promotions) and 0 <= j < len(promotions) and i != j:
+            return promotions[i], promotions[j]
+    tl = str(payload.get("title_left") or "").strip().lower()
+    tr = str(payload.get("title_right") or "").strip().lower()
+    if not tl or not tr:
+        return None, None
+
+    def _match(fragment: str) -> dict[str, Any] | None:
+        for p in promotions:
+            title = str(p.get("title", "")).strip().lower()
+            if fragment in title or title in fragment:
+                return p
+        return None
+
+    a = _match(tl)
+    b = _match(tr)
+    if a and b:
+        ida, idb = str(a.get("id", "")).strip(), str(b.get("id", "")).strip()
+        if ida and idb and ida == idb:
+            return None, None
+        tta = str(a.get("title", "")).strip()
+        ttb = str(b.get("title", "")).strip()
+        if tta and tta == ttb:
+            return None, None
+        return a, b
+    return None, None
+
+
+def _try_answer_promotion_comparison(
+    state: clientState, user_text: str, candidates: list[dict[str, Any]]
+) -> clientState | None:
+    if len(candidates) < 2:
+        return None
+    lines = _numbered_promotion_lines(candidates)
+    if not lines.strip():
+        return None
+    payload = classify_promotion_comparison_payload(
+        previous_bot_message=str(state.get("last_bot_message", "")).strip(),
+        user_message=user_text,
+        numbered_promotion_lines=lines,
+    )
+    if not payload.get("wants_compare"):
+        return None
+    a, b = _resolve_two_promotions_for_compare(candidates, payload)
+    if not a or not b:
+        return None
+    platform = str(state.get("platform", "web")).strip().lower() or "web"
+    table = format_promotion_comparison(a, b, platform=platform)
+    verified = "\n".join(
+        [
+            "operacion: comparacion_promociones",
+            f"promo_a: {str(a.get('title', '')).strip()}",
+            f"promo_b: {str(b.get('title', '')).strip()}",
+            "",
+            "TABLA_COMPARACION_LITERAL:",
+            table,
+            "",
+            "cierre_literal: Si quieres aplicar una, dimelo por nombre y confirma explicitamente.",
+        ]
+    )
+    msg = generate_verified_user_message(
+        mode="operational",
+        verified_facts_block=verified,
+        user_message=user_text,
+        fallback=f"{table}\n\nSi quieres aplicar una, dimelo por nombre y confirma explicitamente.",
+        temperature=0.35,
+    )
+    return append_assistant_message(state, msg)
 
 
 def _set_selected_promotion(state: clientState, promotion: dict[str, Any]) -> None:
@@ -308,6 +404,16 @@ def promotions(state: clientState) -> clientState:
         current_promotion_title=str(state.get("selected_promotion_title", "")).strip(),
     )
     _debug("nav_flags", **nav_flags)
+
+    promo_candidates_active = _filter_active_promotions(list(state.get("promotion_candidates") or []))
+    if (
+        nav_flags.get("wants_compare_two_promotions")
+        and state.get("awaiting_promotion_selection")
+        and len(promo_candidates_active) >= 2
+    ):
+        cmp_out = _try_answer_promotion_comparison(state, user_text, promo_candidates_active)
+        if cmp_out is not None:
+            return cmp_out
 
     if nav_flags.get("ask_financing"):
         state["current_node"] = "financing"

@@ -11,7 +11,9 @@ from typing import Any
 from src.state import clientState
 
 from src.services.llm_responses import (
+    _coerce_to_bool,
     classify_purchase_confirmation_intent,
+    classify_vehicle_comparison_payload,
     classify_vehicle_step_flags,
     generate_selected_vehicle_qa_response,
     generate_vehicle_candidates_selection_message,
@@ -32,6 +34,7 @@ from src.tools.vehicles import (
 from src.utils.formatters import (
     format_available_vehicles_grouped,
     format_filtered_vehicles,
+    format_vehicle_comparison_table,
     format_vehicle_detail,
 )
 from src.utils.state_helpers import append_assistant_message, latest_user_message
@@ -169,10 +172,10 @@ def _looks_like_specific_vehicle_request(user_text: str) -> bool:
     # Ejemplos: "tienes chevrolet?", "hay chevrolet?"
     if re.search(r"\b(tienes|hay|busco|quiero)\s+[a-z0-9]+\b", normalized):
         return not _is_general_request(user_text)
-    # Ejemplos sin keyword explicita: "el mazda 3 sirve para ciudad o carretera?"
+    # Ejemplos sin keyword explicita: "el sedan X sirve para ciudad o carretera?"
     if re.search(r"\b(?:el|la|un|una)\s+[a-z]{3,}\s+\d{1,4}\b", normalized):
         return True
-    # Ejemplos: "mazda 3 es bueno?", "civic 2018 conviene?"
+    # Ejemplos: "modelo Y es bueno?", "hatchback 2018 conviene?"
     if _looks_like_feature_request(user_text) and re.search(r"\b[a-z]{3,}\s+\d{1,4}\b", normalized):
         return True
     return False
@@ -200,6 +203,62 @@ def _is_promotions_request(user_text: str) -> bool:
     if not normalized:
         return False
     return any(_contains_signal_phrase(normalized, signal) for signal in _PROMOTIONS_SIGNALS_NORMALIZED)
+
+
+def _is_selected_vehicle_specs_request(
+    user_text: str,
+    *,
+    selected_vehicle_id: str,
+    vehicles: list[dict[str, Any]],
+) -> bool:
+    """True si pide ficha/datos del vehiculo en contexto (no cambiar a otro modelo)."""
+
+    normalized = normalize_user_text(user_text)
+    if not normalized or not str(selected_vehicle_id).strip():
+        return False
+    other_vehicle_signals = (
+        "otro modelo",
+        "otro vehiculo",
+        "otro carro",
+        "otro auto",
+        "otros vehiculos",
+        "otros modelos",
+        "ver otros",
+        "mas opciones",
+    )
+    if any(signal in normalized for signal in other_vehicle_signals):
+        return False
+    specs_signals = (
+        "datos del modelo",
+        "datos del vehiculo",
+        "datos del carro",
+        "datos del auto",
+        "dame los datos del",
+        "dame la ficha",
+        "muestrame los datos",
+        "ficha tecnica",
+        "ficha del auto",
+        "ficha del vehiculo",
+        "ficha del modelo",
+        "ficha del carro",
+        "especificaciones del modelo",
+        "especificaciones del vehiculo",
+        "especificaciones del carro",
+        "caracteristicas del modelo",
+        "caracteristicas del vehiculo",
+        "informacion del modelo",
+        "informacion del vehiculo",
+        "informacion completa del",
+        "toda la informacion del",
+    )
+    if not any(signal in normalized for signal in specs_signals):
+        return False
+    other = _pick_vehicle_from_filters(user_text, vehicles)
+    cur_id = str(selected_vehicle_id).strip()
+    other_id = str(other.get("id", "")).strip() if isinstance(other, dict) else ""
+    if other_id and other_id != cur_id:
+        return False
+    return True
 
 
 def _contains_signal_phrase(normalized_text: str, signal: str) -> bool:
@@ -245,7 +304,7 @@ def _find_candidate_from_pending(state: clientState, user_text: str) -> dict[str
     picked_label = canonicalize_with_typo_support(user_text, options, threshold=0.72)
     if not picked_label:
         normalized = normalize_user_text(user_text)
-        # Evita falsas selecciones por numeros de modelos (p. ej. "mazda 3"):
+        # Evita falsas selecciones por digitos que son parte del nombre del modelo, no el indice de lista:
         # solo usamos seleccion por indice cuando el usuario realmente esta eligiendo opcion.
         explicit_index_selection = bool(
             re.fullmatch(r"\d{1,2}", normalized)
@@ -647,6 +706,7 @@ def _respond_available_list(
     ][:8]
     state["selected_vehicle_id"] = ""
     state["selected_car"] = ""
+    state["vehicle_comparison_ctx"] = {}
     _reset_vehicle_images_state(state)
     available_count = sum(1 for item in vehicles if str(item.get("status", "")).strip().lower() == "available")
     _debug(
@@ -677,6 +737,289 @@ def _respond_available_list(
         temperature=0.42,
     )
     return append_assistant_message(state, message)
+
+
+def _vehicle_comparison_llm_gate(user_text: str) -> bool:
+    """Prefiltro barato antes de invocar el extractor LLM de comparacion."""
+
+    normalized = normalize_user_text(user_text)
+    if not normalized or len(normalized) < 6:
+        return False
+    hints = (
+        "compar",
+        "compara",
+        "vs",
+        "versus",
+        "diferencia",
+        "diferencias",
+        "conviene",
+        "cual conviene",
+        "cuál conviene",
+        "entre ",
+        " contra ",
+        " o ",
+    )
+    return any(signal in normalized for signal in hints)
+
+
+def _should_invoke_vehicle_comparison_llm(state: clientState, user_text: str) -> bool:
+    if _vehicle_comparison_llm_gate(user_text):
+        return True
+    pending = state.get("last_vehicle_candidates") or []
+    if isinstance(pending, list) and len(pending) >= 2 and normalize_user_text(user_text):
+        if re.search(r"\b\d{1,2}\b.*\b\d{1,2}\b", normalize_user_text(user_text)):
+            return True
+    return False
+
+
+def _prioritized_vehicle_matches(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    available = [
+        item
+        for item in candidates
+        if isinstance(item, dict) and str(item.get("status", "")).strip().lower() == "available"
+    ]
+    return available or [item for item in candidates if isinstance(item, dict)]
+
+
+def _matches_for_vehicle_query(query: str, vehicles: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    q = str(query or "").strip()
+    if not q:
+        return []
+    filters = detect_vehicle_filters(q, vehicles)
+    if not filters:
+        return []
+    try:
+        found = search_vehicles(filters)
+    except Exception:
+        return []
+    return [item for item in found if isinstance(item, dict)]
+
+
+def _clear_vehicle_comparison_ctx(state: clientState) -> None:
+    state["vehicle_comparison_ctx"] = {}
+
+
+def _respond_with_vehicle_comparison(
+    state: clientState,
+    detail_a: dict[str, Any],
+    detail_b: dict[str, Any],
+) -> clientState:
+    """Muestra comparacion sin cambiar selected_vehicle_id."""
+
+    _clear_vehicle_comparison_ctx(state)
+    platform = str(state.get("platform", "web")).strip().lower() or "web"
+    table = format_vehicle_comparison_table(detail_a, detail_b, platform=platform)
+    name_a = _format_vehicle_name(detail_a)
+    name_b = _format_vehicle_name(detail_b)
+    user_q = latest_user_message(state)
+    verified = "\n".join(
+        [
+            "operacion: comparacion_dos_vehiculos",
+            f"vehiculo_a: {name_a}",
+            f"vehiculo_b: {name_b}",
+            "",
+            "TABLA_COMPARACION_LITERAL:",
+            table,
+            "",
+            "cierre_literal: Dime con cual quieres continuar y te muestro ese modelo en detalle.",
+        ]
+    )
+    message = generate_verified_user_message(
+        mode="operational",
+        verified_facts_block=verified,
+        user_message=user_q,
+        fallback=f"{table}\n\nDime con cual quieres continuar y te muestro ese modelo en detalle.",
+        temperature=0.35,
+    )
+    return append_assistant_message(state, message)
+
+
+def _comparison_prompt_first_ambiguous(
+    state: clientState,
+    matches: list[dict[str, Any]],
+    other_query: str,
+) -> clientState:
+    state["last_vehicle_candidates"] = matches[:8]
+    state["vehicle_comparison_ctx"] = {"other_query": str(other_query or "").strip()}
+    options = _format_candidate_options(matches)
+    body = (
+        "Encontre varias opciones para el primer vehiculo de la comparacion. "
+        "Elige cual es la primera unidad (nombre o numero).\n\n"
+        f"{options}"
+    )
+    return append_assistant_message(state, body)
+
+
+def _comparison_prompt_second_ambiguous(
+    state: clientState,
+    peer_id: str,
+    matches: list[dict[str, Any]],
+) -> clientState:
+    state["last_vehicle_candidates"] = matches[:8]
+    state["vehicle_comparison_ctx"] = {"peer_resolved_id": str(peer_id).strip()}
+    options = _format_candidate_options(matches)
+    body = (
+        "Encontre varias opciones para el segundo vehiculo. "
+        "Elige cual comparar (nombre o numero).\n\n"
+        f"{options}"
+    )
+    return append_assistant_message(state, body)
+
+
+def _comparison_after_first_vehicle_chosen(
+    state: clientState,
+    vehicles: list[dict[str, Any]],
+    first_summary: dict[str, Any],
+    other_query: str,
+) -> clientState:
+    id_a = str(first_summary.get("id", "")).strip()
+    oq = str(other_query or "").strip()
+    if not id_a or not oq:
+        _clear_vehicle_comparison_ctx(state)
+        return append_assistant_message(state, "No pude armar la comparacion. Intenta de nuevo con los dos modelos.")
+    detail_a = fetch_vehicle_by_id(id_a)
+    if not isinstance(detail_a, dict):
+        _clear_vehicle_comparison_ctx(state)
+        return append_assistant_message(state, "No pude cargar la ficha del primer vehiculo. Intenta otra vez.")
+
+    right_matches = _prioritized_vehicle_matches(_matches_for_vehicle_query(oq, vehicles))
+    if not right_matches:
+        _clear_vehicle_comparison_ctx(state)
+        return append_assistant_message(
+            state,
+            generate_verified_user_message(
+                mode="operational",
+                verified_facts_block=(
+                    f"operacion: comparacion_segundo_vehiculo\n"
+                    f"primer_vehiculo: {_format_vehicle_name(detail_a)}\n"
+                    f"consulta_segundo: {oq}\n"
+                    "resultado: sin_coincidencias\n"
+                ),
+                user_message=latest_user_message(state),
+                fallback=(
+                    f"No encontre en inventario un segundo vehiculo que coincida con \"{oq}\" "
+                    f"para compararlo con {_format_vehicle_name(detail_a)}. "
+                    "Prueba con otra marca, modelo o año."
+                ),
+                temperature=0.35,
+            ),
+        )
+    if len(right_matches) == 1:
+        detail_b = fetch_vehicle_by_id(str(right_matches[0].get("id", "")).strip())
+        if not isinstance(detail_b, dict):
+            _clear_vehicle_comparison_ctx(state)
+            return append_assistant_message(state, "No pude cargar la ficha del segundo vehiculo.")
+        id_b = str(detail_b.get("id", "")).strip()
+        if id_a == id_b:
+            _clear_vehicle_comparison_ctx(state)
+            return append_assistant_message(
+                state,
+                "Es el mismo vehiculo; necesito dos unidades distintas para comparar. "
+                "Dime otro modelo o año.",
+            )
+        return _respond_with_vehicle_comparison(state, detail_a, detail_b)
+    return _comparison_prompt_second_ambiguous(state, id_a, right_matches)
+
+
+def _comparison_after_second_vehicle_chosen(
+    state: clientState,
+    peer_id: str,
+    second_summary: dict[str, Any],
+) -> clientState:
+    id_a = str(peer_id or "").strip()
+    id_b = str(second_summary.get("id", "")).strip()
+    _clear_vehicle_comparison_ctx(state)
+    state["last_vehicle_candidates"] = []
+    if not id_a or not id_b:
+        return append_assistant_message(state, "No pude completar la comparacion. Elige dos vehiculos distintos.")
+    if id_a == id_b:
+        return append_assistant_message(
+            state,
+            "Es el mismo vehiculo; dime otro para comparar.",
+        )
+    detail_a = fetch_vehicle_by_id(id_a)
+    detail_b = fetch_vehicle_by_id(id_b)
+    if not isinstance(detail_a, dict) or not isinstance(detail_b, dict):
+        return append_assistant_message(state, "No pude cargar las fichas para comparar. Intenta de nuevo.")
+    return _respond_with_vehicle_comparison(state, detail_a, detail_b)
+
+
+def _run_vehicle_comparison_from_payload(
+    state: clientState,
+    vehicles: list[dict[str, Any]],
+    payload: dict[str, Any],
+    *,
+    selected_vehicle_id: str,
+) -> clientState | None:
+    """Ejecuta comparacion a partir del JSON del LLM; None si no aplica."""
+
+    if not _coerce_to_bool(payload.get("wants_compare")):
+        return None
+
+    pending = state.get("last_vehicle_candidates") or []
+    if not isinstance(pending, list):
+        pending = []
+
+    if _coerce_to_bool(payload.get("use_candidate_indices")) and len(pending) >= 2:
+        il = payload.get("index_left")
+        ir = payload.get("index_right")
+        if isinstance(il, int) and isinstance(ir, int):
+            i = il - 1
+            j = ir - 1
+            if 0 <= i < len(pending) and 0 <= j < len(pending) and isinstance(pending[i], dict) and isinstance(pending[j], dict):
+                id_a = str(pending[i].get("id", "")).strip()
+                id_b = str(pending[j].get("id", "")).strip()
+                if id_a and id_b and id_a != id_b:
+                    detail_a = fetch_vehicle_by_id(id_a)
+                    detail_b = fetch_vehicle_by_id(id_b)
+                    if isinstance(detail_a, dict) and isinstance(detail_b, dict):
+                        return _respond_with_vehicle_comparison(state, detail_a, detail_b)
+                if id_a == id_b:
+                    return append_assistant_message(
+                        state,
+                        "Son la misma opcion de la lista; elige dos numeros distintos para comparar.",
+                    )
+        return append_assistant_message(
+            state,
+            "Indica dos numeros validos de la lista para comparar, por ejemplo \"1 y 3\".",
+        )
+
+    if _coerce_to_bool(payload.get("use_selected_as_left")):
+        sid = str(selected_vehicle_id or "").strip()
+        if not sid:
+            return append_assistant_message(
+                state,
+                "Para comparar con el vehiculo que estabas viendo, primero vuelve a abrir su detalle.",
+            )
+        q_right = str(payload.get("query_right") or "").strip()
+        if not q_right:
+            return append_assistant_message(
+                state,
+                "Dime cual otro vehiculo quieres comparar (marca, modelo o año).",
+            )
+        detail_a = fetch_vehicle_by_id(sid)
+        if not isinstance(detail_a, dict):
+            return append_assistant_message(state, "No pude cargar el vehiculo actual para comparar.")
+        first_summary = {"id": sid, **detail_a}
+        return _comparison_after_first_vehicle_chosen(state, vehicles, first_summary, q_right)
+
+    q_left = str(payload.get("query_left") or "").strip()
+    q_right = str(payload.get("query_right") or "").strip()
+    if not q_left or not q_right:
+        return append_assistant_message(
+            state,
+            "Para comparar necesito dos vehiculos distintos. Ejemplo: \"compara el 1 y el 3\" o nombra dos unidades por marca, modelo y año.",
+        )
+
+    left_matches = _prioritized_vehicle_matches(_matches_for_vehicle_query(q_left, vehicles))
+    if not left_matches:
+        return append_assistant_message(
+            state,
+            f"No encontre el primer vehiculo ({q_left}) en inventario. Revisa marca, modelo o año.",
+        )
+    if len(left_matches) == 1:
+        return _comparison_after_first_vehicle_chosen(state, vehicles, left_matches[0], q_right)
+    return _comparison_prompt_first_ambiguous(state, left_matches, q_right)
 
 
 def car_selection(state: clientState) -> clientState:
@@ -730,6 +1073,22 @@ def car_selection(state: clientState) -> clientState:
         selected_car_name = str(state.get("selected_car", "")).strip()
         step_flags = classify_vehicle_step_flags(previous_bot_message, user_text, selected_car_name)
         _debug("vehicle_step_flags", **step_flags)
+        if step_flags.get("wants_compare_two_vehicles"):
+            numbered = _format_candidate_options(state.get("last_vehicle_candidates") or [])
+            payload = classify_vehicle_comparison_payload(
+                previous_bot_message=previous_bot_message,
+                user_message=user_text,
+                selected_vehicle_name=selected_car_name,
+                numbered_candidate_lines=numbered,
+            )
+            cmp_state = _run_vehicle_comparison_from_payload(
+                state,
+                vehicles,
+                payload,
+                selected_vehicle_id=str(state.get("selected_vehicle_id", "")).strip(),
+            )
+            if cmp_state is not None:
+                return cmp_state
         if step_flags.get("ask_promotions"):
             state["awaiting_purchase_confirmation"] = False
             state["current_node"] = "promotions"
@@ -743,6 +1102,12 @@ def car_selection(state: clientState) -> clientState:
             return state
         if step_flags.get("ask_more_images"):
             return _respond_with_more_images(state)
+        if _is_selected_vehicle_specs_request(
+            user_text,
+            selected_vehicle_id=str(state.get("selected_vehicle_id", "")).strip(),
+            vehicles=vehicles,
+        ):
+            return _respond_selected_vehicle_inventory_qa(state, user_text)
         if step_flags.get("wants_other_vehicles"):
             return _respond_available_list(state, vehicles)
         if step_flags.get("confirm_purchase"):
@@ -784,8 +1149,35 @@ def car_selection(state: clientState) -> clientState:
         question = _build_purchase_question(include_images_option=bool(state.get("vehicle_images_last_batch")))
         return append_assistant_message(state, question)
 
+    if _should_invoke_vehicle_comparison_llm(state, user_text):
+        numbered = _format_candidate_options(state.get("last_vehicle_candidates") or [])
+        payload = classify_vehicle_comparison_payload(
+            previous_bot_message=str(state.get("last_bot_message", "")).strip(),
+            user_message=user_text,
+            selected_vehicle_name=str(state.get("selected_car", "")).strip(),
+            numbered_candidate_lines=numbered,
+        )
+        cmp_state = _run_vehicle_comparison_from_payload(
+            state,
+            vehicles,
+            payload,
+            selected_vehicle_id=str(state.get("selected_vehicle_id", "")).strip(),
+        )
+        if cmp_state is not None:
+            return cmp_state
+
     selected_pending = _find_candidate_from_pending(state, user_text)
     if selected_pending:
+        vctx = state.get("vehicle_comparison_ctx")
+        if isinstance(vctx, dict) and vctx:
+            other_q = str(vctx.get("other_query") or "").strip()
+            peer = str(vctx.get("peer_resolved_id") or "").strip()
+            if other_q and not peer:
+                _debug("comparison_first_pick", other_query=other_q)
+                return _comparison_after_first_vehicle_chosen(state, vehicles, selected_pending, other_q)
+            if peer:
+                _debug("comparison_second_pick", peer_resolved_id=peer)
+                return _comparison_after_second_vehicle_chosen(state, peer, selected_pending)
         _debug("continuing_from_pending_candidates")
         return _respond_with_vehicle_detail(state, selected_pending)
 

@@ -7,6 +7,7 @@ import re
 from typing import Any
 
 from src.services.llm_responses import (
+    classify_financing_plan_comparison_payload,
     classify_financing_step_flags,
     classify_financing_plan_selection_intent,
     generate_financing_plans_user_message,
@@ -27,6 +28,7 @@ from src.tools.vehicles import (
 _WC_IMAGE_MARKER_PREFIX = "<<WC_IMAGE_JSON>>"
 
 from src.utils.formatters import (
+    format_financing_plan_comparison,
     format_vehicle_detail,
     format_financing_plan_vehicles,
     format_financing_plans,
@@ -177,6 +179,135 @@ def _vehicle_label(item: dict[str, Any]) -> str:
     model = str(item.get("model", "")).strip()
     year = item.get("year")
     return f"{brand} {model} {year if isinstance(year, int) else ''}".strip()
+
+
+def _plan_has_available_vehicle_row(plan: dict[str, Any]) -> bool:
+    vehicles = plan.get("vehicles")
+    if not isinstance(vehicles, list):
+        return False
+    for v in vehicles:
+        if isinstance(v, dict) and str(v.get("status", "")).strip().lower() in ("", "available"):
+            return True
+    return False
+
+
+def _plan_covers_vehicle_id(plan: dict[str, Any], vehicle_id: str) -> bool:
+    vid = str(vehicle_id or "").strip()
+    if not vid:
+        return False
+    vehicles = plan.get("vehicles")
+    if not isinstance(vehicles, list):
+        return False
+    for v in vehicles:
+        if not isinstance(v, dict):
+            continue
+        if str(v.get("id", "")).strip() != vid:
+            continue
+        if str(v.get("status", "")).strip().lower() in ("", "available"):
+            return True
+    return False
+
+
+def _financing_plans_for_comparison(state: clientState, candidates: list[Any]) -> list[dict[str, Any]]:
+    active = [p for p in candidates if isinstance(p, dict) and bool(p.get("active", True))]
+    vid = str(state.get("selected_vehicle_id", "")).strip()
+    if not vid:
+        return [p for p in active if _plan_has_available_vehicle_row(p)]
+    filtered = [p for p in active if _plan_covers_vehicle_id(p, vid)]
+    return filtered if filtered else [p for p in active if _plan_has_available_vehicle_row(p)]
+
+
+def _numbered_financing_plan_lines(plans: list[dict[str, Any]]) -> str:
+    lines: list[str] = []
+    for idx, p in enumerate(plans, start=1):
+        name = str(p.get("name", "")).strip() or f"Plan {idx}"
+        lender = str(p.get("lender", "")).strip()
+        lines.append(f"{idx}. {name} ({lender})" if lender else f"{idx}. {name}")
+    return "\n".join(lines)
+
+
+def _resolve_two_financing_plans_for_compare(
+    plans: list[dict[str, Any]], payload: dict[str, Any]
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    il, ir = payload.get("index_left"), payload.get("index_right")
+    if isinstance(il, (int, float)) and not isinstance(il, bool) and int(il) == il:
+        il = int(il)
+    else:
+        il = None
+    if isinstance(ir, (int, float)) and not isinstance(ir, bool) and int(ir) == ir:
+        ir = int(ir)
+    else:
+        ir = None
+    if isinstance(il, int) and isinstance(ir, int):
+        i, j = il - 1, ir - 1
+        if 0 <= i < len(plans) and 0 <= j < len(plans) and i != j:
+            return plans[i], plans[j]
+    nl = str(payload.get("name_left") or "").strip().lower()
+    nr = str(payload.get("name_right") or "").strip().lower()
+    if not nl or not nr:
+        return None, None
+
+    def _match(fragment: str) -> dict[str, Any] | None:
+        for p in plans:
+            name = str(p.get("name", "")).strip().lower()
+            lender = str(p.get("lender", "")).strip().lower()
+            if fragment in name or fragment in lender or name in fragment or lender in fragment:
+                return p
+        return None
+
+    pa = _match(nl)
+    pb = _match(nr)
+    if pa and pb and str(pa.get("id", "")).strip() != str(pb.get("id", "")).strip():
+        return pa, pb
+    return None, None
+
+
+def _try_compare_financing_plans_reply(
+    state: clientState,
+    user_text: str,
+    candidates: list[Any],
+) -> clientState | None:
+    """Si el usuario compara dos planes, responde con tabla; si no aplica, None."""
+
+    c_plans = _financing_plans_for_comparison(state, candidates)
+    if len(c_plans) < 2:
+        return None
+    plan_lines = _numbered_financing_plan_lines(c_plans)
+    comp_payload = classify_financing_plan_comparison_payload(
+        previous_bot_message=str(state.get("last_bot_message", "")).strip(),
+        user_message=user_text,
+        numbered_plan_lines=plan_lines,
+    )
+    if not comp_payload.get("wants_compare"):
+        return None
+    pa, pb = _resolve_two_financing_plans_for_compare(c_plans, comp_payload)
+    if not pa or not pb:
+        return None
+    platform = str(state.get("platform", "web")).strip().lower() or "web"
+    table = format_financing_plan_comparison(pa, pb, platform=platform)
+    verified = "\n".join(
+        [
+            "operacion: comparacion_planes_financiamiento",
+            f"plan_a: {str(pa.get('name', '')).strip()}",
+            f"plan_b: {str(pb.get('name', '')).strip()}",
+            "",
+            "TABLA_COMPARACION_LITERAL:",
+            table,
+            "",
+            "cierre_literal: Dime cual plan prefieres (por nombre o numero) para continuar.",
+        ]
+    )
+    msg = generate_verified_user_message(
+        mode="operational",
+        verified_facts_block=verified,
+        user_message=user_text,
+        fallback=(
+            f"{table}\n\n"
+            "Dime cual plan prefieres (por nombre o numero) para continuar."
+        ),
+        temperature=0.35,
+    )
+    return append_assistant_message(state, msg)
 
 
 def _pick_plan_from_state(state: clientState, user_text: str) -> dict[str, Any] | None:
@@ -673,9 +804,28 @@ def financing(state: clientState) -> clientState:
         return append_assistant_message(state, confirmation)
 
     if state.get("awaiting_financing_plan_selection"):
+        candidates = state.get("financing_plan_candidates", [])
+        selected_vehicle_id = str(state.get("selected_vehicle_id", "")).strip()
+        selected_car = str(state.get("selected_car", "")).strip()
+        multi_plan_selection = isinstance(candidates, list) and len(candidates) >= 2
+        step_flags_pre_pick: dict[str, bool] | None = None
+        if multi_plan_selection:
+            step_flags_pre_pick = classify_financing_step_flags(
+                previous_bot_message=str(state.get("last_bot_message", "")).strip(),
+                user_message=user_text,
+                selected_vehicle_name=selected_car,
+                has_selected_vehicle=bool(selected_vehicle_id),
+                has_selected_promotion=bool(str(state.get("selected_promotion_id", "")).strip()),
+                awaiting_plan_selection=True,
+            )
+            _debug("financing_step_flags", **step_flags_pre_pick)
+            if step_flags_pre_pick.get("wants_compare_two_plans"):
+                compared = _try_compare_financing_plans_reply(state, user_text, candidates)
+                if compared is not None:
+                    return compared
+
         selected_plan = _pick_plan_from_state(state, user_text)
         if not selected_plan:
-            candidates = state.get("financing_plan_candidates", [])
             if (
                 isinstance(candidates, list)
                 and len(candidates) == 1
@@ -708,15 +858,21 @@ def financing(state: clientState) -> clientState:
         if not selected_plan:
             selected_vehicle_id = str(state.get("selected_vehicle_id", "")).strip()
             selected_car = str(state.get("selected_car", "")).strip()
-            step_flags = classify_financing_step_flags(
-                previous_bot_message=str(state.get("last_bot_message", "")).strip(),
-                user_message=user_text,
-                selected_vehicle_name=selected_car,
-                has_selected_vehicle=bool(selected_vehicle_id),
-                has_selected_promotion=bool(str(state.get("selected_promotion_id", "")).strip()),
-                awaiting_plan_selection=bool(state.get("awaiting_financing_plan_selection")),
-            )
-            _debug("financing_step_flags", **step_flags)
+            step_flags = step_flags_pre_pick
+            if step_flags is None:
+                step_flags = classify_financing_step_flags(
+                    previous_bot_message=str(state.get("last_bot_message", "")).strip(),
+                    user_message=user_text,
+                    selected_vehicle_name=selected_car,
+                    has_selected_vehicle=bool(selected_vehicle_id),
+                    has_selected_promotion=bool(str(state.get("selected_promotion_id", "")).strip()),
+                    awaiting_plan_selection=bool(state.get("awaiting_financing_plan_selection")),
+                )
+                _debug("financing_step_flags", **step_flags)
+            if step_flags.get("wants_compare_two_plans"):
+                compared = _try_compare_financing_plans_reply(state, user_text, candidates)
+                if compared is not None:
+                    return compared
             if step_flags.get("reject_financing_keep_purchase") and selected_car:
                 state["awaiting_financing_plan_selection"] = False
                 state["selected_financing_plan_id"] = ""
