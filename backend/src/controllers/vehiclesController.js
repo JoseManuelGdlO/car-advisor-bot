@@ -1,4 +1,5 @@
 import { FinancingPlan, Vehicle } from "../models/index.js";
+import { Op } from "sequelize";
 import { ApiError } from "../utils/errors.js";
 
 // Scope multi-tenant por propietario autenticado.
@@ -35,7 +36,8 @@ export const getVehicleById = async (req, res, next) => {
 };
 
 export const getVehiclesByFilters = async (req, res) => {
-  // Filtros de catálogo usados por backoffice y flujos de bot.
+  // Filtros soportados: brand, model, color, year, minPrice, maxPrice.
+  // Valores de precio invalidos o negativos se ignoran para no romper UX conversacional.
   const where = {
     ...ownerWhere(req.auth.userId),
   };
@@ -46,6 +48,15 @@ export const getVehiclesByFilters = async (req, res) => {
   if (req.query.year) {
     const year = Number(req.query.year);
     if (!Number.isNaN(year)) where.year = year;
+  }
+  const minPriceRaw = Number(req.query.minPrice);
+  const maxPriceRaw = Number(req.query.maxPrice);
+  const minPrice = Number.isFinite(minPriceRaw) && minPriceRaw >= 0 ? minPriceRaw : null;
+  const maxPrice = Number.isFinite(maxPriceRaw) && maxPriceRaw >= 0 ? maxPriceRaw : null;
+  if (minPrice !== null || maxPrice !== null) {
+    where.price = {};
+    if (minPrice !== null) where.price[Op.gte] = minPrice;
+    if (maxPrice !== null) where.price[Op.lte] = maxPrice;
   }
 
   const rows = await Vehicle.findAll({
