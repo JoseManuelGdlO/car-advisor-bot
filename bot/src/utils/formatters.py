@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Any, Callable
 
 
 def _title_or_default(value: Any, fallback: str = "N/D") -> str:
@@ -60,6 +60,36 @@ def _bold_labels(labels: list[str], platform: str = "web") -> dict[str, str]:
     """Devuelve un mapa etiqueta->etiqueta en negritas para reutilizar formateo."""
 
     return {label: _bold_label(label, platform) for label in labels}
+
+
+def format_vehicle_name(item: dict[str, Any]) -> str:
+    """Compone nombre legible `marca modelo año` para mensajes."""
+
+    brand = str(item.get("brand", "")).strip()
+    model = str(item.get("model", "")).strip()
+    year = item.get("year")
+    suffix = f" {year}" if isinstance(year, int) else ""
+    return f"{brand} {model}{suffix}".strip()
+
+
+def format_candidate_options(candidates: list[dict[str, Any]], limit: int = 8) -> str:
+    """Construye una lista numerada breve para que el usuario elija una opción."""
+
+    lines: list[str] = []
+    for idx, item in enumerate(candidates[:limit], start=1):
+        if not isinstance(item, dict):
+            continue
+        label = format_vehicle_name(item)
+        if label:
+            lines.append(f"{idx}. {label}")
+    return "\n".join(lines)
+
+
+def format_images_bulleted_list(images: list[str], resolve_url_fn: Callable[[str], str]) -> str:
+    """Formatea bloque de imágenes con bullets y URLs ya resueltas."""
+
+    formatted = "\n".join(f"- {resolve_url_fn(str(url or ''))}" for url in images)
+    return f"Imagenes del vehiculo:\n{formatted}"
 
 
 def format_available_vehicles_grouped(vehicles: list[dict[str, Any]]) -> str:

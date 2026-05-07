@@ -21,6 +21,15 @@ from src.services.llm_responses import (
     generate_vehicle_purchase_question,
     generate_verified_user_message,
 )
+from src.services.car_selection_fallback import (
+    is_financing_request,
+    is_general_request,
+    is_more_images_request,
+    is_promotions_request,
+    is_selected_vehicle_specs_request,
+    looks_like_feature_request,
+    looks_like_specific_vehicle_request,
+)
 from src.tools.vehicles import (
     build_whatsapp_image_messages,
     canonicalize_with_typo_support,
@@ -33,94 +42,24 @@ from src.tools.vehicles import (
 )
 from src.utils.formatters import (
     format_available_vehicles_grouped,
+    format_candidate_options,
     format_filtered_vehicles,
+    format_images_bulleted_list,
+    format_vehicle_name,
     format_vehicle_comparison_table,
     format_vehicle_detail,
 )
+from src.utils.signals import (
+    FEATURE_SIGNALS,
+    FINANCING_SIGNALS,
+    GENERAL_SIGNALS,
+    MORE_IMAGES_SIGNALS,
+    NO_IMAGES_AVAILABLE_MESSAGE,
+    NO_MORE_IMAGES_MESSAGE,
+    PROMOTIONS_SIGNALS,
+    WC_IMAGE_MARKER_PREFIX,
+)
 from src.utils.state_helpers import append_assistant_message, latest_user_message
-
-_GENERAL_SIGNALS = {
-    "que carros tienes",
-    "que autos tienes",
-    "carros disponibles",
-    "autos disponibles",
-    "que marcas",
-    "marcas disponibles",
-    "catalogo",
-    "catálogo",
-    "mostrar vehiculos",
-    "mostrar vehiculos disponibles",
-    "mostrar carros",
-}
-_FEATURE_SIGNALS = {
-    "color",
-    "marca",
-    "modelo",
-    "ano",
-    "año",
-    "verde",
-    "rojo",
-    "azul",
-    "negro",
-    "blanco",
-    "gris",
-}
-_MORE_IMAGES_SIGNALS = {
-    "ver mas imagenes",
-    "ver más imagenes",
-    "ver mas fotos",
-    "ver más fotos",
-    "mas imagenes",
-    "más imagenes",
-    "mas fotos",
-    "más fotos",
-    "siguientes imagenes",
-    "siguientes fotos",
-}
-_FINANCING_SIGNALS = {
-    "financiamiento",
-    "financiar",
-    "financiado",
-    "credito",
-    "credito automotriz",
-    "mensualidad",
-    "mensualidades",
-    "enganche",
-    "tasa",
-    "interes",
-    "plazo",
-    "plan financiero",
-    "planes financieros",
-    "plan de financiamiento",
-    "planes de financiamiento",
-    "pagos",
-    "plan de pagos",
-    "planes de pagos",
-}
-_PROMOTIONS_SIGNALS = {
-    "promocion",
-    "promociones",
-    "oferta",
-    "ofertas",
-    "descuento",
-    "descuentos",
-    "bono",
-    "bonos",
-}
-_PURCHASE_WITH_IMAGES_QUESTION = (
-    "¿Te interesa comprar este vehículo o quieres ver más imágenes del mismo? 🚗✨ "
-)
-_PURCHASE_ONLY_QUESTION = "¿Te interesa comprar este vehículo ? 🚗✨"
-_NO_IMAGES_AVAILABLE_MESSAGE = (
-    "Lamentablemente no tenemos imagenes de este vehiculo 🥲, "
-    "pero puedes ponerte en contacto con un asesor para ver el carro en persona."
-)
-_NO_MORE_IMAGES_MESSAGE = (
-    "Ya no hay mas imagenes de este vehiculo. "
-    "Si quieres, te ayudo con otro modelo o continuamos con la compra."
-)
-_WC_IMAGE_MARKER_PREFIX = "<<WC_IMAGE_JSON>>"
-
 
 def _normalize_signal_set(values: set[str]) -> set[str]:
     """Normaliza señales para compararlas con texto de usuario normalizado."""
@@ -128,11 +67,11 @@ def _normalize_signal_set(values: set[str]) -> set[str]:
     return {normalize_user_text(value) for value in values}
 
 
-_GENERAL_SIGNALS_NORMALIZED = _normalize_signal_set(_GENERAL_SIGNALS)
-_FEATURE_SIGNALS_NORMALIZED = _normalize_signal_set(_FEATURE_SIGNALS)
-_MORE_IMAGES_SIGNALS_NORMALIZED = _normalize_signal_set(_MORE_IMAGES_SIGNALS)
-_FINANCING_SIGNALS_NORMALIZED = _normalize_signal_set(_FINANCING_SIGNALS)
-_PROMOTIONS_SIGNALS_NORMALIZED = _normalize_signal_set(_PROMOTIONS_SIGNALS)
+_GENERAL_SIGNALS_NORMALIZED = _normalize_signal_set(GENERAL_SIGNALS)
+_FEATURE_SIGNALS_NORMALIZED = _normalize_signal_set(FEATURE_SIGNALS)
+_MORE_IMAGES_SIGNALS_NORMALIZED = _normalize_signal_set(MORE_IMAGES_SIGNALS)
+_FINANCING_SIGNALS_NORMALIZED = _normalize_signal_set(FINANCING_SIGNALS)
+_PROMOTIONS_SIGNALS_NORMALIZED = _normalize_signal_set(PROMOTIONS_SIGNALS)
 
 
 def _debug(event: str, **payload: Any) -> None:
@@ -145,161 +84,13 @@ def _debug(event: str, **payload: Any) -> None:
     print(f"[car_selection] {event}")
 
 
-def _is_general_request(user_text: str) -> bool:
-    """Retorna True cuando is general request."""
-    normalized = normalize_user_text(user_text)
-    if not normalized:
-        return True
-    return any(signal in normalized for signal in _GENERAL_SIGNALS_NORMALIZED)
-
-
-def _looks_like_feature_request(user_text: str) -> bool:
-    """Detecta si el texto parece feature request."""
-    normalized = normalize_user_text(user_text)
-    has_year = bool(re.search(r"\b(?:19|20)\d{2}\b", normalized))
-    return has_year or any(signal in normalized for signal in _FEATURE_SIGNALS_NORMALIZED)
-
-
-def _looks_like_specific_vehicle_request(user_text: str) -> bool:
-    """Detecta preguntas por un modelo/marca puntual aunque no exista en catalogo."""
-
-    normalized = normalize_user_text(user_text)
-    if not normalized:
-        return False
-    # Ejemplos: "tienes modelo chevrolet", "busco marca chevrolet"
-    if re.search(r"\b(modelo|marca)\s+[a-z0-9]+\b", normalized):
-        return True
-    # Ejemplos: "tienes chevrolet?", "hay chevrolet?"
-    if re.search(r"\b(tienes|hay|busco|quiero)\s+[a-z0-9]+\b", normalized):
-        return not _is_general_request(user_text)
-    # Ejemplos sin keyword explicita: "el sedan X sirve para ciudad o carretera?"
-    if re.search(r"\b(?:el|la|un|una)\s+[a-z]{3,}\s+\d{1,4}\b", normalized):
-        return True
-    # Ejemplos: "modelo Y es bueno?", "hatchback 2018 conviene?"
-    if _looks_like_feature_request(user_text) and re.search(r"\b[a-z]{3,}\s+\d{1,4}\b", normalized):
-        return True
-    return False
-
-
-def _is_more_images_request(user_text: str) -> bool:
-    """Retorna True cuando is more images request."""
-    normalized = normalize_user_text(user_text)
-    if not normalized:
-        return False
-    return any(signal in normalized for signal in _MORE_IMAGES_SIGNALS_NORMALIZED)
-
-
-def _is_financing_request(user_text: str) -> bool:
-    """Retorna True cuando is financing request."""
-    normalized = normalize_user_text(user_text)
-    if not normalized:
-        return False
-    return any(_contains_signal_phrase(normalized, signal) for signal in _FINANCING_SIGNALS_NORMALIZED)
-
-
-def _is_promotions_request(user_text: str) -> bool:
-    """Retorna True cuando is promotions request."""
-    normalized = normalize_user_text(user_text)
-    if not normalized:
-        return False
-    return any(_contains_signal_phrase(normalized, signal) for signal in _PROMOTIONS_SIGNALS_NORMALIZED)
-
-
-def _is_selected_vehicle_specs_request(
-    user_text: str,
-    *,
-    selected_vehicle_id: str,
-    vehicles: list[dict[str, Any]],
-) -> bool:
-    """True si pide ficha/datos del vehiculo en contexto (no cambiar a otro modelo)."""
-
-    normalized = normalize_user_text(user_text)
-    if not normalized or not str(selected_vehicle_id).strip():
-        return False
-    other_vehicle_signals = (
-        "otro modelo",
-        "otro vehiculo",
-        "otro carro",
-        "otro auto",
-        "otros vehiculos",
-        "otros modelos",
-        "ver otros",
-        "mas opciones",
-    )
-    if any(signal in normalized for signal in other_vehicle_signals):
-        return False
-    specs_signals = (
-        "datos del modelo",
-        "datos del vehiculo",
-        "datos del carro",
-        "datos del auto",
-        "dame los datos del",
-        "dame la ficha",
-        "muestrame los datos",
-        "ficha tecnica",
-        "ficha del auto",
-        "ficha del vehiculo",
-        "ficha del modelo",
-        "ficha del carro",
-        "especificaciones del modelo",
-        "especificaciones del vehiculo",
-        "especificaciones del carro",
-        "caracteristicas del modelo",
-        "caracteristicas del vehiculo",
-        "informacion del modelo",
-        "informacion del vehiculo",
-        "informacion completa del",
-        "toda la informacion del",
-    )
-    if not any(signal in normalized for signal in specs_signals):
-        return False
-    other = _pick_vehicle_from_filters(user_text, vehicles)
-    cur_id = str(selected_vehicle_id).strip()
-    other_id = str(other.get("id", "")).strip() if isinstance(other, dict) else ""
-    if other_id and other_id != cur_id:
-        return False
-    return True
-
-
-def _contains_signal_phrase(normalized_text: str, signal: str) -> bool:
-    """Busca una señal respetando limites de palabra para evitar falsos positivos."""
-
-    parts = [part for part in str(signal or "").split() if part]
-    if not parts:
-        return False
-    pattern = r"(?<![a-z0-9])" + r"\s+".join(re.escape(part) for part in parts) + r"(?![a-z0-9])"
-    return re.search(pattern, normalized_text) is not None
-
-
-def _format_vehicle_name(item: dict[str, Any]) -> str:
-    """Formatea vehicle name para salida de chat."""
-    brand = str(item.get("brand", "")).strip()
-    model = str(item.get("model", "")).strip()
-    year = item.get("year")
-    suffix = f" {year}" if isinstance(year, int) else ""
-    return f"{brand} {model}{suffix}".strip()
-
-
-def _format_candidate_options(candidates: list[dict[str, Any]], limit: int = 8) -> str:
-    """Construye una lista numerada breve para que el usuario elija una opcion."""
-
-    lines: list[str] = []
-    for idx, item in enumerate(candidates[:limit], start=1):
-        if not isinstance(item, dict):
-            continue
-        label = _format_vehicle_name(item)
-        if label:
-            lines.append(f"{idx}. {label}")
-    return "\n".join(lines)
-
-
 def _find_candidate_from_pending(state: clientState, user_text: str) -> dict[str, Any] | None:
-    """Busca candidate from pending en el estado actual."""
+    """Resuelve selección del usuario contra candidatos pendientes (nombre o índice)."""
     pending = state.get("last_vehicle_candidates", [])
     if not isinstance(pending, list) or not pending:
         _debug("pending_candidates_empty")
         return None
-    options = [_format_vehicle_name(item) for item in pending if isinstance(item, dict)]
+    options = [format_vehicle_name(item) for item in pending if isinstance(item, dict)]
     _debug("pending_candidates_detected", options=options)
     picked_label = canonicalize_with_typo_support(user_text, options, threshold=0.72)
     if not picked_label:
@@ -317,14 +108,14 @@ def _find_candidate_from_pending(state: clientState, user_text: str) -> dict[str
         if explicit_index_selection and index_match:
             idx = int(index_match.group(1)) - 1
             if 0 <= idx < len(pending) and isinstance(pending[idx], dict):
-                _debug("pending_candidate_selected_by_index", index=idx, value=_format_vehicle_name(pending[idx]))
+                _debug("pending_candidate_selected_by_index", index=idx, value=format_vehicle_name(pending[idx]))
                 return pending[idx]
         _debug("pending_candidate_not_matched", user_text=user_text)
         return None
     for item in pending:
         if not isinstance(item, dict):
             continue
-        if _format_vehicle_name(item) == picked_label:
+        if format_vehicle_name(item) == picked_label:
             _debug("pending_candidate_selected_by_name", selected=picked_label)
             return item
     _debug("pending_candidate_label_without_match", picked_label=picked_label)
@@ -332,24 +123,23 @@ def _find_candidate_from_pending(state: clientState, user_text: str) -> dict[str
 
 
 def _format_images_block(images: list[str]) -> str:
-    """Formatea images block para salida de chat."""
+    """Renderiza bloque de imágenes en texto para canales no-WhatsApp."""
     if not images:
         return generate_verified_user_message(
             mode="operational",
             verified_facts_block=(
                 "tipo: bloque_imagenes_vacio\n"
-                f"texto_literal_sistema: {_NO_IMAGES_AVAILABLE_MESSAGE}\n"
+                f"texto_literal_sistema: {NO_IMAGES_AVAILABLE_MESSAGE}\n"
             ),
             user_message="",
-            fallback=_NO_IMAGES_AVAILABLE_MESSAGE,
+            fallback=NO_IMAGES_AVAILABLE_MESSAGE,
             temperature=0.35,
         )
-    formatted = "\n".join(f"- {_image_url_for_chat(url)}" for url in images)
-    return f"Imagenes del vehiculo:\n{formatted}"
+    return format_images_bulleted_list(images, _image_url_for_chat)
 
 
 def _build_whatsapp_image_marker_block(state: clientState, vehicle_id: str, images: list[str]) -> str:
-    """Construye whatsapp image marker block para la respuesta."""
+    """Genera marcadores JSON para envío de imágenes por WhatsApp."""
     user_id = str(state.get("user_id", "")).strip()
     if not user_id or not vehicle_id or not images:
         return ""
@@ -363,12 +153,12 @@ def _build_whatsapp_image_marker_block(state: clientState, vehicle_id: str, imag
         image_url = str(message.get("imageUrl", "")).strip()
         if not image_url:
             continue
-        marker_lines.append(f"{_WC_IMAGE_MARKER_PREFIX}{json.dumps(message, ensure_ascii=True)}")
+        marker_lines.append(f"{WC_IMAGE_MARKER_PREFIX}{json.dumps(message, ensure_ascii=True)}")
     return "\n".join(marker_lines)
 
 
 def _build_purchase_question(include_images_option: bool) -> str:
-    """Construye purchase question para la respuesta."""
+    """Genera pregunta de cierre comercial según contexto de imágenes."""
     return generate_vehicle_purchase_question(include_images_option=include_images_option)
 
 
@@ -377,9 +167,9 @@ def _build_no_more_images_message() -> str:
 
     return generate_verified_user_message(
         mode="operational",
-        verified_facts_block=f"tipo: sin_mas_imagenes\ntexto_literal_sistema: {_NO_MORE_IMAGES_MESSAGE}\n",
+        verified_facts_block=f"tipo: sin_mas_imagenes\ntexto_literal_sistema: {NO_MORE_IMAGES_MESSAGE}\n",
         user_message="",
-        fallback=_NO_MORE_IMAGES_MESSAGE,
+        fallback=NO_MORE_IMAGES_MESSAGE,
         temperature=0.35,
     )
 
@@ -394,7 +184,7 @@ def _append_assistant_blocks(state: clientState, blocks: list[str]) -> clientSta
 
 
 def _image_url_for_chat(raw_url: str) -> str:
-    """Helper de apoyo para image url for chat."""
+    """Normaliza URL de imagen relativa/absoluta al host backend."""
     cleaned = str(raw_url or "").strip()
     if not cleaned:
         return ""
@@ -439,7 +229,7 @@ def _fetch_top_images_for_selected_vehicle(state: clientState, vehicle_id: str) 
 
 
 def _respond_with_more_images(state: clientState) -> clientState:
-    """Genera una respuesta para with more images."""
+    """Entrega lote siguiente de imágenes y actualiza cursores de paginación."""
     vehicle_id = str(state.get("selected_vehicle_id", "")).strip()
     if not vehicle_id:
         return append_assistant_message(state, "Primero selecciona un vehiculo para poder mostrarte imagenes.")
@@ -518,7 +308,7 @@ def _respond_selected_vehicle_inventory_qa(state: clientState, user_text: str) -
 
     platform = str(state.get("platform", "web")).strip().lower() or "web"
     grounded = format_vehicle_detail(detail, platform=platform)
-    name = selected_label or _format_vehicle_name(detail)
+    name = selected_label or format_vehicle_name(detail)
     body = generate_selected_vehicle_qa_response(name, grounded, user_text)
     question = _build_purchase_question(include_images_option=include_images_option)
     state["awaiting_purchase_confirmation"] = True
@@ -555,7 +345,7 @@ def _pick_vehicle_from_filters(
     prioritized = available_candidates or [item for item in candidates if isinstance(item, dict)]
     if len(prioritized) == 1:
         selected = prioritized[0]
-        _debug("model_resolution_single_match", selected=_format_vehicle_name(selected))
+        _debug("model_resolution_single_match", selected=format_vehicle_name(selected))
         return selected
 
     _debug("model_resolution_ambiguous_matches", count=len(prioritized))
@@ -563,7 +353,7 @@ def _pick_vehicle_from_filters(
 
 
 def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, Any]) -> clientState:
-    """Genera una respuesta para with vehicle detail."""
+    """Abre detalle de vehículo y re-sincroniza estado de compra/promos/financiamiento."""
     vehicle_id = str(vehicle_summary.get("id", "")).strip()
     previous_vehicle_id = str(state.get("selected_vehicle_id", "")).strip()
     has_selected_financing_plan = bool(str(state.get("selected_financing_plan_id", "")).strip())
@@ -628,7 +418,7 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
                 temperature=0.35,
             )
 
-    _debug("vehicle_detail_requested", vehicle_id=vehicle_id, summary=_format_vehicle_name(vehicle_summary))
+    _debug("vehicle_detail_requested", vehicle_id=vehicle_id, summary=format_vehicle_name(vehicle_summary))
     if not vehicle_id:
         _debug("vehicle_detail_missing_id")
         message = generate_verified_user_message(
@@ -660,7 +450,7 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
         return append_assistant_message(state, message)
 
     state["selected_vehicle_id"] = vehicle_id
-    state["selected_car"] = _format_vehicle_name(detail)
+    state["selected_car"] = format_vehicle_name(detail)
     state["last_vehicle_candidates"] = []
     state["awaiting_purchase_confirmation"] = True
     top_images = _fetch_top_images_for_selected_vehicle(state, vehicle_id)
@@ -697,7 +487,7 @@ def _respond_available_list(
     *,
     unavailable_request: bool = False,
 ) -> clientState:
-    """Genera una respuesta para available list."""
+    """Muestra inventario disponible y limpia contexto de selección previa."""
     state["awaiting_purchase_confirmation"] = False
     state["last_vehicle_candidates"] = [
         item
@@ -744,32 +534,48 @@ def _respond_other_vehicles_with_optional_filters(
     vehicles: list[dict[str, Any]],
     user_text: str,
 ) -> clientState:
-    """Resuelve "ver otros" intentando primero filtros en el mismo turno."""
+    """Resuelve `ver otros`: aplica filtros del turno o vuelve a listado general."""
 
     filters = detect_vehicle_filters(user_text, vehicles)
     _debug("other_vehicles_filters_detected", filters=filters)
     if not filters:
         return _respond_available_list(state, vehicles)
+    return _respond_with_filtered_search(state, filters, user_text, source="other_vehicles")
+
+
+def _price_hint_from_filters(filters: dict[str, Any]) -> str:
+    """Construye texto corto del rango de precio para mensajes sin resultados."""
+
+    min_price = filters.get("minPrice")
+    max_price = filters.get("maxPrice")
+    if min_price is not None and max_price is not None:
+        return f" en el rango de ${min_price} a ${max_price}"
+    if min_price is not None:
+        return f" con precio desde ${min_price}"
+    if max_price is not None:
+        return f" con precio hasta ${max_price}"
+    return ""
+
+
+def _respond_with_filtered_search(
+    state: clientState,
+    filters: dict[str, Any],
+    user_text: str,
+    *,
+    source: str,
+) -> clientState:
+    """Ejecuta búsqueda filtrada y responde casos: 0/1/múltiples resultados."""
 
     try:
         filtered = search_vehicles(filters)
-        _debug("other_vehicles_search_results", count=len(filtered), filters=filters)
+        _debug(f"{source}_search_results", count=len(filtered), filters=filters)
     except Exception:
-        _debug("other_vehicles_search_error", filters=filters)
+        _debug(f"{source}_search_error", filters=filters)
         filtered = []
 
     if not filtered:
-        _debug("other_vehicles_search_empty", filters=filters)
-        min_price = filters.get("minPrice")
-        max_price = filters.get("maxPrice")
-        price_hint = ""
-        if min_price is not None or max_price is not None:
-            if min_price is not None and max_price is not None:
-                price_hint = f" en el rango de ${min_price} a ${max_price}"
-            elif min_price is not None:
-                price_hint = f" con precio desde ${min_price}"
-            else:
-                price_hint = f" con precio hasta ${max_price}"
+        _debug(f"{source}_search_empty", filters=filters)
+        price_hint = _price_hint_from_filters(filters)
         message = generate_verified_user_message(
             mode="inventory_search_empty",
             verified_facts_block=(
@@ -782,10 +588,10 @@ def _respond_other_vehicles_with_optional_filters(
         )
         return append_assistant_message(state, message)
     if len(filtered) == 1:
-        _debug("other_vehicles_search_single_match", match=_format_vehicle_name(filtered[0]))
+        _debug(f"{source}_search_single_match", match=format_vehicle_name(filtered[0]))
         return _respond_with_vehicle_detail(state, filtered[0])
-    if _looks_like_feature_request(user_text):
-        _debug("other_vehicles_search_multiple_feature_request", count=len(filtered))
+    if looks_like_feature_request(user_text, _FEATURE_SIGNALS_NORMALIZED):
+        _debug(f"{source}_search_multiple_feature_request", count=len(filtered))
         platform = str(state.get("platform", "web")).strip().lower() or "web"
         listing = format_filtered_vehicles(filtered, platform=platform)
         verified = "\n".join(
@@ -804,8 +610,8 @@ def _respond_other_vehicles_with_optional_filters(
             temperature=0.42,
         )
     else:
-        _debug("other_vehicles_search_multiple_specific_request", count=len(filtered))
-        options = _format_candidate_options(filtered)
+        _debug(f"{source}_search_multiple_specific_request", count=len(filtered))
+        options = format_candidate_options(filtered)
         if options:
             message = generate_vehicle_candidates_selection_message(options, user_message=user_text)
         else:
@@ -820,7 +626,7 @@ def _respond_other_vehicles_with_optional_filters(
                 temperature=0.35,
             )
     state["last_vehicle_candidates"] = filtered[:8]
-    _debug("other_vehicles_pending_candidates_saved", count=len(state["last_vehicle_candidates"]))
+    _debug(f"{source}_pending_candidates_saved", count=len(state["last_vehicle_candidates"]))
     return append_assistant_message(state, message)
 
 
@@ -848,6 +654,8 @@ def _vehicle_comparison_llm_gate(user_text: str) -> bool:
 
 
 def _should_invoke_vehicle_comparison_llm(state: clientState, user_text: str) -> bool:
+    """Decide si conviene llamar extractor LLM de comparación."""
+
     if _vehicle_comparison_llm_gate(user_text):
         return True
     pending = state.get("last_vehicle_candidates") or []
@@ -858,6 +666,8 @@ def _should_invoke_vehicle_comparison_llm(state: clientState, user_text: str) ->
 
 
 def _prioritized_vehicle_matches(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Prioriza unidades disponibles; si no hay, conserva coincidencias válidas."""
+
     available = [
         item
         for item in candidates
@@ -867,6 +677,8 @@ def _prioritized_vehicle_matches(candidates: list[dict[str, Any]]) -> list[dict[
 
 
 def _matches_for_vehicle_query(query: str, vehicles: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Busca coincidencias para una consulta libre usando filtros detectados."""
+
     q = str(query or "").strip()
     if not q:
         return []
@@ -881,6 +693,8 @@ def _matches_for_vehicle_query(query: str, vehicles: list[dict[str, Any]]) -> li
 
 
 def _clear_vehicle_comparison_ctx(state: clientState) -> None:
+    """Limpia estado temporal de comparación multi-turno."""
+
     state["vehicle_comparison_ctx"] = {}
 
 
@@ -894,8 +708,8 @@ def _respond_with_vehicle_comparison(
     _clear_vehicle_comparison_ctx(state)
     platform = str(state.get("platform", "web")).strip().lower() or "web"
     table = format_vehicle_comparison_table(detail_a, detail_b, platform=platform)
-    name_a = _format_vehicle_name(detail_a)
-    name_b = _format_vehicle_name(detail_b)
+    name_a = format_vehicle_name(detail_a)
+    name_b = format_vehicle_name(detail_b)
     user_q = latest_user_message(state)
     verified = "\n".join(
         [
@@ -924,9 +738,11 @@ def _comparison_prompt_first_ambiguous(
     matches: list[dict[str, Any]],
     other_query: str,
 ) -> clientState:
+    """Pide aclarar el primer vehículo cuando hay múltiples coincidencias."""
+
     state["last_vehicle_candidates"] = matches[:8]
     state["vehicle_comparison_ctx"] = {"other_query": str(other_query or "").strip()}
-    options = _format_candidate_options(matches)
+    options = format_candidate_options(matches)
     body = (
         "Encontre varias opciones para el primer vehiculo de la comparacion. "
         "Elige cual es la primera unidad (nombre o numero).\n\n"
@@ -940,9 +756,11 @@ def _comparison_prompt_second_ambiguous(
     peer_id: str,
     matches: list[dict[str, Any]],
 ) -> clientState:
+    """Pide aclarar el segundo vehículo cuando hay múltiples coincidencias."""
+
     state["last_vehicle_candidates"] = matches[:8]
     state["vehicle_comparison_ctx"] = {"peer_resolved_id": str(peer_id).strip()}
-    options = _format_candidate_options(matches)
+    options = format_candidate_options(matches)
     body = (
         "Encontre varias opciones para el segundo vehiculo. "
         "Elige cual comparar (nombre o numero).\n\n"
@@ -957,6 +775,8 @@ def _comparison_after_first_vehicle_chosen(
     first_summary: dict[str, Any],
     other_query: str,
 ) -> clientState:
+    """Continúa comparación tras resolver el primer vehículo."""
+
     id_a = str(first_summary.get("id", "")).strip()
     oq = str(other_query or "").strip()
     if not id_a or not oq:
@@ -976,14 +796,14 @@ def _comparison_after_first_vehicle_chosen(
                 mode="operational",
                 verified_facts_block=(
                     f"operacion: comparacion_segundo_vehiculo\n"
-                    f"primer_vehiculo: {_format_vehicle_name(detail_a)}\n"
+                    f"primer_vehiculo: {format_vehicle_name(detail_a)}\n"
                     f"consulta_segundo: {oq}\n"
                     "resultado: sin_coincidencias\n"
                 ),
                 user_message=latest_user_message(state),
                 fallback=(
                     f"No encontre en inventario un segundo vehiculo que coincida con \"{oq}\" "
-                    f"para compararlo con {_format_vehicle_name(detail_a)}. "
+                    f"para compararlo con {format_vehicle_name(detail_a)}. "
                     "Prueba con otra marca, modelo o año."
                 ),
                 temperature=0.35,
@@ -1011,6 +831,8 @@ def _comparison_after_second_vehicle_chosen(
     peer_id: str,
     second_summary: dict[str, Any],
 ) -> clientState:
+    """Resuelve comparación cuando el segundo vehículo ya fue elegido."""
+
     id_a = str(peer_id or "").strip()
     id_b = str(second_summary.get("id", "")).strip()
     _clear_vehicle_comparison_ctx(state)
@@ -1159,7 +981,7 @@ def car_selection(state: clientState) -> clientState:
         step_flags = classify_vehicle_step_flags(previous_bot_message, user_text, selected_car_name)
         _debug("vehicle_step_flags", **step_flags)
         if step_flags.get("wants_compare_two_vehicles"):
-            numbered = _format_candidate_options(state.get("last_vehicle_candidates") or [])
+            numbered = format_candidate_options(state.get("last_vehicle_candidates") or [])
             payload = classify_vehicle_comparison_payload(
                 previous_bot_message=previous_bot_message,
                 user_message=user_text,
@@ -1180,17 +1002,18 @@ def car_selection(state: clientState) -> clientState:
             state["intent"] = "promotions"
             _debug("route_change", next_node="promotions", reason="llm_flags")
             return state
-        if step_flags.get("ask_financing") or _is_financing_request(user_text):
+        if step_flags.get("ask_financing") or is_financing_request(user_text, _FINANCING_SIGNALS_NORMALIZED):
             state["awaiting_purchase_confirmation"] = False
             state["current_node"] = "financing"
             _debug("route_change", next_node="financing", reason="financing_request")
             return state
         if step_flags.get("ask_more_images"):
             return _respond_with_more_images(state)
-        if _is_selected_vehicle_specs_request(
+        if is_selected_vehicle_specs_request(
             user_text,
             selected_vehicle_id=str(state.get("selected_vehicle_id", "")).strip(),
             vehicles=vehicles,
+            pick_vehicle_from_filters_fn=_pick_vehicle_from_filters,
         ):
             return _respond_selected_vehicle_inventory_qa(state, user_text)
         if step_flags.get("wants_other_vehicles"):
@@ -1209,7 +1032,7 @@ def car_selection(state: clientState) -> clientState:
             decision=decision,
             selected_car=state.get("selected_car", ""),
         )
-        if decision == "VER_MAS_IMAGENES" or _is_more_images_request(user_text):
+        if decision == "VER_MAS_IMAGENES" or is_more_images_request(user_text, _MORE_IMAGES_SIGNALS_NORMALIZED):
             return _respond_with_more_images(state)
         if decision == "PREGUNTA_MODELO":
             other = _pick_vehicle_from_filters(user_text, vehicles)
@@ -1236,7 +1059,7 @@ def car_selection(state: clientState) -> clientState:
         return append_assistant_message(state, question)
 
     if _should_invoke_vehicle_comparison_llm(state, user_text):
-        numbered = _format_candidate_options(state.get("last_vehicle_candidates") or [])
+        numbered = format_candidate_options(state.get("last_vehicle_candidates") or [])
         payload = classify_vehicle_comparison_payload(
             previous_bot_message=str(state.get("last_bot_message", "")).strip(),
             user_message=user_text,
@@ -1267,15 +1090,15 @@ def car_selection(state: clientState) -> clientState:
         _debug("continuing_from_pending_candidates")
         return _respond_with_vehicle_detail(state, selected_pending)
 
-    if _is_general_request(user_text):
+    if is_general_request(user_text, _GENERAL_SIGNALS_NORMALIZED):
         _debug("branch_general_request")
         return _respond_available_list(state, vehicles)
 
-    if _is_financing_request(user_text):
+    if is_financing_request(user_text, _FINANCING_SIGNALS_NORMALIZED):
         state["current_node"] = "financing"
         _debug("route_change", next_node="financing", reason="mid_selection_financing")
         return state
-    if _is_promotions_request(user_text):
+    if is_promotions_request(user_text, _PROMOTIONS_SIGNALS_NORMALIZED):
         state["current_node"] = "promotions"
         state["intent"] = "promotions"
         _debug("route_change", next_node="promotions", reason="mid_selection_promotions")
@@ -1284,78 +1107,13 @@ def car_selection(state: clientState) -> clientState:
     filters = detect_vehicle_filters(user_text, vehicles)
     _debug("filters_detected", filters=filters)
     if filters:
-        try:
-            filtered = search_vehicles(filters)
-            _debug("search_results", count=len(filtered), filters=filters)
-        except Exception:
-            _debug("search_error", filters=filters)
-            filtered = []
-        if not filtered:
-            _debug("search_empty", filters=filters)
-            min_price = filters.get("minPrice")
-            max_price = filters.get("maxPrice")
-            price_hint = ""
-            if min_price is not None or max_price is not None:
-                if min_price is not None and max_price is not None:
-                    price_hint = f" en el rango de ${min_price} a ${max_price}"
-                elif min_price is not None:
-                    price_hint = f" con precio desde ${min_price}"
-                else:
-                    price_hint = f" con precio hasta ${max_price}"
-            message = generate_verified_user_message(
-                mode="inventory_search_empty",
-                verified_facts_block=(
-                    f"criterios_busqueda_json: {json.dumps(filters, default=str, ensure_ascii=False)}\n"
-                    "vehiculos_encontrados: 0\n"
-                ),
-                user_message=user_text,
-                fallback=f"No encontre carros con esas caracteristicas{price_hint}. Quieres que te muestre todos los disponibles?",
-                temperature=0.35,
-            )
-            return append_assistant_message(state, message)
-        if len(filtered) == 1:
-            _debug("search_single_match", match=_format_vehicle_name(filtered[0]))
-            return _respond_with_vehicle_detail(state, filtered[0])
-        if _looks_like_feature_request(user_text):
-            _debug("search_multiple_feature_request", count=len(filtered))
-            platform = str(state.get("platform", "web")).strip().lower() or "web"
-            listing = format_filtered_vehicles(filtered, platform=platform)
-            verified = "\n".join(
-                [
-                    "LISTADO_RESULTADO_BUSQUEDA:",
-                    listing,
-                    "",
-                    "instruccion_cierre_literal: Si te interesa uno de estos, dime por favor el nombre exacto del vehiculo.",
-                ]
-            )
-            message = generate_verified_user_message(
-                mode="filtered_vehicles_followup",
-                verified_facts_block=verified,
-                user_message=user_text,
-                fallback=f"{listing}\n\nSi te interesa uno de estos, dime por favor el nombre exacto del vehiculo.",
-                temperature=0.42,
-            )
-        else:
-            _debug("search_multiple_specific_request", count=len(filtered))
-            options = _format_candidate_options(filtered)
-            if options:
-                message = generate_vehicle_candidates_selection_message(options, user_message=user_text)
-            else:
-                message = generate_verified_user_message(
-                    mode="operational",
-                    verified_facts_block="situacion: multiples_matches_sin_lista_formateada\n",
-                    user_message=user_text,
-                    fallback=(
-                        "Encontre varios carros similares. "
-                        "¿Cual te interesa? Puedes responder con el nombre o el numero."
-                    ),
-                    temperature=0.35,
-                )
-        state["last_vehicle_candidates"] = filtered[:8]
-        _debug("pending_candidates_saved", count=len(state["last_vehicle_candidates"]))
-        return append_assistant_message(state, message)
+        return _respond_with_filtered_search(state, filters, user_text, source="search")
 
-    unavailable_request = _looks_like_specific_vehicle_request(user_text)
+    unavailable_request = looks_like_specific_vehicle_request(
+        user_text,
+        is_general_request_fn=lambda text: is_general_request(text, _GENERAL_SIGNALS_NORMALIZED),
+        looks_like_feature_request_fn=lambda text: looks_like_feature_request(text, _FEATURE_SIGNALS_NORMALIZED),
+    )
     _debug(
         "no_filters_detected_fallback_to_available",
         unavailable_request=unavailable_request,
