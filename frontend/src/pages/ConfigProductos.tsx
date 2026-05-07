@@ -29,7 +29,9 @@ const filters: { key: "all" | CarStatus; label: string }[] = [
 ];
 
 const formatPrice = (n: number) =>
-  new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 0 }).format(n);
+  new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 0 }).format(Math.round(n));
+
+const parsePriceInt = (raw: string) => Math.round(Number(raw));
 const mediaBase = (import.meta.env.VITE_API_BASE_URL || "http://localhost:4000/api").replace(/\/api\/?$/, "");
 const toMediaUrl = (value: string) => (value.startsWith("http") ? value : `${mediaBase}${value}`);
 const vehicleEmojis = ["🚗", "🚙", "🚘", "🚕", "🚖", "🚐", "🚚", "🚛", "🛻", "🚜", "🏎️", "🚓", "🚑", "🚒", "🚌"];
@@ -148,7 +150,7 @@ export default function ConfigProductos() {
       brand: car.brand || "",
       model: car.model || "",
       year: String(car.year || ""),
-      price: String(car.price || ""),
+      price: String(Math.round(Number(car.price ?? 0))),
       km: String(car.km || 0),
       transmission: car.transmission || "",
       engine: car.engine || "",
@@ -172,7 +174,7 @@ export default function ConfigProductos() {
         brand: form.brand.trim(),
         model: form.model.trim(),
         year: Number(form.year),
-        price: Number(form.price),
+        price: parsePriceInt(form.price),
         km: Number(form.km || "0"),
         transmission: form.transmission.trim(),
         engine: form.engine.trim(),
@@ -296,6 +298,8 @@ export default function ConfigProductos() {
                     <span className="text-xs font-semibold text-muted-foreground">Precio</span>
                     <Input
                       type="number"
+                      step={1}
+                      min={0}
                       placeholder="Ej. 629900"
                       value={form.price}
                       onChange={(e) => setForm((s) => ({ ...s, price: e.target.value }))}
@@ -304,7 +308,7 @@ export default function ConfigProductos() {
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <label className="space-y-1">
-                    <span className="text-xs font-semibold text-muted-foreground">Kilometraje (km)</span>
+                    <span className="text-xs font-semibold text-muted-foreground">Kilometraje</span>
                     <Input
                       type="number"
                       placeholder="Ej. 22000"
