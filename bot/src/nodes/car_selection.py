@@ -1206,6 +1206,16 @@ def car_selection(state: clientState) -> clientState:
             filtered = []
         if not filtered:
             _debug("search_empty", filters=filters)
+            min_price = filters.get("minPrice")
+            max_price = filters.get("maxPrice")
+            price_hint = ""
+            if min_price is not None or max_price is not None:
+                if min_price is not None and max_price is not None:
+                    price_hint = f" en el rango de ${min_price} a ${max_price}"
+                elif min_price is not None:
+                    price_hint = f" con precio desde ${min_price}"
+                else:
+                    price_hint = f" con precio hasta ${max_price}"
             message = generate_verified_user_message(
                 mode="inventory_search_empty",
                 verified_facts_block=(
@@ -1213,7 +1223,7 @@ def car_selection(state: clientState) -> clientState:
                     "vehiculos_encontrados: 0\n"
                 ),
                 user_message=user_text,
-                fallback="No encontre carros con esas caracteristicas. Quieres que te muestre todos los disponibles?",
+                fallback=f"No encontre carros con esas caracteristicas{price_hint}. Quieres que te muestre todos los disponibles?",
                 temperature=0.35,
             )
             return append_assistant_message(state, message)

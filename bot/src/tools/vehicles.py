@@ -82,7 +82,7 @@ def fetch_vehicles() -> list[dict[str, Any]]:
 def search_vehicles(filters: dict[str, Any]) -> list[dict[str, Any]]:
     """Busca vehiculos por filtros soportados por backend."""
 
-    allowed_keys = {"brand", "model", "color", "year"}
+    allowed_keys = {"brand", "model", "color", "year", "minPrice", "maxPrice"}
     params: dict[str, Any] = {}
     for key, value in filters.items():
         if key not in allowed_keys or value in (None, ""):
@@ -291,17 +291,119 @@ def canonicalize_with_typo_support(text: str, options: list[str], threshold: flo
     return _best_fuzzy_match(normalized_text, options_map, threshold=threshold)
 
 
+def _parse_price_amount(raw_amount: str, raw_suffix: str = "") -> int | None:
+    """Convierte una cantidad escrita por usuario a entero compatible con backend."""
+
+    amount = str(raw_amount or "").strip().lower()
+    suffix = str(raw_suffix or "").strip().lower()
+    if not amount:
+        return None
+    compact = re.sub(r"\s+", "", amount).replace(",", "")
+    if compact.count(".") > 1:
+        compact = compact.replace(".", "")
+    elif "." in compact:
+        whole, frac = compact.split(".", 1)
+        # Caso comun: 200.000 (separador de miles)
+        if len(frac) == 3 and whole.isdigit() and frac.isdigit():
+            compact = f"{whole}{frac}"
+    if not re.search(r"\d", compact):
+        return None
+    normalized = re.sub(r"[^0-9.]", "", compact)
+    if normalized.count(".") > 1:
+        normalized = normalized.replace(".", "")
+    try:
+        value = float(normalized)
+    except ValueError:
+        return None
+    multiplier = 1
+    if suffix in {"k", "mil"}:
+        multiplier = 1000
+    elif suffix in {"millon", "millones"}:
+        multiplier = 1_000_000
+    result = int(round(value * multiplier))
+    return result if result >= 0 else None
+
+
+def _debug_price_filters(event: str, **payload: Any) -> None:
+    """Log simple de filtros de precio para facilitar trazabilidad en runtime."""
+
+    fields = ", ".join(f"{key}={repr(value)}" for key, value in payload.items())
+    print(f"[vehicles][price_filters] {event} | {fields}")
+
+
+def _extract_price_filters(user_text: str) -> dict[str, int]:
+    """Extrae minPrice/maxPrice desde lenguaje natural."""
+
+    lowered = normalize_user_text(user_text)
+    if not lowered:
+        return {}
+    compact_text = re.sub(r"\s+", " ", str(user_text or "").lower()).strip()
+    if not compact_text:
+        compact_text = lowered
+    amount_pattern = r"(\d[\d\s\.,]*\d|\d)\s*(k|mil|millon|millones)?"
+
+    def _first_value(pattern: str) -> int | None:
+        match = re.search(pattern, compact_text)
+        if not match:
+            match = re.search(pattern, lowered)
+        if not match:
+            return None
+        return _parse_price_amount(match.group(1), match.group(2) or "")
+
+    # Rango explícito: entre X y Y / de X a Y.
+    range_match = re.search(rf"\bentre\s+{amount_pattern}\s+y\s+{amount_pattern}\b", compact_text)
+    if not range_match:
+        range_match = re.search(rf"\bde\s+{amount_pattern}\s+a\s+{amount_pattern}\b", compact_text)
+    if range_match:
+        first = _parse_price_amount(range_match.group(1), range_match.group(2) or "")
+        second = _parse_price_amount(range_match.group(3), range_match.group(4) or "")
+        if first is not None and second is not None:
+            min_price, max_price = sorted((first, second))
+            return {"minPrice": min_price, "maxPrice": max_price}
+
+    max_price = _first_value(rf"\b(?:hasta|maximo|máximo|menos de|no mas de)\s+{amount_pattern}\b")
+    min_price = _first_value(rf"\b(?:desde|minimo|mínimo|mas de|más de|arriba de)\s+{amount_pattern}\b")
+    budget_price = _first_value(rf"\b(?:presupuesto)(?:\s+maximo|\s+máximo|\s+de)?\s+{amount_pattern}\b")
+    if budget_price is not None and max_price is None:
+        max_price = budget_price
+
+    filters: dict[str, int] = {}
+    if min_price is not None:
+        filters["minPrice"] = min_price
+    if max_price is not None:
+        filters["maxPrice"] = max_price
+    if "minPrice" in filters and "maxPrice" in filters and filters["minPrice"] > filters["maxPrice"]:
+        filters["minPrice"], filters["maxPrice"] = filters["maxPrice"], filters["minPrice"]
+    return filters
+
+
 def detect_vehicle_filters(user_text: str, vehicles: list[dict[str, Any]]) -> dict[str, Any]:
-    """Extrae filtros brand/model/color/year con normalizacion y typo handling."""
+    """Extrae filtros brand/model/color/year/precio con normalizacion y typo handling."""
 
     normalized = normalize_user_text(user_text)
     filters: dict[str, Any] = {}
     if not normalized:
         return filters
 
+    price_filters = _extract_price_filters(user_text)
+    _debug_price_filters(
+        "price_detected",
+        user_text=user_text,
+        minPrice=price_filters.get("minPrice"),
+        maxPrice=price_filters.get("maxPrice"),
+        hasRange=bool(price_filters.get("minPrice") is not None and price_filters.get("maxPrice") is not None),
+    )
     years = re.findall(r"\b(?:19|20)\d{2}\b", normalized)
     if years:
-        filters["year"] = int(years[-1])
+        selected_year = int(years[-1])
+        price_values = {int(v) for v in price_filters.values() if isinstance(v, int)}
+        price_hints_present = any(
+            hint in normalized
+            for hint in ("precio", "presupuesto", "entre", "desde", "hasta", "maximo", "minimo", "menos de", "mas de")
+        )
+        references_model_year = bool(re.search(r"\b(ano|año|modelo)\b", normalized))
+        if not (price_hints_present and selected_year in price_values and not references_model_year):
+            filters["year"] = selected_year
 
     brands = sorted(
         {str(item.get("brand", "")).strip() for item in vehicles if str(item.get("brand", "")).strip()}
@@ -322,6 +424,8 @@ def detect_vehicle_filters(user_text: str, vehicles: list[dict[str, Any]]) -> di
     color = canonicalize_with_typo_support(user_text, colors, threshold=0.8)
     if color:
         filters["color"] = color
+    filters.update(price_filters)
+    _debug_price_filters("filters_detected", filters=filters)
 
     return filters
 
