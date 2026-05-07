@@ -11,6 +11,8 @@ from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 import requests
+from langchain_openai import ChatOpenAI
+from src.utils.prompts import build_vehicle_filter_extraction_prompt
 
 
 def _vehicles_api_base_url() -> str:
@@ -331,6 +333,114 @@ def _debug_price_filters(event: str, **payload: Any) -> None:
     print(f"[vehicles][price_filters] {event} | {fields}")
 
 
+def _parse_json_object_from_llm(text: str) -> dict[str, Any] | None:
+    """Extrae el primer JSON objeto de la salida del modelo."""
+
+    raw = str(text or "").strip()
+    if not raw:
+        return None
+    fenced = re.search(r"```(?:json)?\s*(\{[\s\S]*?\})\s*```", raw, re.IGNORECASE)
+    if fenced:
+        raw = fenced.group(1).strip()
+    if not raw.startswith("{"):
+        candidate = re.search(r"\{[\s\S]*\}", raw)
+        if candidate:
+            raw = candidate.group(0).strip()
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _coerce_year(value: Any) -> int | None:
+    """Normaliza año a formato int válido."""
+
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        year = int(float(str(value).strip()))
+    except (ValueError, TypeError):
+        return None
+    return year if 1900 <= year <= 2100 else None
+
+
+def _coerce_price(value: Any) -> int | None:
+    """Normaliza precio entero desde distintos formatos."""
+
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return int(round(float(value))) if float(value) >= 0 else None
+    raw = str(value).strip().lower()
+    if not raw:
+        return None
+    # Soporta unidades incrustadas en el mismo valor, ej: "220k", "150 mil", "1.2 millones".
+    with_suffix = re.match(r"^\s*([0-9][0-9\s\.,]*)\s*(k|mil|millon|millones)\s*$", raw)
+    if with_suffix:
+        parsed = _parse_price_amount(with_suffix.group(1), with_suffix.group(2))
+        if parsed is not None:
+            return parsed
+    return _parse_price_amount(raw, "")
+
+
+def _sanitize_llm_vehicle_filters(
+    raw: dict[str, Any], brands: list[str], models: list[str], colors: list[str]
+) -> dict[str, Any]:
+    """Valida/sanitiza payload de filtros de vehículo proveniente de LLM."""
+
+    out: dict[str, Any] = {}
+    raw_brand = str(raw.get("brand") or "").strip()
+    raw_model = str(raw.get("model") or "").strip()
+    raw_color = str(raw.get("color") or "").strip()
+
+    brand = canonicalize_with_typo_support(raw_brand, brands, threshold=0.72) if raw_brand else None
+    model = canonicalize_with_typo_support(raw_model, models, threshold=0.7) if raw_model else None
+    color = canonicalize_with_typo_support(raw_color, colors, threshold=0.75) if raw_color else None
+    if brand:
+        out["brand"] = brand
+    if model:
+        out["model"] = model
+    if color:
+        out["color"] = color
+
+    year = _coerce_year(raw.get("year"))
+    if year is not None:
+        out["year"] = year
+
+    min_price = _coerce_price(raw.get("minPrice"))
+    max_price = _coerce_price(raw.get("maxPrice"))
+    if min_price is not None:
+        out["minPrice"] = min_price
+    if max_price is not None:
+        out["maxPrice"] = max_price
+    if "minPrice" in out and "maxPrice" in out and out["minPrice"] > out["maxPrice"]:
+        out["minPrice"], out["maxPrice"] = out["maxPrice"], out["minPrice"]
+    return out
+
+
+def _extract_filters_with_llm(
+    user_text: str, *, brands: list[str], models: list[str], colors: list[str]
+) -> dict[str, Any]:
+    """Clasificador LLM para filtros de catálogo (con salida JSON estricta)."""
+
+    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
+    try:
+        llm = ChatOpenAI(model=model_name, temperature=0)
+        prompt = build_vehicle_filter_extraction_prompt(user_text, brands=brands, models=models, colors=colors)
+        content = llm.invoke(prompt).content
+        parsed = _parse_json_object_from_llm(str(content or ""))
+        if not parsed:
+            _debug_price_filters("llm_parse_failed", model=model_name, content=str(content or "")[:200])
+            return {}
+        sanitized = _sanitize_llm_vehicle_filters(parsed, brands=brands, models=models, colors=colors)
+        _debug_price_filters("llm_filters_detected", filters=sanitized)
+        return sanitized
+    except Exception as exc:
+        _debug_price_filters("llm_extract_failed", model=model_name, error=str(exc))
+        return {}
+
+
 def _extract_price_filters(user_text: str) -> dict[str, int]:
     """Extrae minPrice/maxPrice desde lenguaje natural."""
 
@@ -378,32 +488,12 @@ def _extract_price_filters(user_text: str) -> dict[str, int]:
 
 
 def detect_vehicle_filters(user_text: str, vehicles: list[dict[str, Any]]) -> dict[str, Any]:
-    """Extrae filtros brand/model/color/year/precio con normalizacion y typo handling."""
+    """Extrae filtros brand/model/color/year/precio con clasificador LLM + heurística."""
 
     normalized = normalize_user_text(user_text)
     filters: dict[str, Any] = {}
     if not normalized:
         return filters
-
-    price_filters = _extract_price_filters(user_text)
-    _debug_price_filters(
-        "price_detected",
-        user_text=user_text,
-        minPrice=price_filters.get("minPrice"),
-        maxPrice=price_filters.get("maxPrice"),
-        hasRange=bool(price_filters.get("minPrice") is not None and price_filters.get("maxPrice") is not None),
-    )
-    years = re.findall(r"\b(?:19|20)\d{2}\b", normalized)
-    if years:
-        selected_year = int(years[-1])
-        price_values = {int(v) for v in price_filters.values() if isinstance(v, int)}
-        price_hints_present = any(
-            hint in normalized
-            for hint in ("precio", "presupuesto", "entre", "desde", "hasta", "maximo", "minimo", "menos de", "mas de")
-        )
-        references_model_year = bool(re.search(r"\b(ano|año|modelo)\b", normalized))
-        if not (price_hints_present and selected_year in price_values and not references_model_year):
-            filters["year"] = selected_year
 
     brands = sorted(
         {str(item.get("brand", "")).strip() for item in vehicles if str(item.get("brand", "")).strip()}
@@ -414,17 +504,56 @@ def detect_vehicle_filters(user_text: str, vehicles: list[dict[str, Any]]) -> di
     colors = sorted(
         {str(item.get("color", "")).strip() for item in vehicles if str(item.get("color", "")).strip()}
     )
+    llm_filters = _extract_filters_with_llm(user_text, brands=brands, models=models, colors=colors)
+    filters.update(llm_filters)
 
-    brand = canonicalize_with_typo_support(user_text, brands, threshold=0.78)
-    if brand:
-        filters["brand"] = brand
-    model = canonicalize_with_typo_support(user_text, models, threshold=0.76)
-    if model:
-        filters["model"] = model
-    color = canonicalize_with_typo_support(user_text, colors, threshold=0.8)
-    if color:
-        filters["color"] = color
-    filters.update(price_filters)
+    price_filters = _extract_price_filters(user_text)
+    _debug_price_filters(
+        "price_detected_heuristic",
+        user_text=user_text,
+        minPrice=price_filters.get("minPrice"),
+        maxPrice=price_filters.get("maxPrice"),
+        hasRange=bool(price_filters.get("minPrice") is not None and price_filters.get("maxPrice") is not None),
+    )
+    if "year" not in filters:
+        years = re.findall(r"\b(?:19|20)\d{2}\b", normalized)
+        if years:
+            selected_year = int(years[-1])
+            price_values = {int(v) for v in price_filters.values() if isinstance(v, int)}
+            price_hints_present = any(
+                hint in normalized
+                for hint in (
+                    "precio",
+                    "presupuesto",
+                    "entre",
+                    "desde",
+                    "hasta",
+                    "maximo",
+                    "minimo",
+                    "menos de",
+                    "mas de",
+                )
+            )
+            references_model_year = bool(re.search(r"\b(ano|año|modelo)\b", normalized))
+            if not (price_hints_present and selected_year in price_values and not references_model_year):
+                filters["year"] = selected_year
+
+    if "brand" not in filters:
+        brand = canonicalize_with_typo_support(user_text, brands, threshold=0.78)
+        if brand:
+            filters["brand"] = brand
+    if "model" not in filters:
+        model = canonicalize_with_typo_support(user_text, models, threshold=0.76)
+        if model:
+            filters["model"] = model
+    if "color" not in filters:
+        color = canonicalize_with_typo_support(user_text, colors, threshold=0.8)
+        if color:
+            filters["color"] = color
+    if "minPrice" not in filters and "minPrice" in price_filters:
+        filters["minPrice"] = price_filters["minPrice"]
+    if "maxPrice" not in filters and "maxPrice" in price_filters:
+        filters["maxPrice"] = price_filters["maxPrice"]
     _debug_price_filters("filters_detected", filters=filters)
 
     return filters

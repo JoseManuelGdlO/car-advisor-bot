@@ -7,6 +7,24 @@ from src.tools.vehicles import detect_vehicle_filters, search_vehicles
 
 
 class PriceFiltersTests(unittest.TestCase):
+    @patch("src.tools.vehicles.ChatOpenAI")
+    def test_detect_vehicle_filters_uses_llm_output_with_catalog_canonicalization(self, mock_llm_cls: Mock) -> None:
+        vehicles = [{"brand": "Nissan", "model": "Versa", "color": "Rojo", "year": 2011}]
+        llm = Mock()
+        llm.invoke.return_value = Mock(
+            content='{"brand":"nissn","model":"versaa","color":"rojoo","year":2011,"minPrice":"150000","maxPrice":"220k"}'
+        )
+        mock_llm_cls.return_value = llm
+
+        filters = detect_vehicle_filters("quiero un versaa rojoo entre 150 mil y 220k", vehicles)
+
+        self.assertEqual(filters.get("brand"), "Nissan")
+        self.assertEqual(filters.get("model"), "Versa")
+        self.assertEqual(filters.get("color"), "Rojo")
+        self.assertEqual(filters.get("year"), 2011)
+        self.assertEqual(filters.get("minPrice"), 150000)
+        self.assertEqual(filters.get("maxPrice"), 220000)
+
     def test_detect_vehicle_filters_extracts_price_range_with_colloquial_units(self) -> None:
         vehicles = [{"brand": "Nissan", "model": "Versa", "color": "rojo", "year": 2011}]
         filters = detect_vehicle_filters("busco un versa entre 150 mil y 220k", vehicles)

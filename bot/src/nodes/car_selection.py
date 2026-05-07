@@ -739,6 +739,91 @@ def _respond_available_list(
     return append_assistant_message(state, message)
 
 
+def _respond_other_vehicles_with_optional_filters(
+    state: clientState,
+    vehicles: list[dict[str, Any]],
+    user_text: str,
+) -> clientState:
+    """Resuelve "ver otros" intentando primero filtros en el mismo turno."""
+
+    filters = detect_vehicle_filters(user_text, vehicles)
+    _debug("other_vehicles_filters_detected", filters=filters)
+    if not filters:
+        return _respond_available_list(state, vehicles)
+
+    try:
+        filtered = search_vehicles(filters)
+        _debug("other_vehicles_search_results", count=len(filtered), filters=filters)
+    except Exception:
+        _debug("other_vehicles_search_error", filters=filters)
+        filtered = []
+
+    if not filtered:
+        _debug("other_vehicles_search_empty", filters=filters)
+        min_price = filters.get("minPrice")
+        max_price = filters.get("maxPrice")
+        price_hint = ""
+        if min_price is not None or max_price is not None:
+            if min_price is not None and max_price is not None:
+                price_hint = f" en el rango de ${min_price} a ${max_price}"
+            elif min_price is not None:
+                price_hint = f" con precio desde ${min_price}"
+            else:
+                price_hint = f" con precio hasta ${max_price}"
+        message = generate_verified_user_message(
+            mode="inventory_search_empty",
+            verified_facts_block=(
+                f"criterios_busqueda_json: {json.dumps(filters, default=str, ensure_ascii=False)}\n"
+                "vehiculos_encontrados: 0\n"
+            ),
+            user_message=user_text,
+            fallback=f"No encontre carros con esas caracteristicas{price_hint}. Quieres que te muestre todos los disponibles?",
+            temperature=0.35,
+        )
+        return append_assistant_message(state, message)
+    if len(filtered) == 1:
+        _debug("other_vehicles_search_single_match", match=_format_vehicle_name(filtered[0]))
+        return _respond_with_vehicle_detail(state, filtered[0])
+    if _looks_like_feature_request(user_text):
+        _debug("other_vehicles_search_multiple_feature_request", count=len(filtered))
+        platform = str(state.get("platform", "web")).strip().lower() or "web"
+        listing = format_filtered_vehicles(filtered, platform=platform)
+        verified = "\n".join(
+            [
+                "LISTADO_RESULTADO_BUSQUEDA:",
+                listing,
+                "",
+                "instruccion_cierre_literal: Si te interesa uno de estos, dime por favor el nombre exacto del vehiculo.",
+            ]
+        )
+        message = generate_verified_user_message(
+            mode="filtered_vehicles_followup",
+            verified_facts_block=verified,
+            user_message=user_text,
+            fallback=f"{listing}\n\nSi te interesa uno de estos, dime por favor el nombre exacto del vehiculo.",
+            temperature=0.42,
+        )
+    else:
+        _debug("other_vehicles_search_multiple_specific_request", count=len(filtered))
+        options = _format_candidate_options(filtered)
+        if options:
+            message = generate_vehicle_candidates_selection_message(options, user_message=user_text)
+        else:
+            message = generate_verified_user_message(
+                mode="operational",
+                verified_facts_block="situacion: multiples_matches_sin_lista_formateada\n",
+                user_message=user_text,
+                fallback=(
+                    "Encontre varios carros similares. "
+                    "¿Cual te interesa? Puedes responder con el nombre o el numero."
+                ),
+                temperature=0.35,
+            )
+    state["last_vehicle_candidates"] = filtered[:8]
+    _debug("other_vehicles_pending_candidates_saved", count=len(state["last_vehicle_candidates"]))
+    return append_assistant_message(state, message)
+
+
 def _vehicle_comparison_llm_gate(user_text: str) -> bool:
     """Prefiltro barato antes de invocar el extractor LLM de comparacion."""
 
@@ -1109,7 +1194,8 @@ def car_selection(state: clientState) -> clientState:
         ):
             return _respond_selected_vehicle_inventory_qa(state, user_text)
         if step_flags.get("wants_other_vehicles"):
-            return _respond_available_list(state, vehicles)
+            state["awaiting_purchase_confirmation"] = False
+            return _respond_other_vehicles_with_optional_filters(state, vehicles, user_text)
         if step_flags.get("confirm_purchase"):
             state["awaiting_purchase_confirmation"] = False
             state["current_node"] = "lead_capture"

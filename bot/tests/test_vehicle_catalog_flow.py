@@ -267,3 +267,49 @@ class VehicleCatalogFlowTests(GraphTestCase):
         self.assertEqual(updated.get("selected_vehicle_id"), "veh-versa")
         mocked_search.assert_called_once_with({"minPrice": 100000, "maxPrice": 200000})
 
+    def test_wants_other_vehicles_during_confirmation_applies_filters_first(self) -> None:
+        selected = {"id": "veh-selected", "brand": "Nissan", "model": "March", "year": 2018, "status": "available", "price": 210000}
+        candidate = {"id": "veh-versa", "brand": "Nissan", "model": "Versa", "year": 2011, "status": "available", "price": 150000}
+        vehicles = [selected, candidate]
+        state = initial_state()
+        state["awaiting_purchase_confirmation"] = True
+        state["selected_vehicle_id"] = "veh-selected"
+        state["selected_car"] = "Nissan March 2018"
+        state["last_bot_message"] = "¿Te interesa comprar este vehículo o quieres ver más imágenes del mismo? 🚗✨"
+        state = with_user_message(state, "quiero ver otros arriba de 100 mil y hasta 200 mil")
+
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.router.classify_router_intent", return_value="VEHICLE_CATALOG"),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch(
+                "src.nodes.car_selection.classify_vehicle_step_flags",
+                return_value={
+                    "wants_compare_two_vehicles": False,
+                    "ask_promotions": False,
+                    "ask_financing": False,
+                    "ask_more_images": False,
+                    "wants_other_vehicles": True,
+                    "confirm_purchase": False,
+                    "reject_purchase": False,
+                },
+            ),
+            patch("src.nodes.car_selection.search_vehicles", return_value=[candidate]) as mocked_search,
+            patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=candidate),
+            patch(
+                "src.nodes.car_selection.generate_vehicle_detail_conversation",
+                return_value="Encontramos un Nissan Versa 2011 dentro del rango solicitado.",
+            ),
+            patch(
+                "src.nodes.car_selection.fetch_vehicle_images",
+                return_value={"images": [], "nextCursor": None, "hasMore": False, "mode": "top"},
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertEqual(updated.get("selected_vehicle_id"), "veh-versa")
+        # Al encontrar un match único se muestra detalle del nuevo vehículo y se vuelve
+        # a esperar confirmación de compra para esa unidad.
+        self.assertTrue(updated.get("awaiting_purchase_confirmation"))
+        mocked_search.assert_called_once_with({"minPrice": 100000, "maxPrice": 200000})
+

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 DEFAULT_RESPONSE_FALLBACK = (
@@ -744,6 +745,34 @@ def build_faq_response_prompt(
         "No inventes datos. No saludes. No menciones que eres una IA.\n\n"
         f"PREGUNTA_USUARIO: {question}\n\n"
         f"BASE_FAQ:\n{context}\n"
+    )
+
+
+def build_vehicle_filter_extraction_prompt(
+    user_text: str,
+    brands: list[str],
+    models: list[str],
+    colors: list[str],
+) -> str:
+    """Prompt extractor JSON de filtros de inventario para búsqueda de vehículos."""
+
+    return (
+        "Extrae filtros de búsqueda de vehículos del mensaje del usuario.\n"
+        "Responde SOLO un JSON con esta forma exacta:\n"
+        '{"brand": null|string, "model": null|string, "color": null|string, "year": null|int, "minPrice": null|int, "maxPrice": null|int}\n'
+        "Reglas:\n"
+        "- No inventes valores.\n"
+        "- Si no hay evidencia clara, usa null.\n"
+        "- Precio debe ir en enteros absolutos (sin comas ni símbolos).\n"
+        "- Si el usuario da un rango, usa minPrice y maxPrice.\n"
+        "- Si solo indica tope/presupuesto máximo, usa maxPrice.\n"
+        "- Si solo indica mínimo, usa minPrice.\n"
+        "- Distingue año de modelo vs precio.\n"
+        "- Usa como referencia estas opciones conocidas para mapear aliases/typos, pero no te limites estrictamente a ellas.\n"
+        f"brands_catalog={json.dumps(brands, ensure_ascii=False)}\n"
+        f"models_catalog={json.dumps(models, ensure_ascii=False)}\n"
+        f"colors_catalog={json.dumps(colors, ensure_ascii=False)}\n"
+        f"user_message={json.dumps(str(user_text or ''), ensure_ascii=False)}\n"
     )
 
 
