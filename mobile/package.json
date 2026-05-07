@@ -6,7 +6,7 @@
   "scripts": {
     "build:web": "npm --prefix ../frontend run build",
     "copy:web": "node ./scripts/sync-web.mjs",
-    "sync": "npm run build:web && npm run copy:web && npx cap sync",
+    "sync": "npm run build:web && npm run copy:web && npx cap sync android",
     "add:android": "npx cap add android",
     "add:ios": "npx cap add ios",
     "android": "npm run sync && npx cap open android",
