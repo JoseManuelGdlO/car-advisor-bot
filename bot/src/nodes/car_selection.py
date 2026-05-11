@@ -15,6 +15,7 @@ from src.services.llm_responses import (
     classify_vehicle_step_flags,
     generate_selected_vehicle_qa_response,
     generate_vehicle_candidates_selection_message,
+    generate_vehicle_comparison_conversation,
     generate_vehicle_detail_conversation,
     generate_vehicle_purchase_question,
     generate_verified_user_message,
@@ -42,8 +43,8 @@ from src.utils.formatters import (
     format_candidate_options,
     format_filtered_vehicles,
     format_images_bulleted_list,
+    format_two_vehicle_comparison_grounding,
     format_vehicle_name,
-    format_vehicle_comparison_table,
     format_vehicle_detail,
 )
 from src.utils.signals import (
@@ -686,29 +687,18 @@ def _respond_with_vehicle_comparison(
 
     _clear_vehicle_comparison_ctx(state)
     platform = str(state.get("platform", "web")).strip().lower() or "web"
-    table = format_vehicle_comparison_table(detail_a, detail_b, platform=platform)
     name_a = format_vehicle_name(detail_a)
     name_b = format_vehicle_name(detail_b)
     user_q = latest_user_message(state)
-    verified = "\n".join(
-        [
-            "operacion: comparacion_dos_vehiculos",
-            f"vehiculo_a: {name_a}",
-            f"vehiculo_b: {name_b}",
-            "",
-            "TABLA_COMPARACION_LITERAL:",
-            table,
-            "",
-            "cierre_literal: Dime con cual quieres continuar y te muestro ese modelo en detalle.",
-        ]
-    )
-    message = generate_verified_user_message(
-        mode="operational",
-        verified_facts_block=verified,
+    grounded = format_two_vehicle_comparison_grounding(detail_a, detail_b, platform=platform)
+    narrative = generate_vehicle_comparison_conversation(
+        name_a,
+        name_b,
+        grounded,
         user_message=user_q,
-        fallback=f"{table}\n\nDime con cual quieres continuar y te muestro ese modelo en detalle.",
-        temperature=0.35,
     )
+    closer = "Dime con cual quieres continuar y te muestro ese modelo en detalle."
+    message = f"{narrative.rstrip()}\n\n{closer}"
     return append_assistant_message(state, message)
 
 

@@ -7,11 +7,11 @@ import unittest
 from src.utils.formatters import (
     format_financing_plan_comparison,
     format_promotion_comparison,
-    format_vehicle_comparison_table,
+    format_two_vehicle_comparison_grounding,
 )
 
 
-class TestFormatVehicleComparisonTable(unittest.TestCase):
+class TestFormatTwoVehicleComparisonGrounding(unittest.TestCase):
     def setUp(self) -> None:
         self.v1 = {
             "brand": "mazda",
@@ -38,23 +38,18 @@ class TestFormatVehicleComparisonTable(unittest.TestCase):
             "description": "",
         }
 
-    def test_web_uses_double_asterisk_bold(self) -> None:
-        out = format_vehicle_comparison_table(self.v1, self.v2, platform="web")
-        self.assertIn("**Marca**", out)
-        self.assertIn("Mazda", out)
-        self.assertIn("Honda", out)
-        self.assertIn("Reservado", out)
-        self.assertIn("Disponible", out)
+    def test_web_has_both_sections_and_prices(self) -> None:
+        out = format_two_vehicle_comparison_grounding(self.v1, self.v2, platform="web")
+        self.assertIn("VEHICULO_A (", out)
+        self.assertIn("VEHICULO_B (", out)
+        self.assertIn("**Precio**", out)
+        self.assertIn("$350,000.00", out)
+        self.assertIn("$280,000.50", out)
 
     def test_whatsapp_uses_single_asterisk_bold(self) -> None:
-        out = format_vehicle_comparison_table(self.v1, self.v2, platform="whatsapp")
+        out = format_two_vehicle_comparison_grounding(self.v1, self.v2, platform="whatsapp")
         self.assertIn("*Marca*", out)
         self.assertNotIn("**Marca**", out)
-
-    def test_formats_price_and_km(self) -> None:
-        out = format_vehicle_comparison_table(self.v1, self.v2, platform="web")
-        self.assertIn("$350,000.00", out)
-        self.assertIn("45,000 km", out)
 
 
 class TestFormatFinancingPlanComparison(unittest.TestCase):

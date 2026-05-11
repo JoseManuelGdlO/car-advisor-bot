@@ -167,58 +167,23 @@ def format_vehicle_detail(vehicle: dict[str, Any], platform: str = "web") -> str
     return "\n".join(lines)
 
 
-def format_vehicle_comparison_table(
+def format_two_vehicle_comparison_grounding(
     vehicle_a: dict[str, Any],
     vehicle_b: dict[str, Any],
     platform: str = "web",
 ) -> str:
-    """Compara dos fichas de vehiculo en filas (atributo / A / B)."""
+    """Une dos fichas `format_vehicle_detail` para anclar narrativa de comparacion al LLM."""
 
-    def _row(label: str, val_a: str, val_b: str) -> str:
-        bl = _bold_label(label, platform)
-        return f"{bl}: {val_a} | {val_b}"
-
-    def _field_values(vehicle: dict[str, Any], field: str) -> str:
-        if field == "brand":
-            return _title_or_default(vehicle.get("brand"))
-        if field == "model":
-            return _title_or_default(vehicle.get("model"))
-        if field == "year":
-            y = vehicle.get("year")
-            return str(y) if isinstance(y, int) else "N/D"
-        if field == "price":
-            return _format_currency(vehicle.get("price"))
-        if field == "km":
-            return _format_int(vehicle.get("km"), "km")
-        if field == "transmission":
-            return _title_or_default(vehicle.get("transmission"))
-        if field == "engine":
-            return _title_or_default(vehicle.get("engine"))
-        if field == "color":
-            return _title_or_default(vehicle.get("color"))
-        if field == "status":
-            return _status_label(vehicle.get("status"))
-        if field == "description":
-            text = str(vehicle.get("description", "")).strip()
-            return text or "Sin descripcion disponible"
-        return "N/D"
-
-    title_a = _vehicle_label(vehicle_a) if isinstance(vehicle_a, dict) else "A"
-    title_b = _vehicle_label(vehicle_b) if isinstance(vehicle_b, dict) else "B"
-    header = _row("Vehiculo", title_a, title_b)
-    rows = [
-        _row("Marca", _field_values(vehicle_a, "brand"), _field_values(vehicle_b, "brand")),
-        _row("Modelo", _field_values(vehicle_a, "model"), _field_values(vehicle_b, "model")),
-        _row("Año", _field_values(vehicle_a, "year"), _field_values(vehicle_b, "year")),
-        _row("Precio", _field_values(vehicle_a, "price"), _field_values(vehicle_b, "price")),
-        _row("Kilometraje", _field_values(vehicle_a, "km"), _field_values(vehicle_b, "km")),
-        _row("Transmision", _field_values(vehicle_a, "transmission"), _field_values(vehicle_b, "transmission")),
-        _row("Motor", _field_values(vehicle_a, "engine"), _field_values(vehicle_b, "engine")),
-        _row("Color", _field_values(vehicle_a, "color"), _field_values(vehicle_b, "color")),
-        _row("Estado", _field_values(vehicle_a, "status"), _field_values(vehicle_b, "status")),
-        _row("Descripcion", _field_values(vehicle_a, "description"), _field_values(vehicle_b, "description")),
-    ]
-    return "\n".join(["Comparacion lado a lado:", "", header, *rows])
+    if not isinstance(vehicle_a, dict) or not isinstance(vehicle_b, dict):
+        return ""
+    name_a = format_vehicle_name(vehicle_a)
+    name_b = format_vehicle_name(vehicle_b)
+    block_a = format_vehicle_detail(vehicle_a, platform=platform)
+    block_b = format_vehicle_detail(vehicle_b, platform=platform)
+    return (
+        f"VEHICULO_A ({name_a}):\n{block_a}\n\n"
+        f"VEHICULO_B ({name_b}):\n{block_b}"
+    )
 
 
 def format_financing_plan_comparison(

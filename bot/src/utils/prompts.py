@@ -282,6 +282,44 @@ def build_vehicle_detail_conversation_prompt(
     )
 
 
+def build_vehicle_comparison_conversation_prompt(
+    vehicle_name_a: str,
+    vehicle_name_b: str,
+    grounded_facts_block: str,
+    user_message: str,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Prompt para comparar dos unidades con tono de asesor, solo con hechos de inventario."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    name_a = vehicle_name_a.strip() or "primer vehiculo"
+    name_b = vehicle_name_b.strip() or "segundo vehiculo"
+    facts = str(grounded_facts_block or "").strip()
+    um = str(user_message or "").strip() or "(sin mensaje reciente del usuario)"
+    return (
+        f"{system_prompt}\n\n"
+        "NARRATIVA_COMPARACION_DOS_VEHICULOS (solo datos verificados):\n"
+        f"Unidad A: {name_a}\n"
+        f"Unidad B: {name_b}\n\n"
+        "A continuacion aparece el bloque DATOS_VERIFICADOS con las fichas VEHICULO_A y VEHICULO_B. "
+        "Es la UNICA fuente de verdad; no contiene opiniones externas.\n\n"
+        "DATOS_VERIFICADOS:\n"
+        f"{facts}\n\n"
+        f"Contexto del usuario (pedido de comparacion): {um}\n\n"
+        "Instrucciones obligatorias:\n"
+        "- Redacta en espanol (Mexico) un texto conversacional: como un asesor que contrasta las dos unidades en chat.\n"
+        "- Usa SOLO informacion que aparezca en DATOS_VERIFICADOS para ambas unidades (mismos valores: precio, km, motor, etc.). "
+        "No inventes equipamiento, garantias, historial, consumo, seguridad, financiamiento, promociones ni datos que no esten en las fichas.\n"
+        "- Menciona a ambos vehiculos de forma clara (puedes usar los nombres de las secciones o marca/modelo/año del bloque).\n"
+        "- Contrasta de forma natural lo que difiere (precio, kilometraje, motor, año, color, descripcion, estado) sin inventar similitudes no respaldadas.\n"
+        "- No uses listas con viñetas ni formato tabla 'campo | A | B' ni lineas tipo 'Etiqueta: valor' repetidas como ficha; integra todo en parrafos o frases enlazadas.\n"
+        "- Evita markdown de tablas; como maximo un salto de linea entre dos parrafos cortos si ayuda a la lectura.\n"
+        "- No cierres con una pregunta fija literal obligatoria: el sistema agregara el cierre. Termina el texto despues de la comparacion, "
+        "por ejemplo con una frase breve que invite a seguir la conversacion sin prometer datos fuera de DATOS_VERIFICADOS.\n"
+        "- Devuelve UNICAMENTE el mensaje para el usuario, sin titulos, sin prefijos tipo 'Respuesta:' ni comillas."
+    )
+
+
 def build_selected_vehicle_qa_prompt(
     vehicle_name: str,
     grounded_facts_block: str,

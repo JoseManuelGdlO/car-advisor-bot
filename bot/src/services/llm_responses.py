@@ -25,6 +25,7 @@ from src.utils.prompts import (
     build_purchase_confirmation_classifier_prompt,
     build_selected_vehicle_qa_prompt,
     build_router_intent_classifier_prompt,
+    build_vehicle_comparison_conversation_prompt,
     build_vehicle_detail_conversation_prompt,
     build_faq_response_prompt,
     build_vehicle_comparison_extract_prompt,
@@ -567,6 +568,111 @@ def generate_vehicle_detail_conversation(vehicle_name: str, grounded_facts_block
             exc,
             model_name=model_name,
             prompt_kind="vehicle_detail_conversation",
+            temperature=0.45,
+        )
+        return fallback
+
+
+def _split_two_vehicle_grounding_block(combined: str) -> tuple[str, str]:
+    """Separa el bloque emitido por `format_two_vehicle_comparison_grounding` en dos fichas."""
+
+    div = "\n\nVEHICULO_B ("
+    if div not in combined:
+        return combined.strip(), ""
+    left, right = combined.split(div, 1)
+    if left.startswith("VEHICULO_A ("):
+        idx = left.find("):\n")
+        if idx != -1:
+            left = left[idx + 3 :].lstrip()
+    idx2 = right.find("):\n")
+    if idx2 != -1:
+        right = right[idx2 + 3 :].lstrip()
+    return left.strip(), right.strip()
+
+
+def _two_vehicle_comparison_fallback(
+    vehicle_name_a: str,
+    vehicle_name_b: str,
+    grounded_two_block: str,
+) -> str:
+    """Parrafos de respaldo sin LLM, alineado al detalle conversacional."""
+
+    a = vehicle_name_a.strip() or "el primer vehiculo"
+    b = vehicle_name_b.strip() or "el segundo vehiculo"
+    facts_a, facts_b = _split_two_vehicle_grounding_block(str(grounded_two_block or ""))
+    if not facts_a and not facts_b:
+        return (
+            f"No tengo las fichas completas para comparar {a} y {b} ahora mismo. "
+            "Prueba de nuevo en un momento."
+        )
+    parts: list[str] = []
+    if facts_a:
+        pa = _grounded_facts_to_fallback_paragraph(a, facts_a)
+        suffix = " Si quieres, seguimos con mas detalles o vemos otro modelo."
+        if pa.endswith(suffix):
+            pa = pa[: -len(suffix)].rstrip()
+        parts.append(pa)
+    if facts_b:
+        pb = _grounded_facts_to_fallback_paragraph(b, facts_b)
+        suffix = " Si quieres, seguimos con mas detalles o vemos otro modelo."
+        if pb.endswith(suffix):
+            pb = pb[: -len(suffix)].rstrip()
+        parts.append(pb)
+    body = "\n\n".join(parts) if parts else str(grounded_two_block or "").strip()
+    return body
+
+
+def generate_vehicle_comparison_conversation(
+    vehicle_name_a: str,
+    vehicle_name_b: str,
+    grounded_two_vehicle_block: str,
+    *,
+    user_message: str = "",
+) -> str:
+    """Genera comparacion conversacional anclada a las dos fichas de inventario."""
+
+    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
+    name_a = vehicle_name_a.strip() or "este vehiculo"
+    name_b = vehicle_name_b.strip() or "el otro vehiculo"
+    facts = str(grounded_two_vehicle_block or "").strip()
+    if not facts:
+        return generate_verified_user_message(
+            mode="operational",
+            verified_facts_block=(
+                "operacion: comparacion_dos_vehiculos\n"
+                f"vehiculo_a: {name_a}\n"
+                f"vehiculo_b: {name_b}\n"
+                "fichas_disponibles: false\n"
+            ),
+            user_message=user_message,
+            fallback=(
+                f"No tengo las dos fichas para comparar {name_a} y {name_b} en este momento. "
+                "Prueba de nuevo o dime otro par de modelos."
+            ),
+            temperature=0.35,
+        )
+    fallback = _two_vehicle_comparison_fallback(name_a, name_b, facts)
+    try:
+        settings = get_bot_settings()
+        llm = ChatOpenAI(model=model_name, temperature=0.45)
+        prompt = build_vehicle_comparison_conversation_prompt(
+            name_a,
+            name_b,
+            facts,
+            user_message,
+            settings,
+        )
+        content = llm.invoke(prompt).content
+        normalized = str(content).strip()
+        if not normalized:
+            return fallback
+        return normalized
+    except Exception as exc:
+        _log_llm_invoke_failure(
+            "generate_vehicle_comparison_conversation",
+            exc,
+            model_name=model_name,
+            prompt_kind="vehicle_comparison_conversation",
             temperature=0.45,
         )
         return fallback
