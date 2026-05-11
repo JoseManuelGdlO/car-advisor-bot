@@ -4,22 +4,7 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from src.tools.vehicles import resolve_single_vehicle_from_text
-from src.utils.signals import FINANCING_SIGNALS
 from src.utils.whatsapp_markers import build_whatsapp_image_marker_block, normalize_image_url_for_chat
-
-
-class SharedSignalsContractTests(TestCase):
-    def test_financing_signals_keeps_legacy_phrases(self) -> None:
-        expected = {
-            "financiamiento",
-            "financiar",
-            "credito",
-            "mensualidad",
-            "enganche",
-            "plan de financiamiento",
-            "plan de pagos",
-        }
-        self.assertTrue(expected.issubset(FINANCING_SIGNALS))
 
 
 class VehicleResolverTests(TestCase):

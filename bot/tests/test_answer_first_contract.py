@@ -6,30 +6,6 @@ from tests.test_helpers import GraphTestCase, initial_state, with_user_message
 
 
 class AnswerFirstContractTests(GraphTestCase):
-    def test_catalog_unavailable_model_answers_then_lists_options(self) -> None:
-        vehicles = [
-            {"id": "veh-1", "brand": "Nissan", "model": "Versa", "year": 2011, "status": "available"},
-            {"id": "veh-2", "brand": "Dodge", "model": "Ram", "year": 2015, "status": "available"},
-        ]
-        state = with_user_message(initial_state(), "el mazda 3 sirve para ciudad o carretera?")
-        with (
-            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
-            patch("src.nodes.router.classify_router_intent", return_value="VEHICLE_CATALOG"),
-            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
-            patch(
-                "src.nodes.car_selection.generate_verified_user_message",
-                side_effect=lambda **kw: (
-                    "No tengo ficha tecnica suficiente para confirmarlo con precision.\n\n" f"{kw.get('fallback', '')}"
-                ),
-            ),
-        ):
-            updated = self.graph.invoke(state)
-
-        answer = str(updated["messages"][-1]["content"])
-        self.assertIn("No tengo ficha tecnica suficiente", answer)
-        self.assertIn("Nissan", answer)
-        self.assertIn("Dodge", answer)
-
     def test_financing_uses_answer_first_contract(self) -> None:
         plans = [
             {

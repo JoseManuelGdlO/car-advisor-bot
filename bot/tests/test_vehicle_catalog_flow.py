@@ -6,31 +6,34 @@ from tests.test_helpers import GraphTestCase, initial_state, with_user_message
 
 
 class VehicleCatalogFlowTests(GraphTestCase):
-    def test_specific_model_question_overrides_faq_classifier_and_routes_catalog(self) -> None:
+    def test_unavailable_model_question_answer_first_with_router_variants(self) -> None:
+        """Mismo contrato answer-first si el router devuelve FAQ o VEHICLE_CATALOG."""
         vehicles = [
             {"id": "veh-1", "brand": "Nissan", "model": "Versa", "year": 2011, "status": "available"},
             {"id": "veh-2", "brand": "Dodge", "model": "Ram", "year": 2015, "status": "available"},
         ]
-        state = with_user_message(initial_state(), "el mazda 3 sirve para ciudad o carretera?")
-        with (
-            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
-            patch("src.nodes.router.classify_router_intent", return_value="FAQ"),
-            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
-            patch(
-                "src.nodes.car_selection.generate_verified_user_message",
-                side_effect=lambda **kw: (
-                    "No tengo ficha tecnica suficiente para confirmarlo con precision. Ese modelo no esta disponible.\n\n"
-                    f"{kw.get('fallback', '')}"
-                ),
-            ),
-        ):
-            updated = self.graph.invoke(state)
+        for router_intent in ("FAQ", "VEHICLE_CATALOG"):
+            with self.subTest(router_intent=router_intent):
 
-        self.assertEqual(updated.get("current_node"), "car_selection")
-        answer = str(updated["messages"][-1]["content"])
-        self.assertIn("No tengo ficha tecnica suficiente", answer)
-        self.assertIn("Nissan", answer)
-        self.assertIn("Dodge", answer)
+                def verified(**kw: object) -> str:
+                    base = "No tengo ficha tecnica suficiente para confirmarlo con precision."
+                    extra = " Ese modelo no esta disponible.\n\n" if router_intent == "FAQ" else "\n\n"
+                    return base + extra + str(kw.get("fallback", ""))
+
+                state = with_user_message(initial_state(), "el mazda 3 sirve para ciudad o carretera?")
+                with (
+                    patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+                    patch("src.nodes.router.classify_router_intent", return_value=router_intent),
+                    patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+                    patch("src.nodes.car_selection.generate_verified_user_message", side_effect=verified),
+                ):
+                    updated = self.graph.invoke(state)
+
+                self.assertEqual(updated.get("current_node"), "car_selection")
+                answer = str(updated["messages"][-1]["content"])
+                self.assertIn("No tengo ficha tecnica suficiente", answer)
+                self.assertIn("Nissan", answer)
+                self.assertIn("Dodge", answer)
 
     def test_promotions_request_from_start_routes_to_promotions(self) -> None:
         state = with_user_message(initial_state(), "hola tienes promociones disponibles?")
@@ -64,72 +67,34 @@ class VehicleCatalogFlowTests(GraphTestCase):
                 "description": "",
             }
         ]
+        for platform in ("web", "whatsapp"):
+            with self.subTest(platform=platform):
+                state = with_user_message(initial_state(), "hola tienen nissan versa")
+                state["platform"] = platform
+                with (
+                    patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+                    patch("src.nodes.router.classify_router_intent", return_value="VEHICLE_CATALOG"),
+                    patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+                    patch("src.nodes.car_selection.search_vehicles", return_value=vehicles),
+                    patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=vehicles[0]),
+                    patch(
+                        "src.nodes.car_selection.generate_vehicle_detail_conversation",
+                        return_value="Detalle del vehiculo: Nissan Versa 2004, color blanco.",
+                    ),
+                    patch(
+                        "src.nodes.car_selection.fetch_vehicle_images",
+                        return_value={"images": ["/img/1.jpg", "/img/2.jpg"], "nextCursor": 2, "hasMore": True, "mode": "top"},
+                    ),
+                ):
+                    updated = self.graph.invoke(state)
 
-        state = with_user_message(initial_state(), "hola tienen nissan versa")
-        with (
-            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
-            patch("src.nodes.router.classify_router_intent", return_value="VEHICLE_CATALOG"),
-            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
-            patch("src.nodes.car_selection.search_vehicles", return_value=vehicles),
-            patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=vehicles[0]),
-            patch(
-                "src.nodes.car_selection.generate_vehicle_detail_conversation",
-                return_value="Detalle del vehiculo: Nissan Versa 2004, color blanco.",
-            ),
-            patch(
-                "src.nodes.car_selection.fetch_vehicle_images",
-                return_value={"images": ["/img/1.jpg", "/img/2.jpg"], "nextCursor": 2, "hasMore": True, "mode": "top"},
-            ),
-        ):
-            updated = self.graph.invoke(state)
-
-        self.assertEqual(updated.get("current_node"), "car_selection")
-        self.assertEqual(updated.get("selected_vehicle_id"), "veh-1")
-        self.assertTrue(updated.get("awaiting_purchase_confirmation"))
-        assistant_texts = [str(m.get("content", "")) for m in updated.get("messages", []) if m.get("role") == "assistant"]
-        joined = "\n".join(assistant_texts)
-        self.assertIn("Detalle del vehiculo:", joined)
-        self.assertIn("Nissan Versa", joined)
-
-    def test_whatsapp_uses_single_asterisk_for_vehicle_detail(self) -> None:
-        vehicles = [
-            {
-                "id": "veh-1",
-                "brand": "Nissan",
-                "model": "Versa",
-                "year": 2004,
-                "status": "available",
-                "price": 350000,
-                "km": 200000,
-                "transmission": "automatica",
-                "engine": "v8 hemi",
-                "color": "blanco",
-                "description": "",
-            }
-        ]
-        state = with_user_message(initial_state(), "hola tienen nissan versa")
-        state["platform"] = "whatsapp"
-
-        with (
-            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
-            patch("src.nodes.router.classify_router_intent", return_value="VEHICLE_CATALOG"),
-            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
-            patch("src.nodes.car_selection.search_vehicles", return_value=vehicles),
-            patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=vehicles[0]),
-            patch(
-                "src.nodes.car_selection.generate_vehicle_detail_conversation",
-                return_value="Detalle del vehiculo: Nissan Versa 2004, color blanco.",
-            ),
-            patch(
-                "src.nodes.car_selection.fetch_vehicle_images",
-                return_value={"images": ["/img/1.jpg", "/img/2.jpg"], "nextCursor": 2, "hasMore": True, "mode": "top"},
-            ),
-        ):
-            updated = self.graph.invoke(state)
-
-        assistant_texts = [str(m.get("content", "")) for m in updated.get("messages", []) if m.get("role") == "assistant"]
-        joined = "\n".join(assistant_texts)
-        self.assertIn("Nissan Versa", joined)
+                self.assertEqual(updated.get("current_node"), "car_selection")
+                self.assertEqual(updated.get("selected_vehicle_id"), "veh-1")
+                self.assertTrue(updated.get("awaiting_purchase_confirmation"))
+                assistant_texts = [str(m.get("content", "")) for m in updated.get("messages", []) if m.get("role") == "assistant"]
+                joined = "\n".join(assistant_texts)
+                self.assertIn("Detalle del vehiculo:", joined)
+                self.assertIn("Nissan Versa", joined)
 
     def test_vehicle_detail_without_images_uses_no_images_copy(self) -> None:
         vehicles = [
