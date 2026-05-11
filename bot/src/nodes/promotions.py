@@ -202,7 +202,22 @@ def _pick_promotion_from_state(state: clientState, user_text: str) -> dict[str, 
         if description:
             options.append(description)
             mapping[description] = item
+
+    # Primero intentamos una coincidencia tolerante a typos basados en todo el texto del usuario.
     selected = canonicalize_with_typo_support(user_text, options, threshold=0.7)
+
+    # Si el clasificador difuso no encuentra nada, intentamos un match mas directo por subcadenas
+    # para casos como "me interesa mensualidad gratis" vs "Mensualidad gratis en SUVs".
+    if not selected:
+        normalized_user = normalize_user_text(user_text)
+        for option in options:
+            normalized_option = normalize_user_text(option)
+            if not normalized_option or not normalized_user:
+                continue
+            if normalized_option in normalized_user or normalized_user in normalized_option:
+                selected = option
+                break
+
     if not selected:
         return None
     return mapping.get(selected)
