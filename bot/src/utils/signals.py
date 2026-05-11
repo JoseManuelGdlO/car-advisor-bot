@@ -75,6 +75,65 @@ PROMOTIONS_SIGNALS = {
     "bonos",
 }
 
+CATALOG_SIGNALS = {
+    "modelo",
+    "modelos",
+    "carro",
+    "carros",
+    "auto",
+    "autos",
+    "vehiculo",
+    "vehiculos",
+    "marca",
+    "marcas",
+    "catalogo",
+    "disponible",
+    "disponibles",
+}
+
+EXPLICIT_CATALOG_BROWSE_TOKENS = {
+    "catalogo",
+    "modelos",
+    "marcas",
+    "disponibles",
+    "inventario",
+    "vehiculos",
+    "autos",
+    "listado",
+}
+
+CATALOG_BROWSE_VERB_HINTS = {"muestra", "ver", "otros"}
+CATALOG_BROWSE_TARGET_HINTS = {"modelo", "disponible", "opciones", "catalogo", "carro", "auto", "vehiculo", "otros"}
+
+AFFIRMATIVE_SIGNALS = {"si", "sí", "claro", "acepto", "me interesa", "quiero", "va", "dale"}
+NEGATIVE_SIGNALS = {"no", "nel", "paso", "no gracias", "ya no", "mejor no"}
+
+VEHICLE_INFO_REQUEST_SIGNALS = {"vehiculo", "carro", "auto", "modelo", "detalles", "detalle", "ver", "mostrar", "informacion"}
+
+PLAN_VEHICLE_INFO_SIGNALS = {
+    "como es",
+    "detalles",
+    "detalle",
+    "info",
+    "informacion",
+    "vehiculo",
+    "carro",
+    "auto",
+    "modelo",
+    "imagen",
+    "imagenes",
+    "foto",
+    "fotos",
+}
+
+EXPLICIT_PROMOTION_APPLY_SIGNALS = {
+    "aplicar",
+    "quiero esa promocion",
+    "quiero aplicar",
+    "si quiero la promocion",
+    "tomar promocion",
+}
+
 NO_IMAGES_AVAILABLE_MESSAGE = (
     "Lamentablemente no tenemos imagenes de este vehiculo 🥲, "
     "pero puedes ponerte en contacto con un asesor para ver el carro en persona."

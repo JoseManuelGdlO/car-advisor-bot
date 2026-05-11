@@ -133,10 +133,12 @@ class FinancingFlowTests(GraphTestCase):
         state["user_id"] = "5512345678"
         state["owner_user_id"] = "owner-test"
 
+        def resolve_vehicle_hint(user_text: str, **_kwargs: object) -> dict[str, object] | None:
+            return vehicle_hint[0] if "versa" in str(user_text).lower() else None
+
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
-            patch("src.nodes.financing.fetch_vehicles", return_value=vehicle_hint),
-            patch("src.nodes.financing.search_vehicles", return_value=vehicle_hint),
+            patch("src.nodes.financing.resolve_single_vehicle_from_text", side_effect=resolve_vehicle_hint),
             patch("src.nodes.financing.fetch_financing_plans_by_vehicle", return_value=[plan_a, plan_b]),
             patch(
                 "src.nodes.financing.generate_verified_user_message",
@@ -226,6 +228,9 @@ class FinancingFlowTests(GraphTestCase):
         state["user_id"] = "5512345678"
         state["owner_user_id"] = "owner-multiturn"
 
+        def resolve_vehicle_hint(user_text: str, **_kwargs: object) -> dict[str, object] | None:
+            return versa_2011 if "versa" in str(user_text).lower() else None
+
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", side_effect=faq_flags),
             patch("src.nodes.faq.fetch_faq_candidates", return_value=["Estamos ubicados por el colegio REX."]),
@@ -243,8 +248,7 @@ class FinancingFlowTests(GraphTestCase):
                 "src.nodes.car_selection.generate_verified_user_message",
                 side_effect=lambda **kw: kw["fallback"],
             ),
-            patch("src.nodes.financing.fetch_vehicles", return_value=[versa_2011, versa_2001]),
-            patch("src.nodes.financing.search_vehicles", return_value=[versa_2011]),
+            patch("src.nodes.financing.resolve_single_vehicle_from_text", side_effect=resolve_vehicle_hint),
             patch("src.nodes.financing.fetch_financing_plans_by_vehicle", return_value=[shilo_plan, plan_test]),
             patch(
                 "src.nodes.financing.generate_verified_user_message",

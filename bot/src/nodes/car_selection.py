@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import json
-import os
 import re
-from urllib.parse import urlsplit, urlunsplit
 from typing import Any
 
 from src.state import clientState
@@ -31,7 +29,6 @@ from src.services.car_selection_fallback import (
     looks_like_specific_vehicle_request,
 )
 from src.tools.vehicles import (
-    build_whatsapp_image_messages,
     canonicalize_with_typo_support,
     detect_vehicle_filters,
     fetch_vehicle_by_id,
@@ -57,7 +54,10 @@ from src.utils.signals import (
     NO_IMAGES_AVAILABLE_MESSAGE,
     NO_MORE_IMAGES_MESSAGE,
     PROMOTIONS_SIGNALS,
-    WC_IMAGE_MARKER_PREFIX,
+)
+from src.utils.whatsapp_markers import (
+    build_whatsapp_image_marker_block as build_shared_whatsapp_image_marker_block,
+    normalize_image_url_for_chat,
 )
 from src.utils.state_helpers import append_assistant_message, latest_user_message
 
@@ -143,18 +143,11 @@ def _build_whatsapp_image_marker_block(state: clientState, vehicle_id: str, imag
     user_id = str(state.get("user_id", "")).strip()
     if not user_id or not vehicle_id or not images:
         return ""
-    image_messages = build_whatsapp_image_messages(
+    return build_shared_whatsapp_image_marker_block(
         to=user_id,
         vehicle_id=vehicle_id,
         image_urls=images,
     )
-    marker_lines = []
-    for message in image_messages:
-        image_url = str(message.get("imageUrl", "")).strip()
-        if not image_url:
-            continue
-        marker_lines.append(f"{WC_IMAGE_MARKER_PREFIX}{json.dumps(message, ensure_ascii=True)}")
-    return "\n".join(marker_lines)
 
 
 def _build_purchase_question(include_images_option: bool) -> str:
@@ -185,21 +178,7 @@ def _append_assistant_blocks(state: clientState, blocks: list[str]) -> clientSta
 
 def _image_url_for_chat(raw_url: str) -> str:
     """Normaliza URL de imagen relativa/absoluta al host backend."""
-    cleaned = str(raw_url or "").strip()
-    if not cleaned:
-        return ""
-    if cleaned.startswith("http://") or cleaned.startswith("https://"):
-        return cleaned
-    backend_api_url = str(os.getenv("BACKEND_API_URL", "")).strip()
-    if backend_api_url:
-        parts = urlsplit(backend_api_url)
-        path = re.sub(r"/api/?$", "", parts.path or "", flags=re.IGNORECASE) or ""
-        base = urlunsplit((parts.scheme, parts.netloc, path, "", "")).rstrip("/")
-    else:
-        base = "http://localhost:4000"
-    if cleaned.startswith("/"):
-        return f"{base}{cleaned}"
-    return f"{base}/{cleaned}"
+    return normalize_image_url_for_chat(raw_url)
 
 
 def _reset_vehicle_images_state(state: clientState) -> None:

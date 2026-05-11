@@ -96,6 +96,42 @@ def search_vehicles(filters: dict[str, Any]) -> list[dict[str, Any]]:
     return _normalize_vehicles_payload(response.json())
 
 
+def resolve_single_vehicle_from_text(
+    user_text: str,
+    *,
+    prefer_available: bool,
+    require_brand_or_model: bool = False,
+    catalog: list[dict[str, Any]] | None = None,
+) -> dict[str, Any] | None:
+    """Resuelve un unico vehiculo a partir de texto libre."""
+
+    normalized_text = str(user_text or "").strip()
+    if not normalized_text:
+        return None
+    try:
+        active_catalog = catalog if isinstance(catalog, list) else fetch_vehicles()
+    except Exception:
+        return None
+    filters = detect_vehicle_filters(normalized_text, active_catalog)
+    if require_brand_or_model and not (
+        str(filters.get("brand", "")).strip() or str(filters.get("model", "")).strip()
+    ):
+        return None
+    if not filters:
+        return None
+    try:
+        matches = search_vehicles(filters)
+    except Exception:
+        return None
+    candidates = [item for item in matches if isinstance(item, dict)]
+    if prefer_available:
+        available = [item for item in candidates if str(item.get("status", "")).strip().lower() == "available"]
+        candidates = available or candidates
+    if len(candidates) == 1:
+        return candidates[0]
+    return None
+
+
 def fetch_vehicle_by_id(vehicle_id: str) -> dict[str, Any] | None:
     """Obtiene detalle puntual del vehiculo por id."""
 

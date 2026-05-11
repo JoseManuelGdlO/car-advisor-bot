@@ -16,72 +16,32 @@ from src.services.llm_responses import (
 from src.state import clientState
 from src.tools.database import fetch_financing_plans, fetch_financing_plans_by_vehicle
 from src.tools.vehicles import (
-    build_whatsapp_image_messages,
     canonicalize_with_typo_support,
-    detect_vehicle_filters,
     fetch_vehicle_by_id,
     fetch_vehicle_images,
-    fetch_vehicles,
     normalize_user_text,
-    search_vehicles,
+    resolve_single_vehicle_from_text,
 )
-_WC_IMAGE_MARKER_PREFIX = "<<WC_IMAGE_JSON>>"
-
 from src.utils.formatters import (
+    format_images_bulleted_list,
     format_financing_plan_comparison,
-    format_vehicle_detail,
     format_financing_plan_vehicles,
     format_financing_plans,
     format_financing_plans_for_vehicle,
+    format_vehicle_detail,
+    format_vehicle_name,
 )
+from src.utils.signals import (
+    CATALOG_BROWSE_TARGET_HINTS,
+    CATALOG_BROWSE_VERB_HINTS,
+    CATALOG_SIGNALS,
+    EXPLICIT_CATALOG_BROWSE_TOKENS,
+    FINANCING_SIGNALS,
+    PLAN_VEHICLE_INFO_SIGNALS,
+    PROMOTIONS_SIGNALS,
+)
+from src.utils.whatsapp_markers import build_whatsapp_image_marker_block, normalize_image_url_for_chat
 from src.utils.state_helpers import append_assistant_message, latest_user_message
-
-_FINANCING_SIGNALS = {
-    "financiamiento",
-    "financiar",
-    "financiado",
-    "credito",
-    "credito automotriz",
-    "mensualidad",
-    "mensualidades",
-    "enganche",
-    "tasa",
-    "interes",
-    "plazo",
-    "plan financiero",
-    "planes financieros",
-    "plan de financiamiento",
-    "planes de financiamiento",
-    "pagos",
-    "plan de pagos",
-    "planes de pagos",
-}
-_PROMOTIONS_SIGNALS = {
-    "promocion",
-    "promociones",
-    "oferta",
-    "ofertas",
-    "descuento",
-    "descuentos",
-    "bono",
-    "bonos",
-}
-_CATALOG_SIGNALS = {
-    "modelo",
-    "modelos",
-    "carro",
-    "carros",
-    "auto",
-    "autos",
-    "vehiculo",
-    "vehiculos",
-    "marca",
-    "marcas",
-    "catalogo",
-    "disponible",
-    "disponibles",
-}
-
 
 def _debug(event: str, **payload: Any) -> None:
     """Imprime trazas del flujo de financiamiento para depuracion."""
@@ -98,7 +58,7 @@ def _is_financing_query(user_text: str) -> bool:
     normalized = normalize_user_text(user_text)
     if not normalized:
         return False
-    return any(_contains_signal_phrase(normalized, signal) for signal in _FINANCING_SIGNALS)
+    return any(_contains_signal_phrase(normalized, signal) for signal in FINANCING_SIGNALS)
 
 
 def _is_promotions_query(user_text: str) -> bool:
@@ -106,7 +66,7 @@ def _is_promotions_query(user_text: str) -> bool:
     normalized = normalize_user_text(user_text)
     if not normalized:
         return False
-    return any(_contains_signal_phrase(normalized, signal) for signal in _PROMOTIONS_SIGNALS)
+    return any(_contains_signal_phrase(normalized, signal) for signal in PROMOTIONS_SIGNALS)
 
 
 def _is_catalog_query(user_text: str) -> bool:
@@ -114,7 +74,7 @@ def _is_catalog_query(user_text: str) -> bool:
     normalized = normalize_user_text(user_text)
     if not normalized:
         return False
-    return any(_contains_signal_phrase(normalized, signal) for signal in _CATALOG_SIGNALS)
+    return any(_contains_signal_phrase(normalized, signal) for signal in CATALOG_SIGNALS)
 
 
 def _is_explicit_catalog_browse_request(user_text: str) -> bool:
@@ -122,25 +82,15 @@ def _is_explicit_catalog_browse_request(user_text: str) -> bool:
     n = normalize_user_text(user_text)
     if not n:
         return False
-    if any(
-        token in n
-        for token in (
-            "catalogo",
-            "modelos",
-            "marcas",
-            "disponibles",
-            "inventario",
-            "vehiculos",
-            "autos",
-            "listado",
-        )
-    ):
+    if any(token in n for token in EXPLICIT_CATALOG_BROWSE_TOKENS):
         return True
-    if "muestra" in n and any(x in n for x in ("modelo", "disponible", "opciones", "catalogo")):
+    if "muestra" in n and any(x in n for x in CATALOG_BROWSE_TARGET_HINTS):
         return True
-    if "ver" in n and any(x in n for x in ("modelo", "opciones", "catalogo", "disponible", "otros")):
+    if "ver" in n and any(x in n for x in CATALOG_BROWSE_TARGET_HINTS):
         return True
-    if "otros" in n and any(x in n for x in ("modelo", "carro", "auto", "vehiculo", "opciones")):
+    if "otros" in n and any(x in n for x in CATALOG_BROWSE_TARGET_HINTS):
+        return True
+    if any(verb in n for verb in CATALOG_BROWSE_VERB_HINTS) and any(x in n for x in CATALOG_BROWSE_TARGET_HINTS):
         return True
     return False
 
@@ -171,14 +121,6 @@ def _contains_signal_phrase(normalized_text: str, signal: str) -> bool:
         return False
     pattern = r"(?<![a-z0-9])" + r"\s+".join(re.escape(part) for part in parts) + r"(?![a-z0-9])"
     return re.search(pattern, normalized_text) is not None
-
-
-def _vehicle_label(item: dict[str, Any]) -> str:
-    """Helper de apoyo para vehicle label."""
-    brand = str(item.get("brand", "")).strip()
-    model = str(item.get("model", "")).strip()
-    year = item.get("year")
-    return f"{brand} {model} {year if isinstance(year, int) else ''}".strip()
 
 
 def _plan_has_available_vehicle_row(plan: dict[str, Any]) -> bool:
@@ -337,7 +279,7 @@ def _pick_plan_from_state(state: clientState, user_text: str) -> dict[str, Any] 
             mapping[combined] = item
         vehicles = _available_plan_vehicles(item)
         for vehicle in vehicles:
-            label = _vehicle_label(vehicle)
+            label = format_vehicle_name(vehicle)
             if label:
                 options.append(label)
                 mapping[label] = item
@@ -373,12 +315,12 @@ def _pick_vehicle_for_plan(state: clientState, user_text: str) -> dict[str, Any]
         if 0 <= idx < len(candidates) and isinstance(candidates[idx], dict):
             return candidates[idx]
 
-    options = [_vehicle_label(item) for item in candidates if isinstance(item, dict)]
+    options = [format_vehicle_name(item) for item in candidates if isinstance(item, dict)]
     selected = canonicalize_with_typo_support(user_text, options, threshold=0.72)
     if not selected:
         return None
     for item in candidates:
-        if isinstance(item, dict) and _vehicle_label(item) == selected:
+        if isinstance(item, dict) and format_vehicle_name(item) == selected:
             return item
     return None
 
@@ -392,38 +334,19 @@ def _pick_vehicle_from_candidates(candidates: list[dict[str, Any]], user_text: s
         idx = int(normalized) - 1
         if 0 <= idx < len(candidates) and isinstance(candidates[idx], dict):
             return candidates[idx]
-    options = [_vehicle_label(item) for item in candidates if isinstance(item, dict)]
+    options = [format_vehicle_name(item) for item in candidates if isinstance(item, dict)]
     selected = canonicalize_with_typo_support(user_text, options, threshold=0.72)
     if not selected:
         return None
     for item in candidates:
-        if isinstance(item, dict) and _vehicle_label(item) == selected:
+        if isinstance(item, dict) and format_vehicle_name(item) == selected:
             return item
     return None
 
 
 def _maybe_resolve_vehicle_from_query(user_text: str) -> dict[str, Any] | None:
     """Helper de apoyo para maybe resolve vehicle from query."""
-    try:
-        catalog = fetch_vehicles()
-    except Exception:
-        return None
-    filters = detect_vehicle_filters(user_text, catalog)
-    if not filters:
-        return None
-    try:
-        matches = search_vehicles(filters)
-    except Exception:
-        return None
-    only_available = [
-        item
-        for item in matches
-        if isinstance(item, dict) and str(item.get("status", "")).strip().lower() == "available"
-    ]
-    candidates = only_available or [item for item in matches if isinstance(item, dict)]
-    if len(candidates) == 1:
-        return candidates[0]
-    return None
+    return resolve_single_vehicle_from_text(user_text, prefer_available=True)
 
 
 def _set_selected_plan(state: clientState, plan: dict[str, Any]) -> None:
@@ -478,22 +401,7 @@ def _looks_like_plan_vehicle_info_request(user_text: str) -> bool:
     normalized = normalize_user_text(user_text)
     if not normalized:
         return False
-    signals = {
-        "como es",
-        "detalles",
-        "detalle",
-        "info",
-        "informacion",
-        "vehiculo",
-        "carro",
-        "auto",
-        "modelo",
-        "imagen",
-        "imagenes",
-        "foto",
-        "fotos",
-    }
-    return any(signal in normalized for signal in signals)
+    return any(signal in normalized for signal in PLAN_VEHICLE_INFO_SIGNALS)
 
 
 def _compose_conversational_block(intro_base: str, structured_block: str, follow_up: str = "") -> str:
@@ -530,12 +438,7 @@ def _compose_answer_first_block(
 
 def _image_url_for_chat(raw_url: str) -> str:
     """Helper de apoyo para image url for chat."""
-    cleaned = str(raw_url or "").strip()
-    if not cleaned:
-        return ""
-    if cleaned.startswith("http://") or cleaned.startswith("https://"):
-        return cleaned
-    return cleaned
+    return normalize_image_url_for_chat(raw_url)
 
 
 def _build_vehicle_images_block(vehicle_id: str) -> str:
@@ -547,10 +450,10 @@ def _build_vehicle_images_block(vehicle_id: str) -> str:
     images = payload.get("images", [])
     if not isinstance(images, list) or not images:
         return ""
-    lines = [f"- {_image_url_for_chat(url)}" for url in images if str(url).strip()]
-    if not lines:
+    normalized_images = [str(url).strip() for url in images if str(url).strip()]
+    if not normalized_images:
         return ""
-    return "Imagenes del vehiculo:\n" + "\n".join(lines)
+    return format_images_bulleted_list(normalized_images, _image_url_for_chat)
 
 
 def _build_whatsapp_vehicle_images_block(state: clientState, vehicle_id: str) -> str:
@@ -558,14 +461,12 @@ def _build_whatsapp_vehicle_images_block(state: clientState, vehicle_id: str) ->
     user_id = str(state.get("user_id", "")).strip()
     if not user_id or not vehicle_id:
         return ""
-    image_messages = build_whatsapp_image_messages(
+    return build_whatsapp_image_marker_block(
         to=user_id,
         vehicle_id=vehicle_id,
         limit=3,
         mode="top",
     )
-    marker_lines = [f"{_WC_IMAGE_MARKER_PREFIX}{json.dumps(message, ensure_ascii=True)}" for message in image_messages]
-    return "\n".join(marker_lines)
 
 
 def _respond_plan_vehicle_info(state: clientState, plan: dict[str, Any]) -> clientState:
@@ -592,7 +493,7 @@ def _respond_plan_vehicle_info(state: clientState, plan: dict[str, Any]) -> clie
     vehicle_id = str(target_vehicle.get("id", "")).strip()
     detail = fetch_vehicle_by_id(vehicle_id) if vehicle_id else None
     detail_source = detail if isinstance(detail, dict) else target_vehicle
-    vehicle_name = _vehicle_label(detail_source)
+    vehicle_name = format_vehicle_name(detail_source)
     vehicle_text = format_vehicle_detail(detail_source, platform=str(state.get("platform", "web")))
     platform = str(state.get("platform", "web")).strip().lower() or "web"
     if platform == "whatsapp":
@@ -645,7 +546,7 @@ def _pick_plan_for_vehicle_info(state: clientState, user_text: str) -> dict[str,
         if not isinstance(item, dict):
             continue
         for vehicle in _available_plan_vehicles(item):
-            if normalize_user_text(_vehicle_label(vehicle)) in normalized_user:
+            if normalize_user_text(format_vehicle_name(vehicle)) in normalized_user:
                 matching.append(item)
                 break
     if len(matching) == 1:
@@ -707,7 +608,7 @@ def financing(state: clientState) -> clientState:
         and _is_financing_query(user_text)
     ):
         refreshed_vehicle_id = str(refreshed_vehicle_hint.get("id", "")).strip()
-        refreshed_car = _vehicle_label(refreshed_vehicle_hint)
+        refreshed_car = format_vehicle_name(refreshed_vehicle_hint)
         state["awaiting_financing_plan_selection"] = False
         state["selected_financing_plan_id"] = ""
         state["selected_financing_plan_name"] = ""
@@ -758,7 +659,7 @@ def financing(state: clientState) -> clientState:
                 verified_facts_block=(
                     "situacion: esperando_seleccion_vehiculo_en_plan\n"
                     f"ultimo_mensaje_usuario: {user_text}\n"
-                    f"candidatos_vehiculos_en_plan: {json.dumps([_vehicle_label(v) for v in state.get('financing_vehicle_candidates', []) if isinstance(v, dict)], ensure_ascii=False)}\n"
+                    f"candidatos_vehiculos_en_plan: {json.dumps([format_vehicle_name(v) for v in state.get('financing_vehicle_candidates', []) if isinstance(v, dict)], ensure_ascii=False)}\n"
                 ),
                 user_message=user_text,
                 fallback="Necesito que selecciones uno de los vehiculos del plan. Puedes responder con nombre o numero.",
@@ -767,7 +668,7 @@ def financing(state: clientState) -> clientState:
             return append_assistant_message(state, reminder)
 
         selected_vehicle_id = str(selected_vehicle.get("id", "")).strip()
-        selected_car = _vehicle_label(selected_vehicle)
+        selected_car = format_vehicle_name(selected_vehicle)
         state["selected_vehicle_id"] = selected_vehicle_id
         state["selected_car"] = selected_car
         state["awaiting_financing_vehicle_selection"] = False
@@ -949,7 +850,7 @@ def financing(state: clientState) -> clientState:
                             requested_vehicle = None
             if requested_vehicle:
                 selected_vehicle_id = str(requested_vehicle.get("id", "")).strip()
-                selected_car = _vehicle_label(requested_vehicle)
+                selected_car = format_vehicle_name(requested_vehicle)
                 state["selected_vehicle_id"] = selected_vehicle_id
                 state["selected_car"] = selected_car
                 state["awaiting_financing_vehicle_selection"] = False
@@ -975,7 +876,7 @@ def financing(state: clientState) -> clientState:
             if len(plan_vehicles) == 1:
                 only_vehicle = plan_vehicles[0]
                 selected_vehicle_id = str(only_vehicle.get("id", "")).strip()
-                selected_car = _vehicle_label(only_vehicle)
+                selected_car = format_vehicle_name(only_vehicle)
                 preselected_id = str(state.get("selected_vehicle_id", "")).strip()
                 if preselected_id and preselected_id == selected_vehicle_id:
                     state["selected_vehicle_id"] = selected_vehicle_id
@@ -1069,7 +970,7 @@ def financing(state: clientState) -> clientState:
     vehicle_hint = _maybe_resolve_vehicle_from_query(user_text)
     if vehicle_hint and not selected_vehicle_id:
         selected_vehicle_id = str(vehicle_hint.get("id", "")).strip()
-        selected_car = _vehicle_label(vehicle_hint)
+        selected_car = format_vehicle_name(vehicle_hint)
         state["selected_vehicle_id"] = selected_vehicle_id
         state["selected_car"] = selected_car
         _debug("vehicle_hint_resolved", selected_vehicle_id=selected_vehicle_id, selected_car=selected_car)
