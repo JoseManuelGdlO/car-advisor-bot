@@ -405,7 +405,14 @@ def generate_promotion_listing_user_message(
     closing_hint: str,
     fallback_semantic: str,
 ) -> str:
-    """Mensaje conversacional de promociones (sin pegar listado literal en la salida)."""
+    """Mensaje conversacional de promociones (sin pegar listado literal en la salida).
+
+    Importante: el texto que ve el usuario debe alinearse con el clasificador de step de promociones.
+    Si el usuario ya elige una promocion por nombre o numero y expresa intencion de aplicarla,
+    redacta la respuesta de forma que podamos interpretar esto como apply_promotion=true en el
+    siguiente turno (por ejemplo, frases claras de que quiere aplicar esa promocion).
+    No tomes decisiones de negocio (no confirmes cambios en el sistema), solo genera prosa clara.
+    """
 
     listing = str(listing_block or "").strip()
     if not listing:
@@ -423,6 +430,11 @@ def generate_promotion_listing_user_message(
             f"ultimo_mensaje_usuario:\n{user_text}\n\n"
             "contexto_promociones_verificadas:\n"
             f"{listing}\n\n"
+            "instrucciones_clasificador_step:\n"
+            "- Si el usuario se refiere a una promocion especifica por nombre o numero y dice que quiere usarla, "
+            "considera que en el siguiente turno el clasificador deberia ver apply_promotion=true.\n"
+            "- Usa frases como 'si quieres aplicar la promocion X, confirmame que la quieres aplicar asi', "
+            "para que el usuario pueda expresar esa intencion de forma explicita.\n\n"
             f"cierre_sugerido_literal:\n{closing_hint}\n"
         ),
         user_message=user_text,
@@ -1147,7 +1159,13 @@ def classify_promotion_comparison_payload(
         return default
 
 
-def classify_promotions_step_flags(user_message: str, current_promotion_title: str = "") -> dict[str, bool]:
+def classify_promotions_step_flags(
+    *,
+    previous_bot_message: str,
+    user_message: str,
+    current_promotion_title: str = "",
+    numbered_promotion_lines: str = "",
+) -> dict[str, bool]:
     """Clasifica flags de navegacion dentro del nodo promotions."""
 
     model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
@@ -1156,6 +1174,10 @@ def classify_promotions_step_flags(user_message: str, current_promotion_title: s
         "ask_other_vehicles": False,
         "ask_promotions": False,
         "wants_compare_two_promotions": False,
+        "select_promotion": False,
+        "apply_promotion": False,
+        "ask_promotion_vehicle_info": False,
+        "cancel_promotion_flow": False,
         "confirm_yes": False,
         "confirm_no": False,
     }
@@ -1163,8 +1185,10 @@ def classify_promotions_step_flags(user_message: str, current_promotion_title: s
         settings = get_bot_settings()
         llm = ChatOpenAI(model=model_name, temperature=0)
         prompt = build_promotions_step_flags_prompt(
+            previous_bot_message=previous_bot_message,
             user_message=user_message,
             current_promotion_title=current_promotion_title,
+            numbered_promotion_lines=numbered_promotion_lines,
             bot_settings=settings,
         )
         parsed = _parse_json_object_from_llm(str(llm.invoke(prompt).content or ""))

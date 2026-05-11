@@ -385,13 +385,16 @@ def promotions(state: clientState) -> clientState:
         awaiting_interest=bool(state.get("awaiting_promotion_vehicle_interest_confirmation")),
         selected_vehicle_id=str(state.get("selected_vehicle_id", "")).strip(),
     )
+    promo_candidates_active = _filter_active_promotions(list(state.get("promotion_candidates") or []))
+    numbered_promotions = _numbered_promotion_lines(promo_candidates_active) if promo_candidates_active else ""
     nav_flags = classify_promotions_step_flags(
+        previous_bot_message=str(state.get("last_bot_message", "")).strip(),
         user_message=user_text,
         current_promotion_title=str(state.get("selected_promotion_title", "")).strip(),
+        numbered_promotion_lines=numbered_promotions,
     )
     _debug("nav_flags", **nav_flags)
 
-    promo_candidates_active = _filter_active_promotions(list(state.get("promotion_candidates") or []))
     if (
         nav_flags.get("wants_compare_two_promotions")
         and state.get("awaiting_promotion_selection")
@@ -513,7 +516,12 @@ def promotions(state: clientState) -> clientState:
             )
 
         _set_selected_promotion(state, selected_promotion)
-        has_explicit_apply = _looks_like_explicit_apply(user_text)
+
+        # Orquestador principal: primero la senal del LLM apply_promotion,
+        # luego heuristica local y por ultimo clasificador auxiliar para casos ambiguos.
+        has_explicit_apply = bool(nav_flags.get("apply_promotion"))
+        if not has_explicit_apply and _looks_like_explicit_apply(user_text):
+            has_explicit_apply = True
         if not has_explicit_apply and len(state.get("promotion_candidates", [])) == 1:
             classify = classify_promotion_selection_intent(
                 previous_bot_message=str(state.get("last_bot_message", "")).strip(),
@@ -523,7 +531,11 @@ def promotions(state: clientState) -> clientState:
             )
             has_explicit_apply = classify == "APPLY_SINGLE_PROMOTION"
 
-        if not has_explicit_apply and not _is_vehicle_info_request(user_text):
+        ask_vehicle_info_flag = bool(nav_flags.get("ask_promotion_vehicle_info"))
+        if not ask_vehicle_info_flag and _is_vehicle_info_request(user_text):
+            ask_vehicle_info_flag = True
+
+        if not has_explicit_apply and not ask_vehicle_info_flag:
             title = str(state.get("selected_promotion_title", "")).strip() or "esa promocion"
             return append_assistant_message(
                 state,
@@ -536,13 +548,14 @@ def promotions(state: clientState) -> clientState:
                     user_message=user_text,
                     fallback=(
                         f"Perfecto, identifique {title}. Para seleccionarla, necesito que me confirmes explicitamente "
-                        "si deseas aplicarla a tu compra."
+                        "si deseas aplicarla a tu compra (frases como 'quiero esa promocion', "
+                        "'aplica la mensualidad gratis en SUVs', 'si, aplicala asi' cuentan como confirmacion explicita)."
                     ),
                     temperature=0.35,
                 ),
             )
 
-        if _is_vehicle_info_request(user_text):
+        if ask_vehicle_info_flag:
             promotion_vehicles = _load_promotion_vehicles(state, selected_promotion)
             hinted_vehicle = _maybe_resolve_vehicle_from_query(user_text)
             if isinstance(hinted_vehicle, dict):

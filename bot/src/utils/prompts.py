@@ -546,31 +546,65 @@ def build_vehicle_comparison_extract_prompt(
 
 
 def build_promotions_step_flags_prompt(
+    *,
+    previous_bot_message: str,
     user_message: str,
     current_promotion_title: str,
+    numbered_promotion_lines: str,
     bot_settings: dict[str, Any] | None,
 ) -> str:
     """Prompt clasificador por flags para navegacion dentro del nodo promotions."""
 
     system_prompt = build_system_prompt(bot_settings)
+    previous = previous_bot_message.strip() or "(sin mensaje previo)"
     current = user_message.strip() or "(mensaje vacio)"
     promotion = current_promotion_title.strip() or "(sin promocion seleccionada)"
+    numbered = numbered_promotion_lines.strip() or "(sin lista numerada reciente)"
     return (
         f"{system_prompt}\n\n"
         "CLASIFICADOR_FLAGS_PROMOTIONS:\n"
         "Responde SOLO con JSON de una linea con estas claves booleanas exactas:\n"
         '{ "ask_financing": <bool>, "ask_other_vehicles": <bool>, "ask_promotions": <bool>, '
-        '"wants_compare_two_promotions": <bool>, "confirm_yes": <bool>, "confirm_no": <bool> }\n'
-        "Reglas:\n"
-        "- ask_financing=true cuando pide planes/tasas/credito.\n"
-        "- ask_other_vehicles=true cuando pide ver otros carros/modelos/catalogo.\n"
-        "- ask_promotions=true cuando sigue en tema promociones (listar/ver/consultar).\n"
-        "- wants_compare_two_promotions=true cuando pide comparar dos promociones u ofertas (compara la 1 y la 2, diferencias entre promos).\n"
-        "- confirm_yes=true cuando confirma afirmativamente una pregunta de decision.\n"
-        "- confirm_no=true cuando responde negativamente una pregunta de decision.\n"
-        "- Si no aplica, deja false.\n\n"
-        f"Promocion actual: {promotion}\n"
+        '"wants_compare_two_promotions": <bool>, "select_promotion": <bool>, "apply_promotion": <bool>, '
+        '"ask_promotion_vehicle_info": <bool>, "cancel_promotion_flow": <bool>, '
+        '"confirm_yes": <bool>, "confirm_no": <bool> }\n'
+        "Reglas generales:\n"
+        "- Evalua la intencion principal de ESTE turno dentro del flujo de promociones.\n"
+        "- Usa true solo cuando haya senales claras; en caso de duda, deja false.\n"
+        "- Puedes poner varios flags en true si el mensaje mezcla intenciones, pero evita "
+        "marcar apply_promotion=true cuando el usuario solo esta explorando.\n"
+        "Definiciones y ejemplos:\n"
+        "- ask_financing=true: el usuario pregunta por credito/planes/tasas/plazos/mensualidades "
+        "relacionados con una promocion o con la compra en general.\n"
+        '  Ejemplos: "y a credito como quedaria?", "que tasa manejan con esa promo?".\n'
+        "- ask_other_vehicles=true: quiere ver otros carros/modelos/catalogo fuera del flujo de esta promocion.\n"
+        '  Ejemplos: "mejor enseñame otros carros", "quiero ver mas modelos".\n'
+        "- ask_promotions=true: sigue hablando de promociones en general (ver mas promos, aclarar condiciones, "
+        "relistar) sin elegir/aplicar una en concreto.\n"
+        '  Ejemplos: "que otras promociones tienes?", "recúerdame las promos que aplican".\n'
+        "- wants_compare_two_promotions=true: pide comparar dos promociones u ofertas (por numero o titulo).\n"
+        '  Ejemplos: "compara la 1 y la 3", "cual conviene mas entre mensualidad gratis y bono en efectivo?".\n'
+        "- select_promotion=true: el usuario esta eligiendo una promocion de la lista pero sin decir aun que la quiere aplicar.\n"
+        '  Ejemplos: "la mensualidad gratis en SUVs", "la numero 2", "me interesa la promo de bonos".\n'
+        "- apply_promotion=true: el usuario indica que quiere APLICAR una promocion concreta a su compra.\n"
+        '  Ejemplos: "quiero aplicar la mensualidad gratis en SUVs", "aplicame la promo 2", '
+        '"usa esa promocion en mi compra", "si, quiero esa promocion".\n'
+        "- ask_promotion_vehicle_info=true: el usuario quiere ver o elegir vehiculos que aplican a una promocion.\n"
+        '  Ejemplos: "solo quiero ver los carros que aplican a esa promo", '
+        '"muestrame los SUVs donde aplica esa promocion", "ensename los coches con esa oferta".\n'
+        "- cancel_promotion_flow=true: el usuario quiere salir del flujo de promociones y NO seguir hablando de promos.\n"
+        '  Ejemplos: "olvida las promociones", "ya no quiero ver promos", "regresamos al catalogo normal".\n'
+        "- confirm_yes=true: respuesta afirmativa clara a una pregunta de confirmacion del bot.\n"
+        '  Ejemplos: "si", "claro", "adelante", "me parece bien".\n'
+        "- confirm_no=true: respuesta negativa clara a una pregunta de confirmacion del bot.\n"
+        '  Ejemplos: "no", "mejor no", "cancela esa promo".\n'
+        "- Si un mensaje solo pide detalles de la promocion (beneficios, vigencia) sin elegir ni aplicar, "
+        "usa ask_promotions=true y deja select_promotion=false y apply_promotion=false.\n\n"
+        f"Promocion actual (si ya hay una seleccionada): {promotion}\n"
+        f"Mensaje previo del bot: {previous}\n"
         f"Mensaje del usuario: {current}\n"
+        "Lista numerada reciente de promociones (si aplica):\n"
+        f"{numbered}\n"
     )
 
 
