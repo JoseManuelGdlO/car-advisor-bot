@@ -383,6 +383,7 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
             state["awaiting_promotion_selection"] = False
             state["awaiting_promotion_vehicle_selection"] = False
             state["awaiting_promotion_vehicle_interest_confirmation"] = False
+            state["awaiting_promotion_apply_confirmation"] = False
             promotion_removed_notice = generate_verified_user_message(
                 mode="operational",
                 verified_facts_block=(

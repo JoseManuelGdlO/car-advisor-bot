@@ -20,6 +20,7 @@ from src.utils.prompts import (
     build_financing_plan_comparison_extract_prompt,
     build_financing_plan_selection_classifier_prompt,
     build_promotion_comparison_extract_prompt,
+    build_promotion_selection_extract_prompt,
     build_promotion_selection_classifier_prompt,
     build_other_response_prompt,
     build_purchase_confirmation_classifier_prompt,
@@ -1154,6 +1155,53 @@ def classify_promotion_comparison_payload(
             exc,
             model_name=model_name,
             prompt_kind="promotion_comparison_extract",
+            temperature=0.0,
+        )
+        return default
+
+
+def extract_promotion_selection_payload(
+    *,
+    previous_bot_message: str,
+    user_message: str,
+    numbered_promotion_lines: str,
+) -> dict[str, Any]:
+    """Extrae indice 1-based o fragmento de titulo para mapear el mensaje del usuario a una promocion."""
+
+    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
+    default: dict[str, Any] = {
+        "promotion_index": None,
+        "title_query": "",
+        "no_match": True,
+    }
+    lines = str(numbered_promotion_lines or "").strip()
+    if not lines:
+        return default
+    try:
+        settings = get_bot_settings()
+        llm = ChatOpenAI(model=model_name, temperature=0)
+        prompt = build_promotion_selection_extract_prompt(
+            previous_bot_message=previous_bot_message,
+            user_message=user_message,
+            numbered_promotion_lines=lines,
+            bot_settings=settings,
+        )
+        parsed = _parse_json_object_from_llm(str(llm.invoke(prompt).content or ""))
+        if not parsed:
+            return default
+        out = dict(default)
+        out["no_match"] = _coerce_to_bool(parsed.get("no_match"))
+        out["title_query"] = str(parsed.get("title_query") or "").strip()
+        raw_idx = parsed.get("promotion_index")
+        if isinstance(raw_idx, (int, float)) and not isinstance(raw_idx, bool) and int(raw_idx) == raw_idx:
+            out["promotion_index"] = int(raw_idx)
+        return out
+    except Exception as exc:
+        _log_llm_invoke_failure(
+            "extract_promotion_selection_payload",
+            exc,
+            model_name=model_name,
+            prompt_kind="promotion_selection_extract",
             temperature=0.0,
         )
         return default

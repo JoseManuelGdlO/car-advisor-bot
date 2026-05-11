@@ -123,7 +123,7 @@ class ChatInterface {
       this.hideTyping();
 
       if (!response.bot_suppressed) {
-        this.addBotReplyBlocks(response.reply || "Sin respuesta.");
+        this.addBotReplyBlocks(response.reply);
       }
       this.updateSessionInfo(response);
 

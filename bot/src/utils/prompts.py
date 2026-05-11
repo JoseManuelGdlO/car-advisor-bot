@@ -608,6 +608,39 @@ def build_promotions_step_flags_prompt(
     )
 
 
+def build_promotion_selection_extract_prompt(
+    *,
+    previous_bot_message: str,
+    user_message: str,
+    numbered_promotion_lines: str,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Extrae que promocion de la lista eligio el usuario (indice o fragmento de titulo)."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    previous = previous_bot_message.strip() or "(sin mensaje previo)"
+    current = user_message.strip() or "(mensaje vacio)"
+    lines = numbered_promotion_lines.strip() or "(sin lista numerada)"
+    return (
+        f"{system_prompt}\n\n"
+        "EXTRACTOR_SELECCION_PROMOCION:\n"
+        "El usuario esta en un paso donde debe elegir UNA promocion de la lista numerada.\n"
+        "Responde SOLO con JSON de una linea con estas claves exactas:\n"
+        '{ "promotion_index": <number|null>, "title_query": <string>, "no_match": <bool> }\n'
+        "Reglas:\n"
+        "- promotion_index: numero 1-based alineado con la lista numerada (ej. 'la 2', 'numero 1', 'la segunda').\n"
+        "- title_query: fragmento corto del titulo tal como lo dijo el usuario (ej. 'mensualidad gratis', 'bono mayo'). "
+        "Debe poder mapearse a UN solo renglon de la lista; vacio si usas promotion_index.\n"
+        "- no_match=true SOLO si el mensaje no refiere a ninguna promo de la lista (saludo, pregunta general, otro tema).\n"
+        "- Si el usuario alude a una promo por palabras clave que aparecen en un solo titulo, "
+        "usa title_query con esas palabras y promotion_index=null.\n"
+        "- Nunca inventes titulos que no esten en la lista.\n\n"
+        f"Promociones listadas:\n{lines}\n\n"
+        f"Mensaje previo del bot: {previous}\n"
+        f"Mensaje del usuario: {current}\n"
+    )
+
+
 def build_financing_step_flags_prompt(
     previous_bot_message: str,
     user_message: str,

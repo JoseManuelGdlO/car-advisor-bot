@@ -8,6 +8,7 @@ from src.services.llm_responses import (
     classify_promotion_comparison_payload,
     classify_promotions_step_flags,
     classify_promotion_selection_intent,
+    extract_promotion_selection_payload,
     generate_promotion_listing_user_message,
     generate_verified_user_message,
 )
@@ -24,6 +25,7 @@ from src.utils.signals import (
     AFFIRMATIVE_SIGNALS,
     EXPLICIT_PROMOTION_APPLY_SIGNALS,
     NEGATIVE_SIGNALS,
+    PROMOTION_TOKEN_STOPWORDS,
     VEHICLE_INFO_REQUEST_SIGNALS,
 )
 from src.utils.state_helpers import append_assistant_message, latest_user_message
@@ -178,6 +180,86 @@ def _extract_by_index(candidates: list[dict[str, Any]], user_text: str) -> dict[
     return None
 
 
+def _significant_tokens(text: str) -> set[str]:
+    """Tokens del texto normalizado, sin ruido corto, para solapamiento titulo/usuario."""
+    normalized = normalize_user_text(text)
+    if not normalized:
+        return set()
+    out: set[str] = set()
+    for token in normalized.replace("'", " ").split():
+        token = token.strip()
+        if len(token) < 3 or token in PROMOTION_TOKEN_STOPWORDS:
+            continue
+        out.add(token)
+    return out
+
+
+def _pick_promotion_by_token_overlap(dict_candidates: list[dict[str, Any]], user_text: str) -> dict[str, Any] | None:
+    """Elige una promo cuando el usuario nombra solo parte del titulo (ej. mensualidad gratis vs titulo largo)."""
+    user_tokens = _significant_tokens(user_text)
+    if not user_tokens:
+        return None
+    scored: list[tuple[float, dict[str, Any]]] = []
+    for item in dict_candidates:
+        title = str(item.get("title", "")).strip()
+        if not title:
+            continue
+        title_tokens = _significant_tokens(title)
+        if not title_tokens:
+            continue
+        inter = user_tokens & title_tokens
+        if not inter:
+            continue
+        recall = len(inter) / max(1, len(title_tokens))
+        precision = len(inter) / max(1, len(user_tokens))
+        score = 0.62 * recall + 0.38 * precision
+        scored.append((score, item))
+    if not scored:
+        return None
+    max_score = max(s for s, _ in scored)
+    if max_score < 0.28:
+        return None
+    winners = [it for s, it in scored if abs(s - max_score) < 1e-9]
+    if len(winners) != 1:
+        return None
+    return winners[0]
+
+
+def _resolve_promotion_from_extract(
+    candidates: list[dict[str, Any]], payload: dict[str, Any]
+) -> dict[str, Any] | None:
+    """Mapea salida JSON del extractor LLM a un dict de promocion."""
+    if not candidates or not isinstance(payload, dict):
+        return None
+    if payload.get("no_match") is True:
+        return None
+    raw_idx = payload.get("promotion_index")
+    if isinstance(raw_idx, (int, float)) and not isinstance(raw_idx, bool) and int(raw_idx) == raw_idx:
+        i = int(raw_idx) - 1
+        if 0 <= i < len(candidates):
+            return candidates[i]
+    title_q = normalize_user_text(str(payload.get("title_query") or ""))
+    if not title_q:
+        return None
+    for candidate in candidates:
+        title = normalize_user_text(str(candidate.get("title", "")))
+        if not title:
+            continue
+        if title_q in title or title in title_q:
+            return candidate
+    q_tokens = _significant_tokens(title_q)
+    if not q_tokens:
+        return None
+    matches = []
+    for candidate in candidates:
+        t_tokens = _significant_tokens(str(candidate.get("title", "")))
+        if q_tokens <= t_tokens:
+            matches.append(candidate)
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
 def _pick_promotion_from_state(state: clientState, user_text: str) -> dict[str, Any] | None:
     """Selecciona promotion from state con reglas del flujo."""
     candidates = state.get("promotion_candidates", [])
@@ -217,6 +299,11 @@ def _pick_promotion_from_state(state: clientState, user_text: str) -> dict[str, 
             if normalized_option in normalized_user or normalized_user in normalized_option:
                 selected = option
                 break
+
+    if not selected:
+        overlap = _pick_promotion_by_token_overlap(dict_candidates, user_text)
+        if overlap:
+            return overlap
 
     if not selected:
         return None
@@ -349,6 +436,7 @@ def _respond_promotion_listing(state: clientState, promotions: list[dict[str, An
     if not hydrated_promotions:
         state["promotion_candidates"] = []
         state["awaiting_promotion_selection"] = False
+        state["awaiting_promotion_apply_confirmation"] = False
         empty_msg = generate_verified_user_message(
             mode="operational",
             verified_facts_block=(
@@ -369,6 +457,7 @@ def _respond_promotion_listing(state: clientState, promotions: list[dict[str, An
     )
     state["promotion_candidates"] = hydrated_promotions
     state["awaiting_promotion_selection"] = True
+    state["awaiting_promotion_apply_confirmation"] = False
     return append_assistant_message(state, prompt)
 
 
@@ -414,6 +503,7 @@ def promotions(state: clientState) -> clientState:
         state.get("awaiting_promotion_selection")
         or state.get("awaiting_promotion_vehicle_selection")
         or state.get("awaiting_promotion_vehicle_interest_confirmation")
+        or state.get("awaiting_promotion_apply_confirmation")
     )
     if (
         nav_flags.get("ask_other_vehicles")
@@ -499,8 +589,59 @@ def promotions(state: clientState) -> clientState:
         return _show_vehicle_and_confirm_interest(state, selected_vehicle)
 
     if state.get("awaiting_promotion_selection"):
-        selected_promotion = _pick_promotion_from_state(state, user_text)
+        dict_candidates = [item for item in (state.get("promotion_candidates") or []) if isinstance(item, dict)]
+        pred_id = str(state.get("selected_promotion_id", "")).strip()
+
+        selected_promotion: dict[str, Any] | None = None
+        if (
+            pred_id
+            and dict_candidates
+            and bool(state.get("awaiting_promotion_apply_confirmation"))
+            and (nav_flags.get("confirm_yes") or nav_flags.get("apply_promotion"))
+        ):
+            selected_promotion = next(
+                (c for c in dict_candidates if str(c.get("id", "")).strip() == pred_id),
+                None,
+            )
+
         if not selected_promotion:
+            selected_promotion = _pick_promotion_from_state(state, user_text)
+
+        selection_intent = bool(nav_flags.get("select_promotion") or nav_flags.get("apply_promotion"))
+        if (
+            not selected_promotion
+            and selection_intent
+            and numbered_promotions.strip()
+            and len(dict_candidates) >= 1
+        ):
+            payload = extract_promotion_selection_payload(
+                previous_bot_message=str(state.get("last_bot_message", "")).strip(),
+                user_message=user_text,
+                numbered_promotion_lines=numbered_promotions,
+            )
+            extracted = _resolve_promotion_from_extract(dict_candidates, payload)
+            if extracted:
+                selected_promotion = extracted
+                _debug("promotion_pick", source="llm_extract", title=str(extracted.get("title", "")))
+
+        if not selected_promotion:
+            if selection_intent and dict_candidates:
+                return append_assistant_message(
+                    state,
+                    generate_verified_user_message(
+                        mode="operational",
+                        verified_facts_block=(
+                            "situacion: intencion_seleccion_promocion_sin_match_estable\n"
+                            f"lista_numerada:\n{numbered_promotions}\n"
+                        ),
+                        user_message=user_text,
+                        fallback=(
+                            "Entendi que quieres elegir una promocion concreta, pero no pude enlazar tu mensaje "
+                            "con una sola opcion de la lista. Indica el numero (1, 2, 3) o el titulo tal como aparece arriba."
+                        ),
+                        temperature=0.35,
+                    ),
+                )
             return append_assistant_message(
                 state,
                 generate_verified_user_message(
@@ -531,31 +672,42 @@ def promotions(state: clientState) -> clientState:
             )
             has_explicit_apply = classify == "APPLY_SINGLE_PROMOTION"
 
+        if bool(state.get("awaiting_promotion_apply_confirmation")) and (
+            nav_flags.get("confirm_yes") or nav_flags.get("apply_promotion")
+        ):
+            has_explicit_apply = True
+
         ask_vehicle_info_flag = bool(nav_flags.get("ask_promotion_vehicle_info"))
         if not ask_vehicle_info_flag and _is_vehicle_info_request(user_text):
             ask_vehicle_info_flag = True
 
         if not has_explicit_apply and not ask_vehicle_info_flag:
             title = str(state.get("selected_promotion_title", "")).strip() or "esa promocion"
+            platform = str(state.get("platform", "web")).strip().lower() or "web"
+            detail_block = format_promotions([selected_promotion], platform=platform)
+            state["awaiting_promotion_apply_confirmation"] = True
             return append_assistant_message(
                 state,
                 generate_verified_user_message(
                     mode="operational",
                     verified_facts_block=(
-                        "situacion: promocion_identificada_sin_confirmacion_explicita\n"
-                        f"promocion_titulo: {title}\n"
+                        "situacion: promocion_elegida_resumen_y_confirmacion_aplicar\n"
+                        f"promocion_titulo: {title}\n\n"
+                        "DETALLE_PROMOCION_DATOS_VERIFICADOS:\n"
+                        f"{detail_block}\n"
                     ),
                     user_message=user_text,
                     fallback=(
-                        f"Perfecto, identifique {title}. Para seleccionarla, necesito que me confirmes explicitamente "
-                        "si deseas aplicarla a tu compra (frases como 'quiero esa promocion', "
-                        "'aplica la mensualidad gratis en SUVs', 'si, aplicala asi' cuentan como confirmacion explicita)."
+                        f"Aqui tienes el detalle de **{title}**:\n\n{detail_block}\n\n"
+                        "Si es la promocion correcta y deseas aplicarla a tu compra, dimelo con un si claro "
+                        "(por ejemplo: si, quiero aplicarla o confirmo que esa es)."
                     ),
                     temperature=0.35,
                 ),
             )
 
         if ask_vehicle_info_flag:
+            state["awaiting_promotion_apply_confirmation"] = False
             promotion_vehicles = _load_promotion_vehicles(state, selected_promotion)
             hinted_vehicle = _maybe_resolve_vehicle_from_query(user_text)
             if isinstance(hinted_vehicle, dict):
@@ -616,6 +768,7 @@ def promotions(state: clientState) -> clientState:
                     ),
                 )
 
+        state["awaiting_promotion_apply_confirmation"] = False
         promotion_vehicles = _load_promotion_vehicles(state, selected_promotion)
         if not promotion_vehicles:
             state["awaiting_promotion_selection"] = True
@@ -636,6 +789,7 @@ def promotions(state: clientState) -> clientState:
                 ),
             )
 
+        state["awaiting_promotion_apply_confirmation"] = False
         state["awaiting_promotion_selection"] = False
         state["promotion_vehicle_candidates"] = promotion_vehicles
         if len(promotion_vehicles) == 1:
@@ -698,6 +852,7 @@ def promotions(state: clientState) -> clientState:
                 )
             state["promotion_candidates"] = hydrated_promotions
             state["awaiting_promotion_selection"] = True
+            state["awaiting_promotion_apply_confirmation"] = False
             car_name = str(state.get("selected_car", "")).strip() or "este vehiculo"
             listing = format_promotions(hydrated_promotions, platform=str(state.get("platform", "web")))
             question = generate_promotion_listing_user_message(

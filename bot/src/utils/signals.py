@@ -134,6 +134,57 @@ EXPLICIT_PROMOTION_APPLY_SIGNALS = {
     "tomar promocion",
 }
 
+PROMOTION_TOKEN_STOPWORDS = frozenset(
+    {
+        "el",
+        "la",
+        "los",
+        "las",
+        "un",
+        "una",
+        "unos",
+        "unas",
+        "de",
+        "del",
+        "al",
+        "y",
+        "o",
+        "en",
+        "con",
+        "por",
+        "para",
+        "que",
+        "me",
+        "te",
+        "se",
+        "lo",
+        "le",
+        "les",
+        "a",
+        "es",
+        "son",
+        "mi",
+        "tu",
+        "su",
+        "mis",
+        "tus",
+        "sus",
+        "esta",
+        "este",
+        "estos",
+        "estas",
+        "eso",
+        "esa",
+        "esos",
+        "esas",
+        "si",
+        "no",
+        "oye",
+        "bueno",
+        "pues",
+    }
+)
+
 NO_IMAGES_AVAILABLE_MESSAGE = (
     "Lamentablemente no tenemos imagenes de este vehiculo 🥲, "
     "pero puedes ponerte en contacto con un asesor para ver el carro en persona."

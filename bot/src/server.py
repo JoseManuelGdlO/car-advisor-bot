@@ -161,6 +161,7 @@ def _build_initial_state() -> dict[str, Any]:
         "awaiting_promotion_selection": False,
         "awaiting_promotion_vehicle_selection": False,
         "awaiting_promotion_vehicle_interest_confirmation": False,
+        "awaiting_promotion_apply_confirmation": False,
         "vehicle_comparison_ctx": {},
         "owner_user_id": "",
     }

@@ -409,7 +409,7 @@ def upsert_bot_session_state(
 
     connection = get_connection()
     try:
-        expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=12)
         state_payload_json = json.dumps(state_dict, ensure_ascii=True)
         query = """
             INSERT INTO bot_sessions (

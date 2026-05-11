@@ -380,6 +380,7 @@ def _clear_incompatible_promotion(state: clientState, selected_vehicle_id: str) 
     state["awaiting_promotion_selection"] = False
     state["awaiting_promotion_vehicle_selection"] = False
     state["awaiting_promotion_vehicle_interest_confirmation"] = False
+    state["awaiting_promotion_apply_confirmation"] = False
     return generate_verified_user_message(
         mode="operational",
         verified_facts_block=(
