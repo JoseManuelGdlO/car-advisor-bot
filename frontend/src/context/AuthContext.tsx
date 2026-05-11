@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Capacitor } from "@capacitor/core";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, setUnauthorizedHandler } from "@/lib/api";
 import { accountApi } from "@/services/account";
 import { pushApi } from "@/services/push";
 
@@ -34,12 +35,25 @@ const getStoredValue = (key: string): string | null => {
 };
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const queryClient = useQueryClient();
   const [token, setToken] = useState<string | null>(() => getStoredValue(TOKEN_KEY));
   const [user, setUser] = useState<AuthUser | null>(() => {
     const raw = getStoredValue(USER_KEY);
     return raw ? JSON.parse(raw) : null;
   });
   const [rememberMe, setRememberMe] = useState<boolean>(() => localStorage.getItem(REMEMBER_KEY) === "true");
+
+  const logout = useCallback(async () => {
+    const currentToken = token;
+    const deviceToken = localStorage.getItem("push_device_token");
+    if (Capacitor.isNativePlatform() && currentToken && deviceToken) {
+      await pushApi.unregisterDevice(currentToken, deviceToken).catch(() => undefined);
+    }
+    setToken(null);
+    setUser(null);
+    setRememberMe(false);
+    localStorage.removeItem(REMEMBER_KEY);
+  }, [token]);
 
   useEffect(() => {
     const store = rememberMe ? localStorage : sessionStorage;
@@ -81,6 +95,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   }, [token]);
 
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      queryClient.clear();
+      void logout();
+    });
+    return () => setUnauthorizedHandler(null);
+  }, [queryClient, logout]);
+
   const value = useMemo<AuthContextType>(
     () => ({
       token,
@@ -105,20 +127,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       async register(name, email, password) {
         await apiRequest("/auth/register", "POST", { name, email, password });
       },
-      async logout() {
-        const currentToken = token;
-        const deviceToken = localStorage.getItem("push_device_token");
-        if (Capacitor.isNativePlatform() && currentToken && deviceToken) {
-          await pushApi.unregisterDevice(currentToken, deviceToken).catch(() => undefined);
-        }
-        setToken(null);
-        setUser(null);
-        setRememberMe(false);
-        localStorage.removeItem(REMEMBER_KEY);
-      },
+      logout,
       refreshProfile,
     }),
-    [token, user, refreshProfile]
+    [token, user, refreshProfile, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

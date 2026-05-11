@@ -2,7 +2,30 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000/api
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
+/** Registrado desde AuthProvider: sesión inválida o JWT expirado (401 con Bearer). */
+let unauthorizedHandler: (() => void) | null = null;
+
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  unauthorizedHandler = handler;
+}
+
+function notifySessionExpired(status: number, hadAuthHeader: boolean): void {
+  if (status !== 401 || !hadAuthHeader) return;
+  try {
+    unauthorizedHandler?.();
+  } catch {
+    // no bloquear el flujo de error HTTP si el handler falla
+  }
+}
+
+async function rejectFailedResponse(res: Response, hadAuthHeader: boolean): Promise<never> {
+  const payload = await res.json().catch(() => ({ message: "Request failed" }));
+  notifySessionExpired(res.status, hadAuthHeader);
+  throw new Error(typeof payload.message === "string" ? payload.message : "Request failed");
+}
+
 export async function apiRequest<T>(path: string, method: HttpMethod = "GET", body?: unknown, token?: string): Promise<T> {
+  const hadAuthHeader = Boolean(token);
   const res = await fetch(`${API_BASE}${path}`, {
     method,
     headers: {
@@ -12,8 +35,7 @@ export async function apiRequest<T>(path: string, method: HttpMethod = "GET", bo
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
-    const payload = await res.json().catch(() => ({ message: "Request failed" }));
-    throw new Error(payload.message || "Request failed");
+    return rejectFailedResponse(res, hadAuthHeader);
   }
   if (res.status === 204) {
     return undefined as T;
@@ -26,6 +48,7 @@ export async function apiRequest<T>(path: string, method: HttpMethod = "GET", bo
 }
 
 export async function apiRequestFormData<T>(path: string, body: FormData, token?: string): Promise<T> {
+  const hadAuthHeader = Boolean(token);
   const res = await fetch(`${API_BASE}${path}`, {
     method: "POST",
     headers: {
@@ -34,8 +57,7 @@ export async function apiRequestFormData<T>(path: string, body: FormData, token?
     body,
   });
   if (!res.ok) {
-    const payload = await res.json().catch(() => ({ message: "Request failed" }));
-    throw new Error(payload.message || "Request failed");
+    return rejectFailedResponse(res, hadAuthHeader);
   }
   if (res.status === 204) {
     return undefined as T;
