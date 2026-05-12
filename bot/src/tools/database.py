@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -60,21 +61,37 @@ def _clean_setting(value: Any, default: str) -> str:
     return text
 
 
-def get_bot_settings() -> dict[str, str]:
-    """Obtiene bot settings desde backend con fallback seguro."""
+_bot_settings_cache_entry: tuple[dict[str, str], float] | None = None
 
-    url = _backend_api_url("/bot/settings")
-    headers = _backend_headers()
-    if not url or "Authorization" not in headers:
-        return dict(DEFAULT_BOT_SETTINGS)
+
+def _bot_settings_cache_ttl_seconds() -> float:
+    """TTL de caché en segundos; 0 desactiva caché (siempre refetch)."""
+
+    raw = os.getenv("BOT_SETTINGS_CACHE_TTL_SECONDS", "60").strip()
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return 60.0
+
+
+def clear_bot_settings_cache() -> None:
+    """Vacía la caché de settings (tests o forzar lectura fresca)."""
+
+    global _bot_settings_cache_entry
+    _bot_settings_cache_entry = None
+
+
+def _fetch_bot_settings_from_backend(url: str, headers: dict[str, str]) -> dict[str, str] | None:
+    """GET /bot/settings; devuelve dict normalizado o None si hay que usar defaults."""
+
     try:
         response = requests.get(url, headers=headers, timeout=6)
         if response.status_code != 200:
             logger.warning("Bot settings fetch failed status=%s", response.status_code)
-            return dict(DEFAULT_BOT_SETTINGS)
+            return None
         payload = response.json()
         if not isinstance(payload, dict):
-            return dict(DEFAULT_BOT_SETTINGS)
+            return None
         return {
             "tone": _clean_setting(payload.get("tone"), DEFAULT_BOT_SETTINGS["tone"]),
             "emojiStyle": _clean_setting(payload.get("emojiStyle"), DEFAULT_BOT_SETTINGS["emojiStyle"]),
@@ -89,7 +106,31 @@ def get_bot_settings() -> dict[str, str]:
         }
     except Exception:
         logger.exception("Bot settings fetch failed unexpectedly")
+        return None
+
+
+def get_bot_settings() -> dict[str, str]:
+    """Obtiene bot settings desde backend con fallback seguro y caché en memoria (TTL)."""
+
+    global _bot_settings_cache_entry
+    ttl = _bot_settings_cache_ttl_seconds()
+    if ttl > 0 and _bot_settings_cache_entry is not None:
+        cached, cached_at = _bot_settings_cache_entry
+        if time.monotonic() - cached_at < ttl:
+            return dict(cached)
+
+    url = _backend_api_url("/bot/settings")
+    headers = _backend_headers()
+    if not url or "Authorization" not in headers:
         return dict(DEFAULT_BOT_SETTINGS)
+
+    resolved = _fetch_bot_settings_from_backend(url, headers)
+    if resolved is None:
+        return dict(DEFAULT_BOT_SETTINGS)
+
+    if ttl > 0:
+        _bot_settings_cache_entry = (resolved, time.monotonic())
+    return dict(resolved)
 
 
 def push_event_to_backend(payload: dict[str, Any]) -> None:
