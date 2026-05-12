@@ -148,6 +148,10 @@ class FinancingFlowTests(GraphTestCase):
                 "src.nodes.lead_capture.generate_verified_user_message",
                 side_effect=lambda **kw: kw["fallback"],
             ),
+            patch(
+                "src.nodes.lead_capture.classify_lead_capture_summary_confirmation",
+                return_value="CONFIRM",
+            ),
             patch("src.nodes.lead_capture.notify_advisor") as notify_mock,
             patch("src.nodes.lead_capture.push_event_to_backend") as event_mock,
         ):
@@ -165,6 +169,9 @@ class FinancingFlowTests(GraphTestCase):
             self.assertIn("correo", state["messages"][-1]["content"].lower())
 
             state = self.graph.invoke(with_user_message(state, "javier@karim.com"))
+            self.assertFalse(state.get("lead_capture_done"))
+            self.assertTrue(state.get("awaiting_lead_capture_final_confirmation"))
+            state = self.graph.invoke(with_user_message(state, "si, confirmo"))
             self.assertTrue(state.get("lead_capture_done"))
             self.assertEqual(state.get("current_node"), "router")
             notify_mock.assert_called_once()
@@ -259,6 +266,10 @@ class FinancingFlowTests(GraphTestCase):
                 "src.nodes.lead_capture.generate_verified_user_message",
                 side_effect=lambda **kw: kw["fallback"],
             ),
+            patch(
+                "src.nodes.lead_capture.classify_lead_capture_summary_confirmation",
+                return_value="CONFIRM",
+            ),
             patch("src.nodes.lead_capture.notify_advisor") as notify_mock,
             patch("src.nodes.lead_capture.push_event_to_backend") as event_mock,
         ):
@@ -279,6 +290,9 @@ class FinancingFlowTests(GraphTestCase):
 
             state = self.graph.invoke(with_user_message(state, "javier karim reyes"))
             state = self.graph.invoke(with_user_message(state, "javier@kaim.com"))
+            self.assertFalse(state.get("lead_capture_done"))
+            self.assertTrue(state.get("awaiting_lead_capture_final_confirmation"))
+            state = self.graph.invoke(with_user_message(state, "si correcto"))
             self.assertTrue(state.get("lead_capture_done"))
             self.assertEqual(state.get("current_node"), "router")
             notify_mock.assert_called_once()

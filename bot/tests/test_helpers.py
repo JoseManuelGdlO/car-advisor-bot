@@ -23,6 +23,7 @@ def initial_state() -> dict:
         "platform": "web",
         "user_id": "",
         "lead_phone_attempts": 0,
+        "awaiting_lead_capture_final_confirmation": False,
         "lead_capture_done": False,
         "vehicle_images_cursor": 0,
         "vehicle_images_has_more": False,

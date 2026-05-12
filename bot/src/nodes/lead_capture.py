@@ -11,6 +11,7 @@ from src.tools.database import push_event_to_backend
 from src.tools.vehicles import notify_advisor
 from src.services.llm_responses import (
     classify_lead_capture_navigation,
+    classify_lead_capture_summary_confirmation,
     generate_lead_capture_intro,
     generate_verified_user_message,
 )
@@ -92,106 +93,68 @@ def _clean_customer_info(info: dict[str, Any]) -> dict[str, str]:
     return out
 
 
-def _detect_navigation_override(user_text: str, previous_bot_message: str, selected_car: str) -> str:
-    """Detecta cambio de flujo en lead_capture usando clasificacion LLM especializada."""
-    if not str(user_text or "").strip():
-        return ""
-    classified = classify_lead_capture_navigation(
-        previous_bot_message=previous_bot_message,
-        user_message=user_text,
-        selected_vehicle_name=selected_car,
+def _lead_capture_summary_facts(selected_car: str, preview: dict[str, str]) -> str:
+    """Bloque literal para DATOS_VERIFICADOS del resumen pre-CRM."""
+    return "\n".join(
+        [
+            f"vehiculo_etiqueta: {selected_car}",
+            f"nombre: {preview.get('nombre', '')}",
+            f"telefono: {preview.get('telefono', '')}",
+            f"email: {preview.get('email', '')}",
+        ]
     )
-    if classified == "PROMOTIONS":
-        return "promotions"
-    if classified == "FINANCING":
-        return "financing"
-    if classified == "CAR_SELECTION":
-        return "car_selection"
-    return ""
 
 
-def _intent_for_route_override(route_override: str) -> str:
-    """Mapea el nodo destino al intent canónico de continuidad conversacional."""
-    if route_override == "car_selection":
-        return "vehicle_catalog"
-    return route_override
-
-
-def lead_capture(state: clientState) -> clientState:
-    """Solicita nombre, telefono (condicional) y email; luego notifica y persiste al CRM."""
-
-    state["current_node"] = "lead_capture"
-    selected_car = (state.get("selected_car") or "").strip()
-    platform = str(state.get("platform", "web") or "web").strip().lower() or "web"
-    user_id = str(state.get("user_id", "")).strip()
-    latest_user = latest_user_message(state)
-    cinfo = state.get("customer_info", {}) or {}
-    _debug(
-        "entry",
-        selected_car=selected_car,
-        platform=platform,
-        has_name=bool(cinfo.get("nombre")),
-        has_phone=bool(cinfo.get("telefono")),
-        has_email=bool(cinfo.get("email")),
-        latest_user=latest_user,
+def _lead_capture_summary_fallback(selected_car: str, preview: dict[str, str]) -> str:
+    """Texto fijo si falla el LLM en el paso de resumen."""
+    return (
+        f"Revisa tus datos para {selected_car}:\n\n"
+        f"- Nombre: {preview.get('nombre', '')}\n"
+        f"- Telefono: {preview.get('telefono', '')}\n"
+        f"- Correo: {preview.get('email', '')}\n\n"
+        "Si todo es correcto responde con un si claro. "
+        "Si algo esta mal, indica que dato quieres corregir (nombre, telefono o correo)."
     )
-    if state.get("lead_capture_done") and all(
-        cinfo.get(f) for f in ("nombre", "telefono", "email")
-    ):
-        # Si el lead ya se completo en un turno previo, volver al router para
-        # evitar quedar atrapados en lead_capture en mensajes subsecuentes.
-        state["current_node"] = "router"
-        state["intent"] = ""
-        return append_assistant_message(
-            state,
-            generate_verified_user_message(
-                mode="operational",
-                verified_facts_block="evento: lead_capture_ya_completado_en_estado\ncustomer_info_completo: true\n",
-                user_message=latest_user,
-                fallback="Tus datos ya quedaron registrados. Un asesor se pondra en contacto contigo en breve.",
-                temperature=0.35,
-            ),
-        )
 
-    if state.get("skip_lead_prompt"):
-        state["skip_lead_prompt"] = False
-        if not selected_car:
-            return append_assistant_message(
-                state,
-                generate_verified_user_message(
-                    mode="operational",
-                    verified_facts_block="situacion: lead_capture_sin_vehiculo_seleccionado\n",
-                    user_message=latest_user,
-                    fallback="Primero debes elegir un vehiculo para continuar.",
-                    temperature=0.35,
-                ),
-            )
-        intro = generate_lead_capture_intro(selected_car, resuming=True)
-        return append_assistant_message(state, intro)
 
-    if not selected_car:
-        return append_assistant_message(
-            state,
-            generate_verified_user_message(
-                mode="operational",
-                verified_facts_block="situacion: lead_capture_sin_vehiculo_seleccionado\n",
-                user_message=latest_user,
-                fallback="Primero debes elegir un vehiculo para continuar.",
-                temperature=0.35,
-            ),
-        )
-
-    route_override = _detect_navigation_override(
-        latest_user,
-        _last_assistant_content(state),
-        selected_car,
+def _append_lead_capture_summary(
+    state: clientState,
+    *,
+    selected_car: str,
+    preview: dict[str, str],
+    latest_user: str,
+    extra_facts: str = "",
+) -> clientState:
+    """Anexa el mensaje de resumen y confirmacion al historial."""
+    facts = _lead_capture_summary_facts(selected_car, preview)
+    if extra_facts.strip():
+        facts = f"{facts}\n{extra_facts.strip()}"
+    return append_assistant_message(
+        state,
+        generate_verified_user_message(
+            mode="lead_capture_summary_confirm",
+            verified_facts_block=facts,
+            user_message=latest_user,
+            fallback=_lead_capture_summary_fallback(selected_car, preview),
+            temperature=0.35,
+        ),
     )
-    if route_override:
-        state["current_node"] = route_override
-        state["intent"] = _intent_for_route_override(route_override)
-        _debug("route_change", next_node=route_override, reason="user_navigation_override")
-        return state
 
+
+def _collect_missing_contact_fields(
+    state: clientState,
+    *,
+    selected_car: str,
+    platform: str,
+    user_id: str,
+    latest_user: str,
+) -> clientState | None:
+    """Pide y valida nombre, telefono y correo.
+
+    Devuelve None si en este turno ya quedaron los tres campos y el llamador
+    debe seguir (p. ej. mostrar resumen); si falta informacion, devuelve el
+    estado con el mensaje al usuario.
+    """
     info = dict(state.get("customer_info", {}))
 
     # 1) Nombre
@@ -340,6 +303,262 @@ def lead_capture(state: clientState) -> clientState:
                 ),
             )
 
+    state["customer_info"] = dict(info)
+    if info.get("nombre") and info.get("telefono") and info.get("email"):
+        _debug("collect_missing_completed_same_turn")
+        return None
+    _debug(
+        "lead_capture_incomplete_guard",
+        has_name=bool(info.get("nombre")),
+        has_phone=bool(info.get("telefono")),
+        has_email=bool(info.get("email")),
+    )
+    return append_assistant_message(
+        state,
+        generate_verified_user_message(
+            mode="operational",
+            verified_facts_block="situacion: lead_capture_datos_incompletos_guard\n",
+            user_message=latest_user,
+            fallback="Para registrar tu interes necesito tu nombre completo, telefono y correo electronico.",
+            temperature=0.35,
+        ),
+    )
+
+
+def _detect_navigation_override(user_text: str, previous_bot_message: str, selected_car: str) -> str:
+    """Detecta cambio de flujo en lead_capture usando clasificacion LLM especializada."""
+    if not str(user_text or "").strip():
+        return ""
+    classified = classify_lead_capture_navigation(
+        previous_bot_message=previous_bot_message,
+        user_message=user_text,
+        selected_vehicle_name=selected_car,
+    )
+    if classified == "PROMOTIONS":
+        return "promotions"
+    if classified == "FINANCING":
+        return "financing"
+    if classified == "CAR_SELECTION":
+        return "car_selection"
+    return ""
+
+
+def _intent_for_route_override(route_override: str) -> str:
+    """Mapea el nodo destino al intent canónico de continuidad conversacional."""
+    if route_override == "car_selection":
+        return "vehicle_catalog"
+    return route_override
+
+
+def lead_capture(state: clientState) -> clientState:
+    """Solicita nombre, telefono (condicional) y email; luego notifica y persiste al CRM."""
+
+    state["current_node"] = "lead_capture"
+    selected_car = (state.get("selected_car") or "").strip()
+    platform = str(state.get("platform", "web") or "web").strip().lower() or "web"
+    user_id = str(state.get("user_id", "")).strip()
+    latest_user = latest_user_message(state)
+    cinfo = state.get("customer_info", {}) or {}
+    _debug(
+        "entry",
+        selected_car=selected_car,
+        platform=platform,
+        has_name=bool(cinfo.get("nombre")),
+        has_phone=bool(cinfo.get("telefono")),
+        has_email=bool(cinfo.get("email")),
+        latest_user=latest_user,
+    )
+    if state.get("lead_capture_done") and all(
+        cinfo.get(f) for f in ("nombre", "telefono", "email")
+    ):
+        # Si el lead ya se completo en un turno previo, volver al router para
+        # evitar quedar atrapados en lead_capture en mensajes subsecuentes.
+        state["current_node"] = "router"
+        state["intent"] = ""
+        return append_assistant_message(
+            state,
+            generate_verified_user_message(
+                mode="operational",
+                verified_facts_block="evento: lead_capture_ya_completado_en_estado\ncustomer_info_completo: true\n",
+                user_message=latest_user,
+                fallback="Tus datos ya quedaron registrados. Un asesor se pondra en contacto contigo en breve.",
+                temperature=0.35,
+            ),
+        )
+
+    if state.get("skip_lead_prompt"):
+        state["skip_lead_prompt"] = False
+        if not selected_car:
+            return append_assistant_message(
+                state,
+                generate_verified_user_message(
+                    mode="operational",
+                    verified_facts_block="situacion: lead_capture_sin_vehiculo_seleccionado\n",
+                    user_message=latest_user,
+                    fallback="Primero debes elegir un vehiculo para continuar.",
+                    temperature=0.35,
+                ),
+            )
+        intro = generate_lead_capture_intro(selected_car, resuming=True)
+        return append_assistant_message(state, intro)
+
+    if not selected_car:
+        return append_assistant_message(
+            state,
+            generate_verified_user_message(
+                mode="operational",
+                verified_facts_block="situacion: lead_capture_sin_vehiculo_seleccionado\n",
+                user_message=latest_user,
+                fallback="Primero debes elegir un vehiculo para continuar.",
+                temperature=0.35,
+            ),
+        )
+
+    route_override = _detect_navigation_override(
+        latest_user,
+        _last_assistant_content(state),
+        selected_car,
+    )
+    if route_override:
+        state["awaiting_lead_capture_final_confirmation"] = False
+        state["current_node"] = route_override
+        state["intent"] = _intent_for_route_override(route_override)
+        _debug("route_change", next_node=route_override, reason="user_navigation_override")
+        return state
+
+    while True:
+        info = dict(state.get("customer_info", {}))
+        if not (info.get("nombre") and info.get("telefono") and info.get("email")):
+            collected = _collect_missing_contact_fields(
+                state,
+                selected_car=selected_car,
+                platform=platform,
+                user_id=user_id,
+                latest_user=latest_user,
+            )
+            if collected is not None:
+                return collected
+            continue
+
+        state["customer_info"] = dict(info)
+        preview = _clean_customer_info(info)
+        if not state.get("awaiting_lead_capture_final_confirmation"):
+            state["awaiting_lead_capture_final_confirmation"] = True
+            _debug("summary_shown", customer_info=preview)
+            return _append_lead_capture_summary(
+                state,
+                selected_car=selected_car,
+                preview=preview,
+                latest_user=latest_user,
+            )
+
+        prev_assistant = _last_assistant_content(state)
+        action = classify_lead_capture_summary_confirmation(
+            previous_bot_message=prev_assistant,
+            user_message=latest_user,
+        )
+        _debug("summary_action", action=action)
+        if action == "CONFIRM":
+            state["awaiting_lead_capture_final_confirmation"] = False
+            break
+        if action == "EDIT_NOMBRE":
+            info.pop("nombre", None)
+            state["customer_info"] = dict(info)
+            state["awaiting_lead_capture_final_confirmation"] = False
+            extracted = extract_name(latest_user)
+            if is_valid_full_name(extracted) and not is_initial_only_name(extracted):
+                info["nombre"] = extracted
+                state["customer_info"] = dict(info)
+                if info.get("nombre") and info.get("telefono") and info.get("email"):
+                    state["awaiting_lead_capture_final_confirmation"] = True
+                    return _append_lead_capture_summary(
+                        state,
+                        selected_car=selected_car,
+                        preview=_clean_customer_info(info),
+                        latest_user=latest_user,
+                    )
+                continue
+            return append_assistant_message(
+                state,
+                generate_verified_user_message(
+                    mode="lead_capture_step",
+                    verified_facts_block="campo: nombre_completo\nsituacion: correccion_tras_resumen\n",
+                    user_message=latest_user,
+                    fallback="Perfecto. Escribe de nuevo tu nombre completo (nombre y apellido).",
+                    temperature=0.35,
+                ),
+            )
+        if action == "EDIT_TELEFONO":
+            info.pop("telefono", None)
+            state["customer_info"] = dict(info)
+            state["awaiting_lead_capture_final_confirmation"] = False
+            state["lead_phone_attempts"] = 0
+            digits = extract_phone_digits(latest_user)
+            if is_valid_phone_digits(digits):
+                info["telefono"] = digits
+                state["customer_info"] = dict(info)
+                if info.get("nombre") and info.get("telefono") and info.get("email"):
+                    state["awaiting_lead_capture_final_confirmation"] = True
+                    return _append_lead_capture_summary(
+                        state,
+                        selected_car=selected_car,
+                        preview=_clean_customer_info(info),
+                        latest_user=latest_user,
+                    )
+                continue
+            return append_assistant_message(
+                state,
+                generate_verified_user_message(
+                    mode="lead_capture_step",
+                    verified_facts_block=(
+                        "campo: telefono\n"
+                        "situacion: correccion_tras_resumen\n"
+                        f"min_digitos_requeridos: {phone_min_digits()}\n"
+                    ),
+                    user_message=latest_user,
+                    fallback=(
+                        "Listo. Cual es tu numero de telefono correcto? "
+                        f"(Solo numeros, al menos {phone_min_digits()} digitos.)"
+                    ),
+                    temperature=0.35,
+                ),
+            )
+        if action == "EDIT_EMAIL":
+            info.pop("email", None)
+            state["customer_info"] = dict(info)
+            state["awaiting_lead_capture_final_confirmation"] = False
+            extracted_email = extract_email(latest_user) or normalize_stored_email(latest_user)
+            if is_valid_email(extracted_email):
+                info["email"] = normalize_stored_email(extracted_email)
+                state["customer_info"] = dict(info)
+                if info.get("nombre") and info.get("telefono") and info.get("email"):
+                    state["awaiting_lead_capture_final_confirmation"] = True
+                    return _append_lead_capture_summary(
+                        state,
+                        selected_car=selected_car,
+                        preview=_clean_customer_info(info),
+                        latest_user=latest_user,
+                    )
+                continue
+            return append_assistant_message(
+                state,
+                generate_verified_user_message(
+                    mode="lead_capture_step",
+                    verified_facts_block="campo: email\nsituacion: correccion_tras_resumen\n",
+                    user_message=latest_user,
+                    fallback="Perfecto. Escribe de nuevo tu correo electronico.",
+                    temperature=0.35,
+                ),
+            )
+        return _append_lead_capture_summary(
+            state,
+            selected_car=selected_car,
+            preview=preview,
+            latest_user=latest_user,
+            extra_facts="situacion: mensaje_ambiguo_repite_instrucciones_confirmacion_o_correccion\n",
+        )
+
+    # Solo CONFIRM sale del bucle (el resto de acciones hace return arriba).
     payload_info = _clean_customer_info(state.get("customer_info", {}))
     # Misma clave de conversación que en el resto de eventos: id de sesión del chat (no el telefono).
     # Así el backend hace find del mismo lead que acumulo la conversación, y `notes` incluye email.

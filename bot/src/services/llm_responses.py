@@ -34,6 +34,7 @@ from src.utils.prompts import (
     build_promotions_step_flags_prompt,
     build_financing_step_flags_prompt,
     build_lead_capture_navigation_classifier_prompt,
+    build_lead_capture_summary_confirmation_classifier_prompt,
     build_settings_block,
     build_verified_user_message_prompt,
 )
@@ -965,6 +966,37 @@ def classify_lead_capture_navigation(
             temperature=0.0,
         )
         return "STAY"
+
+
+def classify_lead_capture_summary_confirmation(
+    previous_bot_message: str,
+    user_message: str,
+) -> str:
+    """Clasifica la respuesta del usuario al resumen final de datos del lead."""
+
+    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
+    try:
+        settings = get_bot_settings()
+        llm = ChatOpenAI(model=model_name, temperature=0)
+        prompt = build_lead_capture_summary_confirmation_classifier_prompt(
+            previous_bot_message=previous_bot_message,
+            user_message=user_message,
+            bot_settings=settings,
+        )
+        content = llm.invoke(prompt).content
+        normalized = str(content).strip().upper()
+        if normalized in {"CONFIRM", "EDIT_NOMBRE", "EDIT_TELEFONO", "EDIT_EMAIL", "UNCLEAR"}:
+            return normalized
+        return "UNCLEAR"
+    except Exception as exc:
+        _log_llm_invoke_failure(
+            "classify_lead_capture_summary_confirmation",
+            exc,
+            model_name=model_name,
+            prompt_kind="lead_capture_summary_confirmation_classifier",
+            temperature=0.0,
+        )
+        return "UNCLEAR"
 
 
 def classify_vehicle_step_flags(
