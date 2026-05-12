@@ -1,8 +1,21 @@
+import { Op } from "sequelize";
 import { Promotion, Vehicle } from "../models/index.js";
 import { ApiError } from "../utils/errors.js";
 
 // Scope multi-tenant por propietario autenticado.
 const ownerWhere = (userId) => ({ ownerUserId: userId });
+
+const VEHICLE_LABEL_MISSING = "[no disponible]";
+
+/** Misma forma que `format_vehicle_name` en el bot: marca modelo año. */
+function promotionVehicleLabel(vehicle) {
+  const brand = String(vehicle?.brand ?? "").trim();
+  const model = String(vehicle?.model ?? "").trim();
+  const year = vehicle?.year;
+  const suffix = typeof year === "number" && Number.isFinite(year) ? ` ${year}` : "";
+  const label = `${brand} ${model}${suffix}`.trim();
+  return label || VEHICLE_LABEL_MISSING;
+}
 
 // Helper de ownership para evitar exponer promociones de vehículos ajenos.
 const getOwnedVehicle = async (userId, vehicleId) => {
@@ -12,8 +25,41 @@ const getOwnedVehicle = async (userId, vehicleId) => {
 };
 
 // Lista promociones del tenant en orden de actualización.
-export const listPromotions = async (req, res) =>
-  res.json(await Promotion.findAll({ where: ownerWhere(req.auth.userId), order: [["updatedAt", "DESC"]] }));
+export const listPromotions = async (req, res) => {
+  const userId = req.auth.userId;
+  const rows = await Promotion.findAll({ where: ownerWhere(userId), order: [["updatedAt", "DESC"]] });
+  const plains = rows.map((row) => row.get({ plain: true }));
+  const idSet = new Set();
+  for (const p of plains) {
+    for (const raw of Array.isArray(p.vehicleIds) ? p.vehicleIds : []) {
+      const id = String(raw ?? "").trim();
+      if (id) idSet.add(id);
+    }
+  }
+  const uniq = [...idSet];
+  let byId = new Map();
+  if (uniq.length) {
+    const found = await Vehicle.findAll({
+      where: { ownerUserId: userId, id: { [Op.in]: uniq } },
+      attributes: ["id", "brand", "model", "year"],
+    });
+    byId = new Map(found.map((v) => {
+      const pl = v.get({ plain: true });
+      return [String(pl.id), pl];
+    }));
+  }
+  const payload = plains.map((p) => {
+    const ids = Array.isArray(p.vehicleIds)
+      ? p.vehicleIds.map((x) => String(x ?? "").trim()).filter(Boolean)
+      : [];
+    const vehicleLabels = ids.map((vid) => {
+      const v = byId.get(vid);
+      return v ? promotionVehicleLabel(v) : VEHICLE_LABEL_MISSING;
+    });
+    return { ...p, vehicleLabels };
+  });
+  return res.json(payload);
+};
 
 export const getPromotionsByVehicleId = async (req, res) => {
   // Filtra promociones activas aplicables a un vehículo puntual.
@@ -29,7 +75,37 @@ export const getPromotionsByVehicleId = async (req, res) => {
     const vehicleIds = row?.vehicleIds;
     return Array.isArray(vehicleIds) && vehicleIds.some((item) => String(item).trim() === String(vehicleId).trim());
   });
-  return res.json(filtered);
+  const plains = filtered.map((row) => row.get({ plain: true }));
+  const idSet = new Set();
+  for (const p of plains) {
+    for (const raw of Array.isArray(p.vehicleIds) ? p.vehicleIds : []) {
+      const id = String(raw ?? "").trim();
+      if (id) idSet.add(id);
+    }
+  }
+  const uniq = [...idSet];
+  let byId = new Map();
+  if (uniq.length) {
+    const found = await Vehicle.findAll({
+      where: { ownerUserId: userId, id: { [Op.in]: uniq } },
+      attributes: ["id", "brand", "model", "year"],
+    });
+    byId = new Map(found.map((v) => {
+      const pl = v.get({ plain: true });
+      return [String(pl.id), pl];
+    }));
+  }
+  const payload = plains.map((p) => {
+    const ids = Array.isArray(p.vehicleIds)
+      ? p.vehicleIds.map((x) => String(x ?? "").trim()).filter(Boolean)
+      : [];
+    const vehicleLabels = ids.map((vid) => {
+      const v = byId.get(vid);
+      return v ? promotionVehicleLabel(v) : VEHICLE_LABEL_MISSING;
+    });
+    return { ...p, vehicleLabels };
+  });
+  return res.json(payload);
 };
 
 // Crea promoción asociada al owner actual.

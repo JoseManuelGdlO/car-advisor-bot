@@ -27,6 +27,7 @@ export type PromotionDto = {
   appliesTo?: string;
   active: boolean;
   vehicleIds?: string[];
+  vehicleLabels?: string[];
 };
 
 export type VehicleDto = {

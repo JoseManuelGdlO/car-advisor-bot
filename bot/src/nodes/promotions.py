@@ -18,7 +18,6 @@ from src.tools.vehicles import (
     canonicalize_with_typo_support,
     fetch_vehicle_by_id,
     normalize_user_text,
-    resolve_single_vehicle_from_text,
 )
 from src.utils.formatters import format_promotion_comparison, format_promotions, format_vehicle_detail, format_vehicle_name
 from src.utils.signals import (
@@ -29,6 +28,8 @@ from src.utils.signals import (
     VEHICLE_INFO_REQUEST_SIGNALS,
 )
 from src.utils.state_helpers import append_assistant_message, latest_user_message
+
+_PROMO_VEHICLE_LABEL_MISSING = "[no disponible]"
 
 
 def _debug(event: str, **payload: Any) -> None:
@@ -180,6 +181,24 @@ def _extract_by_index(candidates: list[dict[str, Any]], user_text: str) -> dict[
     return None
 
 
+def _pick_vehicle_from_list_by_text(vehicles: list[Any], user_text: str) -> dict[str, Any] | None:
+    """Elige vehículo por número o nombre dentro de una lista ya cargada (sin catálogo GET /vehicles)."""
+    valid = [item for item in vehicles if isinstance(item, dict)]
+    if not valid:
+        return None
+    by_index = _extract_by_index(valid, user_text)
+    if by_index is not None:
+        return by_index
+    labels = [format_vehicle_name(item) for item in valid]
+    selected = canonicalize_with_typo_support(user_text, labels, threshold=0.72)
+    if not selected:
+        return None
+    for item in valid:
+        if format_vehicle_name(item) == selected:
+            return item
+    return None
+
+
 def _significant_tokens(text: str) -> set[str]:
     """Tokens del texto normalizado, sin ruido corto, para solapamiento titulo/usuario."""
     normalized = normalize_user_text(text)
@@ -310,11 +329,6 @@ def _pick_promotion_from_state(state: clientState, user_text: str) -> dict[str, 
     return mapping.get(selected)
 
 
-def _maybe_resolve_vehicle_from_query(user_text: str) -> dict[str, Any] | None:
-    """Helper de apoyo para maybe resolve vehicle from query."""
-    return resolve_single_vehicle_from_text(user_text, prefer_available=False)
-
-
 def _looks_like_explicit_apply(user_text: str) -> bool:
     """Detecta si el texto parece explicit apply."""
     normalized = normalize_user_text(user_text)
@@ -324,19 +338,9 @@ def _looks_like_explicit_apply(user_text: str) -> bool:
 def _pick_vehicle_candidate(state: clientState, user_text: str) -> dict[str, Any] | None:
     """Selecciona vehicle candidate con reglas del flujo."""
     candidates = state.get("promotion_vehicle_candidates", [])
-    if not isinstance(candidates, list) or not candidates:
+    if not isinstance(candidates, list):
         return None
-    by_index = _extract_by_index([item for item in candidates if isinstance(item, dict)], user_text)
-    if by_index:
-        return by_index
-    labels = [format_vehicle_name(item) for item in candidates if isinstance(item, dict)]
-    selected = canonicalize_with_typo_support(user_text, labels, threshold=0.72)
-    if not selected:
-        return None
-    for item in candidates:
-        if isinstance(item, dict) and format_vehicle_name(item) == selected:
-            return item
-    return None
+    return _pick_vehicle_from_list_by_text(candidates, user_text)
 
 
 def _load_promotion_vehicles(state: clientState, promotion: dict[str, Any]) -> list[dict[str, Any]]:
@@ -393,28 +397,17 @@ def _show_vehicle_and_confirm_interest(state: clientState, vehicle: dict[str, An
 
 
 def _promotion_vehicle_labels(promotion: dict[str, Any]) -> list[str]:
-    """Helper de apoyo para promotion vehicle labels."""
-    raw_ids = promotion.get("vehicleIds")
-    if not isinstance(raw_ids, list):
+    """Etiquetas aplicables solo desde vehicleLabels del API (sin GET por vehículo)."""
+    raw_labels_any = promotion.get("vehicleLabels")
+    if not isinstance(raw_labels_any, list):
         return []
-    labels: list[str] = []
-    for raw_id in raw_ids:
-        vehicle_id = str(raw_id).strip()
-        if not vehicle_id:
-            continue
-        try:
-            detail = fetch_vehicle_by_id(vehicle_id)
-        except Exception:
-            detail = None
-        if not isinstance(detail, dict):
-            continue
-        labels.append(format_vehicle_name(detail))
-    return labels
+    return [str(raw).strip() for raw in raw_labels_any if str(raw).strip()]
 
 
 def _hydrate_promotions_with_vehicle_labels(promotions: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Helper de apoyo para hydrate promotions with vehicle labels."""
     hydrated: list[dict[str, Any]] = []
+    missing_norm = _PROMO_VEHICLE_LABEL_MISSING.strip().lower()
     for item in promotions:
         if not isinstance(item, dict):
             continue
@@ -422,9 +415,14 @@ def _hydrate_promotions_with_vehicle_labels(promotions: list[dict[str, Any]]) ->
             continue
         row = dict(item)
         vehicle_labels = _promotion_vehicle_labels(item)
-        if not vehicle_labels:
+        usable = [
+            str(lbl).strip()
+            for lbl in vehicle_labels
+            if str(lbl).strip() and str(lbl).strip().lower() != missing_norm
+        ]
+        if not usable:
             continue
-        row["vehicleLabels"] = vehicle_labels
+        row["vehicleLabels"] = usable
         hydrated.append(row)
     return hydrated
 
@@ -709,7 +707,7 @@ def promotions(state: clientState) -> clientState:
         if ask_vehicle_info_flag:
             state["awaiting_promotion_apply_confirmation"] = False
             promotion_vehicles = _load_promotion_vehicles(state, selected_promotion)
-            hinted_vehicle = _maybe_resolve_vehicle_from_query(user_text)
+            hinted_vehicle = _pick_vehicle_from_list_by_text(promotion_vehicles, user_text)
             if isinstance(hinted_vehicle, dict):
                 hinted_id = str(hinted_vehicle.get("id", "")).strip()
                 if hinted_id:
@@ -813,11 +811,6 @@ def promotions(state: clientState) -> clientState:
         return append_assistant_message(state, message)
 
     selected_vehicle_id = str(state.get("selected_vehicle_id", "")).strip()
-    vehicle_hint = _maybe_resolve_vehicle_from_query(user_text)
-    if vehicle_hint and not selected_vehicle_id:
-        selected_vehicle_id = str(vehicle_hint.get("id", "")).strip()
-        state["selected_vehicle_id"] = selected_vehicle_id
-        state["selected_car"] = format_vehicle_name(vehicle_hint)
 
     if selected_vehicle_id and (nav_flags.get("ask_promotions") or state.get("selected_car")):
         try:
