@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ArrowDown, ArrowUp, Check, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Car, Check, Pencil, Plus, Search, Tag, Trash2 } from "lucide-react";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -8,7 +8,7 @@ import { CarStatus } from "@/data/mockData";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { crmApi, FinancingPlanDto, VehicleDto } from "@/services/crm";
+import { crmApi, FinancingPlanDto, PromotionDto, VehicleDto } from "@/services/crm";
 import {
   Dialog,
   DialogContent,
@@ -87,8 +87,14 @@ export default function ConfigProductos() {
     queryFn: () => crmApi.getFinancingPlans(token!),
     enabled: Boolean(token),
   });
+  const { data: promotionsData = [] } = useQuery({
+    queryKey: ["promotions"],
+    queryFn: () => crmApi.getPromotions(token!) as Promise<PromotionDto[]>,
+    enabled: Boolean(token),
+  });
   const cars = (data || []) as VehicleDto[];
   const plans = plansData as FinancingPlanDto[];
+  const promotions = promotionsData as PromotionDto[];
   const [filter, setFilter] = useState<"all" | CarStatus>("all");
   const [q, setQ] = useState("");
   const [updating, setUpdating] = useState<string>("");
@@ -131,7 +137,7 @@ export default function ConfigProductos() {
 
   const togglePlanForVehicle = async (vehicleId: string, planId: string, selected: boolean) => {
     if (!token) return;
-    setUpdating(`${vehicleId}-${planId}`);
+    setUpdating(`fp:${vehicleId}:${planId}`);
     if (selected) {
       await crmApi.removePlanFromVehicle(token, vehicleId, planId);
     } else {
@@ -139,6 +145,29 @@ export default function ConfigProductos() {
     }
     await queryClient.invalidateQueries({ queryKey: ["vehicles"] });
     await queryClient.invalidateQueries({ queryKey: ["financing-plans"] });
+    setUpdating("");
+  };
+
+  const togglePromotionForVehicle = async (vehicleId: string, promo: PromotionDto, selected: boolean) => {
+    if (!token) return;
+    const prev = Array.isArray(promo.vehicleIds) ? promo.vehicleIds.map(String) : [];
+    const nextSet = new Set(prev);
+    if (selected) {
+      nextSet.delete(String(vehicleId));
+    } else {
+      nextSet.add(String(vehicleId));
+    }
+    const nextIds = Array.from(nextSet);
+    setUpdating(`pr:${vehicleId}:${promo.id}`);
+    await crmApi.updatePromotion(token, promo.id, {
+      title: promo.title,
+      description: promo.description,
+      validUntil: promo.validUntil ?? "",
+      appliesTo: promo.appliesTo ?? "",
+      active: promo.active,
+      vehicleIds: nextIds,
+    });
+    await queryClient.invalidateQueries({ queryKey: ["promotions"] });
     setUpdating("");
   };
 
@@ -472,85 +501,164 @@ Versión: Highline`}
       </div>
 
       <div className="px-4 py-4 grid grid-cols-2 gap-3">
-        {list.map((c) => (
-          <div
-            id={`vehicle-${c.id}`}
-            key={c.id}
-            className={cn(
-              "bg-card rounded-2xl shadow-card border border-border overflow-hidden",
-              focusedVehicleId === c.id ? "ring-2 ring-primary/60" : ""
-            )}
-          >
-            <div className="aspect-[4/3] bg-gradient-soft grid place-items-center text-5xl">
-              {c.imageUrls?.[0] ? (
-                <img src={toMediaUrl(c.imageUrls[0])} alt={`${c.brand} ${c.model}`} className="w-full h-full object-cover" />
-              ) : (
-                c.image
+        {list.map((c) => {
+          const linkedPromoCount = promotions.filter(
+            (p) => Array.isArray(p.vehicleIds) && p.vehicleIds.some((id) => String(id) === String(c.id))
+          ).length;
+          return (
+            <div
+              id={`vehicle-${c.id}`}
+              key={c.id}
+              className={cn(
+                "group bg-card rounded-2xl shadow-card border border-border overflow-hidden transition-shadow duration-200 hover:shadow-elevated",
+                focusedVehicleId === c.id ? "ring-2 ring-primary/60" : ""
               )}
+            >
+              <div className="relative aspect-[4/3] bg-muted/80 overflow-hidden rounded-t-2xl">
+                {c.imageUrls?.[0] ? (
+                  <img
+                    src={toMediaUrl(c.imageUrls[0])}
+                    alt={`${c.brand} ${c.model}`}
+                    className="absolute inset-0 h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-gradient-soft">
+                    <span className="text-4xl leading-none select-none" aria-hidden>
+                      {c.image || "🚗"}
+                    </span>
+                    <Car className="w-5 h-5 text-muted-foreground/50" aria-hidden />
+                  </div>
+                )}
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-black/25 to-transparent" />
+                <div className="absolute bottom-2 right-2 pointer-events-none">
+                  <StatusBadge status={c.status} />
+                </div>
+              </div>
+              <div className="p-3 space-y-2">
+                <div className="space-y-0.5">
+                  <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wide leading-none">{c.brand}</p>
+                  <p className="font-bold text-sm leading-snug line-clamp-2">{c.model}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {c.year} · {c.km.toLocaleString("es-MX")} km
+                  </p>
+                </div>
+                <p className="font-extrabold text-primary-dark text-base tabular-nums tracking-tight">{formatPrice(c.price)}</p>
+                <div className="space-y-1 text-[11px] text-muted-foreground leading-snug">
+                  <p>Prioridad envío: {c.outboundPriority ?? 0}</p>
+                  {c.financingPlans?.length ? (
+                    <p>
+                      {c.financingPlans[0].showRate
+                        ? `Financiamiento desde ${Number(c.financingPlans[0].rate).toFixed(2)}%`
+                        : "Financiamiento disponible"}
+                    </p>
+                  ) : (
+                    <p>Sin plan asignado</p>
+                  )}
+                  <p>
+                    {linkedPromoCount === 0
+                      ? "Sin promos vinculadas"
+                      : linkedPromoCount === 1
+                        ? "1 promo vinculada"
+                        : `${linkedPromoCount} promos vinculadas`}
+                  </p>
+                </div>
+                <div className="border-t border-border/60 pt-2.5 mt-1 grid grid-cols-2 gap-1.5">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 px-1.5 rounded-lg text-[11px] leading-tight"
+                    onClick={() => startEditVehicle(c)}
+                  >
+                    <Pencil className="w-3.5 h-3.5 mr-0.5 shrink-0" /> Editar
+                  </Button>
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 px-1.5 rounded-lg text-[11px] leading-tight"
+                        title="Asignar promoción"
+                      >
+                        <Tag className="w-3.5 h-3.5 mr-0.5 shrink-0" />
+                        <span className="line-clamp-2 text-left">Promoción</span>
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-md">
+                      <DialogHeader>
+                        <DialogTitle>Asignar promociones</DialogTitle>
+                        <DialogDescription>
+                          {c.brand} {c.model} {c.year}
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-2 max-h-[320px] overflow-auto">
+                        {promotions.length === 0 ? (
+                          <p className="text-xs text-muted-foreground py-2">No hay promociones en el catálogo. Créalas en Vehículos → Promociones.</p>
+                        ) : (
+                          promotions.map((promo) => {
+                            const ids = Array.isArray(promo.vehicleIds) ? promo.vehicleIds.map(String) : [];
+                            const selected = ids.includes(String(c.id));
+                            const key = `pr:${c.id}:${promo.id}`;
+                            return (
+                              <label key={promo.id} className="flex items-start gap-2 rounded-lg border border-border p-2">
+                                <Checkbox
+                                  checked={selected}
+                                  disabled={updating === key}
+                                  onCheckedChange={() => togglePromotionForVehicle(c.id, promo, selected)}
+                                />
+                                <span className="text-xs min-w-0">
+                                  <span className="font-semibold block">{promo.title}</span>
+                                  {promo.active ? null : (
+                                    <span className="text-[10px] text-muted-foreground">(inactiva)</span>
+                                  )}
+                                </span>
+                                {updating === key ? <Check className="w-3.5 h-3.5 ml-auto shrink-0 text-success" /> : null}
+                              </label>
+                            );
+                          })
+                        )}
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button size="sm" variant="outline" className="h-8 px-2 rounded-lg text-[11px] col-span-2 w-full">
+                        Asignar financiamiento
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-md">
+                      <DialogHeader>
+                        <DialogTitle>Asignar planes</DialogTitle>
+                        <DialogDescription>
+                          {c.brand} {c.model} {c.year}
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-2 max-h-[320px] overflow-auto">
+                        {plans.map((plan) => {
+                          const selected = Boolean(c.financingPlans?.some((x) => x.id === plan.id));
+                          const key = `fp:${c.id}:${plan.id}`;
+                          return (
+                            <label key={plan.id} className="flex items-start gap-2 rounded-lg border border-border p-2">
+                              <Checkbox
+                                checked={selected}
+                                disabled={updating === key}
+                                onCheckedChange={() => togglePlanForVehicle(c.id, plan.id, selected)}
+                              />
+                              <span className="text-xs">
+                                <span className="font-semibold">{plan.name}</span> · {plan.lender} ·{" "}
+                                {plan.showRate ? `${Number(plan.rate).toFixed(2)}%` : "Tasa oculta"}
+                              </span>
+                              {updating === key ? <Check className="w-3.5 h-3.5 ml-auto text-success" /> : null}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+              </div>
             </div>
-            <div className="p-3">
-              <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wide">{c.brand}</p>
-              <p className="font-bold text-sm leading-tight">{c.model}</p>
-              <p className="text-xs text-muted-foreground">{c.year} · {c.km.toLocaleString("es-MX")} km</p>
-              <p className="font-extrabold text-primary-dark text-sm mt-1.5">{formatPrice(c.price)}</p>
-              <p className="text-[11px] text-muted-foreground mt-1">Prioridad envío: {c.outboundPriority ?? 0}</p>
-              {c.financingPlans?.length ? (
-                <p className="text-[11px] text-muted-foreground mt-1">
-                  {c.financingPlans[0].showRate
-                    ? `Financiamiento desde ${Number(c.financingPlans[0].rate).toFixed(2)}%`
-                    : "Financiamiento disponible"}
-                </p>
-              ) : (
-                <p className="text-[11px] text-muted-foreground mt-1">Sin plan asignado</p>
-              )}
-              <div className="mt-2">
-                <StatusBadge status={c.status} />
-              </div>
-              <div className="mt-2">
-                <Button size="sm" variant="outline" className="h-8 px-2 rounded-lg text-[11px]" onClick={() => startEditVehicle(c)}>
-                  <Pencil className="w-3.5 h-3.5 mr-1" /> Editar
-                </Button>
-              </div>
-              <div className="mt-2">
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button size="sm" variant="outline" className="h-8 px-2 rounded-lg text-[11px]">
-                      Asignar financiamiento
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-md">
-                    <DialogHeader>
-                      <DialogTitle>Asignar planes</DialogTitle>
-                      <DialogDescription>
-                        {c.brand} {c.model} {c.year}
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-2 max-h-[320px] overflow-auto">
-                      {plans.map((plan) => {
-                        const selected = Boolean(c.financingPlans?.some((x) => x.id === plan.id));
-                        const key = `${c.id}-${plan.id}`;
-                        return (
-                          <label key={plan.id} className="flex items-start gap-2 rounded-lg border border-border p-2">
-                            <Checkbox
-                              checked={selected}
-                              disabled={updating === key}
-                              onCheckedChange={() => togglePlanForVehicle(c.id, plan.id, selected)}
-                            />
-                            <span className="text-xs">
-                              <span className="font-semibold">{plan.name}</span> · {plan.lender} ·{" "}
-                              {plan.showRate ? `${Number(plan.rate).toFixed(2)}%` : "Tasa oculta"}
-                            </span>
-                            {updating === key ? <Check className="w-3.5 h-3.5 ml-auto text-success" /> : null}
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              </div>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </>
   );

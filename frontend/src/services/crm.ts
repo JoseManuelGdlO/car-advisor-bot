@@ -18,6 +18,7 @@ export type {
   DashboardKpisDto,
   FinancingPlanDto,
   FinancingRequirementDto,
+  PromotionDto,
   VehicleDto,
 } from "./crm.dto";
 

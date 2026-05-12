@@ -19,6 +19,16 @@ export type FinancingPlanDto = {
   vehicles?: { id: string; brand: string; model: string; year: number }[];
 };
 
+export type PromotionDto = {
+  id: string;
+  title: string;
+  description: string;
+  validUntil?: string;
+  appliesTo?: string;
+  active: boolean;
+  vehicleIds?: string[];
+};
+
 export type VehicleDto = {
   id: string;
   brand: string;
