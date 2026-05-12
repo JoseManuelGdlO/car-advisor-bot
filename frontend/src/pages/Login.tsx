@@ -1,11 +1,58 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { z } from "zod";
 import { Eye, EyeOff, Bot } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/context/AuthContext";
+import { ApiRequestError } from "@/lib/api";
+import { cn } from "@/lib/utils";
+
+const registerFormSchema = z.object({
+  name: z.string().trim().min(2, "El nombre debe tener al menos 2 caracteres."),
+  email: z.string().trim().email("Introduce un correo electrónico válido."),
+  password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres."),
+});
+
+const loginFormSchema = z.object({
+  email: z.string().trim().min(1, "Indica tu correo electrónico."),
+  password: z.string().min(4, "La contraseña debe tener al menos 4 caracteres."),
+});
+
+function zodIssuesToFieldErrors(issues: z.ZodIssue[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const iss of issues) {
+    const key = iss.path[0];
+    if (typeof key === "string" && !out[key]) {
+      out[key] = iss.message;
+    }
+  }
+  return out;
+}
+
+/** Mensaje global vs por campo a partir de la respuesta del API. */
+function splitApiRequestError(err: ApiRequestError): { formError: string; fieldErrors: Record<string, string> } {
+  const fieldErrors = { ...err.fieldErrors };
+  const formFromPayload = fieldErrors._form;
+  delete fieldErrors._form;
+
+  const known = new Set(["name", "email", "password"]);
+  const keys = Object.keys(fieldErrors);
+  const onlyKnownFields = keys.length > 0 && keys.every((k) => known.has(k));
+
+  let formError = "";
+  if (formFromPayload) {
+    formError = formFromPayload;
+  } else if (keys.length === 0) {
+    formError = err.message;
+  } else if (!onlyKnownFields) {
+    formError = err.message;
+  }
+
+  return { formError, fieldErrors };
+}
 
 export default function Login() {
   const navigate = useNavigate();
@@ -14,23 +61,69 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
   const [name, setName] = useState("");
-  const [error, setError] = useState("");
+  const [formError, setFormError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
 
+  const clearErrors = () => {
+    setFormError("");
+    setFieldErrors({});
+  };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
+    clearErrors();
+
+    const emailTrim = email.trim();
+    const passVal = pass;
+
+    if (isRegisterMode) {
+      const parsed = registerFormSchema.safeParse({
+        name: name.trim(),
+        email: emailTrim,
+        password: passVal,
+      });
+      if (!parsed.success) {
+        setFieldErrors(zodIssuesToFieldErrors(parsed.error.issues));
+        return;
+      }
+    } else {
+      const parsed = loginFormSchema.safeParse({
+        email: emailTrim,
+        password: passVal,
+      });
+      if (!parsed.success) {
+        setFieldErrors(zodIssuesToFieldErrors(parsed.error.issues));
+        return;
+      }
+    }
+
     try {
       if (isRegisterMode) {
-        await register(name, email, pass);
+        await register(name.trim(), emailTrim, passVal);
       }
-      await login(email, pass, rememberMe);
+      await login(emailTrim, passVal, rememberMe);
       navigate("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo iniciar sesión");
+      if (ApiRequestError.is(err)) {
+        const { formError: nextForm, fieldErrors: nextFields } = splitApiRequestError(err);
+        setFormError(nextForm);
+        setFieldErrors(nextFields);
+        return;
+      }
+      setFormError(err instanceof Error ? err.message : "No se pudo iniciar sesión");
     }
   };
+
+  const toggleMode = () => {
+    setIsRegisterMode((v) => !v);
+    clearErrors();
+  };
+
+  const errName = fieldErrors.name;
+  const errEmail = fieldErrors.email;
+  const errPassword = fieldErrors.password;
 
   return (
     <div className="min-h-full flex flex-col bg-gradient-hero text-primary-foreground">
@@ -50,16 +143,42 @@ export default function Login() {
         <h2 className="text-xl font-bold mb-1">Bienvenido de vuelta 👋</h2>
         <p className="text-sm text-muted-foreground mb-6">Inicia sesión para gestionar tus chats</p>
 
-        <form onSubmit={submit} className="space-y-4">
+        <form onSubmit={submit} className="space-y-4" noValidate>
           {isRegisterMode && (
             <div className="space-y-1.5">
               <Label htmlFor="name">Nombre</Label>
-              <Input id="name" value={name} onChange={(e) => setName(e.target.value)} className="h-12 rounded-xl" />
+              <Input
+                id="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className={cn("h-12 rounded-xl", errName && "border-destructive focus-visible:ring-destructive")}
+                aria-invalid={Boolean(errName)}
+                aria-describedby={errName ? "name-error" : undefined}
+              />
+              {errName ? (
+                <p id="name-error" className="text-xs text-destructive">
+                  {errName}
+                </p>
+              ) : null}
             </div>
           )}
           <div className="space-y-1.5">
             <Label htmlFor="email">Email o teléfono</Label>
-            <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="tu@email.com" className="h-12 rounded-xl" />
+            <Input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="tu@email.com"
+              className={cn("h-12 rounded-xl", errEmail && "border-destructive focus-visible:ring-destructive")}
+              aria-invalid={Boolean(errEmail)}
+              aria-describedby={errEmail ? "email-error" : undefined}
+            />
+            {errEmail ? (
+              <p id="email-error" className="text-xs text-destructive">
+                {errEmail}
+              </p>
+            ) : null}
           </div>
 
           <div className="space-y-1.5">
@@ -71,7 +190,9 @@ export default function Login() {
                 value={pass}
                 onChange={(e) => setPass(e.target.value)}
                 placeholder="••••••••"
-                className="h-12 rounded-xl pr-11"
+                className={cn("h-12 rounded-xl pr-11", errPassword && "border-destructive focus-visible:ring-destructive")}
+                aria-invalid={Boolean(errPassword)}
+                aria-describedby={errPassword ? "pass-error" : undefined}
               />
               <button
                 type="button"
@@ -82,6 +203,11 @@ export default function Login() {
                 {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
+            {errPassword ? (
+              <p id="pass-error" className="text-xs text-destructive">
+                {errPassword}
+              </p>
+            ) : null}
           </div>
 
           <div className="text-right">
@@ -105,12 +231,16 @@ export default function Login() {
           <Button type="submit" className="w-full h-12 rounded-xl text-base font-semibold shadow-green">
             {isRegisterMode ? "Crear cuenta" : "Entrar"}
           </Button>
-          {error && <p className="text-xs text-destructive">{error}</p>}
+          {formError ? (
+            <p className="text-xs text-destructive" role="alert">
+              {formError}
+            </p>
+          ) : null}
         </form>
 
         <p className="text-center text-xs text-muted-foreground mt-6">
           ¿Sin cuenta?{" "}
-          <button type="button" onClick={() => setIsRegisterMode((v) => !v)} className="text-primary-dark font-semibold hover:underline">
+          <button type="button" onClick={toggleMode} className="text-primary-dark font-semibold hover:underline">
             {isRegisterMode ? "Ya tengo cuenta" : "Crear cuenta"}
           </button>
         </p>

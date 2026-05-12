@@ -17,7 +17,7 @@ export const register = async (req, res, next) => {
       name: z.string().min(2),
     }).parse(req.body);
     const exists = await User.findOne({ where: { email } });
-    if (exists) throw new ApiError(409, "Email already exists");
+    if (exists) throw new ApiError(409, "Ya existe una cuenta con este correo.");
     const user = await User.create({ email, name, passwordHash: await hashPassword(password) });
     return res.status(201).json({ id: user.id, email: user.email, name: user.name });
   } catch (err) {
@@ -30,9 +30,9 @@ export const login = async (req, res, next) => {
     // Login clásico: valida credenciales y emite JWT de usuario.
     const { email, password } = loginSchema.parse(req.body);
     const user = await User.findOne({ where: { email } });
-    if (!user) throw new ApiError(401, "Invalid credentials");
+    if (!user) throw new ApiError(401, "Credenciales incorrectas.");
     const ok = await comparePassword(password, user.passwordHash);
-    if (!ok) throw new ApiError(401, "Invalid credentials");
+    if (!ok) throw new ApiError(401, "Credenciales incorrectas.");
     const token = signUserJwt({ sub: user.id, email: user.email, type: "user" });
     return res.json({ token, user: { id: user.id, email: user.email, name: user.name } });
   } catch (err) {
