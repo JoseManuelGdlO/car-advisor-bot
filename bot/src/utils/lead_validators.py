@@ -18,26 +18,57 @@ def phone_min_digits() -> int:
     return max(1, _PHONE_MIN)
 
 
+_NAME_PREFIX_PATTERNS: tuple[str, ...] = (
+    r"^(?:si|sí|claro|ok|okay|okey|perfecto|vale|bueno|pues|listo|gracias|hola|buenas|buenos\s+dias|buenos\s+días|buenas\s+tardes|buenas\s+noches)\b[\s,.:;\-]*",
+    r"^(?:mi\s+nombre(?:\s+completo)?\s+es|mi\s+nombre(?:\s+completo)?|me\s+llamo|me\s+dicen|soy|nombre(?:\s+completo)?\s*[:\-]?|es)\b[\s,.:;\-]*",
+    r"^(?:mi\s+(?:correo|email|e-mail|telefono|teléfono|numero|número|celular|cel)(?:\s+(?:electronico|electrónico))?\s*(?:es)?|correo(?:\s+electronico|\s+electrónico)?\s*[:\-]?|email\s*[:\-]?|telefono\s*[:\-]?|teléfono\s*[:\-]?|numero\s*[:\-]?|número\s*[:\-]?|celular\s*[:\-]?)\b[\s,.:;\-]*",
+)
+
+
+_NAME_TRAILING_SECONDARY_PREFIX = re.compile(
+    r"(?:^|[\s,.:;\-])(?:mi\s+(?:correo|email|e-mail|telefono|teléfono|numero|número|celular|cel)\b"
+    r"|correo(?:\s+electronico|\s+electrónico)?\b|email\b|telefono\b|teléfono\b"
+    r"|numero\b|número\b|celular\b|cel\b)",
+    flags=re.IGNORECASE,
+)
+
+
+def _truncate_at_phone_or_email(text: str) -> str:
+    """Recorta el texto en el primer '@', secuencia >=4 dígitos o sub-prefijo de otro dato."""
+
+    if not text:
+        return ""
+    at_idx = text.find("@")
+    if at_idx != -1:
+        word_start = text.rfind(" ", 0, at_idx) + 1
+        text = text[:word_start].rstrip()
+    digits_match = re.search(r"\d{4,}", text)
+    if digits_match:
+        text = text[: digits_match.start()].rstrip()
+    secondary = _NAME_TRAILING_SECONDARY_PREFIX.search(text)
+    if secondary and secondary.start() > 0:
+        text = text[: secondary.start()].rstrip()
+    return text
+
+
 def extract_name(text: str) -> str:
     """Extrae name desde la entrada del usuario."""
     t = " ".join((text or "").strip().split())
     if not t:
         return ""
-    t = re.sub(
-        r"^[\s,.:;\-]+",
-        "",
-        t,
-        flags=re.IGNORECASE,
-    )
-    # Quita prefijos conversacionales frecuentes para conservar solo el nombre.
-    prefix_patterns = [
-        r"^(?:si|sí|claro|ok|okay|perfecto|vale|bueno|pues)\b[\s,.:;\-]*",
-        r"^(?:mi\s+nombre(?:\s+completo)?\s+es|me\s+llamo|soy|nombre(?:\s+completo)?\s*[:\-]?|es)\b[\s,.:;\-]*",
-    ]
+    t = _truncate_at_phone_or_email(t)
+    if not t:
+        return ""
+    # Normaliza puntuacion habitual (¿¡!?*~"'.,:; etc.) a espacios para que los
+    # prefijos conversacionales sean reconocibles sin importar como se decoren.
+    t = re.sub(r"[^A-Za-zÁÉÍÓÚáéíóúÑñÜü0-9'\-\s]", " ", t)
+    t = " ".join(t.split())
+    if not t:
+        return ""
     changed = True
     while changed:
         changed = False
-        for pattern in prefix_patterns:
+        for pattern in _NAME_PREFIX_PATTERNS:
             updated = re.sub(pattern, "", t, flags=re.IGNORECASE)
             if updated != t:
                 t = updated.strip()
@@ -49,7 +80,7 @@ def extract_name(text: str) -> str:
             tail = chunks[-1]
             if len(tail.split()) >= 2:
                 t = tail
-    # Limpia todo excepto letras, espacios, apostrofes y guiones.
+    # Limpieza final: solo letras, espacios, apostrofes y guiones.
     t = re.sub(r"[^A-Za-zÁÉÍÓÚáéíóúÑñÜü'\-\s]", " ", t)
     return " ".join(t.strip().split())
 

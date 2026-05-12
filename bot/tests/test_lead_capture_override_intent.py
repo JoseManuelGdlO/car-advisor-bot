@@ -65,7 +65,8 @@ class LeadCaptureOverrideIntentTests(GraphTestCase):
             patch("src.nodes.lead_capture.notify_advisor", side_effect=RuntimeError("push down")) as notify_mock,
             patch("src.nodes.lead_capture.push_event_to_backend") as event_mock,
         ):
-            after_email = lead_capture(with_user_message(state, "javier@karim.com"))
+            # Input "sucio" con prefijo conversacional: extract_email debe rescatar el correo.
+            after_email = lead_capture(with_user_message(state, "Mi correo es javier@karim.com"))
             self.assertFalse(after_email.get("lead_capture_done"))
             self.assertTrue(after_email.get("awaiting_lead_capture_final_confirmation"))
             updated = lead_capture(with_user_message(after_email, "si, todo correcto"))

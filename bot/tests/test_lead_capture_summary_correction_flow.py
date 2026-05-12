@@ -40,7 +40,10 @@ class LeadCaptureSummaryCorrectionFlowTests(unittest.TestCase):
             patch("src.nodes.lead_capture.notify_advisor") as notify_mock,
             patch("src.nodes.lead_capture.push_event_to_backend") as event_mock,
         ):
-            s = lead_capture(with_user_message(state, "Ana Maria Gomez Lopez"))
+            # Input con prefijo conversacional y signos de puntuacion alrededor: el
+            # extractor debe persistir solo el nombre limpio (sin "mi nombre es" ni "!").
+            s = lead_capture(with_user_message(state, "¡Mi nombre es Ana Maria Gomez Lopez!"))
+            self.assertEqual(s["customer_info"].get("nombre"), "Ana Maria Gomez Lopez")
             self.assertIn("telefono", s["messages"][-1]["content"].lower())
 
             s = lead_capture(with_user_message(s, "5512345678"))
@@ -57,7 +60,8 @@ class LeadCaptureSummaryCorrectionFlowTests(unittest.TestCase):
             self.assertIsNone(s["customer_info"].get("email"))
             self.assertFalse(s.get("lead_capture_done"))
 
-            s = lead_capture(with_user_message(s, "ana@gmail.com"))
+            # Email de correccion tras resumen embebido en una frase: debe extraerse limpio.
+            s = lead_capture(with_user_message(s, "mi correo es ana@gmail.com"))
             self.assertTrue(s.get("awaiting_lead_capture_final_confirmation"))
             self.assertEqual(s["customer_info"].get("email"), "ana@gmail.com")
             self.assertIn("Revisa tus datos", s["messages"][-1]["content"])
@@ -93,13 +97,15 @@ class LeadCaptureSummaryCorrectionFlowTests(unittest.TestCase):
             "src.nodes.lead_capture.generate_verified_user_message",
             side_effect=lambda **kw: kw["fallback"],
         ):
-            s = with_user_message(state, "ana@gmail.com")
+            # Mensaje con prefijo conversacional: el extractor debe rescatar el email puro.
+            raw_user_message = "mi correo es ana@gmail.com"
+            s = with_user_message(state, raw_user_message)
             out = _collect_missing_contact_fields(
                 s,
                 selected_car="Honda Civic 2020",
                 platform="web",
                 user_id="",
-                latest_user="ana@gmail.com",
+                latest_user=raw_user_message,
             )
         self.assertIsNone(out)
         self.assertEqual(s["customer_info"].get("email"), "ana@gmail.com")
