@@ -102,6 +102,54 @@ EXPLICIT_CATALOG_BROWSE_TOKENS = {
     "listado",
 }
 
+# Subcadenas en texto ya normalizado (sin acentos) para heuristica del router.
+ROUTER_VEHICLE_SUBSTR_SIGNALS: frozenset[str] = frozenset(
+    CATALOG_SIGNALS
+    | {
+        "marcas",
+        "color",
+        "ano",
+        "año",
+        "precio",
+        "camioneta",
+        "pickup",
+    }
+)
+
+ROUTER_SIMPLE_GREETINGS_NORMALIZED: frozenset[str] = frozenset(
+    {
+        "hola",
+        "buenas",
+        "buenos dias",
+        "buen dia",
+        "buenas tardes",
+        "buenas noches",
+        "hey",
+        "holi",
+    }
+)
+
+FINANCING_PLANES_COMBO_SUFFIXES: frozenset[str] = frozenset(
+    ("financ", "credito", "mensual", "enganche", "tasa", "interes")
+)
+
+BUSINESS_LOCATION_FAQ_SUBSTR: frozenset[str] = frozenset(
+    (
+        "ubicado",
+        "ubicados",
+        "ubicadas",
+        "donde estan",
+        "donde se encuentran",
+        "donde quedan",
+        "donde los encuentro",
+        "donde los ubico",
+        "direccion",
+        "direcciones",
+        "sucursal",
+        "sucursales",
+    )
+)
+
 CATALOG_BROWSE_VERB_HINTS = {"muestra", "ver", "otros"}
 CATALOG_BROWSE_TARGET_HINTS = {"modelo", "disponible", "opciones", "catalogo", "carro", "auto", "vehiculo", "otros"}
 
@@ -136,52 +184,16 @@ EXPLICIT_PROMOTION_APPLY_SIGNALS = {
 
 PROMOTION_TOKEN_STOPWORDS = frozenset(
     {
-        "el",
-        "la",
-        "los",
-        "las",
-        "un",
-        "una",
-        "unos",
-        "unas",
-        "de",
-        "del",
-        "al",
-        "y",
-        "o",
-        "en",
-        "con",
-        "por",
-        "para",
-        "que",
-        "me",
-        "te",
-        "se",
-        "lo",
-        "le",
-        "les",
-        "a",
-        "es",
-        "son",
-        "mi",
-        "tu",
-        "su",
-        "mis",
-        "tus",
-        "sus",
-        "esta",
-        "este",
-        "estos",
-        "estas",
-        "eso",
-        "esa",
-        "esos",
-        "esas",
-        "si",
-        "no",
-        "oye",
-        "bueno",
-        "pues",
+        "el","la","los","las",
+        "un","una","unos","unas",
+        "de","del","al","y","o",
+        "en","con","por","para",
+        "que","me","te","se","lo",
+        "le","les","a","es","son","mi",
+        "tu","su","mis","tus","sus",
+        "esta","este","estos","estas",
+        "eso","esa","esos","esas",
+        "si","no","oye","bueno","pues",
     }
 )
 

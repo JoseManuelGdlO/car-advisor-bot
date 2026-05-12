@@ -35,6 +35,12 @@ def faq(state: clientState) -> clientState:
         # Estas banderas solo deben evitar ejecución dentro del turno interrumpido.
         state["skip_car_prompt"] = False
         state["skip_lead_prompt"] = False
+        if resume_to_step == "car_selection":
+            state["intent"] = "vehicle_catalog"
+        elif resume_to_step == "financing":
+            state["intent"] = "financing"
+        else:
+            state["intent"] = "other"
     else:
         message = generate_faq_user_turn(
             user_question=question,
@@ -43,4 +49,5 @@ def faq(state: clientState) -> clientState:
             close_literal="¿Hay algo más en lo que pueda ayudarte?",
             compact_faq_body=False,
         )
+        state["intent"] = "other"
     return append_assistant_message(state, message)

@@ -8,6 +8,14 @@ from src.state import clientState
 
 from src.services.llm_responses import classify_router_intent, generate_other_response
 from src.tools.vehicles import normalize_user_text
+from src.utils.signals import (
+    BUSINESS_LOCATION_FAQ_SUBSTR,
+    FINANCING_PLANES_COMBO_SUFFIXES,
+    FINANCING_SIGNALS,
+    PROMOTIONS_SIGNALS,
+    ROUTER_SIMPLE_GREETINGS_NORMALIZED,
+    ROUTER_VEHICLE_SUBSTR_SIGNALS,
+)
 from src.utils.state_helpers import append_assistant_message, is_faq_intent, latest_user_message
 
 
@@ -26,29 +34,7 @@ def _is_vehicle_request(text: str) -> bool:
     normalized = normalize_user_text(text)
     if not normalized:
         return False
-    signals = [
-        "marca",
-        "marcas",
-        "carro",
-        "carros",
-        "auto",
-        "autos",
-        "modelo",
-        "modelos",
-        "vehiculo",
-        "vehiculos",
-        "catalogo",
-        "disponible",
-        "disponibles",
-        "color",
-        "ano",
-        "año",
-        "precio",
-        "camioneta",
-        "pickup",
-        "catalogo",
-    ]
-    return any(signal in normalized for signal in signals)
+    return any(signal in normalized for signal in ROUTER_VEHICLE_SUBSTR_SIGNALS)
 
 
 def _looks_like_specific_vehicle_request(text: str) -> bool:
@@ -71,27 +57,7 @@ def _is_financing_request(text: str) -> bool:
     normalized = normalize_user_text(text)
     if not normalized:
         return False
-    signals = [
-        "financiamiento",
-        "financiar",
-        "financiado",
-        "credito",
-        "credito automotriz",
-        "mensualidad",
-        "mensualidades",
-        "enganche",
-        "tasa",
-        "interes",
-        "plazo",
-        "plan financiero",
-        "planes financieros",
-        "plan de financiamiento",
-        "planes de financiamiento",
-        "pagos",
-        "plan de pagos",
-        "planes de pagos",
-    ]
-    return any(signal in normalized for signal in signals)
+    return any(signal in normalized for signal in FINANCING_SIGNALS)
 
 
 def _is_promotions_request(text: str) -> bool:
@@ -99,17 +65,7 @@ def _is_promotions_request(text: str) -> bool:
     normalized = normalize_user_text(text)
     if not normalized:
         return False
-    signals = [
-        "promocion",
-        "promociones",
-        "oferta",
-        "ofertas",
-        "descuento",
-        "descuentos",
-        "bono",
-        "bonos",
-    ]
-    return any(signal in normalized for signal in signals)
+    return any(signal in normalized for signal in PROMOTIONS_SIGNALS)
 
 
 def _is_simple_greeting(text: str) -> bool:
@@ -117,17 +73,102 @@ def _is_simple_greeting(text: str) -> bool:
     normalized = normalize_user_text(text)
     if not normalized:
         return False
-    greetings = {
-        "hola",
-        "buenas",
-        "buenos dias",
-        "buen dia",
-        "buenas tardes",
-        "buenas noches",
-        "hey",
-        "holi",
-    }
-    return normalized in greetings
+    return normalized in ROUTER_SIMPLE_GREETINGS_NORMALIZED
+
+
+_VALID_ROUTER_LABELS = frozenset({"VEHICLE_CATALOG", "FAQ", "FINANCING", "PROMOTIONS"})
+
+
+def _financing_planes_combo(text: str) -> bool:
+    """Planes de pago/credito sin la frase completa 'planes de financiamiento' en el texto."""
+
+    n = normalize_user_text(text)
+    if not n:
+        return False
+    if not ("planes" in n or " plan " in n or re.search(r"\bplan\b", n)):
+        return False
+    return any(s in n for s in FINANCING_PLANES_COMBO_SUFFIXES)
+
+
+def _is_business_location_faq(text: str) -> bool:
+    """Ubicacion o direccion del negocio (normalizado, sin acentos)."""
+
+    n = normalize_user_text(text)
+    if not n:
+        return False
+    return any(s in n for s in BUSINESS_LOCATION_FAQ_SUBSTR)
+
+
+def _extended_router_heuristic(user_text: str) -> str | None:
+    """Etiqueta alineada con classify_router_intent o None si no hay señal clara."""
+
+    if _is_financing_request(user_text) or _financing_planes_combo(user_text):
+        return "FINANCING"
+    if _is_promotions_request(user_text):
+        return "PROMOTIONS"
+    if _is_vehicle_request(user_text) or _looks_like_specific_vehicle_request(user_text):
+        return "VEHICLE_CATALOG"
+    if is_faq_intent(user_text) or _is_business_location_faq(user_text):
+        return "FAQ"
+    return None
+
+
+def _sanitize_previous_intent_for_classifier(intent: str) -> str:
+    """Evita sesgo 'Intent previo: faq' en el clasificador LLM."""
+
+    cleaned = str(intent or "").strip()
+    if cleaned == "faq":
+        return "other"
+    return cleaned
+
+
+def _reconcile_llm_and_heuristic(llm_label: str, heuristic_label: str | None) -> str:
+    """Fusiona etiqueta LLM con heuristica extendida (llm_label ya valido)."""
+
+    if heuristic_label == "FINANCING" and llm_label == "FAQ":
+        return "FINANCING"
+    if heuristic_label == "PROMOTIONS" and llm_label == "FAQ":
+        return "PROMOTIONS"
+    if heuristic_label == "VEHICLE_CATALOG" and llm_label == "FAQ":
+        return "VEHICLE_CATALOG"
+    return llm_label
+
+
+def _apply_router_resolution(
+    state: clientState,
+    resolved: str,
+    *,
+    vehicle_like: bool,
+    reason: str,
+) -> clientState:
+    """Aplica etiqueta resuelta a intent/current_node."""
+
+    if resolved == "VEHICLE_CATALOG":
+        state["intent"] = "vehicle_catalog"
+        state["current_node"] = "car_selection"
+        _debug_router("route_to_car_selection", reason=reason)
+        return state
+    if resolved == "FAQ":
+        if vehicle_like:
+            state["intent"] = "vehicle_catalog"
+            state["current_node"] = "car_selection"
+            _debug_router("route_to_car_selection", reason="faq_resolved_but_vehicle_detected")
+            return state
+        state["intent"] = "faq"
+        state["current_node"] = "faq"
+        _debug_router("route_to_faq", reason=reason)
+        return state
+    if resolved == "PROMOTIONS":
+        state["intent"] = "promotions"
+        state["current_node"] = "promotions"
+        _debug_router("route_to_promotions", reason=reason)
+        return state
+    if resolved == "FINANCING":
+        state["intent"] = "financing"
+        state["current_node"] = "financing"
+        _debug_router("route_to_financing", reason=reason)
+        return state
+    raise ValueError(f"etiqueta router no soportada: {resolved!r}")
 
 
 def router(state: clientState) -> clientState:
@@ -208,37 +249,27 @@ def router(state: clientState) -> clientState:
         _debug_router("route_to_other", reason="simple_greeting")
         return append_assistant_message(state, message)
 
-    classified_intent = classify_router_intent(user_text, str(state.get("intent", "")))
-    _debug_router("llm_intent_classification", classified_intent=classified_intent)
+    heuristic_intent = _extended_router_heuristic(user_text)
+    previous_intent_sanitized = _sanitize_previous_intent_for_classifier(str(state.get("intent", "")))
+    llm_intent = classify_router_intent(user_text, previous_intent_sanitized)
+    _debug_router(
+        "hybrid_intent",
+        heuristic_intent=heuristic_intent,
+        llm_intent=llm_intent,
+        previous_intent_sanitized=previous_intent_sanitized,
+    )
 
-    if classified_intent == "VEHICLE_CATALOG":
-        state["intent"] = "vehicle_catalog"
-        state["current_node"] = "car_selection"
-        _debug_router("route_to_car_selection", reason="llm_classifier")
-        return state
+    if llm_intent in _VALID_ROUTER_LABELS:
+        resolved = _reconcile_llm_and_heuristic(llm_intent, heuristic_intent)
+        reason = "llm_plus_heuristic" if resolved != llm_intent else "llm_classifier"
+        _debug_router("resolved_intent", resolved=resolved, reason=reason)
+        return _apply_router_resolution(state, resolved, vehicle_like=vehicle_like, reason=reason)
 
-    if classified_intent == "FAQ":
-        if vehicle_like:
-            state["intent"] = "vehicle_catalog"
-            state["current_node"] = "car_selection"
-            _debug_router("route_to_car_selection", reason="faq_classified_but_vehicle_detected")
-            return state
-        state["intent"] = "faq"
-        state["current_node"] = "faq"
-        _debug_router("route_to_faq", reason="llm_classifier")
-        return state
-    if classified_intent == "PROMOTIONS":
-        state["intent"] = "promotions"
-        state["current_node"] = "promotions"
-        _debug_router("route_to_promotions", reason="llm_classifier")
-        return state
-    if classified_intent == "FINANCING":
-        state["intent"] = "financing"
-        state["current_node"] = "financing"
-        _debug_router("route_to_financing", reason="llm_classifier")
-        return state
+    if heuristic_intent:
+        _debug_router("resolved_intent", resolved=heuristic_intent, reason="llm_failed_heuristic_fallback")
+        return _apply_router_resolution(state, heuristic_intent, vehicle_like=vehicle_like, reason="heuristic_fallback")
 
     state["intent"] = "other"
     message = generate_other_response(user_text)
-    _debug_router("route_to_other", reason="llm_or_fallback")
+    _debug_router("route_to_other", reason="llm_and_heuristic_fallback")
     return append_assistant_message(state, message)
