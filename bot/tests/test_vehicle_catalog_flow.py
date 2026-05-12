@@ -1,3 +1,9 @@
+"""Integración del grafo: catálogo, detalle de vehículo, imágenes, filtros por precio y promociones desde el inicio.
+
+Los tests parchean LLM/red (`classify_router_intent`, `classify_faq_interrupt_flags`) y APIs de vehículos
+para respuestas deterministas.
+"""
+
 from __future__ import annotations
 
 from unittest.mock import patch
@@ -22,6 +28,7 @@ class VehicleCatalogFlowTests(GraphTestCase):
 
                 state = with_user_message(initial_state(), "el mazda 3 sirve para ciudad o carretera?")
                 with (
+                    # Sin FAQ interruptiva: el flujo sigue hacia router → car_selection.
                     patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
                     patch("src.nodes.router.classify_router_intent", return_value=router_intent),
                     patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
@@ -39,6 +46,7 @@ class VehicleCatalogFlowTests(GraphTestCase):
         state = with_user_message(initial_state(), "hola tienes promociones disponibles?")
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            # Catálogo vacío: validar solo enrutamiento a promotions y mensaje fallback.
             patch("src.nodes.promotions.fetch_promotions", return_value=[]),
             patch(
                 "src.nodes.promotions.generate_verified_user_message",
@@ -277,4 +285,23 @@ class VehicleCatalogFlowTests(GraphTestCase):
         # a esperar confirmación de compra para esa unidad.
         self.assertTrue(updated.get("awaiting_purchase_confirmation"))
         mocked_search.assert_called_once_with({"minPrice": 100000, "maxPrice": 200000})
+
+
+class CarSelectionSmokeTests(GraphTestCase):
+    """Smoke mínimo: pregunta genérica de catálogo lista inventario mockeado."""
+
+    def test_smoke_general_catalog_request_shows_available(self) -> None:
+        vehicles = [
+            {"id": "veh-1", "brand": "Nissan", "model": "Versa", "year": 2011, "status": "available"},
+            {"id": "veh-2", "brand": "Dodge", "model": "Ram", "year": 2015, "status": "available"},
+        ]
+        state = with_user_message(initial_state(), "que carros tienes")
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.router.classify_router_intent", return_value="VEHICLE_CATALOG"),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+        ):
+            updated = self.graph.invoke(state)
+        self.assertEqual(updated.get("current_node"), "car_selection")
+        self.assertIn("Nissan", str(updated["messages"][-1]["content"]))
 

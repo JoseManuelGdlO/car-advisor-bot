@@ -1,3 +1,5 @@
+"""Tests unitarios de herramientas compartidas: resolución de vehículo y markers de imágenes WhatsApp."""
+
 from __future__ import annotations
 
 from unittest import TestCase

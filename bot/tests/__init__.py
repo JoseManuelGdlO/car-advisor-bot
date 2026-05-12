@@ -1,13 +1,15 @@
 """
 Test suite por flujo para el grafo conversacional.
 
-Ejecclear
+Ejecutar:
     pytest tests/
 o:
     python -m unittest discover -s tests -p "test_*.py"
 
 Un solo test con unittest:
     python -m unittest tests.test_vehicle_catalog_flow
+
+Índice y propósito de cada módulo: ver docs/tests.md (desde la raíz del paquete bot).
 """
 
 from __future__ import annotations

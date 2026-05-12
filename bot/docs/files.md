@@ -27,6 +27,8 @@ Declara y compila el `StateGraph(clientState)`:
 - `car_selection`, `financing` y `promotions` tienen transiciones condicionales entre si y/o hacia `lead_capture`.
 - `lead_capture` y `faq` finalizan en `END`.
 
+Para la suite de pruebas del bot (`bot/tests/`) y el propósito de cada módulo, ver [tests.md](tests.md).
+
 ## `bot/src/tools/database.py`
 
 Funciones de persistencia en MySQL:
@@ -53,13 +55,3 @@ Modelos Pydantic:
 - `ChatResponse`: `reply`, `current_node`, `selected_car`.
 - `ResetRequest` / `ResetResponse`: contrato para reinicio de sesion.
 
-## Archivos legacy en `bot/`
-
-Se mantienen para compatibilidad y delegan a `src`:
-
-- `bot/graph.py`
-- `bot/state.py`
-- `bot/nodes.py`
-- `bot/main.py`
-
-Esto evita romper comandos existentes mientras la implementacion real vive en `bot/src`.
