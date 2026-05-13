@@ -7,14 +7,17 @@ from unittest.mock import MagicMock, patch
 
 from src.nodes.intent_checker import intent_checker
 from src.nodes.router import router
-from src.utils.human_advisor_notify import handle_human_advisor_request, wants_human_advisor_heuristic
+from src.utils.human_advisor_notify import handle_human_advisor_request, human_advisor_heuristic_match
 from tests.test_helpers import initial_state, with_user_message
 
 
 class TestHumanAdvisorHeuristic(unittest.TestCase):
-    def test_wants_human_detects_explicit_phrase(self) -> None:
-        self.assertTrue(wants_human_advisor_heuristic("Quiero hablar con un asesor"))
-        self.assertFalse(wants_human_advisor_heuristic("Busco un SUV 2022"))
+    def test_heuristic_match_detects_explicit_phrase(self) -> None:
+        self.assertEqual(human_advisor_heuristic_match("Quiero hablar con un asesor"), "hablar con un asesor")
+        self.assertIsNone(human_advisor_heuristic_match("Busco un SUV 2022"))
+
+    def test_vehicle_browse_phrase_not_heuristic_human(self) -> None:
+        self.assertIsNone(human_advisor_heuristic_match("Quiero ver el toyota RAV4"))
 
 
 class TestHandleHumanAdvisorRequest(unittest.TestCase):
@@ -61,6 +64,32 @@ class TestHandleHumanAdvisorRequest(unittest.TestCase):
 
 
 class TestIntentCheckerHumanAdvisor(unittest.TestCase):
+    def test_promotions_vehicle_followup_not_human_even_if_llm_flags_human(self) -> None:
+        state = initial_state()
+        state["current_node"] = "promotions"
+        state["awaiting_promotion_selection"] = True
+        state["selected_promotion_id"] = "promo-1"
+        state["messages"] = [
+            {
+                "role": "assistant",
+                "content": "Si deseas contactar a un asesor para mas detalles, hazmelo saber.",
+                "type": "AIMessage",
+            },
+            {"role": "user", "content": "Quiero ver el toyota RAV4", "type": "HumanMessage"},
+        ]
+        flags = {
+            "interrumpir_por_faq": False,
+            "quiere_asesor_humano": True,
+            "tema_vehiculo_inventario": False,
+            "tema_financiamiento_credi": False,
+            "es_respuesta_o_seguimiento_al_ultimo_bot": True,
+        }
+        with patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value=flags):
+            out = intent_checker(dict(state))
+        self.assertFalse(out.get("is_faq_interrupt"))
+        self.assertFalse(out.get("suppress_commercial_node_once"))
+        self.assertFalse(out.get("human_advisor_push_sent"))
+
     def test_human_flag_runs_before_faq_interrupt(self) -> None:
         state = initial_state()
         state["current_node"] = "car_selection"
@@ -86,6 +115,25 @@ class TestIntentCheckerHumanAdvisor(unittest.TestCase):
         self.assertFalse(out.get("is_faq_interrupt"))
         self.assertTrue(out.get("suppress_commercial_node_once"))
         self.assertTrue(out.get("human_advisor_push_sent"))
+
+    def test_human_duplicate_no_suppress_without_new_assistant_message(self) -> None:
+        state = initial_state()
+        state["current_node"] = "promotions"
+        state["human_advisor_push_sent"] = True
+        state["messages"] = [
+            {"role": "assistant", "content": "Detalle de promo.", "type": "AIMessage"},
+            {"role": "user", "content": "Otra vez quiero un asesor", "type": "HumanMessage"},
+        ]
+        flags = {
+            "interrumpir_por_faq": False,
+            "quiere_asesor_humano": True,
+            "tema_vehiculo_inventario": False,
+            "tema_financiamiento_credi": False,
+            "es_respuesta_o_seguimiento_al_ultimo_bot": True,
+        }
+        with patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value=flags):
+            out = intent_checker(dict(state))
+        self.assertFalse(out.get("suppress_commercial_node_once"))
 
 
 class TestRouterHumanAdvisor(unittest.TestCase):

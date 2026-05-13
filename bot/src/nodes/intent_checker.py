@@ -1,5 +1,7 @@
 """Nodo para detectar intencion FAQ interruptiva."""
 
+import logging
+
 from src.state import clientState
 from src.tools.vehicles import normalize_user_text
 
@@ -7,8 +9,35 @@ from src.services.llm_responses import (
     classify_faq_interrupt_flags,
     classify_vehicle_step_flags,
 )
-from src.utils.human_advisor_notify import handle_human_advisor_request, wants_human_advisor_heuristic
+from src.utils.human_advisor_notify import (
+    handle_human_advisor_request,
+    human_advisor_heuristic_match,
+)
+from src.utils.signals import VEHICLE_INFO_REQUEST_SIGNALS
 from src.utils.state_helpers import latest_human_ai_pair
+
+logger = logging.getLogger(__name__)
+
+
+def _is_vehicle_detail_request(user_text: str) -> bool:
+    """True si el usuario pide ver/mostrar/detalles de un vehiculo (subcadena sobre texto normalizado)."""
+
+    normalized = normalize_user_text(user_text)
+    if not normalized:
+        return False
+    return any(signal in normalized for signal in VEHICLE_INFO_REQUEST_SIGNALS)
+
+
+def _promotions_flow_allows_vehicle_followup(state: clientState) -> bool:
+    """Hay contexto de promo activo donde un pedido de detalle de auto no debe escalarse a asesor."""
+
+    return bool(
+        state.get("awaiting_promotion_vehicle_selection")
+        or state.get("awaiting_promotion_vehicle_interest_confirmation")
+        or state.get("awaiting_promotion_selection")
+        or state.get("awaiting_promotion_apply_confirmation")
+        or str(state.get("selected_promotion_id", "")).strip()
+    )
 
 
 def _looks_like_commercial_navigation_request(user_text: str) -> bool:
@@ -91,12 +120,43 @@ def intent_checker(state: clientState) -> clientState:
         pending_vehicle_count=pending_n,
     )
 
-    if flags.get("quiere_asesor_humano") or wants_human_advisor_heuristic(last_user):
+    # El clasificador FAQ suele marcar "asesor" si el bot acaba de mencionar contactar un asesor;
+    # en flujo de promociones eso no debe bloquear "quiero ver el modelo X".
+    if current_node == "promotions" and _promotions_flow_allows_vehicle_followup(state) and _is_vehicle_detail_request(
+        last_user
+    ):
+        state["is_faq_interrupt"] = False
+        return state
+
+    heuristic_substr = human_advisor_heuristic_match(last_user)
+    heuristic_human = heuristic_substr is not None
+    llm_human = bool(flags.get("quiere_asesor_humano"))
+    if llm_human or heuristic_human:
+        trigger_parts: list[str] = []
+        if llm_human:
+            trigger_parts.append("llm_quiere_asesor")
+        if heuristic_human:
+            trigger_parts.append(f"heuristic_match={heuristic_substr!r}")
+        advisor_trigger = "+".join(trigger_parts)
+        logger.info(
+            "[human_advisor] intent_checker_escalation node=%s trigger=%s "
+            "faq_interrupt_flags=%s user_preview=%r bot_preview=%r",
+            current_node,
+            advisor_trigger,
+            flags,
+            (last_user or "")[:200],
+            (last_ai or "")[:200],
+        )
         saved_node = current_node
-        state = handle_human_advisor_request(state)
+        msgs_before = len(state.get("messages", []))
+        state = handle_human_advisor_request(state, advisor_trigger=advisor_trigger)
         state["current_node"] = saved_node
         state["is_faq_interrupt"] = False
-        if saved_node in ("car_selection", "financing", "promotions", "lead_capture"):
+        # Solo suprimir el nodo comercial si esta invocacion agrego el ack del asesor;
+        # si handle salio idempotente sin mensaje nuevo, promotions debe poder responder.
+        if saved_node in ("car_selection", "financing", "promotions", "lead_capture") and len(
+            state.get("messages", [])
+        ) > msgs_before:
             state["suppress_commercial_node_once"] = True
         return state
 

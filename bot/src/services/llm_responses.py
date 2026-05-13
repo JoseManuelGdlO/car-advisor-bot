@@ -1374,6 +1374,16 @@ def classify_faq_interrupt_flags(
         out["es_respuesta_o_seguimiento_al_ultimo_bot"] = _coerce_to_bool(
             parsed.get("es_respuesta_o_seguimiento_al_ultimo_bot")
         )
+        if out["quiere_asesor_humano"]:
+            logger.info(
+                "[human_advisor] classify_faq_interrupt_flags llm_quiere_asesor_humano node=%r "
+                "tema_vehiculo_inventario=%s es_seguimiento_bot=%s user_preview=%r bot_preview=%r",
+                current_node,
+                out.get("tema_vehiculo_inventario"),
+                out.get("es_respuesta_o_seguimiento_al_ultimo_bot"),
+                (user_message or "")[:200],
+                (last_bot_message or "")[:200],
+            )
     except Exception as exc:
         _log_llm_invoke_failure(
             "classify_faq_interrupt_flags",

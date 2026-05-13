@@ -626,6 +626,34 @@ def promotions(state: clientState) -> clientState:
                 selected_promotion = extracted
                 _debug("promotion_pick", source="llm_extract", title=str(extracted.get("title", "")))
 
+        if not selected_promotion and not selection_intent and pred_id:
+            persisted = next(
+                (c for c in dict_candidates if str(c.get("id", "")).strip() == pred_id),
+                None,
+            )
+            if isinstance(persisted, dict):
+                selected_promotion = persisted
+                _debug("promotion_pick", source="persisted_state_id", title=str(persisted.get("title", "")))
+            else:
+                raw_ids = state.get("selected_promotion_vehicle_ids")
+                vid_list = (
+                    [str(x).strip() for x in raw_ids if str(x).strip()]
+                    if isinstance(raw_ids, list)
+                    else []
+                )
+                title_p = str(state.get("selected_promotion_title", "")).strip()
+                if vid_list and title_p:
+                    from_state: dict[str, Any] = {
+                        "id": pred_id,
+                        "title": title_p,
+                        "description": str(state.get("selected_promotion_description", "")).strip(),
+                        "validUntil": str(state.get("selected_promotion_valid_until", "")).strip(),
+                        "vehicleIds": vid_list,
+                    }
+                    from_state["vehicleLabels"] = _promotion_vehicle_labels(from_state)
+                    selected_promotion = from_state
+                    _debug("promotion_pick", source="persisted_state_fields", title=title_p)
+
         if not selected_promotion:
             if selection_intent and dict_candidates:
                 return append_assistant_message(

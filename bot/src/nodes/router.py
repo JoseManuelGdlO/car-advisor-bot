@@ -8,7 +8,7 @@ from src.state import clientState
 
 from src.services.llm_responses import classify_router_intent, generate_other_response
 from src.tools.vehicles import normalize_user_text
-from src.utils.human_advisor_notify import handle_human_advisor_request, wants_human_advisor_heuristic
+from src.utils.human_advisor_notify import handle_human_advisor_request, human_advisor_heuristic_match
 from src.utils.signals import (
     BUSINESS_LOCATION_FAQ_SUBSTR,
     FINANCING_PLANES_COMBO_SUFFIXES,
@@ -103,7 +103,7 @@ def _is_business_location_faq(text: str) -> bool:
 def _extended_router_heuristic(user_text: str) -> str | None:
     """Etiqueta alineada con classify_router_intent o None si no hay señal clara."""
 
-    if wants_human_advisor_heuristic(user_text):
+    if human_advisor_heuristic_match(user_text):
         return "HUMAN_ADVISOR"
     if _is_financing_request(user_text) or _financing_planes_combo(user_text):
         return "FINANCING"
@@ -177,7 +177,7 @@ def _apply_router_resolution(
         state["intent"] = "human_advisor"
         state["current_node"] = "router"
         _debug_router("route_human_advisor", reason=reason)
-        return handle_human_advisor_request(state)
+        return handle_human_advisor_request(state, advisor_trigger="router_resolution_human_advisor")
     raise ValueError(f"etiqueta router no soportada: {resolved!r}")
 
 
@@ -196,11 +196,11 @@ def router(state: clientState) -> clientState:
         pending_candidates=bool(state.get("last_vehicle_candidates")),
     )
 
-    if wants_human_advisor_heuristic(user_text):
+    if human_advisor_heuristic_match(user_text):
         state["intent"] = "human_advisor"
         state["current_node"] = "router"
         _debug_router("route_human_advisor", reason="heuristic")
-        return handle_human_advisor_request(state)
+        return handle_human_advisor_request(state, advisor_trigger="router_early_heuristic")
 
     if _is_financing_request(text):
         state["intent"] = "financing"
