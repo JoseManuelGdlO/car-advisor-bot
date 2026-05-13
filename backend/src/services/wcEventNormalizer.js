@@ -20,6 +20,20 @@ const readDeviceId = (payload) => String(payload?.deviceId || payload?.device?.i
 
 const readEventType = (payload) => String(payload?.event || payload?.eventType || payload?.type || "").trim().toLowerCase();
 
+const readMedia = (payload) =>
+  payload?.normalized?.content?.media ??
+  payload?.message?.media ??
+  payload?.data?.message?.media ??
+  null;
+
+const mediaHasContent = (media) => {
+  if (media == null) return false;
+  if (Array.isArray(media)) return media.length > 0;
+  if (typeof media === "object") return Object.keys(media).length > 0;
+  if (typeof media === "string") return media.trim().length > 0;
+  return Boolean(media);
+};
+
 export const normalizeWcInboundEvent = ({ payload, integration, credentials }) => {
   // Mapea payload externo de proveedor al contrato interno canónico del backend.
   const eventType = readEventType(payload);
@@ -29,6 +43,8 @@ export const normalizeWcInboundEvent = ({ payload, integration, credentials }) =
     payload?.normalized?.from || payload?.from || payload?.message?.from || payload?.data?.from || payload?.raw?.key?.remoteJid || ""
   ).trim();
   const text = readText(payload);
+  const media = readMedia(payload);
+  const unsupportedMediaOnly = !text && mediaHasContent(media);
   const deviceId = readDeviceId(payload) || String(credentials?.deviceId || "").trim();
 
   if (!eventId) throw new ApiError(400, "Missing provider event id");
@@ -49,7 +65,8 @@ export const normalizeWcInboundEvent = ({ payload, integration, credentials }) =
     direction: "inbound",
     eventType,
     text,
-    media: payload?.message?.media || payload?.data?.message?.media || null,
+    media,
+    unsupportedMediaOnly,
     raw: payload,
     isInboundMessage: eventType === "message.inbound" || eventType === "message_received",
   };

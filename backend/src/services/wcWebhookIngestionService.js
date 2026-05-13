@@ -9,6 +9,15 @@ import { runWithWcToken } from "./wcAuthCache.js";
 import { wcClient } from "./wcClient.js";
 import { logWcWebhook, logWcWebhookDebug } from "../utils/wcWebhookLog.js";
 
+/** CRM: resumen cuando el usuario envía solo media/adjuntos (sin invocar el bot). */
+export const UNSUPPORTED_INBOUND_CRM_CLIENT_MESSAGE =
+  "El usuario envió un archivo o imagen (formato no soportado).";
+
+/** Respuesta automática al canal pidiendo solo texto. */
+export const UNSUPPORTED_INBOUND_OUTBOUND_REPLY =
+  "Por ahora no puedo leer archivos, imágenes ni otros adjuntos. " +
+  "Ese formato no está soportado: por favor escríbeme solo con texto y con gusto te ayudo.";
+
 const PROVIDER = "whatsapp-connect";
 
 const updateContext = async ({ normalizedEvent, conversationResult }) => {
@@ -69,21 +78,25 @@ export const ingestWhatsappConnectEvent = async ({ normalizedEvent, credentials:
   }
 
   const incomingMessage = String(normalizedEvent.text || "").trim();
-  if (!incomingMessage) {
+  const unsupportedMediaOnly = Boolean(normalizedEvent.unsupportedMediaOnly);
+  if (!incomingMessage && !unsupportedMediaOnly) {
     await markReceipt(receipt, "ignored");
     return { ok: true, ignored: true };
   }
+
+  const clientCrmMessage = unsupportedMediaOnly ? UNSUPPORTED_INBOUND_CRM_CLIENT_MESSAGE : incomingMessage;
 
   try {
     logWcWebhookDebug("pipeline: upsert client message", {
       externalUserId: String(normalizedEvent.externalUserId || "").slice(0, 80),
       messageId: normalizedEvent.messageId,
+      unsupportedMediaOnly,
     });
     const conversationResult = await upsertConversationEvent({
       ownerUserId: normalizedEvent.ownerUserId,
       userId: normalizedEvent.externalUserId,
       platform: "whatsapp",
-      message: incomingMessage,
+      message: clientCrmMessage,
       from: "client",
       selectedCar: "",
       customerInfo: {},
@@ -100,6 +113,36 @@ export const ingestWhatsappConnectEvent = async ({ normalizedEvent, credentials:
     if (!conversationResult.shouldAutoReply) {
       await markReceipt(receipt, "processed");
       return { ok: true, suppressed: true, conversationId: conversationResult.conversationId };
+    }
+
+    if (unsupportedMediaOnly) {
+      const replyText = UNSUPPORTED_INBOUND_OUTBOUND_REPLY;
+      logWcWebhookDebug("pipeline: unsupported media only, canned reply (no bot)", {
+        userId: normalizedEvent.externalUserId,
+      });
+      await upsertConversationEvent({
+        ownerUserId: normalizedEvent.ownerUserId,
+        userId: normalizedEvent.externalUserId,
+        platform: "whatsapp",
+        message: replyText,
+        from: "assistant",
+        selectedCar: "",
+        customerInfo: {},
+        financingSelection: {},
+      });
+      logWcWebhookDebug("pipeline: send outbound", { to: String(normalizedEvent.externalUserId || "").slice(0, 64) });
+      await runWithWcToken(
+        async () =>
+          wcClient.sendMessageWithRetry({
+            deviceId: normalizedEvent.deviceId,
+            to: normalizedEvent.externalUserId,
+            type: "text",
+            text: replyText,
+            tenantId: normalizedEvent.tenantId,
+          })
+      );
+      await markReceipt(receipt, "processed");
+      return { ok: true, conversationId: conversationResult.conversationId, repliesSent: 1, unsupportedMediaOnly: true };
     }
 
     logWcWebhookDebug("pipeline: calling bot engine", { userId: normalizedEvent.externalUserId });

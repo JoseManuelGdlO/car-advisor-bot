@@ -1,7 +1,14 @@
 /**
  * Expande el webhook `object: "instagram"` en eventos canónicos listos para ingesta.
  * @param {object} body
- * @returns {Array<{ instagramBusinessAccountId: string; senderId: string; messageId: string; text: string; timestampMs: number }>}
+ * @returns {Array<{
+ *   instagramBusinessAccountId: string;
+ *   senderId: string;
+ *   messageId: string;
+ *   text: string;
+ *   timestampMs: number;
+ *   unsupportedMediaOnly?: boolean;
+ * }>}
  */
 export const expandInstagramWebhookInboundMessages = (body) => {
   if (!body || typeof body !== "object") return [];
@@ -16,19 +23,36 @@ export const expandInstagramWebhookInboundMessages = (body) => {
     for (const item of messaging) {
       if (item?.message?.is_echo) continue;
       const mid = String(item?.message?.mid || "").trim();
-      const text = String(item?.message?.text || "").trim();
-      if (!mid || !text) continue;
+      if (!mid) continue;
       const senderId = String(item?.sender?.id || "").trim();
       if (!senderId) continue;
+      const text = String(item?.message?.text || "").trim();
+      const attachments = Array.isArray(item?.message?.attachments) ? item.message.attachments : [];
+      const hasAttachments = attachments.length > 0;
       const ts = Number(item?.timestamp);
       const timestampMs = Number.isFinite(ts) && ts > 0 ? (ts < 1e12 ? ts * 1000 : ts) : Date.now();
-      out.push({
-        instagramBusinessAccountId,
-        senderId,
-        messageId: mid,
-        text,
-        timestampMs,
-      });
+
+      if (text) {
+        out.push({
+          instagramBusinessAccountId,
+          senderId,
+          messageId: mid,
+          text,
+          timestampMs,
+          unsupportedMediaOnly: false,
+        });
+        continue;
+      }
+      if (hasAttachments) {
+        out.push({
+          instagramBusinessAccountId,
+          senderId,
+          messageId: mid,
+          text: "",
+          timestampMs,
+          unsupportedMediaOnly: true,
+        });
+      }
     }
   }
   return out;
@@ -54,6 +78,7 @@ export const toNormalizedInstagramInboundEvent = ({ integration, credentials, ev
     direction: "inbound",
     eventType: "instagram.messaging",
     text: event.text,
+    unsupportedMediaOnly: Boolean(event.unsupportedMediaOnly),
     isInboundMessage: true,
   };
 };

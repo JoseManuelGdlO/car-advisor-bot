@@ -25,6 +25,7 @@ test("normalizeWcInboundEvent normaliza mensaje inbound", () => {
   assert.equal(normalized.messageId, "msg-1");
   assert.equal(normalized.text, "hola");
   assert.equal(normalized.isInboundMessage, true);
+  assert.equal(normalized.unsupportedMediaOnly, false);
 });
 
 test("normalizeWcInboundEvent detecta eventos no inbound", () => {
@@ -67,4 +68,22 @@ test("normalizeWcInboundEvent soporta payload de webhookDispatch (normalized/raw
   assert.equal(normalized.messageId, "msg-3");
   assert.equal(normalized.text, "hola desde normalized");
   assert.equal(normalized.isInboundMessage, true);
+  assert.equal(normalized.unsupportedMediaOnly, false);
+});
+
+test("normalizeWcInboundEvent marca unsupportedMediaOnly cuando hay media sin texto", () => {
+  const normalized = normalizeWcInboundEvent({
+    payload: {
+      event: "message.inbound",
+      eventId: "evt-media",
+      from: "5215511111111",
+      message: { id: "msg-img", media: [{ type: "image", url: "https://x/y.jpg" }] },
+      deviceId: "dev-1",
+    },
+    integration: { id: "int-1", ownerUserId: "owner-1" },
+    credentials: { tenantId: "tenant-1", deviceId: "dev-1" },
+  });
+  assert.equal(normalized.text, "");
+  assert.equal(normalized.unsupportedMediaOnly, true);
+  assert.ok(Array.isArray(normalized.media));
 });
