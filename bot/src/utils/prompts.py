@@ -470,9 +470,10 @@ def build_router_intent_classifier_prompt(
         "- VEHICLE_CATALOG: pide ver, buscar o comparar carros/modelos/marcas, o menciona un modelo especifico.\n"
         "- FINANCING: pregunta por planes de financiamiento, credito, tasas, enganche, mensualidades o plazos.\n"
         "- PROMOTIONS: pregunta por promociones, ofertas, descuentos o bonos para un vehiculo o en general.\n"
-        "- FAQ: pregunta informacion general del negocio (ubicacion, horarios, garantias, contacto).\n"
+        "- HUMAN_ADVISOR: quiere hablar con un asesor humano, persona real, ejecutivo o que lo comuniquen con alguien del equipo.\n"
+        "- FAQ: pregunta informacion general del negocio (ubicacion, horarios, garantias) sin pedir hablar con un humano.\n"
         "- OTHER: saludo, agradecimiento o mensaje fuera del alcance.\n"
-        "Responde SOLO con una etiqueta exacta: VEHICLE_CATALOG, FINANCING, PROMOTIONS, FAQ, OTHER.\n\n"
+        "Responde SOLO con una etiqueta exacta: VEHICLE_CATALOG, FINANCING, PROMOTIONS, HUMAN_ADVISOR, FAQ, OTHER.\n\n"
         f"Intent previo: {previous}\n"
         f"Mensaje del usuario: {message}\n"
     )
@@ -837,10 +838,14 @@ def build_faq_interrupt_flags_prompt(
         "Responde SOLO con un objeto JSON, sin codigo, sin comentarios, en una sola linea. Formato exacto de claves:\n"
         "{\n"
         '  "interrumpir_por_faq": <bool>,\n'
+        '  "quiere_asesor_humano": <bool>,\n'
         '  "tema_vehiculo_inventario": <bool>,\n'
         '  "tema_financiamiento_credi": <bool>,\n'
         '  "es_respuesta_o_seguimiento_al_ultimo_bot": <bool>\n'
         "}\n\n"
+        "quiere_asesor_humano: true cuando pide hablar con una persona real, un asesor humano, ejecutivo, "
+        "operador, que lo comuniquen con alguien del equipo o atencion humana (no basta con FAQ de horario/ubicacion sin pedir humano).\n"
+        "quiere_asesor_humano: false si solo pregunta datos del negocio (horario, direccion) sin pedir contacto humano explicito.\n"
         "Definicion de interrumpir_por_faq (true = debe atenderse con FAQ de negocio, no con catalogo/planes):\n"
         "- true: pregunta por el negocio, agencia o lote: ubicacion, horarios, garantia o politica del lote, "
         "contacto de oficina, datos generales de la concesionaria, que metodos de pago aceptan en caja, "

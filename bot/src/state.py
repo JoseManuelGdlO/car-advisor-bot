@@ -45,6 +45,10 @@ class clientState(TypedDict, total=False):
     - awaiting_promotion_apply_confirmation: el bot mostro un resumen de una promo y espera confirmacion para avanzar.
     - vehicle_comparison_ctx: contexto opcional para desambiguar comparacion de dos vehiculos
       (claves: other_query str, peer_resolved_id str opcional).
+    - human_advisor_requested: True si el usuario pidio hablar con un asesor humano (CRM/UI).
+    - human_advisor_push_sent: True tras intentar notificar al owner una vez por sesion (evita spam).
+    - suppress_commercial_node_once: el siguiente paso por el nodo comercial actual no genera respuesta nueva
+      (tras ack de asesor humano desde intent_checker).
     """
 
     messages: list[dict[str, Any]]
@@ -89,3 +93,6 @@ class clientState(TypedDict, total=False):
     awaiting_promotion_vehicle_interest_confirmation: bool
     awaiting_promotion_apply_confirmation: bool
     vehicle_comparison_ctx: dict[str, Any]
+    human_advisor_requested: bool
+    human_advisor_push_sent: bool
+    suppress_commercial_node_once: bool

@@ -589,6 +589,10 @@ def financing(state: clientState) -> clientState:
     """Consulta planes y obliga seleccion de vehiculo dentro del plan."""
 
     state["current_node"] = "financing"
+    if state.get("suppress_commercial_node_once"):
+        state["suppress_commercial_node_once"] = False
+        _debug("suppress_commercial_node_once", action="skip_node_execution")
+        return state
     user_text = latest_user_message(state)
     _debug(
         "entry",

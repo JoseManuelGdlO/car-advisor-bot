@@ -57,6 +57,9 @@ def initial_state() -> dict:
         "awaiting_promotion_vehicle_interest_confirmation": False,
         "awaiting_promotion_apply_confirmation": False,
         "vehicle_comparison_ctx": {},
+        "human_advisor_requested": False,
+        "human_advisor_push_sent": False,
+        "suppress_commercial_node_once": False,
     }
 
 

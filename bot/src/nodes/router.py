@@ -8,6 +8,7 @@ from src.state import clientState
 
 from src.services.llm_responses import classify_router_intent, generate_other_response
 from src.tools.vehicles import normalize_user_text
+from src.utils.human_advisor_notify import handle_human_advisor_request, wants_human_advisor_heuristic
 from src.utils.signals import (
     BUSINESS_LOCATION_FAQ_SUBSTR,
     FINANCING_PLANES_COMBO_SUFFIXES,
@@ -76,7 +77,7 @@ def _is_simple_greeting(text: str) -> bool:
     return normalized in ROUTER_SIMPLE_GREETINGS_NORMALIZED
 
 
-_VALID_ROUTER_LABELS = frozenset({"VEHICLE_CATALOG", "FAQ", "FINANCING", "PROMOTIONS"})
+_VALID_ROUTER_LABELS = frozenset({"VEHICLE_CATALOG", "FAQ", "FINANCING", "PROMOTIONS", "HUMAN_ADVISOR"})
 
 
 def _financing_planes_combo(text: str) -> bool:
@@ -102,6 +103,8 @@ def _is_business_location_faq(text: str) -> bool:
 def _extended_router_heuristic(user_text: str) -> str | None:
     """Etiqueta alineada con classify_router_intent o None si no hay señal clara."""
 
+    if wants_human_advisor_heuristic(user_text):
+        return "HUMAN_ADVISOR"
     if _is_financing_request(user_text) or _financing_planes_combo(user_text):
         return "FINANCING"
     if _is_promotions_request(user_text):
@@ -131,6 +134,8 @@ def _reconcile_llm_and_heuristic(llm_label: str, heuristic_label: str | None) ->
         return "PROMOTIONS"
     if heuristic_label == "VEHICLE_CATALOG" and llm_label == "FAQ":
         return "VEHICLE_CATALOG"
+    if heuristic_label == "HUMAN_ADVISOR" and llm_label == "FAQ":
+        return "HUMAN_ADVISOR"
     return llm_label
 
 
@@ -168,6 +173,11 @@ def _apply_router_resolution(
         state["current_node"] = "financing"
         _debug_router("route_to_financing", reason=reason)
         return state
+    if resolved == "HUMAN_ADVISOR":
+        state["intent"] = "human_advisor"
+        state["current_node"] = "router"
+        _debug_router("route_human_advisor", reason=reason)
+        return handle_human_advisor_request(state)
     raise ValueError(f"etiqueta router no soportada: {resolved!r}")
 
 
@@ -185,6 +195,12 @@ def router(state: clientState) -> clientState:
         awaiting_purchase_confirmation=bool(state.get("awaiting_purchase_confirmation")),
         pending_candidates=bool(state.get("last_vehicle_candidates")),
     )
+
+    if wants_human_advisor_heuristic(user_text):
+        state["intent"] = "human_advisor"
+        state["current_node"] = "router"
+        _debug_router("route_human_advisor", reason="heuristic")
+        return handle_human_advisor_request(state)
 
     if _is_financing_request(text):
         state["intent"] = "financing"

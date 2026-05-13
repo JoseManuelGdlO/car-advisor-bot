@@ -7,6 +7,7 @@ from src.services.llm_responses import (
     classify_faq_interrupt_flags,
     classify_vehicle_step_flags,
 )
+from src.utils.human_advisor_notify import handle_human_advisor_request, wants_human_advisor_heuristic
 from src.utils.state_helpers import latest_human_ai_pair
 
 
@@ -80,12 +81,6 @@ def intent_checker(state: clientState) -> clientState:
             state["is_faq_interrupt"] = False
             return state
 
-    # Durante flujo comercial, no debemos desviar a FAQ si el usuario cambia
-    # entre temas de venta (promociones, financiamiento, catalogo, etc.).
-    if _looks_like_commercial_navigation_request(last_user):
-        state["is_faq_interrupt"] = False
-        return state
-
     pending = state.get("last_vehicle_candidates")
     pending_n = len(pending) if isinstance(pending, list) else 0
     flags = classify_faq_interrupt_flags(
@@ -95,6 +90,22 @@ def intent_checker(state: clientState) -> clientState:
         awaiting_purchase_confirmation=bool(state.get("awaiting_purchase_confirmation")),
         pending_vehicle_count=pending_n,
     )
+
+    if flags.get("quiere_asesor_humano") or wants_human_advisor_heuristic(last_user):
+        saved_node = current_node
+        state = handle_human_advisor_request(state)
+        state["current_node"] = saved_node
+        state["is_faq_interrupt"] = False
+        if saved_node in ("car_selection", "financing", "promotions", "lead_capture"):
+            state["suppress_commercial_node_once"] = True
+        return state
+
+    # Durante flujo comercial, no debemos desviar a FAQ si el usuario cambia
+    # entre temas de venta (promociones, financiamiento, catalogo, etc.).
+    if _looks_like_commercial_navigation_request(last_user):
+        state["is_faq_interrupt"] = False
+        return state
+
     if flags.get("interrumpir_por_faq"):
         state["is_faq_interrupt"] = True
         state["resume_to_step"] = current_node or "car_selection"

@@ -903,6 +903,10 @@ def car_selection(state: clientState) -> clientState:
     """Unifica listado general, filtros por caracteristica y detalle por carro."""
 
     state["current_node"] = "car_selection"
+    if state.get("suppress_commercial_node_once"):
+        state["suppress_commercial_node_once"] = False
+        _debug("suppress_commercial_node_once", action="skip_node_execution")
+        return state
     if state.get("skip_car_prompt"):
         state["skip_car_prompt"] = False
         _debug("skip_car_prompt_active", action="skip_node_execution")

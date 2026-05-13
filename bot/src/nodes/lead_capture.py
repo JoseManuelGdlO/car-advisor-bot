@@ -354,6 +354,10 @@ def lead_capture(state: clientState) -> clientState:
     """Solicita nombre, telefono (condicional) y email; luego notifica y persiste al CRM."""
 
     state["current_node"] = "lead_capture"
+    if state.get("suppress_commercial_node_once"):
+        state["suppress_commercial_node_once"] = False
+        _debug("suppress_commercial_node_once", action="skip_node_execution")
+        return state
     selected_car = (state.get("selected_car") or "").strip()
     platform = str(state.get("platform", "web") or "web").strip().lower() or "web"
     user_id = str(state.get("user_id", "")).strip()

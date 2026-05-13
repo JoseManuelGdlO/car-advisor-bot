@@ -912,7 +912,7 @@ def classify_promotion_selection_intent(
 
 
 def classify_router_intent(user_message: str, previous_intent: str = "") -> str:
-    """Clasifica intencion general del router: VEHICLE_CATALOG, FAQ, FINANCING u OTHER."""
+    """Clasifica intencion general del router: VEHICLE_CATALOG, FAQ, FINANCING, PROMOTIONS, HUMAN_ADVISOR u OTHER."""
 
     model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
     try:
@@ -921,7 +921,7 @@ def classify_router_intent(user_message: str, previous_intent: str = "") -> str:
         prompt = build_router_intent_classifier_prompt(user_message, previous_intent, settings)
         content = llm.invoke(prompt).content
         normalized = str(content).strip().upper()
-        if normalized in {"VEHICLE_CATALOG", "FAQ", "FINANCING", "PROMOTIONS", "OTHER"}:
+        if normalized in {"VEHICLE_CATALOG", "FAQ", "FINANCING", "PROMOTIONS", "HUMAN_ADVISOR", "OTHER"}:
             return normalized
         return "UNKNOWN"
     except Exception as exc:
@@ -1347,6 +1347,7 @@ def classify_faq_interrupt_flags(
     model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
     out: dict[str, bool] = {
         "interrumpir_por_faq": False,
+        "quiere_asesor_humano": False,
         "tema_vehiculo_inventario": False,
         "tema_financiamiento_credi": False,
         "es_respuesta_o_seguimiento_al_ultimo_bot": False,
@@ -1367,6 +1368,7 @@ def classify_faq_interrupt_flags(
         if not parsed:
             return out
         out["interrumpir_por_faq"] = _coerce_to_bool(parsed.get("interrumpir_por_faq"))
+        out["quiere_asesor_humano"] = _coerce_to_bool(parsed.get("quiere_asesor_humano"))
         out["tema_vehiculo_inventario"] = _coerce_to_bool(parsed.get("tema_vehiculo_inventario"))
         out["tema_financiamiento_credi"] = _coerce_to_bool(parsed.get("tema_financiamiento_credi"))
         out["es_respuesta_o_seguimiento_al_ultimo_bot"] = _coerce_to_bool(

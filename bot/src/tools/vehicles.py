@@ -601,8 +601,16 @@ def notify_advisor(
     owner_user_id: str,
     financing_selection: dict[str, Any] | None = None,
     promotion_selection: dict[str, Any] | None = None,
+    *,
+    push_title: str | None = None,
+    push_body: str | None = None,
+    notification_kind: str = "lead_interest",
 ) -> bool:
-    """Envia push al owner via backend API `/push/send`."""
+    """Envia push al owner via backend API `/push/send`.
+
+    Por defecto notifica un lead de vehiculo. Con push_title y push_body se puede
+    personalizar el mensaje (p. ej. solicitud de asesor humano).
+    """
 
     normalized_owner_user_id = str(owner_user_id or "").strip()
     if not normalized_owner_user_id:
@@ -614,14 +622,21 @@ def notify_advisor(
     customer_email = str(customer_info.get("email", "")).strip()
     normalized_financing = financing_selection or {}
     normalized_promotion = promotion_selection or {}
-    payload = {
-        "ownerUserId": normalized_owner_user_id,
-        "title": "Nuevo lead interesado en vehiculo",
-        "body": (
+    if push_title and push_body:
+        title = str(push_title).strip()
+        body = str(push_body).strip()
+    else:
+        title = "Nuevo lead interesado en vehiculo"
+        body = (
             f"{customer_name or 'Cliente'} quiere informacion de {selected_car}. "
             f"Telefono: {customer_phone or 'N/D'}."
-        ),
+        )
+    payload = {
+        "ownerUserId": normalized_owner_user_id,
+        "title": title,
+        "body": body,
         "data": {
+            "notification_kind": str(notification_kind or "lead_interest").strip(),
             "selected_car": str(selected_car or "").strip(),
             "customer_name": customer_name,
             "customer_phone": customer_phone,

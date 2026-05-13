@@ -150,6 +150,29 @@ BUSINESS_LOCATION_FAQ_SUBSTR: frozenset[str] = frozenset(
     )
 )
 
+# Subcadenas en texto ya normalizado (normalize_user_text: sin acentos, minusculas).
+HUMAN_ADVISOR_HEURISTIC_SUBSTR: frozenset[str] = frozenset(
+    (
+        "asesor humano",
+        "hablar con un asesor",
+        "hablar con asesor",
+        "con un asesor",
+        "con asesor",
+        "persona real",
+        "agente humano",
+        "atencion humana",
+        "comunicarme con alguien",
+        "hablar con alguien",
+        "ponme con un asesor",
+        "quiero un asesor",
+        "necesito un asesor",
+        "pasame con un asesor",
+        "pasame con alguien",
+        "operador humano",
+        "linea humana",
+    )
+)
+
 CATALOG_BROWSE_VERB_HINTS = {"muestra", "ver", "otros"}
 CATALOG_BROWSE_TARGET_HINTS = {"modelo", "disponible", "opciones", "catalogo", "carro", "auto", "vehiculo", "otros"}
 
