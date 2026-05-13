@@ -17,11 +17,27 @@ def faq(state: clientState) -> clientState:
     if state.get("is_faq_interrupt"):
         resume_to_step = str(state.get("resume_to_step", "car_selection"))
         transitions = {
-            "car_selection": "Perfecto, continuemos con los modelos disponibles.",
-            "lead_capture": "Perfecto, continuemos con tus datos para apartar el vehiculo.",
-            "financing": "Perfecto, continuemos con los planes de financiamiento.",
+            "car_selection": (
+                "Perfecto. Sigamos con el catálogo: ¿quieres que busquemos por marca o modelo, "
+                "o te muestro opciones según tu presupuesto?"
+            ),
+            "lead_capture": (
+                "Genial. Seguimos con tus datos para apartar el vehículo: "
+                "¿con qué dato quieres continuar (nombre, teléfono o correo)?"
+            ),
+            "financing": (
+                "Excelente. Volvamos al financiamiento: "
+                "¿prefieres revisar enganche, mensualidad o plazos?"
+            ),
+            "promotions": (
+                "Perfecto. Sigamos con las promociones vigentes: "
+                "¿quieres el detalle de alguna o seguimos con otra?"
+            ),
         }
-        transition = transitions.get(resume_to_step) or ""
+        transition = transitions.get(
+            resume_to_step,
+            "Perfecto. Continuemos con tu proceso. ¿En qué te apoyo ahora?",
+        )
         message = generate_faq_user_turn(
             user_question=question,
             faq_candidates=candidates,
