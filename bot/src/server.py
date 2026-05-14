@@ -7,6 +7,15 @@ import os
 from typing import Any
 
 from dotenv import load_dotenv
+
+load_dotenv()
+
+from src.utils.app_logging import get_app_logger, setup_app_logging, uvicorn_log_level_str
+
+setup_app_logging()
+
+_server_log = get_app_logger("server")
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
@@ -19,8 +28,6 @@ from src.tools.database import (
     upsert_inbound_user_message,
     upsert_bot_session_state,
 )
-
-load_dotenv()
 
 app = FastAPI(title="Car Advisor Bot API", version="0.1.0")
 graph = build_graph()
@@ -273,12 +280,17 @@ def chat(payload: ChatRequest) -> ChatResponse:
 def reset_session(payload: ResetRequest) -> ResetResponse:
     """Elimina la sesión persistida para que el próximo mensaje arranque desde cero."""
 
-    print(
-        f"[RESET] POST /reset user_id={payload.user_id!r} platform={payload.platform!r}"
-    )
+    if _server_log.isEnabledFor(logging.DEBUG):
+        _server_log.debug(
+            "[RESET] POST /reset user_id=%r platform=%r",
+            payload.user_id,
+            payload.platform,
+        )
+    else:
+        _server_log.info("[RESET] POST /reset platform=%r", payload.platform,)
     try:
         deleted = delete_bot_session(payload.user_id, payload.platform)
-        print(f"[RESET] delete_bot_session deleted_rows={deleted}")
+        _server_log.info("[RESET] delete_bot_session deleted_rows=%s", deleted)
         return ResetResponse(
             status="session reset",
             user_id=payload.user_id,
@@ -303,4 +315,4 @@ if __name__ == "__main__":
     port = int(os.getenv("API_PORT", 8000))
     host = os.getenv("API_HOST", "0.0.0.0")
     print(f"Starting server on {host}:{port}")
-    uvicorn.run(app, host=host, port=port)
+    uvicorn.run(app, host=host, port=port, log_level=uvicorn_log_level_str())

@@ -13,10 +13,12 @@ from src.utils.human_advisor_notify import (
     handle_human_advisor_request,
     human_advisor_heuristic_match,
 )
+from src.utils.app_logging import get_app_logger
 from src.utils.signals import VEHICLE_INFO_REQUEST_SIGNALS
 from src.utils.state_helpers import latest_human_ai_pair
 
 logger = logging.getLogger(__name__)
+_app = get_app_logger("intent_checker")
 
 
 def _is_vehicle_detail_request(user_text: str) -> bool:
@@ -138,12 +140,14 @@ def intent_checker(state: clientState) -> clientState:
         if heuristic_human:
             trigger_parts.append(f"heuristic_match={heuristic_substr!r}")
         advisor_trigger = "+".join(trigger_parts)
-        logger.info(
-            "[human_advisor] intent_checker_escalation node=%s trigger=%s "
-            "faq_interrupt_flags=%s user_preview=%r bot_preview=%r",
+        _app.info(
+            "[human_advisor] intent_checker_escalation node=%s trigger=%s faq_interrupt_flags=%s",
             current_node,
             advisor_trigger,
             flags,
+        )
+        _app.debug(
+            "[human_advisor] intent_checker_escalation_detail user_preview=%r bot_preview=%r",
             (last_user or "")[:200],
             (last_ai or "")[:200],
         )

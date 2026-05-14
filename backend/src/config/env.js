@@ -25,6 +25,11 @@ export const env = {
   },
   /** 32+ chars recommended; falls back to JWT_SECRET for dev only */
   credentialsEncryptionKey: must("CREDENTIALS_ENCRYPTION_KEY", ""),
+  /** Logs de aplicación (bot / WC / IG): `info` o `debug`. */
+  logLevel: (() => {
+    const v = (must("LOG_LEVEL", "info") || "info").trim().toLowerCase();
+    return v === "debug" ? "debug" : "info";
+  })(),
   bot: {
     defaultOwnerUserId: must("BOT_DEFAULT_OWNER_USER_ID", ""),
     defaultInboundChannel: must("BOT_DEFAULT_INBOUND_CHANNEL", "web"),
@@ -43,6 +48,8 @@ export const env = {
     webhookVerifyToken: must("META_WEBHOOK_VERIFY_TOKEN", ""),
     graphApiVersion: must("META_GRAPH_API_VERSION", "v21.0"),
     webhookEnabled: must("META_WEBHOOK_ENABLED", "true") === "true",
+    /** Logs detallados del webhook Instagram (requiere LOG_LEVEL=debug). */
+    webhookDebug: must("META_WEBHOOK_DEBUG", "false") === "true",
   },
   wc: {
     // URL base del servicio WhatsApp Connect (mismo host para todos los tenants).

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { deactivatePushDevice, sendPushToOwner, upsertPushDevice } from "../services/pushService.js";
 import { ApiError } from "../utils/errors.js";
+import { appLog } from "../utils/appLogger.js";
 
 const registerDeviceSchema = z.object({
   token: z.string().min(20).max(255),
@@ -81,20 +82,18 @@ export const sendPush = async (req, res, next) => {
       body: payload.body,
       data: payload.data || {},
     });
-    console.info("[pushController] sendPush result", {
-      ownerUserId,
-      authType: req.auth?.type,
-      sentCount: result.sentCount,
-      failedCount: result.failedCount,
-      deactivatedCount: result.deactivatedCount,
-    });
+    appLog.info(
+      "pushController",
+      `sendPush result authType=${req.auth?.type} sentCount=${result.sentCount} failedCount=${result.failedCount} deactivatedCount=${result.deactivatedCount}`,
+    );
+    appLog.debug("pushController", { ownerUserId });
     return res.json({ ok: true, ...result });
   } catch (error) {
     console.error("[pushController] sendPush failed", {
       authType: req.auth?.type,
-      ownerUserIdFromBody: req.body?.ownerUserId,
       message: String(error?.message || ""),
     });
+    appLog.debug("pushController", { ownerUserIdFromBody: req.body?.ownerUserId });
     return next(error);
   }
 };

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 
 from src.state import clientState
@@ -17,17 +18,23 @@ from src.utils.signals import (
     ROUTER_SIMPLE_GREETINGS_NORMALIZED,
     ROUTER_VEHICLE_SUBSTR_SIGNALS,
 )
+from src.utils.app_logging import get_app_logger
 from src.utils.state_helpers import append_assistant_message, is_faq_intent, latest_user_message
+
+_log = get_app_logger("router")
 
 
 def _debug_router(event: str, **payload: object) -> None:
     """Trazas de decisión del router para seguir en consola."""
 
-    if payload:
-        pairs = ", ".join(f"{key}={value!r}" for key, value in payload.items())
-        print(f"[router] {event} | {pairs}")
+    if not payload:
+        _log.info(f"[router] {event}")
         return
-    print(f"[router] {event}")
+    pairs = ", ".join(f"{key}={value!r}" for key, value in payload.items())
+    if _log.isEnabledFor(logging.DEBUG):
+        _log.debug(f"[router] {event} | {pairs}")
+    else:
+        _log.info(f"[router] {event}")
 
 
 def _is_vehicle_request(text: str) -> bool:

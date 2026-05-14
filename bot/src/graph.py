@@ -12,15 +12,18 @@ from src.nodes.lead_capture import lead_capture
 from src.nodes.promotions import promotions
 from src.nodes.router import router
 from src.state import clientState
+from src.utils.app_logging import get_app_logger
+
+_log = get_app_logger("graph")
 
 
 def _log_transition(origin: str, destination: str, details: str | None = None) -> None:
     """Imprime transiciones del grafo para debug de cada invoke."""
 
     if details:
-        print(f"[GRAPH] {origin} -> {destination} ({details})")
+        _log.info(f"[GRAPH] {origin} -> {destination} ({details})")
         return
-    print(f"[GRAPH] {origin} -> {destination}")
+    _log.info(f"[GRAPH] {origin} -> {destination}")
 
 
 def _route_from_router(state: clientState) -> str:
@@ -28,7 +31,7 @@ def _route_from_router(state: clientState) -> str:
 
     node = state.get("current_node", "router")
     intent = state.get("intent", "unknown")
-    print(f"[GRAPH] route_from_router: current_node='{node}', intent='{intent}'")
+    _log.info(f"[GRAPH] route_from_router: current_node='{node}', intent='{intent}'")
     if node == "faq":
         _log_transition("router", "faq")
         return "faq"
@@ -53,26 +56,26 @@ def _route_after_intent_checker(state: clientState) -> str:
 
     node = state.get("current_node", "router")
     if node == "faq":
-        print("[GRAPH] route_after_intent_checker: FAQ detectada, redirigiendo a faq")
+        _log.info("[GRAPH] route_after_intent_checker: FAQ detectada, redirigiendo a faq")
         _log_transition("intent_checker", "faq", "faq interruptiva")
         return "faq"
     if node == "lead_capture":
-        print("[GRAPH] route_after_intent_checker: retomando lead_capture")
+        _log.info("[GRAPH] route_after_intent_checker: retomando lead_capture")
         _log_transition("intent_checker", "lead_capture", "reanudar flujo")
         return "lead_capture"
     if node == "car_selection":
-        print("[GRAPH] route_after_intent_checker: retomando car_selection")
+        _log.info("[GRAPH] route_after_intent_checker: retomando car_selection")
         _log_transition("intent_checker", "car_selection", "reanudar flujo")
         return "car_selection"
     if node == "financing":
-        print("[GRAPH] route_after_intent_checker: retomando financing")
+        _log.info("[GRAPH] route_after_intent_checker: retomando financing")
         _log_transition("intent_checker", "financing", "reanudar flujo")
         return "financing"
     if node == "promotions":
-        print("[GRAPH] route_after_intent_checker: retomando promotions")
+        _log.info("[GRAPH] route_after_intent_checker: retomando promotions")
         _log_transition("intent_checker", "promotions", "reanudar flujo")
         return "promotions"
-    print(f"[GRAPH] route_after_intent_checker: sin FAQ, continuando flujo (current_node='{node}')")
+    _log.info(f"[GRAPH] route_after_intent_checker: sin FAQ, continuando flujo (current_node='{node}')")
     _log_transition("intent_checker", "router")
     return "router"
 

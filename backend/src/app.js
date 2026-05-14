@@ -51,7 +51,11 @@ app.use(
 );
 // Activos estáticos para recursos del bot/autobot.
 app.use("/uploads/autobot", express.static(path.resolve(process.cwd(), "autobot")));
-app.use(morgan("dev"));
+app.use(
+  morgan(
+    "[:date[iso]] :method :url :status :res[content-length] - :response-time ms :remote-addr"
+  )
+);
 // Throttling de rutas de autenticación para reducir brute force.
 const authRateLimit = rateLimit({ windowMs: 60_000, limit: 30 });
 // Soporta prefijo custom de API, manteniendo compatibilidad con /api.

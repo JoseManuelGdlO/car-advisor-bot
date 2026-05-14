@@ -1,6 +1,7 @@
 import admin from "firebase-admin";
 import { env } from "../config/env.js";
 import { PushDevice } from "../models/index.js";
+import { appLog } from "../utils/appLogger.js";
 
 let firebaseApp;
 
@@ -65,7 +66,8 @@ export const sendPushToOwner = async ({ ownerUserId, title, body, data = {} }) =
     attributes: ["id", "token"],
   });
   if (!devices.length) {
-    console.info("[pushService] No active devices for owner", { ownerUserId });
+    appLog.info("pushService", "No active devices for owner");
+    appLog.debug("pushService", { ownerUserId });
     return { sentCount: 0, failedCount: 0, deactivatedCount: 0 };
   }
 
@@ -89,11 +91,11 @@ export const sendPushToOwner = async ({ ownerUserId, title, body, data = {} }) =
       failedCount += 1;
       const code = String(error?.code || "");
       console.error("[pushService] Failed sending push to device", {
-        ownerUserId,
         deviceId: device.id,
         code,
         message: String(error?.message || ""),
       });
+      appLog.debug("pushService", { ownerUserId, deviceId: device.id, code, context: "send_failed" });
       if (code.includes("registration-token-not-registered") || code.includes("invalid-registration-token")) {
         await device.update({ isActive: false });
         deactivatedCount += 1;
@@ -101,6 +103,10 @@ export const sendPushToOwner = async ({ ownerUserId, title, body, data = {} }) =
     }
   }
 
-  console.info("[pushService] Push send result", { ownerUserId, sentCount, failedCount, deactivatedCount });
+  appLog.info(
+    "pushService",
+    `Push send result sentCount=${sentCount} failedCount=${failedCount} deactivatedCount=${deactivatedCount}`,
+  );
+  appLog.debug("pushService", { ownerUserId });
   return { sentCount, failedCount, deactivatedCount };
 };

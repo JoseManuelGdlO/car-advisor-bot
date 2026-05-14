@@ -8,10 +8,12 @@ from typing import Any
 from src.state import clientState
 from src.tools.database import push_event_to_backend
 from src.tools.vehicles import normalize_user_text, notify_advisor
+from src.utils.app_logging import get_app_logger
 from src.utils.signals import HUMAN_ADVISOR_HEURISTIC_SUBSTR
 from src.utils.state_helpers import append_assistant_message, latest_user_message
 
 logger = logging.getLogger(__name__)
+_app = get_app_logger("human_advisor")
 
 
 def human_advisor_heuristic_match(user_text: str) -> str | None:
@@ -72,10 +74,13 @@ def handle_human_advisor_request(
     """
 
     if state.get("human_advisor_push_sent"):
-        logger.info(
-            "[human_advisor] skip_duplicate_push user_id=%s trigger=%s",
-            str(state.get("user_id", "")).strip() or "lead",
+        _app.info(
+            "[human_advisor] skip_duplicate_push trigger=%s",
             advisor_trigger or "unspecified",
+        )
+        _app.debug(
+            "[human_advisor] skip_duplicate_push_detail user_id=%s",
+            str(state.get("user_id", "")).strip() or "lead",
         )
         return state
 
@@ -96,14 +101,16 @@ def handle_human_advisor_request(
         current_node=current_node,
     )
 
-    logger.info(
-        "[human_advisor] notify_start user_id=%s trigger=%s node=%s platform=%s "
-        "owner_user_id_set=%s selected_car=%r customer_phone_set=%s",
-        user_id,
+    _app.info(
+        "[human_advisor] notify_start trigger=%s node=%s platform=%s owner_user_id_set=%s",
         advisor_trigger or "unspecified",
         current_node,
         platform,
         bool(owner_user_id),
+    )
+    _app.debug(
+        "[human_advisor] notify_start_detail user_id=%s selected_car=%r customer_phone_set=%s",
+        user_id,
         selected_car,
         bool(customer_phone),
     )
@@ -144,13 +151,13 @@ def handle_human_advisor_request(
     else:
         notify_ok = True
 
-    logger.info(
-        "[human_advisor] notify_done user_id=%s trigger=%s notify_ok=%s owner_user_id_set=%s",
-        user_id,
+    _app.info(
+        "[human_advisor] notify_done trigger=%s notify_ok=%s owner_user_id_set=%s",
         advisor_trigger or "unspecified",
         notify_ok,
         bool(owner_user_id),
     )
+    _app.debug("[human_advisor] notify_done_detail user_id=%s notify_ok=%s owner_user_id_set=%s", user_id, notify_ok, bool(owner_user_id))
 
     state["human_advisor_requested"] = True
     state["human_advisor_push_sent"] = True

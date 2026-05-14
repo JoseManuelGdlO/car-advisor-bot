@@ -2,6 +2,7 @@ import { ApiError } from "../utils/errors.js";
 import { normalizeInboundChannel } from "../utils/integrationChannel.js";
 import { env } from "../config/env.js";
 import { upsertConversationEvent } from "../services/conversationService.js";
+import { appLog } from "../utils/appLogger.js";
 
 // Obtiene URL base del motor de bot sin slash final.
 const botEngineBaseUrl = () => String(env.bot.engineUrl || "").replace(/\/$/, "");
@@ -11,10 +12,11 @@ export const botResetConversation = async (req, res) => {
   // 1) normaliza inputs.
   const normalizedUserId = String(req.body?.user_id || "").trim();
   const resolvedChannel = normalizeInboundChannel(req.body?.platform || env.bot.defaultInboundChannel || "web");
-  console.log("[botResetConversation] request", {
-    user_id: normalizedUserId,
-    platform: resolvedChannel,
-  });
+  appLog.info(
+    "botResetConversation",
+    `request platform=${resolvedChannel}`,
+  );
+  appLog.debug("botResetConversation", { user_id: normalizedUserId });
   if (!normalizedUserId) {
     throw new ApiError(400, "user_id is required");
   }
@@ -56,7 +58,12 @@ export const botResetConversation = async (req, res) => {
     console.error("[botResetConversation] invalid JSON from bot", text.slice(0, 200));
     throw new ApiError(502, "Invalid response from bot engine");
   }
-  console.log("[botResetConversation] ok", data);
+  appLog.info("botResetConversation", "ok");
+  appLog.debug("botResetConversation", {
+    status: data && typeof data === "object" ? String(data.status ?? "") : "",
+    deleted_rows: data && typeof data === "object" ? String(data.deleted_rows ?? "") : "",
+    user_id: data && typeof data === "object" ? String(data.user_id ?? "") : "",
+  });
   return res.status(200).json(data);
 };
 
@@ -66,10 +73,13 @@ export const botUpsertConversation = async (req, res) => {
   const { user_id, platform, message, selected_car, customer_info, financing_selection, promotion_selection } = req.body;
   const ownerUserId = req.auth.userId || env.bot.defaultOwnerUserId;
   const normalizedPlatform = normalizeInboundChannel(platform || env.bot.defaultInboundChannel || "web");
-  console.log("[botUpsertConversation] inbound event", {
+  const from = String(req.body.from || "client").trim().toLowerCase();
+  appLog.info(
+    "botUpsertConversation",
+    `inbound event platform=${normalizedPlatform} from=${from}`,
+  );
+  appLog.debug("botUpsertConversation", {
     user_id: String(user_id || "").trim(),
-    platform: normalizedPlatform,
-    from: String(req.body.from || "client").trim().toLowerCase(),
   });
   const result = await upsertConversationEvent({
     ownerUserId,
@@ -82,12 +92,14 @@ export const botUpsertConversation = async (req, res) => {
     financingSelection: financing_selection,
     promotionSelection: promotion_selection,
   });
-  // La respuesta devuelve IDs de conversación/lead + flags de auto-reply.
-  console.log("[botUpsertConversation] persisted message", {
+  appLog.info(
+    "botUpsertConversation",
+    `persisted message from=${from} shouldAutoReply=${result.shouldAutoReply}`,
+  );
+  appLog.debug("botUpsertConversation", {
     conversationId: result.conversationId,
     leadId: result.clientId,
-    from: String(req.body.from || "client").trim().toLowerCase(),
-    shouldAutoReply: result.shouldAutoReply,
+    ownerUserId: ownerUserId || "",
   });
   return res.status(201).json({
     ok: true,

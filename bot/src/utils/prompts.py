@@ -843,7 +843,7 @@ def build_faq_interrupt_flags_prompt(
         '  "tema_financiamiento_credi": <bool>,\n'
         '  "es_respuesta_o_seguimiento_al_ultimo_bot": <bool>\n'
         "}\n\n"
-        "quiere_asesor_humano: true cuando pide hablar con una persona real, un asesor humano, ejecutivo, "
+        "quiere_asesor_humano: true cuando el user pide hablar con una persona real, un asesor humano, ejecutivo, "
         "operador, que lo comuniquen con alguien del equipo o atencion humana (no basta con FAQ de horario/ubicacion sin pedir humano).\n"
         "quiere_asesor_humano: false si solo pregunta datos del negocio (horario, direccion) sin pedir contacto humano explicito.\n"
         "Definicion de interrumpir_por_faq (true = debe atenderse con FAQ de negocio, no con catalogo/planes):\n"

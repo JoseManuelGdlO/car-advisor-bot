@@ -39,7 +39,10 @@ from src.utils.prompts import (
     build_verified_user_message_prompt,
 )
 
+from src.utils.app_logging import get_app_logger
+
 logger = logging.getLogger(__name__)
+_app = get_app_logger("llm")
 
 
 def _llm_failure_bucket(exc: BaseException) -> str:
@@ -1375,12 +1378,15 @@ def classify_faq_interrupt_flags(
             parsed.get("es_respuesta_o_seguimiento_al_ultimo_bot")
         )
         if out["quiere_asesor_humano"]:
-            logger.info(
+            _app.info(
                 "[human_advisor] classify_faq_interrupt_flags llm_quiere_asesor_humano node=%r "
-                "tema_vehiculo_inventario=%s es_seguimiento_bot=%s user_preview=%r bot_preview=%r",
+                "tema_vehiculo_inventario=%s es_seguimiento_bot=%s",
                 current_node,
                 out.get("tema_vehiculo_inventario"),
                 out.get("es_respuesta_o_seguimiento_al_ultimo_bot"),
+            )
+            _app.debug(
+                "[human_advisor] classify_faq_interrupt_flags_detail user_preview=%r bot_preview=%r",
                 (user_message or "")[:200],
                 (last_bot_message or "")[:200],
             )
