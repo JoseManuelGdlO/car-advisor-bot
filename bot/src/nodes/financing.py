@@ -41,16 +41,16 @@ from src.utils.signals import (
     PROMOTIONS_SIGNALS,
 )
 from src.utils.whatsapp_markers import build_whatsapp_image_marker_block, normalize_image_url_for_chat
+from src.utils.app_logging import get_app_logger, log_flow_trace
 from src.utils.state_helpers import append_assistant_message, latest_user_message
 
-def _debug(event: str, **payload: Any) -> None:
-    """Imprime trazas del flujo de financiamiento para depuracion."""
+_log = get_app_logger("financing")
 
-    if payload:
-        pairs = ", ".join(f"{key}={value!r}" for key, value in payload.items())
-        print(f"[financing] {event} | {pairs}")
-        return
-    print(f"[financing] {event}")
+
+def _debug(event: str, **payload: Any) -> None:
+    """Trazas del flujo de financiamiento; payload completo solo con LOG_LEVEL=debug."""
+
+    log_flow_trace(_log, "financing", event, **payload)
 
 
 def _is_financing_query(user_text: str) -> bool:

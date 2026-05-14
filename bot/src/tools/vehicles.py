@@ -12,7 +12,10 @@ from urllib.parse import urlsplit, urlunsplit
 
 import requests
 from langchain_openai import ChatOpenAI
+from src.utils.app_logging import get_app_logger, log_flow_trace
 from src.utils.prompts import build_vehicle_filter_extraction_prompt
+
+_price_filters_log = get_app_logger("vehicles")
 
 
 def _vehicles_api_base_url() -> str:
@@ -363,10 +366,9 @@ def _parse_price_amount(raw_amount: str, raw_suffix: str = "") -> int | None:
 
 
 def _debug_price_filters(event: str, **payload: Any) -> None:
-    """Log simple de filtros de precio para facilitar trazabilidad en runtime."""
+    """Log de filtros de precio; payload completo solo con LOG_LEVEL=debug."""
 
-    fields = ", ".join(f"{key}={repr(value)}" for key, value in payload.items())
-    print(f"[vehicles][price_filters] {event} | {fields}")
+    log_flow_trace(_price_filters_log, "vehicles.price_filters", event, **payload)
 
 
 def _parse_json_object_from_llm(text: str) -> dict[str, Any] | None:

@@ -27,18 +27,18 @@ from src.utils.signals import (
     PROMOTION_TOKEN_STOPWORDS,
     VEHICLE_INFO_REQUEST_SIGNALS,
 )
+from src.utils.app_logging import get_app_logger, log_flow_trace
 from src.utils.state_helpers import append_assistant_message, latest_user_message
 
 _PROMO_VEHICLE_LABEL_MISSING = "[no disponible]"
 
+_log = get_app_logger("promotions")
+
 
 def _debug(event: str, **payload: Any) -> None:
-    """Centraliza trazas de depuracion para este nodo."""
-    if payload:
-        pairs = ", ".join(f"{key}={value!r}" for key, value in payload.items())
-        print(f"[promotions] {event} | {pairs}")
-        return
-    print(f"[promotions] {event}")
+    """Trazas de depuracion; payload completo solo con LOG_LEVEL=debug."""
+
+    log_flow_trace(_log, "promotions", event, **payload)
 
 
 def _is_vehicle_info_request(user_text: str) -> bool:

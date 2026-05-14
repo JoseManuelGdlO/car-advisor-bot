@@ -26,20 +26,20 @@ from src.utils.lead_validators import (
     normalize_stored_email,
     phone_min_digits,
 )
+from src.utils.app_logging import get_app_logger, log_flow_trace
 from src.utils.state_helpers import append_assistant_message, latest_user_message
 
 _PLATFORMS_PREFILL_PHONE = frozenset(
     s.strip().lower() for s in (os.getenv("LEAD_PLATFORMS_PHONE_IN_USER_ID", "web,whatsapp") or "web,whatsapp").split(",") if s.strip()
 )
 
+_log = get_app_logger("lead_capture")
+
 
 def _debug(event: str, **payload: Any) -> None:
-    """Centraliza trazas de depuracion para este nodo."""
-    if payload:
-        pairs = ", ".join(f"{key}={value!r}" for key, value in payload.items())
-        print(f"[lead_capture] {event} | {pairs}")
-        return
-    print(f"[lead_capture] {event}")
+    """Trazas de depuracion; payload completo solo con LOG_LEVEL=debug."""
+
+    log_flow_trace(_log, "lead_capture", event, **payload)
 
 
 def _uses_prefill_phone(platform: str) -> bool:

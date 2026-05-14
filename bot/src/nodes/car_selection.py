@@ -60,7 +60,11 @@ from src.utils.whatsapp_markers import (
     build_whatsapp_image_marker_block as build_shared_whatsapp_image_marker_block,
     normalize_image_url_for_chat,
 )
+from src.utils.app_logging import get_app_logger, log_flow_trace
 from src.utils.state_helpers import append_assistant_message, latest_user_message
+
+_log = get_app_logger("car_selection")
+
 
 def _normalize_signal_set(values: set[str]) -> set[str]:
     """Normaliza señales para compararlas con texto de usuario normalizado."""
@@ -76,13 +80,9 @@ _PROMOTIONS_SIGNALS_NORMALIZED = _normalize_signal_set(PROMOTIONS_SIGNALS)
 
 
 def _debug(event: str, **payload: Any) -> None:
-    """Imprime trazas del flujo para depuracion en consola."""
+    """Trazas del flujo; payload completo solo con LOG_LEVEL=debug."""
 
-    if payload:
-        pairs = ", ".join(f"{key}={value!r}" for key, value in payload.items())
-        print(f"[car_selection] {event} | {pairs}")
-        return
-    print(f"[car_selection] {event}")
+    log_flow_trace(_log, "car_selection", event, **payload)
 
 
 def _find_candidate_from_pending(state: clientState, user_text: str) -> dict[str, Any] | None:
