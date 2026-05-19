@@ -39,6 +39,7 @@ class LeadCaptureSummaryCorrectionFlowTests(unittest.TestCase):
             ),
             patch("src.nodes.lead_capture.notify_advisor") as notify_mock,
             patch("src.nodes.lead_capture.push_event_to_backend") as event_mock,
+            patch("src.nodes.lead_capture.deactivate_bot", side_effect=lambda s, **_: s),
         ):
             # Input con prefijo conversacional y signos de puntuacion alrededor: el
             # extractor debe persistir solo el nombre limpio (sin "mi nombre es" ni "!").
@@ -78,6 +79,9 @@ class LeadCaptureSummaryCorrectionFlowTests(unittest.TestCase):
         self.assertEqual(payload["customer_info"]["email"], "ana@gmail.com")
         self.assertEqual(payload["customer_info"]["nombre"], "Ana Maria Gomez Lopez")
         self.assertEqual(payload["customer_info"]["telefono"], "5512345678")
+        close_msg = str(s["messages"][-1].get("content", "")).lower()
+        self.assertNotIn("asesor", close_msg)
+        self.assertIn("contactamos", close_msg)
 
     def test_collect_missing_returns_none_when_email_filled_same_turn(self) -> None:
         """Si faltaba solo el correo y el usuario lo envia en el mismo turno, el colector devuelve None para seguir al resumen."""

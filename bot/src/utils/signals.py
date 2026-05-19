@@ -222,7 +222,7 @@ PROMOTION_TOKEN_STOPWORDS = frozenset(
 
 NO_IMAGES_AVAILABLE_MESSAGE = (
     "Lamentablemente no tenemos imagenes de este vehiculo 🥲, "
-    "pero puedes ponerte en contacto con un asesor para ver el carro en persona."
+    "pero podemos coordinar una visita para que lo veas en persona."
 )
 
 NO_MORE_IMAGES_MESSAGE = (

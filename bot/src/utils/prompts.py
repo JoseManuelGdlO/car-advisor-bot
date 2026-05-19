@@ -6,7 +6,7 @@ import json
 from typing import Any
 
 DEFAULT_RESPONSE_FALLBACK = (
-    "Eres un asesor virtual de carros. Responde en espanol claro, breve y util."
+    "Eres el asistente de una agencia de carros. Responde en espanol claro, breve y util."
 )
 
 _SYSTEM_RULES_BLOCK = (
@@ -14,7 +14,8 @@ _SYSTEM_RULES_BLOCK = (
     "- Mantente enfocado en ayudar al usuario con marcas, modelos y proceso de contacto.\n"
     "- No inventes datos que no existan en el contexto.\n"
     "- Si faltan datos, pide lo minimo necesario para avanzar.\n"
-    "- Manten un tono humano y claro."
+    "- Manten un tono humano y claro.\n"
+    "- No uses las palabras 'asesor' ni 'asesora' en mensajes al usuario."
 )
 
 
@@ -63,7 +64,7 @@ def build_settings_block(settings: dict[str, Any] | None) -> str:
         f"- {_emoji_instruction(str(cfg.get('emojiStyle', 'pocos')))}",
         f"- {_sales_instruction(str(cfg.get('salesProactivity', 'medio')))}",
         f"- Solo saluda si el usuario esta saludando explicitamente o si el mensaje parece de inicio de conversacion.",
-        f"- No sugieras agendar citas con asesores, sugiere que el usuario se comunique con el asesor directamente.",
+        f"- No sugieras agendar citas; indica que el equipo dara seguimiento cuando corresponda.",
         f"- No puedes agendar citas, solo puedes responder preguntas y ofrecer informacion.",
     ]
     if custom_instructions:
@@ -112,7 +113,7 @@ _VERIFIED_MODE_INSTRUCTIONS: dict[str, str] = {
         "TAREA: Presenta el catalogo o disponibilidad al usuario.\n"
         "El bloque DATOS_VERIFICADOS incluye el listado agrupado del inventario (o mensaje de vacio del sistema) "
         "y puede incluir la ultima pregunta del usuario y banderas (por ejemplo si pidio un modelo no disponible).\n"
-        "Redacta en espanol (Mexico) un mensaje unico para el chat: tono de asesor.\n"
+        "Redacta en espanol (Mexico) un mensaje unico para el chat: tono de consultor de agencia.\n"
         "Si DATOS_VERIFICADOS contiene un listado de vehiculos, COPIALO TAL CUAL en tu respuesta en una seccion clara "
         "(mismas lineas y datos); puedes agregar antes o despues una frase breve de contexto sin contradecir el listado.\n"
         "Si el listado indica que no hay vehiculos, dilo con naturalidad sin inventar unidades.\n"
@@ -187,9 +188,9 @@ _VERIFIED_MODE_INSTRUCTIONS: dict[str, str] = {
         "No inventes promociones. Espanol (Mexico)."
     ),
     "lead_capture_intro": (
-        "TAREA: Mensaje inicial de captura de datos para contacto con asesor.\n"
+        "TAREA: Mensaje inicial de captura de datos de contacto.\n"
         "DATOS_VERIFICADOS describe el vehiculo de interes, si es reanudacion, y datos ya capturados (solo lo que conste).\n"
-        "Explica brevemente que se necesitan datos para que un asesor contacte; termina pidiendo NOMBRE COMPLETO "
+        "Explica brevemente que se necesitan datos para dar seguimiento; termina pidiendo NOMBRE COMPLETO "
         "(debe aparecer la palabra 'nombre' en la pregunta).\n"
         "No pidas nombre, telefono y email en un solo formato tipo formulario.\n"
         "Un parrafo corto o dos frases. Espanol (Mexico). Sin prefijos."
@@ -206,9 +207,9 @@ _VERIFIED_MODE_INSTRUCTIONS: dict[str, str] = {
         "No inventes datos: solo los valores listados en DATOS_VERIFICADOS. Espanol (Mexico). Un solo mensaje. Sin prefijos."
     ),
     "lead_capture_close": (
-        "TAREA: Confirmar al usuario que sus datos fueron recibidos y que un asesor dara seguimiento.\n"
+        "TAREA: Confirmar al usuario que sus datos fueron recibidos y que el equipo dara seguimiento pronto.\n"
         "DATOS_VERIFICADOS incluye nombre del vehiculo, resultado de notificacion (exito/fallo) y datos permitidos.\n"
-        "No inventes tiempos de respuesta no listados. Espanol (Mexico). Tono cercano."
+        "No uses la palabra 'asesor'. No inventes tiempos de respuesta no listados. Espanol (Mexico). Tono cercano."
     ),
     "purchase_question": (
         "TAREA: Pregunta de cierre para confirmar compra o ver mas imagenes del vehiculo.\n"
@@ -218,7 +219,7 @@ _VERIFIED_MODE_INSTRUCTIONS: dict[str, str] = {
     ),
     "faq_insufficient": (
         "TAREA: Indicar que no hay suficiente informacion en la base FAQ para responder con precision.\n"
-        "Usa solo DATOS_VERIFICADOS. Ofrece ayuda general (catalogo, asesor) sin inventar datos del negocio.\n"
+        "Usa solo DATOS_VERIFICADOS. Ofrece ayuda general (catalogo, planes, contacto) sin inventar datos del negocio.\n"
         "Breve. Espanol (Mexico)."
     ),
     "faq_turn": (
@@ -275,7 +276,7 @@ def build_vehicle_detail_conversation_prompt(
         "DATOS_VERIFICADOS:\n"
         f"{facts}\n\n"
         "Instrucciones obligatorias:\n"
-        "- Redacta en espanol (Mexico) un texto conversacional, como un asesor de agencia presentando el auto en chat.\n"
+        "- Redacta en espanol (Mexico) un texto conversacional, como un consultor de agencia presentando el auto en chat.\n"
         "- Usa SOLO informacion que aparezca literalmente en DATOS_VERIFICADOS (mismos valores: precio, km, motor, etc.). "
         "No inventes equipamiento, garantias, historial, consumo, seguridad, financiamiento, promociones ni disponibilidad extra.\n"
         "- No agregues cifras, fechas ni hechos que no esten en el bloque.\n"
@@ -295,7 +296,7 @@ def build_vehicle_comparison_conversation_prompt(
     user_message: str,
     bot_settings: dict[str, Any] | None,
 ) -> str:
-    """Prompt para comparar dos unidades con tono de asesor, solo con hechos de inventario."""
+    """Prompt para comparar dos unidades con tono consultivo, solo con hechos de inventario."""
 
     system_prompt = build_system_prompt(bot_settings)
     name_a = vehicle_name_a.strip() or "primer vehiculo"
@@ -313,7 +314,7 @@ def build_vehicle_comparison_conversation_prompt(
         f"{facts}\n\n"
         f"Contexto del usuario (pedido de comparacion): {um}\n\n"
         "Instrucciones obligatorias:\n"
-        "- Redacta en espanol (Mexico) un texto conversacional: como un asesor que contrasta las dos unidades en chat.\n"
+        "- Redacta en espanol (Mexico) un texto conversacional: como un consultor que contrasta las dos unidades en chat.\n"
         "- Usa SOLO informacion que aparezca en DATOS_VERIFICADOS para ambas unidades (mismos valores: precio, km, motor, etc.). "
         "No inventes equipamiento, garantias, historial, consumo, seguridad, financiamiento, promociones ni datos que no esten en las fichas.\n"
         "- Menciona a ambos vehiculos de forma clara (puedes usar los nombres de las secciones o marca/modelo/año del bloque).\n"
@@ -349,7 +350,7 @@ def build_selected_vehicle_qa_prompt(
         "- Responde en espanol (Mexico), tono claro y breve (1-3 oraciones salvo que la pregunta exija un poco mas).\n"
         "- Usa EXCLUSIVAMENTE informacion que aparezca en DATOS_VERIFICADOS (mismos valores: precio, kilometraje, motor, color, etc.). "
         "No inventes equipamiento, garantias, historial, consumo, revisiones, financiamiento ni promociones.\n"
-        "- Si el dato no esta en DATOS_VERIFICADOS o figura como N/D, dilo con naturalidad y sugiere que un asesor pueda confirmarlo.\n"
+        "- Si el dato no esta en DATOS_VERIFICADOS o figura como N/D, dilo con naturalidad y sugiere que el equipo pueda confirmarlo.\n"
         "- No repitas toda la ficha: centrate en lo que pregunto el usuario.\n"
         "- No saludes ni menciones que eres una IA.\n"
         "- Evita listas largas con viñetas; texto corrido.\n"
@@ -888,7 +889,7 @@ def build_faq_response_prompt(
         "Responde de forma natural y conversacional usando EXCLUSIVAMENTE la BASE_FAQ provista.\n"
         "No copies textualmente: reformula la informacion para que suene cercana y clara.\n"
         "Si la BASE_FAQ no contiene informacion suficiente, dilo amablemente y ofrece una alternativa de ayuda.\n"
-        "Si el contenido disponible sugiere un siguiente paso (por ejemplo, contactar asesor, revisar modelos o planes), "
+        "Si el contenido disponible sugiere un siguiente paso (por ejemplo, revisar modelos o planes), "
         "puedes incluirlo de forma breve y util.\n"
         "No inventes datos. No saludes. No menciones que eres una IA.\n\n"
         f"PREGUNTA_USUARIO: {question}\n\n"

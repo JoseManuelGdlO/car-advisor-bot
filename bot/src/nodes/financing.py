@@ -951,7 +951,7 @@ def financing(state: clientState) -> clientState:
             question = _compose_conversational_block(
                 "Perfecto, te muestro los vehiculos disponibles dentro de este plan para que elijas el que prefieras.",
                 vehicle_picker,
-                "Cuando lo elijas, paso a capturar tus datos para que un asesor te contacte.",
+                "Cuando lo elijas, paso a capturar tus datos para darte seguimiento.",
             )
             return append_assistant_message(state, question)
 
@@ -1037,7 +1037,7 @@ def financing(state: clientState) -> clientState:
             user_message=user_text,
             fallback=(
                 "No hay planes de financiamiento con vehiculos disponibles en este momento. "
-                "Si quieres, puedo pasarte con un asesor para revisar opciones."
+                "Si quieres, podemos coordinar seguimiento para revisar opciones."
             ),
             temperature=0.35,
         )

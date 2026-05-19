@@ -298,6 +298,42 @@ def upsert_inbound_user_message(phone: str, message: str, platform: str = "web")
         return None
 
 
+def set_conversation_human_controlled(
+    conversation_id: str,
+    *,
+    is_human_controlled: bool = True,
+) -> bool:
+    """Marca la conversacion en CRM como control humano (handoff tras notificacion)."""
+
+    normalized_id = _normalize_uuid(conversation_id)
+    if not normalized_id:
+        return False
+    url = _backend_api_url(f"/bot/conversations/{normalized_id}/control")
+    headers = _backend_headers()
+    if not url or "Authorization" not in headers:
+        logger.warning(
+            "Skipping conversation control: missing BACKEND_API_URL or BACKEND_SERVICE_TOKEN"
+        )
+        return False
+    try:
+        response = requests.patch(
+            url,
+            json={"isHumanControlled": is_human_controlled},
+            headers=headers,
+            timeout=6,
+        )
+        if response.status_code == 404:
+            return False
+        response.raise_for_status()
+        return True
+    except requests.RequestException:
+        logger.exception(
+            "Failed to set conversation human control conversation_id=%s",
+            normalized_id,
+        )
+        return False
+
+
 def push_assistant_message_to_backend(
     phone: str,
     content: str,

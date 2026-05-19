@@ -175,6 +175,8 @@ def _build_initial_state() -> dict[str, Any]:
         "human_advisor_requested": False,
         "human_advisor_push_sent": False,
         "suppress_commercial_node_once": False,
+        "conversation_id": "",
+        "bot_disabled": False,
     }
 
 
@@ -210,11 +212,29 @@ def chat(payload: ChatRequest) -> ChatResponse:
         if crm:
             conversation_id = crm["conversation_id"]
             state["owner_user_id"] = str(crm.get("owner_user_id", "")).strip()
+        if conversation_id:
+            state["conversation_id"] = conversation_id
         messages = list(state.get("messages", []))
         messages.append({"role": "user", "content": payload.message, "type": "HumanMessage"})
         # Evita crecimiento ilimitado del estado persistido.
         state["messages"] = messages[-MAX_MESSAGES_HISTORY:]
         previous_len = len(state["messages"])
+
+        if state.get("bot_disabled"):
+            upsert_bot_session_state(
+                payload.user_id,
+                state,
+                platform=payload.platform,
+                conversation_id=conversation_id,
+            )
+            return ChatResponse(
+                reply="",
+                current_node=str(state.get("current_node", "start")),
+                selected_car=str(state.get("selected_car", "")),
+                financing_plan=str(state.get("selected_financing_plan_name", "")),
+                promotion=str(state.get("selected_promotion_title", "")),
+                bot_suppressed=True,
+            )
 
         if crm and crm.get("should_auto_reply") is False:
             upsert_bot_session_state(

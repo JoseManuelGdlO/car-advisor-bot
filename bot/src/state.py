@@ -49,6 +49,8 @@ class clientState(TypedDict, total=False):
     - human_advisor_push_sent: True tras intentar notificar al owner una vez por sesion (evita spam).
     - suppress_commercial_node_once: el siguiente paso por el nodo comercial actual no genera respuesta nueva
       (tras ack de asesor humano desde intent_checker).
+    - conversation_id: UUID de conversacion CRM para handoff y persistencia.
+    - bot_disabled: True tras notificar handoff; el servidor no invoca el grafo en turnos siguientes.
     """
 
     messages: list[dict[str, Any]]
@@ -96,3 +98,5 @@ class clientState(TypedDict, total=False):
     human_advisor_requested: bool
     human_advisor_push_sent: bool
     suppress_commercial_node_once: bool
+    conversation_id: str
+    bot_disabled: bool

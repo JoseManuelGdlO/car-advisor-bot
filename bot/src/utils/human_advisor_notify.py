@@ -9,6 +9,7 @@ from src.state import clientState
 from src.tools.database import push_event_to_backend
 from src.tools.vehicles import normalize_user_text, notify_advisor
 from src.utils.app_logging import get_app_logger
+from src.utils.bot_control import deactivate_bot
 from src.utils.signals import HUMAN_ADVISOR_HEURISTIC_SUBSTR
 from src.utils.state_helpers import append_assistant_message, latest_user_message
 
@@ -37,6 +38,33 @@ def _clean_customer_info(info: Any) -> dict[str, str]:
         if v is not None and str(v).strip():
             out[k] = str(v).strip()
     return out
+
+
+def _has_complete_customer_info(state: clientState) -> bool:
+    info = _clean_customer_info(state.get("customer_info"))
+    return bool(info.get("nombre") and info.get("telefono") and info.get("email"))
+
+
+def _user_handoff_ack(state: clientState, *, notify_ok: bool) -> str:
+    """Mensaje de cierre al usuario segun datos capturados y resultado del push."""
+
+    owner_set = bool(str(state.get("owner_user_id", "")).strip())
+    data_complete = _has_complete_customer_info(state) or bool(state.get("lead_capture_done"))
+
+    if data_complete:
+        if notify_ok or not owner_set:
+            return "Listo, ya registramos tu solicitud. En breve te contactamos."
+        return (
+            "Registramos tu solicitud. "
+            "Hubo un problema temporal al enviar la alerta; en breve te contactamos."
+        )
+
+    if notify_ok or not owner_set:
+        return "Listo, ya avise para que te contacten otra vez."
+    return (
+        "Registramos tu solicitud de hablar con un asesor. "
+        "Hubo un problema temporal al enviar la alerta; en breve te contactan."
+    )
 
 
 def _human_advisor_push_copy(
@@ -162,16 +190,6 @@ def handle_human_advisor_request(
     state["human_advisor_requested"] = True
     state["human_advisor_push_sent"] = True
 
-    last_user = latest_user_message(state)
-    if notify_ok or not owner_user_id:
-        ack = (
-            "Listo, ya avise a un asesor para que te contacte. "
-            "Mientras tanto sigo aqui si necesitas algo mas sobre vehiculos o planes."
-        )
-    else:
-        ack = (
-            "Registre tu solicitud de hablar con un asesor. "
-            "Hubo un problema temporal al enviar la alerta, pero un asesor puede ver tu conversacion en el sistema."
-        )
-
-    return append_assistant_message(state, ack)
+    ack = _user_handoff_ack(state, notify_ok=notify_ok)
+    state = append_assistant_message(state, ack)
+    return deactivate_bot(state, reason="human_advisor")

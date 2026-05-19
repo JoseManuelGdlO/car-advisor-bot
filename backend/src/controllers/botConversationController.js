@@ -1,8 +1,14 @@
+import { z } from "zod";
 import { ApiError } from "../utils/errors.js";
 import { normalizeInboundChannel } from "../utils/integrationChannel.js";
 import { env } from "../config/env.js";
+import { Conversation } from "../models/index.js";
 import { upsertConversationEvent } from "../services/conversationService.js";
 import { appLog } from "../utils/appLogger.js";
+
+export const botSetControlSchema = z.object({
+  isHumanControlled: z.boolean(),
+});
 
 // Obtiene URL base del motor de bot sin slash final.
 const botEngineBaseUrl = () => String(env.bot.engineUrl || "").replace(/\/$/, "");
@@ -105,4 +111,32 @@ export const botUpsertConversation = async (req, res) => {
     ok: true,
     ...result,
   });
+};
+
+export const botSetConversationControl = async (req, res) => {
+  const { isHumanControlled } = botSetControlSchema.parse(req.body || {});
+  const ownerUserId = req.auth.userId || env.bot.defaultOwnerUserId;
+  if (!ownerUserId) {
+    throw new ApiError(500, "owner user is not configured");
+  }
+  const conversationId = String(req.params.conversationId || "").trim();
+  if (!conversationId) {
+    throw new ApiError(400, "conversationId is required");
+  }
+  const conv = await Conversation.findOne({
+    where: { id: conversationId, ownerUserId },
+  });
+  if (!conv) {
+    throw new ApiError(404, "Conversation not found");
+  }
+  await conv.update({
+    isHumanControlled,
+    handoffAt: isHumanControlled ? new Date() : null,
+    handoffByUserId: isHumanControlled ? req.auth.userId : null,
+  });
+  appLog.info(
+    "botSetConversationControl",
+    `conversationId=${conversationId} isHumanControlled=${isHumanControlled}`,
+  );
+  return res.json(conv);
 };

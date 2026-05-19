@@ -60,6 +60,8 @@ def initial_state() -> dict:
         "human_advisor_requested": False,
         "human_advisor_push_sent": False,
         "suppress_commercial_node_once": False,
+        "conversation_id": "",
+        "bot_disabled": False,
     }
 
 

@@ -728,11 +728,11 @@ def generate_lead_capture_intro(
 
     name = (selected_car or "").strip() or "este vehiculo"
     fallback = (
-        f"Continuamos con {name}. Necesitamos unos datos para que un asesor te contacte y "
+        f"Continuamos con {name}. Necesitamos unos datos para darte seguimiento y "
         f"continuar con la compra de {name}. Cual es tu nombre completo?"
         if resuming
         else (
-            f"Para que un asesor pueda comunicarse contigo y ayudarte con la compra de {name}, "
+            f"Para darte seguimiento con la compra de {name}, "
             f"te pediremos unos datos. Cual es tu nombre completo?"
         )
     )
@@ -1409,7 +1409,7 @@ def generate_faq_response(user_question: str, faq_candidates: list[str]) -> str:
     context = "\n\n".join(str(item).strip() for item in faq_candidates if str(item).strip())
     fallback_base = (
         "No encontre informacion suficiente para responder eso con precision. "
-        "Si quieres, te ayudo a revisar modelos, planes o te contacto con un asesor para resolverlo."
+        "Si quieres, te ayudo a revisar modelos, planes o a coordinar seguimiento para resolverlo."
     )
     fallback = generate_verified_user_message(
         mode="faq_insufficient",
@@ -1451,7 +1451,7 @@ def generate_faq_user_turn(
     close = str(close_literal or "").strip()
     fallback_base = (
         "No encontre informacion suficiente para responder eso con precision. "
-        "Si quieres, te ayudo a revisar modelos, planes o te contacto con un asesor para resolverlo."
+        "Si quieres, te ayudo a revisar modelos, planes o a coordinar seguimiento para resolverlo."
     )
     grounded_fallback = generate_verified_user_message(
         mode="faq_insufficient",

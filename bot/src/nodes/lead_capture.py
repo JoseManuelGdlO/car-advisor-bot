@@ -9,6 +9,7 @@ from typing import Any
 from src.state import clientState
 from src.tools.database import push_event_to_backend
 from src.tools.vehicles import notify_advisor
+from src.utils.bot_control import deactivate_bot
 from src.services.llm_responses import (
     classify_lead_capture_navigation,
     classify_lead_capture_summary_confirmation,
@@ -385,7 +386,7 @@ def lead_capture(state: clientState) -> clientState:
                 mode="operational",
                 verified_facts_block="evento: lead_capture_ya_completado_en_estado\ncustomer_info_completo: true\n",
                 user_message=latest_user,
-                fallback="Tus datos ya quedaron registrados. Un asesor se pondra en contacto contigo en breve.",
+                fallback="Tus datos ya quedaron registrados. En breve te contactamos.",
                 temperature=0.35,
             ),
         )
@@ -630,14 +631,13 @@ def lead_capture(state: clientState) -> clientState:
 
     if notify_success or not owner_user_id:
         base_text = (
-            f"Listo. Recibi tus datos para {selected_car} y ya notifique a un asesor para que se ponga en contacto contigo 😊🛞.\n"
-            "Cualquier duda que tengas, puedo ayudarte con lo que necesites mientras se comunica tu asesor."
+            f"Listo. Recibi tus datos para {selected_car}. En breve te contactamos otra vez."
         )
         _debug("notify_success")
     else:
         base_text = (
             f"Recibi tus datos para {selected_car}. "
-            "Hubo un problema temporal al notificar, pero un asesor te contactara."
+            "Hubo un problema temporal al registrar la alerta; pero dame unos momentos para resolverlo y en breve te contactamos."
         )
 
     state["lead_capture_done"] = True
@@ -653,7 +653,7 @@ def lead_capture(state: clientState) -> clientState:
             f"customer_info_resumen: {json.dumps(payload_info, ensure_ascii=False)}",
         ]
     )
-    return append_assistant_message(
+    state = append_assistant_message(
         state,
         generate_verified_user_message(
             mode="lead_capture_close",
@@ -663,3 +663,4 @@ def lead_capture(state: clientState) -> clientState:
             temperature=0.42,
         ),
     )
+    return deactivate_bot(state, reason="lead_capture")

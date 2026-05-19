@@ -7,7 +7,11 @@ from unittest.mock import MagicMock, patch
 
 from src.nodes.intent_checker import intent_checker
 from src.nodes.router import router
-from src.utils.human_advisor_notify import handle_human_advisor_request, human_advisor_heuristic_match
+from src.utils.human_advisor_notify import (
+    _user_handoff_ack,
+    handle_human_advisor_request,
+    human_advisor_heuristic_match,
+)
 from tests.test_helpers import initial_state, with_user_message
 
 
@@ -47,6 +51,7 @@ class TestHandleHumanAdvisorRequest(unittest.TestCase):
         with (
             patch("src.utils.human_advisor_notify.push_event_to_backend") as ev,
             patch("src.tools.vehicles.requests.post", mock_post),
+            patch("src.utils.human_advisor_notify.deactivate_bot", side_effect=lambda s, **_: s),
         ):
             out = handle_human_advisor_request(dict(state))
 
@@ -61,6 +66,35 @@ class TestHandleHumanAdvisorRequest(unittest.TestCase):
         self.assertEqual(payload.get("data", {}).get("notification_kind"), "human_advisor")
         msgs = out.get("messages") or []
         self.assertTrue(msgs and msgs[-1].get("role") == "assistant")
+        ack = str(msgs[-1].get("content", "")).lower()
+        self.assertIn("asesor", ack)
+        self.assertNotIn("sigo aqui", ack)
+
+    def test_ack_without_asesor_when_contact_complete(self) -> None:
+        state = initial_state()
+        state["customer_info"] = {
+            "nombre": "Ana",
+            "telefono": "5512345678",
+            "email": "ana@test.com",
+        }
+        ack = _user_handoff_ack(state, notify_ok=True)
+        self.assertNotIn("asesor", ack.lower())
+        self.assertIn("contactamos", ack.lower())
+
+    def test_deactivates_bot_after_notify(self) -> None:
+        state = with_user_message(initial_state(), "Necesito un asesor")
+        state["owner_user_id"] = "owner-uuid"
+        with (
+            patch("src.utils.human_advisor_notify.push_event_to_backend"),
+            patch("src.tools.vehicles.requests.post") as mock_post,
+            patch(
+                "src.utils.bot_control.set_conversation_human_controlled",
+                return_value=True,
+            ),
+        ):
+            mock_post.return_value.raise_for_status = MagicMock()
+            out = handle_human_advisor_request(dict(state))
+        self.assertTrue(out.get("bot_disabled"))
 
 
 class TestIntentCheckerHumanAdvisor(unittest.TestCase):
@@ -108,6 +142,10 @@ class TestIntentCheckerHumanAdvisor(unittest.TestCase):
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value=flags),
             patch("src.utils.human_advisor_notify.push_event_to_backend"),
             patch("src.tools.vehicles.requests.post") as mock_post,
+            patch(
+                "src.utils.bot_control.set_conversation_human_controlled",
+                return_value=True,
+            ),
         ):
             mock_post.return_value.raise_for_status = MagicMock()
             out = intent_checker(dict(state))
@@ -115,6 +153,7 @@ class TestIntentCheckerHumanAdvisor(unittest.TestCase):
         self.assertFalse(out.get("is_faq_interrupt"))
         self.assertTrue(out.get("suppress_commercial_node_once"))
         self.assertTrue(out.get("human_advisor_push_sent"))
+        self.assertTrue(out.get("bot_disabled"))
 
     def test_human_duplicate_no_suppress_without_new_assistant_message(self) -> None:
         state = initial_state()
@@ -143,6 +182,7 @@ class TestRouterHumanAdvisor(unittest.TestCase):
         with (
             patch("src.nodes.router.classify_router_intent") as mock_cls,
             patch("src.utils.human_advisor_notify.push_event_to_backend"),
+            patch("src.utils.human_advisor_notify.deactivate_bot", side_effect=lambda s, **_: s),
         ):
             out = router(dict(state))
         mock_cls.assert_not_called()
@@ -156,6 +196,7 @@ class TestRouterHumanAdvisor(unittest.TestCase):
         with (
             patch("src.nodes.router.classify_router_intent", return_value="HUMAN_ADVISOR"),
             patch("src.utils.human_advisor_notify.push_event_to_backend"),
+            patch("src.utils.human_advisor_notify.deactivate_bot", side_effect=lambda s, **_: s),
         ):
             out = router(dict(state))
         self.assertEqual(out.get("intent"), "human_advisor")
