@@ -120,6 +120,7 @@ Usa `bot/.env.example`:
 5. Chat web
    - `cd bot/chat`
    - `python -m http.server 8090`
+   - Selector de vendedor (multi-tenant): elige catálogo A o B en la barra lateral; cada mensaje envía `owner_user_id` al bot. Los UUID están en `bot/chat/app.js` (`CHAT_OWNERS`); sustituye el de B por un usuario real con catálogo en tu backend. Mismo teléfono de prueba sirve para comparar dos tenants (hilos CRM distintos).
 
 ## Flujo web -> app mobile
 

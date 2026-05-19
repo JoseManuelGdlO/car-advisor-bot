@@ -325,6 +325,28 @@ body {
     font-weight: 500;
 }
 
+.owner-hint {
+    font-size: 12px;
+    color: var(--gray-600);
+    line-height: 1.4;
+    margin: 6px 0 10px;
+}
+
+.owner-uuid-row {
+    margin-top: 0;
+    padding-top: 0;
+    border-bottom: none;
+}
+
+.owner-display {
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    color: var(--gray-800);
+    word-break: break-all;
+    text-align: right;
+    max-width: 58%;
+}
+
 .session-item {
     display: flex;
     justify-content: space-between;

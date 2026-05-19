@@ -52,23 +52,16 @@
 
         <div class="sidebar">
             <div class="sidebar-section">
-                <h3>ℹ️ Información</h3>
-                <p>Este bot te ayuda a explorar el catálogo de autos, aplicar filtros y dejar tus datos para seguimiento.</p>
-            </div>
-
-            <div class="sidebar-section">
-                <h3>📋 Funciones</h3>
-                <ul>
-                    <li>✅ Explorar catálogo de vehículos</li>
-                    <li>✅ Filtrar por marca, modelo, año y color</li>
-                    <li>✅ Capturar tus datos de contacto</li>
-                </ul>
-            </div>
-
-            <div class="sidebar-section">
                 <h3>⚙️ Configuración</h3>
                 <label for="user-id">ID de Usuario:</label>
                 <input type="text" id="user-id" placeholder="6185555454" value="6185555454">
+
+                <label for="owner-user-id">Vendedor (catálogo):</label>
+                <select id="owner-user-id" title="Owner / tenant para catálogo y CRM"></select>
+                <p class="session-item owner-uuid-row">
+                    <span class="label">Owner UUID:</span>
+                    <span id="owner-display" class="owner-display" title="">—</span>
+                </p>
 
                 <label for="api-url">API URL:</label>
                 <select id="api-url" title="Entorno del bot">
@@ -109,6 +102,6 @@
         </div>
     </div>
 
-    <script src="app.js?v=5"></script>
+    <script src="app.js?v=7"></script>
 </body>
 </html>

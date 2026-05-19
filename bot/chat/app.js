@@ -1,3 +1,17 @@
+// Vendedores para pruebas multi-tenant. Sustituye el UUID de B por un usuario real con catálogo en tu backend.
+const CHAT_OWNERS = [
+  {
+    id: "11111111-1111-4111-8111-111111111111",
+    label: "Catálogo A (demo local)",
+  },
+  {
+    id: "5398a90e-2a65-4dcb-a14c-daa47ec20143",
+    label: "Catálogo Nissan",
+  },
+];
+
+const OWNER_STORAGE_KEY = "chat_owner_user_id";
+
 class ChatInterface {
   // python3 -m http.server 8090
   static BOT_MESSAGE_SEPARATOR = "<<BOT_MSG_BREAK>>";
@@ -11,6 +25,8 @@ class ChatInterface {
     this.charCount = document.getElementById("char-count");
 
     this.userIdInput = document.getElementById("user-id");
+    this.ownerSelect = document.getElementById("owner-user-id");
+    this.ownerDisplay = document.getElementById("owner-display");
     this.apiUrlInput = document.getElementById("api-url");
     this.backendUrlInput = document.getElementById("backend-url");
 
@@ -19,6 +35,7 @@ class ChatInterface {
     this.financingPlanElement = document.getElementById("financing-plan");
     this.promotionElement = document.getElementById("promotion");
 
+    this.previousOwnerId = null;
     this.init();
   }
 
@@ -31,6 +48,8 @@ class ChatInterface {
   }
 
   init() {
+    this.initOwnerSelector();
+
     this.sendBtn.addEventListener("click", () => this.sendMessage());
     this.userInput.addEventListener("keypress", (event) => {
       if (event.key === "Enter" && !event.shiftKey) {
@@ -50,7 +69,142 @@ class ChatInterface {
       void this.resetConversation();
     });
 
+    if (this.ownerSelect) {
+      this.ownerSelect.addEventListener("change", () => {
+        void this.onOwnerChange();
+      });
+    }
+
     this.renderWelcomeMessage();
+  }
+
+  initOwnerSelector() {
+    if (!this.ownerSelect) {
+      return;
+    }
+
+    this.ownerSelect.innerHTML = "";
+    for (const owner of CHAT_OWNERS) {
+      const option = document.createElement("option");
+      option.value = owner.id;
+      option.textContent = owner.label;
+      this.ownerSelect.appendChild(option);
+    }
+
+    const stored = localStorage.getItem(OWNER_STORAGE_KEY);
+    const validStored = CHAT_OWNERS.some((o) => o.id === stored);
+    if (validStored && stored) {
+      this.ownerSelect.value = stored;
+    } else if (CHAT_OWNERS.length) {
+      this.ownerSelect.value = CHAT_OWNERS[0].id;
+    }
+
+    this.previousOwnerId = this.getOwnerUserId();
+    this.updateOwnerDisplay();
+  }
+
+  getOwnerUserId() {
+    if (!this.ownerSelect) {
+      return "";
+    }
+    return String(this.ownerSelect.value || "").trim();
+  }
+
+  updateOwnerDisplay() {
+    if (!this.ownerDisplay) {
+      return;
+    }
+    const ownerId = this.getOwnerUserId();
+    if (!ownerId) {
+      this.ownerDisplay.textContent = "—";
+      return;
+    }
+    const short =
+      ownerId.length > 20 ? `${ownerId.slice(0, 8)}…${ownerId.slice(-4)}` : ownerId;
+    this.ownerDisplay.textContent = short;
+    this.ownerDisplay.title = ownerId;
+  }
+
+  persistOwnerSelection() {
+    const ownerId = this.getOwnerUserId();
+    if (ownerId) {
+      localStorage.setItem(OWNER_STORAGE_KEY, ownerId);
+    }
+    this.updateOwnerDisplay();
+  }
+
+  buildChatPayload(message, userId) {
+    return {
+      user_id: userId,
+      message,
+      platform: "web",
+      owner_user_id: this.getOwnerUserId(),
+      persist_to_backend: true,
+    };
+  }
+
+  hasChatMessages() {
+    return Boolean(this.messagesContainer?.querySelector(".message"));
+  }
+
+  clearSessionPanel() {
+    if (this.currentNodeElement) {
+      this.currentNodeElement.textContent = "-";
+    }
+    if (this.selectedCarElement) {
+      this.selectedCarElement.textContent = "-";
+    }
+    if (this.financingPlanElement) {
+      this.financingPlanElement.textContent = "-";
+    }
+    if (this.promotionElement) {
+      this.promotionElement.textContent = "-";
+    }
+  }
+
+  async onOwnerChange() {
+    const newOwnerId = this.getOwnerUserId();
+    const previousOwnerId = this.previousOwnerId;
+
+    if (newOwnerId === previousOwnerId) {
+      this.persistOwnerSelection();
+      return;
+    }
+
+    if (this.hasChatMessages()) {
+      const ok = confirm(
+        "Al cambiar de vendedor se reinicia la sesión del bot para este teléfono. ¿Continuar?"
+      );
+      if (!ok) {
+        this.ownerSelect.value = previousOwnerId || CHAT_OWNERS[0]?.id || "";
+        this.updateOwnerDisplay();
+        return;
+      }
+    }
+
+    const userId = (this.userIdInput?.value || "").trim();
+    if (userId) {
+      this.setInputState(false);
+      try {
+        await this.resetSessionOnServer(userId, { skipConfirm: true });
+      } catch (error) {
+        const msg = error?.message || String(error);
+        alert(`No se pudo reiniciar la sesión: ${msg}`);
+        this.ownerSelect.value = previousOwnerId || CHAT_OWNERS[0]?.id || "";
+        this.updateOwnerDisplay();
+        this.setInputState(true);
+        return;
+      } finally {
+        this.setInputState(true);
+      }
+    } else {
+      this.renderWelcomeMessage();
+      this.clearSessionPanel();
+    }
+
+    this.previousOwnerId = newOwnerId;
+    this.persistOwnerSelection();
+    this.setStatus("Vendedor cambiado — sesión reiniciada", "#d1fae5");
   }
 
   renderWelcomeMessage() {
@@ -106,6 +260,11 @@ class ChatInterface {
       return;
     }
 
+    if (!this.getOwnerUserId()) {
+      alert("Selecciona un vendedor (catálogo).");
+      return;
+    }
+
     if (!text) {
       return;
     }
@@ -150,11 +309,7 @@ class ChatInterface {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        user_id: userId,
-        message,
-        platform: "web",
-      }),
+      body: JSON.stringify(this.buildChatPayload(message, userId)),
     });
 
     if (!response.ok) {
@@ -188,6 +343,44 @@ class ChatInterface {
     }
   }
 
+  async resetSessionOnServer(userId, { skipConfirm = false } = {}) {
+    const resetUrl = this.getResetEndpoint();
+    const response = await fetch(resetUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        platform: "web",
+      }),
+    });
+
+    if (!response.ok) {
+      let detail = `HTTP ${response.status}`;
+      try {
+        const errorPayload = await response.json();
+        if (errorPayload?.detail) {
+          detail = String(errorPayload.detail);
+        } else if (errorPayload?.message) {
+          detail = String(errorPayload.message);
+        }
+      } catch {
+        // Ignora parseo y usa detail por defecto.
+      }
+      throw new Error(detail);
+    }
+
+    this.renderWelcomeMessage();
+    this.clearSessionPanel();
+    this.userInput.value = "";
+    this.updateCharCount();
+    this.autoResize();
+    if (!skipConfirm) {
+      this.setStatus("Sesión reiniciada", "#d1fae5");
+    }
+  }
+
   async resetConversation() {
     if (!confirm("¿Quieres limpiar la conversación actual?")) {
       return;
@@ -199,52 +392,9 @@ class ChatInterface {
       return;
     }
 
-    const resetUrl = this.getResetEndpoint();
     this.setInputState(false);
     try {
-      const response = await fetch(resetUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          user_id: userId,
-          platform: "web",
-        }),
-      });
-
-      if (!response.ok) {
-        let detail = `HTTP ${response.status}`;
-        try {
-          const errorPayload = await response.json();
-          if (errorPayload?.detail) {
-            detail = String(errorPayload.detail);
-          } else if (errorPayload?.message) {
-            detail = String(errorPayload.message);
-          }
-        } catch {
-          // Ignora parseo y usa detail por defecto.
-        }
-        throw new Error(detail);
-      }
-
-      this.renderWelcomeMessage();
-      if (this.currentNodeElement) {
-        this.currentNodeElement.textContent = "-";
-      }
-      if (this.selectedCarElement) {
-        this.selectedCarElement.textContent = "-";
-      }
-      if (this.financingPlanElement) {
-        this.financingPlanElement.textContent = "-";
-      }
-      if (this.promotionElement) {
-        this.promotionElement.textContent = "-";
-      }
-      this.userInput.value = "";
-      this.updateCharCount();
-      this.autoResize();
-      this.setStatus("Sesión reiniciada", "#d1fae5");
+      await this.resetSessionOnServer(userId);
     } catch (error) {
       const msg = error?.message || String(error);
       alert(
