@@ -32,6 +32,7 @@ services:
       WC_TIMEOUT_MS: ${WC_TIMEOUT_MS:-8000}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       BACKEND_PUBLIC_URL: ${BACKEND_PUBLIC_URL:-}
+      BACKEND_SERVICE_TOKEN: ${BACKEND_SERVICE_TOKEN:-}
     depends_on:
       - autobot
 

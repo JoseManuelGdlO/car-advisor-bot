@@ -6,6 +6,7 @@ import { ChannelConversationContext, ClientLead, Conversation } from "../models/
 import { setBotSessionDisabled } from "../services/botEngineClient.js";
 import { upsertConversationEvent } from "../services/conversationService.js";
 import { appLog } from "../utils/appLogger.js";
+import { resolveRequestOwner } from "../utils/resolveRequestOwner.js";
 
 export const botSetControlSchema = z.object({
   isHumanControlled: z.boolean(),
@@ -78,7 +79,7 @@ export const botUpsertConversation = async (req, res) => {
   // Delega toda la lógica de persistencia a un servicio reutilizable por otros canales.
   // Este endpoint es la entrada oficial de eventos del bot/canales al CRM.
   const { user_id, platform, message, selected_car, customer_info, financing_selection, promotion_selection } = req.body;
-  const ownerUserId = req.auth.userId || env.bot.defaultOwnerUserId;
+  const ownerUserId = resolveRequestOwner(req, { bodyField: "owner_user_id" });
   const normalizedPlatform = normalizeInboundChannel(platform || env.bot.defaultInboundChannel || "web");
   const from = String(req.body.from || "client").trim().toLowerCase();
   appLog.info(
@@ -116,10 +117,7 @@ export const botUpsertConversation = async (req, res) => {
 
 export const botSetConversationControl = async (req, res) => {
   const { isHumanControlled } = botSetControlSchema.parse(req.body || {});
-  const ownerUserId = req.auth.userId || env.bot.defaultOwnerUserId;
-  if (!ownerUserId) {
-    throw new ApiError(500, "owner user is not configured");
-  }
+  const ownerUserId = resolveRequestOwner(req, { bodyField: "owner_user_id" });
   const conversationId = String(req.params.conversationId || "").trim();
   if (!conversationId) {
     throw new ApiError(400, "conversationId is required");

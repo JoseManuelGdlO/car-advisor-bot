@@ -23,7 +23,7 @@ const botPushNotifySchema = z.object({
 });
 
 const ensureServiceTokenOwnsTarget = (req, ownerUserId) => {
-  if (req.auth?.type === "service" && req.auth.userId !== ownerUserId) {
+  if (req.auth?.type === "service" && req.auth.scope === "tenant" && req.auth.userId !== ownerUserId) {
     throw new ApiError(403, "Service token cannot send push notifications for another owner");
   }
 };

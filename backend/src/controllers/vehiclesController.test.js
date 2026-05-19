@@ -7,7 +7,7 @@ import { Vehicle } from "../models/index.js";
 const ownerUserId = "11111111-1111-4111-8111-111111111111";
 
 const createReq = (query = {}) => ({
-  auth: { userId: ownerUserId },
+  auth: { type: "user", userId: ownerUserId },
   query,
 });
 

@@ -75,11 +75,22 @@ def _normalize_vehicles_payload(payload: Any) -> list[dict[str, Any]]:
     return []
 
 
+def _vehicles_owner_params() -> dict[str, str]:
+    from src.tools.database import _owner_query_params
+
+    return _owner_query_params()
+
+
 def fetch_vehicles() -> list[dict[str, Any]]:
     """Obtiene catalogo de vehiculos completo desde backend."""
 
     url = f"{_vehicles_api_base_url()}/vehicles"
-    response = requests.get(url, headers=_vehicles_api_headers(), timeout=6)
+    response = requests.get(
+        url,
+        headers=_vehicles_api_headers(),
+        params=_vehicles_owner_params() or None,
+        timeout=6,
+    )
     response.raise_for_status()
     return _normalize_vehicles_payload(response.json())
 
@@ -94,6 +105,9 @@ def search_vehicles(filters: dict[str, Any]) -> list[dict[str, Any]]:
             continue
         params[key] = value
     url = f"{_vehicles_api_base_url()}/vehicles/search"
+    owner_params = _vehicles_owner_params()
+    if owner_params:
+        params = {**params, **owner_params}
     response = requests.get(url, headers=_vehicles_api_headers(), params=params, timeout=6)
     response.raise_for_status()
     return _normalize_vehicles_payload(response.json())
@@ -142,7 +156,12 @@ def fetch_vehicle_by_id(vehicle_id: str) -> dict[str, Any] | None:
     if not cleaned_id:
         return None
     url = f"{_vehicles_api_base_url()}/vehicles/{cleaned_id}"
-    response = requests.get(url, headers=_vehicles_api_headers(), timeout=6)
+    response = requests.get(
+        url,
+        headers=_vehicles_api_headers(),
+        params=_vehicles_owner_params() or None,
+        timeout=6,
+    )
     if response.status_code == 404:
         return None
     response.raise_for_status()
@@ -215,6 +234,9 @@ def fetch_vehicle_images(
         params["limit"] = limit
     if normalized_mode == "next" and isinstance(cursor, int) and cursor >= 0:
         params["cursor"] = cursor
+    owner_params = _vehicles_owner_params()
+    if owner_params:
+        params = {**params, **owner_params}
 
     url = f"{_vehicles_api_base_url()}/vehicles/{cleaned_id}/images"
     response = requests.get(url, headers=_vehicles_api_headers(), params=params, timeout=6)
@@ -608,7 +630,7 @@ def notify_advisor(
     push_body: str | None = None,
     notification_kind: str = "lead_interest",
 ) -> bool:
-    """Envia push al owner via backend API `/push/send`.
+    """Envia push al owner via backend API `/bot/push-notify`.
 
     Por defecto notifica un lead de vehiculo. Con push_title y push_body se puede
     personalizar el mensaje (p. ej. solicitud de asesor humano).
@@ -618,7 +640,7 @@ def notify_advisor(
     if not normalized_owner_user_id:
         return False
 
-    endpoint = f"{_vehicles_api_base_url()}/push/send"
+    endpoint = f"{_vehicles_api_base_url()}/bot/push-notify"
     customer_name = str(customer_info.get("nombre", "")).strip()
     customer_phone = str(customer_info.get("telefono", "")).strip()
     customer_email = str(customer_info.get("email", "")).strip()
@@ -634,7 +656,7 @@ def notify_advisor(
             f"Telefono: {customer_phone or 'N/D'}."
         )
     payload = {
-        "ownerUserId": normalized_owner_user_id,
+        "owner_user_id": normalized_owner_user_id,
         "title": title,
         "body": body,
         "data": {

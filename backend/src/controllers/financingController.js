@@ -6,9 +6,12 @@ import {
   VehicleFinancingPlan,
 } from "../models/index.js";
 import { ApiError } from "../utils/errors.js";
+import { resolveRequestOwner } from "../utils/resolveRequestOwner.js";
 
 // Scope multi-tenant por propietario autenticado.
 const ownerWhere = (userId) => ({ ownerUserId: userId });
+
+const resolveOwnerFromRequest = (req) => resolveRequestOwner(req, { queryField: "ownerUserId" });
 
 // Helpers de ownership para validar referencias cruzadas.
 const getOwnedVehicle = async (userId, vehicleId) => {
@@ -38,7 +41,7 @@ const planInclude = [
 export const listFinancingPlans = async (req, res) => {
   // Lista catálogo de planes de financiamiento del tenant.
   const rows = await FinancingPlan.findAll({
-    where: ownerWhere(req.auth.userId),
+    where: ownerWhere(resolveOwnerFromRequest(req)),
     include: planInclude,
     order: [["updatedAt", "DESC"]],
   });
@@ -66,7 +69,7 @@ export const getFinancingPlanByVehicleId = async (req, res) => {
   // Busca planes asociados a un vehículo específico del mismo owner.
   const vehicleId = req.params.vehicleId ?? req.params.id;
   if (!vehicleId) throw new ApiError(400, "vehicleId is required");
-  const userId = req.auth.userId;
+  const userId = resolveOwnerFromRequest(req);
   const rows = await FinancingPlan.findAll({
     where: ownerWhere(userId),
     include: [

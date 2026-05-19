@@ -1,6 +1,7 @@
-import { verifyJwt, sha256 } from "../utils/auth.js";
+import { verifyJwt } from "../utils/auth.js";
 import { ApiError } from "../utils/errors.js";
-import { ServiceToken, User } from "../models/index.js";
+import { User } from "../models/index.js";
+import { resolveServiceAuth } from "../utils/serviceTokenAuth.js";
 
 // Extrae token Authorization: Bearer <token>.
 const getBearer = (header = "") => header.replace(/^Bearer\s+/i, "").trim();
@@ -24,17 +25,14 @@ export const requireUserAuth = async (req, _res, next) => {
 
 export const requireServiceToken = async (req, _res, next) => {
   try {
-    // 1) busca token plano en header.
     const token = getBearer(req.headers.authorization);
     if (!token) throw new ApiError(401, "Missing service token");
-    // 2) compara hash en DB y exige no revocado.
-    const record = await ServiceToken.findOne({ where: { tokenHash: sha256(token), revokedAt: null } });
-    if (!record) throw new ApiError(401, "Invalid service token");
-    // 3) actualiza actividad + setea contexto auth de servicio.
-    await record.update({ lastUsedAt: new Date() });
-    req.auth = { type: "service", userId: record.ownerUserId, scopes: record.scopes || [] };
+    const auth = await resolveServiceAuth(token);
+    if (!auth) throw new ApiError(401, "Invalid service token");
+    req.auth = auth;
     return next();
-  } catch (_err) {
+  } catch (err) {
+    if (err instanceof ApiError) return next(err);
     return next(new ApiError(401, "Unauthorized service token"));
   }
 };
@@ -59,13 +57,12 @@ export const requireUserOrServiceAuth = async (req, res, next) => {
   }
 
   try {
-    // Camino B: autenticación por token de servicio.
-    const record = await ServiceToken.findOne({ where: { tokenHash: sha256(token), revokedAt: null } });
-    if (!record) throw new ApiError(401, "Invalid service token");
-    await record.update({ lastUsedAt: new Date() });
-    req.auth = { type: "service", userId: record.ownerUserId, scopes: record.scopes || [] };
+    const auth = await resolveServiceAuth(token);
+    if (!auth) throw new ApiError(401, "Invalid service token");
+    req.auth = auth;
     return next();
-  } catch (_err) {
+  } catch (err) {
+    if (err instanceof ApiError) return next(err);
     return next(new ApiError(401, "Unauthorized"));
   }
 };

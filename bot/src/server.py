@@ -21,6 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 
 from src.graph import build_graph
+from src.context.tenant_context import reset_owner_user_id, set_owner_user_id
 from src.tools.database import (
     delete_bot_session,
     fetch_active_bot_session,
@@ -56,6 +57,8 @@ class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1)
     platform: str = Field(default=DEFAULT_INBOUND_PLATFORM)
     persist_to_backend: bool = Field(default=True)
+    owner_user_id: str | None = None
+    conversation_id: str | None = None
 
     @field_validator("user_id", "message")
     @classmethod
@@ -236,27 +239,55 @@ def _collect_tail_ai_messages(messages: list[dict[str, Any]]) -> list[dict[str, 
     return collected
 
 
+def _resolve_chat_owner(payload: ChatRequest, state: dict[str, Any]) -> str:
+    """Prioridad: body > state cargado > BOT_CRM_OWNER_USER_ID (dev)."""
+
+    from_body = str(payload.owner_user_id or "").strip()
+    if from_body:
+        return from_body
+    from_state = str(state.get("owner_user_id", "")).strip()
+    if from_state:
+        return from_state
+    return str(os.getenv("BOT_CRM_OWNER_USER_ID", "")).strip()
+
+
 @app.post("/chat", response_model=ChatResponse)
 def chat(payload: ChatRequest) -> ChatResponse:
     """Procesa un turno de chat y devuelve mensaje + opciones de UI."""
 
+    owner_token = None
     try:
         # 1) Estado del grafo + conversacion ya vinculada en `bot_sessions`, si existe.
         loaded_state, conv_from_session = fetch_active_bot_session(payload.user_id, payload.platform)
         state = loaded_state or _build_initial_state()
         state["platform"] = payload.platform
         state["user_id"] = payload.user_id
-        conversation_id = conv_from_session
+        conversation_id = str(payload.conversation_id or "").strip() or conv_from_session
+
+        resolved_owner = _resolve_chat_owner(payload, state)
+        if payload.persist_to_backend and not resolved_owner:
+            raise HTTPException(
+                status_code=400,
+                detail="owner_user_id is required when persist_to_backend is true",
+            )
 
         # Silencio total: sin persistir en grafo ni invocar LLM cuando la sesion esta apagada.
         if state.get("bot_disabled"):
             if payload.persist_to_backend:
                 crm_early = upsert_inbound_user_message(
-                    payload.user_id, payload.message, payload.platform
+                    payload.user_id,
+                    payload.message,
+                    payload.platform,
+                    owner_user_id=resolved_owner or None,
                 )
                 if crm_early:
                     conversation_id = crm_early["conversation_id"]
-                    state["owner_user_id"] = str(crm_early.get("owner_user_id", "")).strip()
+                    crm_owner = str(crm_early.get("owner_user_id", "")).strip()
+                    if crm_owner:
+                        resolved_owner = crm_owner
+                if resolved_owner:
+                    state["owner_user_id"] = resolved_owner
+                    owner_token = set_owner_user_id(resolved_owner)
                 if conversation_id:
                     state["conversation_id"] = conversation_id
                 upsert_bot_session_state(
@@ -269,13 +300,23 @@ def chat(payload: ChatRequest) -> ChatResponse:
 
         # 2) Registrar mensaje entrante en backend CRM y obtener IDs de relacion.
         crm = (
-            upsert_inbound_user_message(payload.user_id, payload.message, payload.platform)
+            upsert_inbound_user_message(
+                payload.user_id,
+                payload.message,
+                payload.platform,
+                owner_user_id=resolved_owner or None,
+            )
             if payload.persist_to_backend
             else None
         )
         if crm:
             conversation_id = crm["conversation_id"]
-            state["owner_user_id"] = str(crm.get("owner_user_id", "")).strip()
+            crm_owner = str(crm.get("owner_user_id", "")).strip()
+            if crm_owner:
+                resolved_owner = crm_owner
+        if resolved_owner:
+            state["owner_user_id"] = resolved_owner
+            owner_token = set_owner_user_id(resolved_owner)
         if conversation_id:
             state["conversation_id"] = conversation_id
 
@@ -333,9 +374,13 @@ def chat(payload: ChatRequest) -> ChatResponse:
             financing_plan=str(updated_state.get("selected_financing_plan_name", "")),
             promotion=str(updated_state.get("selected_promotion_title", "")),
         )
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.exception("Error procesando /chat")
         raise HTTPException(status_code=500, detail="Error interno procesando chat.") from exc
+    finally:
+        reset_owner_user_id(owner_token)
 
 
 @app.post("/session-control", response_model=SessionControlResponse)

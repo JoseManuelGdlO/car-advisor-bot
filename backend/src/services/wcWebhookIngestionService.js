@@ -150,6 +150,8 @@ export const ingestWhatsappConnectEvent = async ({ normalizedEvent, credentials:
       userId: normalizedEvent.externalUserId,
       platform: "whatsapp",
       message: incomingMessage,
+      ownerUserId: normalizedEvent.ownerUserId,
+      conversationId: conversationResult.conversationId,
     });
 
     logWcWebhook("pipeline: bot replies", { providerEventId: normalizedEvent.eventId, count: botReplies.length });

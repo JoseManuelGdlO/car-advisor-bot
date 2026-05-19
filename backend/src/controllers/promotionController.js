@@ -1,9 +1,12 @@
 import { Op } from "sequelize";
 import { Promotion, Vehicle } from "../models/index.js";
 import { ApiError } from "../utils/errors.js";
+import { resolveRequestOwner } from "../utils/resolveRequestOwner.js";
 
 // Scope multi-tenant por propietario autenticado.
 const ownerWhere = (userId) => ({ ownerUserId: userId });
+
+const resolveOwnerFromRequest = (req) => resolveRequestOwner(req, { queryField: "ownerUserId" });
 
 const VEHICLE_LABEL_MISSING = "[no disponible]";
 
@@ -26,7 +29,7 @@ const getOwnedVehicle = async (userId, vehicleId) => {
 
 // Lista promociones del tenant en orden de actualización.
 export const listPromotions = async (req, res) => {
-  const userId = req.auth.userId;
+  const userId = resolveOwnerFromRequest(req);
   const rows = await Promotion.findAll({ where: ownerWhere(userId), order: [["updatedAt", "DESC"]] });
   const plains = rows.map((row) => row.get({ plain: true }));
   const idSet = new Set();
@@ -65,7 +68,7 @@ export const getPromotionsByVehicleId = async (req, res) => {
   // Filtra promociones activas aplicables a un vehículo puntual.
   const vehicleId = req.params.vehicleId ?? req.params.id;
   if (!vehicleId) throw new ApiError(400, "vehicleId is required");
-  const userId = req.auth.userId;
+  const userId = resolveOwnerFromRequest(req);
   await getOwnedVehicle(userId, vehicleId);
   const rows = await Promotion.findAll({
     where: { ...ownerWhere(userId), active: true },

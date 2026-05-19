@@ -30,6 +30,10 @@ export const env = {
     const v = (must("LOG_LEVEL", "info") || "info").trim().toLowerCase();
     return v === "debug" ? "debug" : "info";
   })(),
+  service: {
+    /** Token global del motor del bot (mismo valor que en autobot). */
+    backendServiceToken: must("BACKEND_SERVICE_TOKEN", ""),
+  },
   bot: {
     defaultOwnerUserId: must("BOT_DEFAULT_OWNER_USER_ID", ""),
     defaultInboundChannel: must("BOT_DEFAULT_INBOUND_CHANNEL", "web"),

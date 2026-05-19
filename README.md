@@ -90,7 +90,8 @@ Usa `bot/.env.example`:
 
 - DB y OpenAI como antes
 - `BACKEND_API_URL=http://localhost:4000/api`
-- `BACKEND_SERVICE_TOKEN=<token_permanente_generado_en_backend>`
+- `BACKEND_SERVICE_TOKEN=<secreto_compartido_backend_y_bot>` (mismo valor en `backend/.env`)
+- Con multi-tenant, el owner va en cada request (`owner_user_id` en body o `ownerUserId` en query); ver contrato en el plan de auth global.
 
 ## Puesta en marcha
 
@@ -133,10 +134,10 @@ Usa `bot/.env.example`:
    - `POST /api/auth/register`
    - `POST /api/auth/login`
 
-2. Token de servicio (bot):
-   - `POST /api/auth/service-tokens` con JWT de usuario
-   - guardar token plano devuelto en `BACKEND_SERVICE_TOKEN`
-   - revocar con `POST /api/auth/service-tokens/:id/revoke`
+2. Token de servicio (bot, multi-tenant):
+   - Definir `BACKEND_SERVICE_TOKEN` en **backend** y **bot** (secret fuerte, no exponer al frontend)
+   - En cada llamada M2M enviar `owner_user_id` (JSON) o `ownerUserId` (query) según el endpoint
+   - Tokens legacy por tenant (`POST /api/auth/service-tokens`) siguen funcionando para integraciones 1:1
 
 ## Endpoints principales
 

@@ -40,20 +40,25 @@ export const setBotSessionDisabled = async ({ userId, platform, botDisabled }) =
   }
 };
 
-export const runBotChat = async ({ userId, platform, message }) => {
+export const runBotChat = async ({ userId, platform, message, ownerUserId, conversationId }) => {
   // Wrapper del endpoint /chat para desacoplar la orquestación del controlador HTTP.
   const base = botEngineBaseUrl();
   if (!base) throw new ApiError(500, "BOT_ENGINE_URL is not configured");
+  const body = {
+    user_id: String(userId || "").trim(),
+    platform: String(platform || "web").trim().toLowerCase(),
+    message: String(message || "").trim(),
+    persist_to_backend: false,
+  };
+  const owner = String(ownerUserId || "").trim();
+  if (owner) body.owner_user_id = owner;
+  const convId = String(conversationId || "").trim();
+  if (convId) body.conversation_id = convId;
   // 1) Invoca el motor FastAPI del bot.
   const response = await fetch(`${base}/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      user_id: String(userId || "").trim(),
-      platform: String(platform || "web").trim().toLowerCase(),
-      message: String(message || "").trim(),
-      persist_to_backend: false,
-    }),
+    body: JSON.stringify(body),
   }).catch((err) => {
     logWcWebhook("bot engine: network error", { message: err?.message || String(err) });
     throw new ApiError(502, "Could not reach bot engine");

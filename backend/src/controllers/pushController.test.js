@@ -11,9 +11,9 @@ const createResponse = () => ({
   },
 });
 
-test("botPushNotify blocks service tokens from targeting another owner", async () => {
+test("botPushNotify blocks tenant service tokens from targeting another owner", async () => {
   const req = {
-    auth: { type: "service", userId: ownerA },
+    auth: { type: "service", scope: "tenant", userId: ownerA },
     body: {
       owner_user_id: ownerB,
       title: "Nuevo lead",
@@ -31,9 +31,9 @@ test("botPushNotify blocks service tokens from targeting another owner", async (
   assert.match(nextError?.message, /another owner/);
 });
 
-test("sendPush blocks service tokens from targeting another owner", async () => {
+test("sendPush blocks tenant service tokens from targeting another owner", async () => {
   const req = {
-    auth: { type: "service", userId: ownerA },
+    auth: { type: "service", scope: "tenant", userId: ownerA },
     body: {
       ownerUserId: ownerB,
       title: "Nuevo mensaje",

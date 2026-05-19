@@ -136,6 +136,8 @@ export const ingestInstagramMetaEvent = async ({ normalizedEvent, credentials })
       userId: normalizedEvent.externalUserId,
       platform: "instagram",
       message: incomingMessage,
+      ownerUserId: normalizedEvent.ownerUserId,
+      conversationId: conversationResult.conversationId,
     });
 
     logIgWebhook("pipeline: bot replies", { providerEventId: normalizedEvent.eventId, count: botReplies.length });

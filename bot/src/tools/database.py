@@ -15,6 +15,8 @@ import requests
 from mysql.connector.connection import MySQLConnection
 from mysql.connector.errors import Error as MySQLError
 
+from src.context.tenant_context import get_owner_user_id
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_BOT_SETTINGS = {
@@ -42,6 +44,35 @@ def _backend_headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"} if token else {}
 
 
+def _owner_from_context(explicit: str | None = None) -> str:
+    """Owner explícito o del contextvar del request."""
+
+    explicit_owner = str(explicit or "").strip()
+    if explicit_owner:
+        return explicit_owner
+    return get_owner_user_id()
+
+
+def _owner_query_params(explicit: str | None = None) -> dict[str, str]:
+    """Query params de tenant para GET al backend."""
+
+    owner = _owner_from_context(explicit)
+    if not owner:
+        logger.warning("Backend request without owner_user_id in context")
+        return {}
+    return {"ownerUserId": owner}
+
+
+def _with_owner_body(body: dict[str, Any], explicit: str | None = None) -> dict[str, Any]:
+    """Añade owner_user_id al body JSON si hay owner resuelto."""
+
+    payload = dict(body)
+    owner = _owner_from_context(explicit)
+    if owner:
+        payload["owner_user_id"] = owner
+    return payload
+
+
 def _backend_api_url(path: str) -> str:
     """Helper de apoyo para backend api url."""
     base = os.getenv("BACKEND_API_URL", "").rstrip("/")
@@ -61,7 +92,7 @@ def _clean_setting(value: Any, default: str) -> str:
     return text
 
 
-_bot_settings_cache_entry: tuple[dict[str, str], float] | None = None
+_bot_settings_cache: dict[str, tuple[dict[str, str], float]] = {}
 
 
 def _bot_settings_cache_ttl_seconds() -> float:
@@ -74,25 +105,42 @@ def _bot_settings_cache_ttl_seconds() -> float:
         return 60.0
 
 
-def clear_bot_settings_cache() -> None:
+def clear_bot_settings_cache(owner_id: str | None = None) -> None:
     """Vacía la caché de settings (tests o forzar lectura fresca)."""
 
-    global _bot_settings_cache_entry
-    _bot_settings_cache_entry = None
+    global _bot_settings_cache
+    if owner_id:
+        _bot_settings_cache.pop(str(owner_id).strip(), None)
+    else:
+        _bot_settings_cache = {}
 
 
-def _fetch_bot_settings_from_backend(url: str, headers: dict[str, str]) -> dict[str, str] | None:
-    """GET /bot/settings; devuelve dict normalizado o None si hay que usar defaults."""
+def get_bot_settings() -> dict[str, str]:
+    """Obtiene bot settings desde backend con fallback seguro y caché en memoria (TTL)."""
 
+    global _bot_settings_cache
+    owner_key = _owner_from_context() or "__default__"
+    ttl = _bot_settings_cache_ttl_seconds()
+    if ttl > 0 and owner_key in _bot_settings_cache:
+        cached, cached_at = _bot_settings_cache[owner_key]
+        if time.monotonic() - cached_at < ttl:
+            return dict(cached)
+
+    url = _backend_api_url("/bot/settings")
+    headers = _backend_headers()
+    if not url or "Authorization" not in headers:
+        return dict(DEFAULT_BOT_SETTINGS)
+
+    params = _owner_query_params()
     try:
-        response = requests.get(url, headers=headers, timeout=6)
+        response = requests.get(url, headers=headers, params=params or None, timeout=6)
         if response.status_code != 200:
             logger.warning("Bot settings fetch failed status=%s", response.status_code)
-            return None
+            return dict(DEFAULT_BOT_SETTINGS)
         payload = response.json()
         if not isinstance(payload, dict):
-            return None
-        return {
+            return dict(DEFAULT_BOT_SETTINGS)
+        resolved = {
             "tone": _clean_setting(payload.get("tone"), DEFAULT_BOT_SETTINGS["tone"]),
             "emojiStyle": _clean_setting(payload.get("emojiStyle"), DEFAULT_BOT_SETTINGS["emojiStyle"]),
             "salesProactivity": _clean_setting(
@@ -106,30 +154,10 @@ def _fetch_bot_settings_from_backend(url: str, headers: dict[str, str]) -> dict[
         }
     except Exception:
         logger.exception("Bot settings fetch failed unexpectedly")
-        return None
-
-
-def get_bot_settings() -> dict[str, str]:
-    """Obtiene bot settings desde backend con fallback seguro y caché en memoria (TTL)."""
-
-    global _bot_settings_cache_entry
-    ttl = _bot_settings_cache_ttl_seconds()
-    if ttl > 0 and _bot_settings_cache_entry is not None:
-        cached, cached_at = _bot_settings_cache_entry
-        if time.monotonic() - cached_at < ttl:
-            return dict(cached)
-
-    url = _backend_api_url("/bot/settings")
-    headers = _backend_headers()
-    if not url or "Authorization" not in headers:
-        return dict(DEFAULT_BOT_SETTINGS)
-
-    resolved = _fetch_bot_settings_from_backend(url, headers)
-    if resolved is None:
         return dict(DEFAULT_BOT_SETTINGS)
 
     if ttl > 0:
-        _bot_settings_cache_entry = (resolved, time.monotonic())
+        _bot_settings_cache[owner_key] = (resolved, time.monotonic())
     return dict(resolved)
 
 
@@ -140,7 +168,7 @@ def push_event_to_backend(payload: dict[str, Any]) -> None:
     if not url or "Authorization" not in headers:
         return
     try:
-        requests.post(url, json=payload, headers=headers, timeout=5)
+        requests.post(url, json=_with_owner_body(payload), headers=headers, timeout=5)
     except Exception:
         return
 
@@ -178,7 +206,9 @@ def fetch_financing_plans() -> list[dict[str, Any]]:
     headers = _backend_headers()
     if not url:
         return []
-    response = requests.get(url, headers=headers, timeout=6)
+    response = requests.get(
+        url, headers=headers, params=_owner_query_params() or None, timeout=6
+    )
     if response.status_code == 404:
         return []
     response.raise_for_status()
@@ -195,7 +225,9 @@ def fetch_financing_plans_by_vehicle(vehicle_id: str) -> list[dict[str, Any]]:
     headers = _backend_headers()
     if not url:
         return []
-    response = requests.get(url, headers=headers, timeout=6)
+    response = requests.get(
+        url, headers=headers, params=_owner_query_params() or None, timeout=6
+    )
     if response.status_code == 404:
         return []
     response.raise_for_status()
@@ -209,7 +241,9 @@ def fetch_promotions() -> list[dict[str, Any]]:
     headers = _backend_headers()
     if not url:
         return []
-    response = requests.get(url, headers=headers, timeout=6)
+    response = requests.get(
+        url, headers=headers, params=_owner_query_params() or None, timeout=6
+    )
     if response.status_code == 404:
         return []
     response.raise_for_status()
@@ -226,14 +260,22 @@ def fetch_promotions_by_vehicle(vehicle_id: str) -> list[dict[str, Any]]:
     headers = _backend_headers()
     if not url:
         return []
-    response = requests.get(url, headers=headers, timeout=6)
+    response = requests.get(
+        url, headers=headers, params=_owner_query_params() or None, timeout=6
+    )
     if response.status_code == 404:
         return []
     response.raise_for_status()
     return _normalize_promotions_payload(response.json())
 
 
-def upsert_inbound_user_message(phone: str, message: str, platform: str = "web") -> dict[str, Any] | None:
+def upsert_inbound_user_message(
+    phone: str,
+    message: str,
+    platform: str = "web",
+    *,
+    owner_user_id: str | None = None,
+) -> dict[str, Any] | None:
     """Registra mensaje entrante en backend y retorna IDs CRM normalizados."""
 
     normalized_phone = str(phone).strip()
@@ -252,14 +294,17 @@ def upsert_inbound_user_message(phone: str, message: str, platform: str = "web")
     try:
         response = requests.post(
             url,
-            json={
-                "user_id": normalized_phone,
-                "platform": normalized_platform,
-                "message": normalized_message,
-                "from": "client",
-                "selected_car": "",
-                "customer_info": {},
-            },
+            json=_with_owner_body(
+                {
+                    "user_id": normalized_phone,
+                    "platform": normalized_platform,
+                    "message": normalized_message,
+                    "from": "client",
+                    "selected_car": "",
+                    "customer_info": {},
+                },
+                explicit=owner_user_id,
+            ),
             headers=headers,
             timeout=8,
         )
@@ -318,7 +363,7 @@ def set_conversation_human_controlled(
     try:
         response = requests.patch(
             url,
-            json={"isHumanControlled": is_human_controlled},
+            json=_with_owner_body({"isHumanControlled": is_human_controlled}),
             headers=headers,
             timeout=6,
         )
@@ -355,14 +400,16 @@ def push_assistant_message_to_backend(
     try:
         response = requests.post(
             url,
-            json={
-                "user_id": normalized_phone,
-                "platform": normalized_platform,
-                "message": normalized_content,
-                "from": "assistant",
-                "selected_car": "",
-                "customer_info": {},
-            },
+            json=_with_owner_body(
+                {
+                    "user_id": normalized_phone,
+                    "platform": normalized_platform,
+                    "message": normalized_content,
+                    "from": "assistant",
+                    "selected_car": "",
+                    "customer_info": {},
+                }
+            ),
             headers=headers,
             timeout=8,
         )

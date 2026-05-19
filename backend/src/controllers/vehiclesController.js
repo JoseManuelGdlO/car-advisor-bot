@@ -1,9 +1,12 @@
 import { FinancingPlan, Vehicle } from "../models/index.js";
 import { Op } from "sequelize";
 import { ApiError } from "../utils/errors.js";
+import { resolveRequestOwner } from "../utils/resolveRequestOwner.js";
 
 // Scope multi-tenant por propietario autenticado.
 const ownerWhere = (userId) => ({ ownerUserId: userId });
+
+const resolveOwnerFromRequest = (req) => resolveRequestOwner(req, { queryField: "ownerUserId" });
 const TOP_IMAGES_DEFAULT = 2;
 const NEXT_IMAGES_DEFAULT = 5;
 
@@ -11,7 +14,7 @@ const NEXT_IMAGES_DEFAULT = 5;
 export const listVehicles = async (req, res) =>
   res.json(
     await Vehicle.findAll({
-      where: ownerWhere(req.auth.userId),
+      where: ownerWhere(resolveOwnerFromRequest(req)),
       include: [{ model: FinancingPlan, as: "financingPlans", through: { attributes: ["customRate"] } }],
       order: [["outboundPriority", "DESC"], ["updatedAt", "DESC"]],
     })
@@ -30,7 +33,8 @@ export const updateVehicle = async (req, res, next) => {
 
 export const getVehicleById = async (req, res, next) => {
   // Obtiene detalle puntual de vehículo por id.
-  const row = await Vehicle.findOne({ where: { id: req.params.id, ...ownerWhere(req.auth.userId) } });
+  const ownerUserId = resolveOwnerFromRequest(req);
+  const row = await Vehicle.findOne({ where: { id: req.params.id, ...ownerWhere(ownerUserId) } });
   if (!row) return next(new ApiError(404, "Vehicle not found"));
   return res.json(row);
 };
@@ -39,7 +43,7 @@ export const getVehiclesByFilters = async (req, res) => {
   // Filtros soportados: brand, model, color, year, minPrice, maxPrice.
   // Valores de precio invalidos o negativos se ignoran para no romper UX conversacional.
   const where = {
-    ...ownerWhere(req.auth.userId),
+    ...ownerWhere(resolveOwnerFromRequest(req)),
   };
 
   if (req.query.brand) where.brand = req.query.brand;
@@ -71,7 +75,7 @@ export const getVehiclesByFilters = async (req, res) => {
 export const getVehicleImages = async (req, res, next) => {
   // Paginación de imágenes por cursor para no enviar arreglos grandes en cada request.
   const row = await Vehicle.findOne({
-    where: { id: req.params.id, ...ownerWhere(req.auth.userId) },
+    where: { id: req.params.id, ...ownerWhere(resolveOwnerFromRequest(req)) },
     attributes: ["id", "imageUrls"],
   });
   if (!row) return next(new ApiError(404, "Vehicle not found"));

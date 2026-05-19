@@ -29,7 +29,7 @@ class clientState(TypedDict, total=False):
     - vehicle_images_has_more: indica si hay mas imagenes por pedir al backend.
     - vehicle_images_last_batch: ultimo lote de URLs de imagenes enviado al usuario.
     - user_id: identificador de conversacion (en web/whatsapp suele ser el telefono).
-    - owner_user_id: UUID del owner CRM para operaciones machine-to-machine (ej. push).
+    - owner_user_id: UUID del tenant (vendedor). Obligatorio en /chat con token global antes de leer catálogo; viene del webhook o body.
     - lead_phone_attempts: reintentos al validar telefono en plataformas que lo piden.
     - awaiting_lead_capture_final_confirmation: True cuando ya hay nombre/telefono/email y el bot mostro el resumen pendiente de confirmacion del usuario.
     - lead_capture_done: True cuando ya se notifico y persistio el lead en esta conversacion.
