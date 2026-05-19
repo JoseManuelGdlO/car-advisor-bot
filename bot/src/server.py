@@ -91,6 +91,37 @@ class ChatResponse(BaseModel):
     bot_suppressed: bool = False
 
 
+class SessionControlRequest(BaseModel):
+    """Sincroniza `bot_disabled` en sesion sin invocar el grafo (handoff desde CRM)."""
+
+    user_id: str = Field(..., min_length=1, max_length=255)
+    platform: str = Field(default=DEFAULT_INBOUND_PLATFORM)
+    bot_disabled: bool
+
+    @field_validator("user_id")
+    @classmethod
+    def strip_user_id_session(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("El campo no puede estar vacio.")
+        return normalized
+
+    @field_validator("platform")
+    @classmethod
+    def normalize_platform_session(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in ALLOWED_PLATFORMS:
+            raise ValueError(
+                "Plataforma invalida. Usa: web, whatsapp, telegram, facebook, instagram o api."
+            )
+        return normalized
+
+
+class SessionControlResponse(BaseModel):
+    ok: bool
+    bot_disabled: bool
+
+
 class ResetRequest(BaseModel):
     """Payload para reiniciar sesión del bot (estado en `bot_sessions`)."""
 
@@ -180,6 +211,19 @@ def _build_initial_state() -> dict[str, Any]:
     }
 
 
+def _suppressed_chat_response(state: dict[str, Any]) -> ChatResponse:
+    """Respuesta vacia cuando el bot no debe contestar en este turno."""
+
+    return ChatResponse(
+        reply="",
+        current_node=str(state.get("current_node", "start")),
+        selected_car=str(state.get("selected_car", "")),
+        financing_plan=str(state.get("selected_financing_plan_name", "")),
+        promotion=str(state.get("selected_promotion_title", "")),
+        bot_suppressed=True,
+    )
+
+
 def _collect_tail_ai_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Retorna mensajes de asistente consecutivos al final del historial."""
 
@@ -202,8 +246,28 @@ def chat(payload: ChatRequest) -> ChatResponse:
         state = loaded_state or _build_initial_state()
         state["platform"] = payload.platform
         state["user_id"] = payload.user_id
-        # 2) Registrar mensaje entrante en backend CRM y obtener IDs de relacion.
         conversation_id = conv_from_session
+
+        # Silencio total: sin persistir en grafo ni invocar LLM cuando la sesion esta apagada.
+        if state.get("bot_disabled"):
+            if payload.persist_to_backend:
+                crm_early = upsert_inbound_user_message(
+                    payload.user_id, payload.message, payload.platform
+                )
+                if crm_early:
+                    conversation_id = crm_early["conversation_id"]
+                    state["owner_user_id"] = str(crm_early.get("owner_user_id", "")).strip()
+                if conversation_id:
+                    state["conversation_id"] = conversation_id
+                upsert_bot_session_state(
+                    payload.user_id,
+                    state,
+                    platform=payload.platform,
+                    conversation_id=conversation_id,
+                )
+            return _suppressed_chat_response(state)
+
+        # 2) Registrar mensaje entrante en backend CRM y obtener IDs de relacion.
         crm = (
             upsert_inbound_user_message(payload.user_id, payload.message, payload.platform)
             if payload.persist_to_backend
@@ -214,27 +278,6 @@ def chat(payload: ChatRequest) -> ChatResponse:
             state["owner_user_id"] = str(crm.get("owner_user_id", "")).strip()
         if conversation_id:
             state["conversation_id"] = conversation_id
-        messages = list(state.get("messages", []))
-        messages.append({"role": "user", "content": payload.message, "type": "HumanMessage"})
-        # Evita crecimiento ilimitado del estado persistido.
-        state["messages"] = messages[-MAX_MESSAGES_HISTORY:]
-        previous_len = len(state["messages"])
-
-        if state.get("bot_disabled"):
-            upsert_bot_session_state(
-                payload.user_id,
-                state,
-                platform=payload.platform,
-                conversation_id=conversation_id,
-            )
-            return ChatResponse(
-                reply="",
-                current_node=str(state.get("current_node", "start")),
-                selected_car=str(state.get("selected_car", "")),
-                financing_plan=str(state.get("selected_financing_plan_name", "")),
-                promotion=str(state.get("selected_promotion_title", "")),
-                bot_suppressed=True,
-            )
 
         if crm and crm.get("should_auto_reply") is False:
             upsert_bot_session_state(
@@ -243,14 +286,13 @@ def chat(payload: ChatRequest) -> ChatResponse:
                 platform=payload.platform,
                 conversation_id=conversation_id,
             )
-            return ChatResponse(
-                reply="",
-                current_node=str(state.get("current_node", "start")),
-                selected_car=str(state.get("selected_car", "")),
-                financing_plan=str(state.get("selected_financing_plan_name", "")),
-                promotion=str(state.get("selected_promotion_title", "")),
-                bot_suppressed=True,
-            )
+            return _suppressed_chat_response(state)
+
+        messages = list(state.get("messages", []))
+        messages.append({"role": "user", "content": payload.message, "type": "HumanMessage"})
+        # Evita crecimiento ilimitado del estado persistido.
+        state["messages"] = messages[-MAX_MESSAGES_HISTORY:]
+        previous_len = len(state["messages"])
 
         updated_state = graph.invoke(state)
         updated_messages = list(updated_state.get("messages", []))
@@ -294,6 +336,30 @@ def chat(payload: ChatRequest) -> ChatResponse:
     except Exception as exc:
         logger.exception("Error procesando /chat")
         raise HTTPException(status_code=500, detail="Error interno procesando chat.") from exc
+
+
+@app.post("/session-control", response_model=SessionControlResponse)
+def session_control(payload: SessionControlRequest) -> SessionControlResponse:
+    """Marca la sesion como bot_disabled sin procesar mensajes (sync desde CRM)."""
+
+    try:
+        loaded_state, conv_from_session = fetch_active_bot_session(payload.user_id, payload.platform)
+        state = loaded_state or _build_initial_state()
+        state["platform"] = payload.platform
+        state["user_id"] = payload.user_id
+        state["bot_disabled"] = payload.bot_disabled
+        if conv_from_session:
+            state["conversation_id"] = conv_from_session
+        upsert_bot_session_state(
+            payload.user_id,
+            state,
+            platform=payload.platform,
+            conversation_id=conv_from_session,
+        )
+        return SessionControlResponse(ok=True, bot_disabled=payload.bot_disabled)
+    except Exception as exc:
+        logger.exception("Error procesando /session-control")
+        raise HTTPException(status_code=500, detail="Error interno al actualizar sesion.") from exc
 
 
 @app.post("/reset", response_model=ResetResponse)

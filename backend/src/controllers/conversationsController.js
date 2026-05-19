@@ -1,7 +1,9 @@
 import { z } from "zod";
-import { ClientLead, Conversation, Message } from "../models/index.js";
+import { ChannelConversationContext, ClientLead, Conversation, Message } from "../models/index.js";
 import { ApiError } from "../utils/errors.js";
+import { setBotSessionDisabled } from "../services/botEngineClient.js";
 import { sendConversationAttachmentMessage, sendConversationTextMessage } from "../services/conversationService.js";
+import { normalizeInboundChannel } from "../utils/integrationChannel.js";
 import { normalizePublicImageUrl } from "../utils/publicUrl.js";
 
 // Scope multi-tenant por propietario autenticado.
@@ -45,13 +47,31 @@ export const setControlSchema = z.object({
 
 export const setConversationControl = async (req, res) => {
   const { isHumanControlled } = setControlSchema.parse(req.body || {});
-  const conv = await Conversation.findOne({ where: { id: req.params.id, ...ownerWhere(req.auth.userId) } });
+  const conv = await Conversation.findOne({
+    where: { id: req.params.id, ...ownerWhere(req.auth.userId) },
+    include: [{ model: ClientLead, as: "client" }],
+  });
   if (!conv) throw new ApiError(404, "Conversation not found");
   await conv.update({
     isHumanControlled,
     handoffAt: isHumanControlled ? new Date() : null,
     handoffByUserId: isHumanControlled ? req.auth.userId : null,
   });
+
+  const context = await ChannelConversationContext.findOne({
+    where: { ownerUserId: req.auth.userId, conversationId: conv.id },
+    order: [["updatedAt", "DESC"]],
+  });
+  const userId = String(context?.externalUserId || conv.client?.phone || "").trim();
+  const platform = normalizeInboundChannel(conv.channel || "web");
+  if (userId) {
+    await setBotSessionDisabled({
+      userId,
+      platform,
+      botDisabled: isHumanControlled,
+    });
+  }
+
   return res.json(conv);
 };
 

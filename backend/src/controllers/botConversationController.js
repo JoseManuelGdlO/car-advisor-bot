@@ -2,7 +2,8 @@ import { z } from "zod";
 import { ApiError } from "../utils/errors.js";
 import { normalizeInboundChannel } from "../utils/integrationChannel.js";
 import { env } from "../config/env.js";
-import { Conversation } from "../models/index.js";
+import { ChannelConversationContext, ClientLead, Conversation } from "../models/index.js";
+import { setBotSessionDisabled } from "../services/botEngineClient.js";
 import { upsertConversationEvent } from "../services/conversationService.js";
 import { appLog } from "../utils/appLogger.js";
 
@@ -125,6 +126,7 @@ export const botSetConversationControl = async (req, res) => {
   }
   const conv = await Conversation.findOne({
     where: { id: conversationId, ownerUserId },
+    include: [{ model: ClientLead, as: "client" }],
   });
   if (!conv) {
     throw new ApiError(404, "Conversation not found");
@@ -134,6 +136,21 @@ export const botSetConversationControl = async (req, res) => {
     handoffAt: isHumanControlled ? new Date() : null,
     handoffByUserId: isHumanControlled ? req.auth.userId : null,
   });
+
+  const context = await ChannelConversationContext.findOne({
+    where: { ownerUserId, conversationId: conv.id },
+    order: [["updatedAt", "DESC"]],
+  });
+  const userId = String(context?.externalUserId || conv.client?.phone || "").trim();
+  const platform = normalizeInboundChannel(conv.channel || "web");
+  if (userId) {
+    await setBotSessionDisabled({
+      userId,
+      platform,
+      botDisabled: isHumanControlled,
+    });
+  }
+
   appLog.info(
     "botSetConversationControl",
     `conversationId=${conversationId} isHumanControlled=${isHumanControlled}`,

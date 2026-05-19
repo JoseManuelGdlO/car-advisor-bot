@@ -8,6 +8,38 @@ const WC_IMAGE_MARKER_PREFIX = "<<WC_IMAGE_JSON>>";
 // Sanitiza URL base para evitar dobles slashes al concatenar paths.
 const botEngineBaseUrl = () => String(env.bot.engineUrl || "").replace(/\/$/, "");
 
+/** Sincroniza bot_disabled en bot_sessions (handoff desde CRM, sin invocar /chat). */
+export const setBotSessionDisabled = async ({ userId, platform, botDisabled }) => {
+  const base = botEngineBaseUrl();
+  if (!base) return;
+  const normalizedUserId = String(userId || "").trim();
+  if (!normalizedUserId) return;
+  const normalizedPlatform = String(platform || "web").trim().toLowerCase();
+  try {
+    const response = await fetch(`${base}/session-control`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: normalizedUserId,
+        platform: normalizedPlatform,
+        bot_disabled: Boolean(botDisabled),
+      }),
+    });
+    if (!response.ok) {
+      logWcWebhook("bot engine: session-control failed", {
+        status: response.status,
+        userId: normalizedUserId.slice(0, 32),
+        botDisabled,
+      });
+    }
+  } catch (err) {
+    logWcWebhook("bot engine: session-control error", {
+      message: err?.message || String(err),
+      userId: normalizedUserId.slice(0, 32),
+    });
+  }
+};
+
 export const runBotChat = async ({ userId, platform, message }) => {
   // Wrapper del endpoint /chat para desacoplar la orquestación del controlador HTTP.
   const base = botEngineBaseUrl();
@@ -41,6 +73,10 @@ export const runBotChat = async ({ userId, platform, message }) => {
     payload = text ? JSON.parse(text) : {};
   } catch {
     throw new ApiError(502, "Invalid response from bot engine");
+  }
+
+  if (payload.bot_suppressed) {
+    return [];
   }
 
   const reply = String(payload.reply || "").trim();

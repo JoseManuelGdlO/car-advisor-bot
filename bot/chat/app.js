@@ -116,19 +116,23 @@ class ChatInterface {
     this.autoResize();
 
     this.setInputState(false);
-    this.showTyping();
+    const typingDelayMs = 350;
+    const typingTimer = setTimeout(() => this.showTyping(), typingDelayMs);
 
     try {
       const response = await this.sendToAPI(text, userId);
+      clearTimeout(typingTimer);
       this.hideTyping();
 
-      if (!response.bot_suppressed) {
+      if (response.bot_suppressed) {
+        this.setStatus("Bot en pausa — mensaje registrado", "#fde68a");
+      } else {
         this.addBotReplyBlocks(response.reply);
+        this.setStatus("En línea", "#d1fae5");
       }
       this.updateSessionInfo(response);
-
-      this.setStatus("En línea", "#d1fae5");
     } catch (error) {
+      clearTimeout(typingTimer);
       this.hideTyping();
       this.addMessage(
         "Lo sentimos, hubo un error inesperado, por favor espera un momento y vuelve a intentarlo.",
