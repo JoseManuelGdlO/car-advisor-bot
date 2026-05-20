@@ -5,8 +5,12 @@ const CHAT_OWNERS = [
     label: "Catálogo A (demo local)",
   },
   {
+    id: "3edd469d-e67c-4157-b0a0-5d0a21f16c6e",
+    label: "Catálogo B",
+  },
+  {
     id: "5398a90e-2a65-4dcb-a14c-daa47ec20143",
-    label: "Catálogo Nissan",
+    label: "Catálogo C",
   },
 ];
 
