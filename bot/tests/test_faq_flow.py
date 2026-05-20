@@ -10,7 +10,14 @@ class FaqFlowTests(GraphTestCase):
         state = initial_state()
         state["current_node"] = "car_selection"
         state["messages"] = [
-            {"role": "assistant", "content": "¿Te interesa comprar este vehículo o prefieres ver más imágenes?", "type": "AIMessage"}
+            {
+                "role": "assistant",
+                "content": (
+                    "¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? "
+                    "También puedes pedir ver más imágenes."
+                ),
+                "type": "AIMessage",
+            }
         ]
         state = with_user_message(state, "hola donde se encuentran ubicados?")
         with (

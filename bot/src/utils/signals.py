@@ -227,7 +227,8 @@ NO_IMAGES_AVAILABLE_MESSAGE = (
 
 NO_MORE_IMAGES_MESSAGE = (
     "Ya no hay mas imagenes de este vehiculo. "
-    "Si quieres, te ayudo con otro modelo o continuamos con la compra."
+    "Si te interesa, podemos avanzar con una prueba de manejo o para que veas el vehiculo en persona; "
+    "tambien puedo mostrarte otro modelo."
 )
 
 WC_IMAGE_MARKER_PREFIX = "<<WC_IMAGE_JSON>>"

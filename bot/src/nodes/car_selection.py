@@ -161,7 +161,12 @@ def _build_no_more_images_message() -> str:
 
     return generate_verified_user_message(
         mode="operational",
-        verified_facts_block=f"tipo: sin_mas_imagenes\ntexto_literal_sistema: {NO_MORE_IMAGES_MESSAGE}\n",
+        verified_facts_block=(
+            "tipo: sin_mas_imagenes\n"
+            f"texto_literal_sistema: {NO_MORE_IMAGES_MESSAGE}\n"
+            "prohibido: fechas, horas, dias, lugar, coordinar agenda\n"
+            "solo_pregunta_interes: si\n"
+        ),
         user_message="",
         fallback=NO_MORE_IMAGES_MESSAGE,
         temperature=0.35,
@@ -242,7 +247,8 @@ def _respond_with_more_images(state: clientState) -> clientState:
     if not images:
         return append_assistant_message(
             state,
-            "No encontre mas imagenes para este vehiculo. Si quieres, continuamos con la compra o vemos otro modelo.",
+            "No encontre mas imagenes para este vehiculo. Si te interesa, podemos avanzar con una prueba de manejo "
+            "o para que veas el vehiculo en persona; tambien puedo mostrarte otro modelo.",
         )
 
     platform = str(state.get("platform", "web")).strip().lower() or "web"

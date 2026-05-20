@@ -752,22 +752,35 @@ def generate_lead_capture_intro(
 
 
 def generate_vehicle_purchase_question(*, include_images_option: bool) -> str:
-    """Genera pregunta de confirmacion de compra anclada a reglas literales del sistema."""
+    """Genera pregunta de cierre (interes en prueba de manejo o visita en persona) anclada a reglas literales."""
 
+    common_rules = (
+        "prohibido: fechas, horas, dias, lugar, disponibilidad de agenda, coordinar cita\n"
+        "solo_pregunta_interes: si (respuesta esperada: si, no, o ver mas imagenes si aplica)\n"
+        "el_equipo_dara_seguimiento: si (el bot no agenda ni confirma horarios)\n"
+    )
     if include_images_option:
         literal = (
-            "instruccion_sistema: El usuario puede confirmar compra del vehiculo mostrado o pedir ver mas imagenes.\n"
-            "texto_base_literal: ¿Te interesa comprar este vehículo o quieres ver más imágenes del mismo? 🚗✨\n"
+            "instruccion_sistema: El usuario puede confirmar interes en prueba de manejo o ver el vehiculo en persona, "
+            "o pedir ver mas imagenes del mismo.\n"
+            + common_rules
+            + "texto_base_literal: ¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? "
+            "También puedes pedir ver más imágenes del mismo. 🚗✨\n"
             "permite_emojis: si (maximo 2)\n"
         )
-        fallback = "¿Te interesa comprar este vehículo o quieres ver más imágenes del mismo? 🚗✨"
+        fallback = (
+            "¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? "
+            "También puedes pedir ver más imágenes del mismo. 🚗✨"
+        )
     else:
         literal = (
-            "instruccion_sistema: El usuario puede confirmar compra del vehiculo mostrado (sin opcion de mas imagenes en este turno).\n"
-            "texto_base_literal: ¿Te interesa comprar este vehículo ? 🚗✨\n"
+            "instruccion_sistema: El usuario puede confirmar interes en prueba de manejo o ver el vehiculo en persona "
+            "(sin opcion de mas imagenes en este turno).\n"
+            + common_rules
+            + "texto_base_literal: ¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? 🚗✨\n"
             "permite_emojis: si (maximo 2)\n"
         )
-        fallback = "¿Te interesa comprar este vehículo ? 🚗✨"
+        fallback = "¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? 🚗✨"
     return generate_verified_user_message(
         mode="purchase_question",
         verified_facts_block=literal,

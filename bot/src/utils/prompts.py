@@ -60,8 +60,8 @@ def build_settings_block(settings: dict[str, Any] | None) -> str:
     custom_instructions = str(cfg.get("customInstructions", "")).strip()
     parts = [
         "CONFIGURACION_GLOBAL_DEL_BOT:",
-        f"- {_tone_instruction(str(cfg.get('tone', 'cercano')))}",
-        f"- {_emoji_instruction(str(cfg.get('emojiStyle', 'pocos')))}",
+        f"- {_tone_instruction(str(cfg.get('tone', 'cercano','amable')))}",
+        f"- {_emoji_instruction(str(cfg.get('emojiStyle', 'moderados')))}",
         f"- {_sales_instruction(str(cfg.get('salesProactivity', 'medio')))}",
         f"- Solo saluda si el usuario esta saludando explicitamente o si el mensaje parece de inicio de conversacion.",
         f"- No sugieras agendar citas; indica que el equipo dara seguimiento cuando corresponda.",
@@ -212,9 +212,12 @@ _VERIFIED_MODE_INSTRUCTIONS: dict[str, str] = {
         "No uses la palabra 'asesor'. No inventes tiempos de respuesta no listados. Espanol (Mexico). Tono cercano."
     ),
     "purchase_question": (
-        "TAREA: Pregunta de cierre para confirmar compra o ver mas imagenes del vehiculo.\n"
+        "TAREA: Pregunta de cierre para saber si le interesa una prueba de manejo o ver el vehiculo en persona "
+        "(y ver mas imagenes del mismo si DATOS_VERIFICADOS lo indica).\n"
         "DATOS_VERIFICADOS incluye instrucciones literales del sistema (si incluye opcion de imagenes o no).\n"
-        "Genera una sola pregunta breve alineada a esas reglas; puedes usar 1-2 emojis si el bloque lo permite.\n"
+        "Genera una sola pregunta breve tipo si/no de interes, alineada a esas reglas; puedes usar 1-2 emojis si el bloque lo permite.\n"
+        "PROHIBIDO: fechas, horas, dias, lugar, disponibilidad de agenda, preguntar cuando prefiere venir, "
+        "prometer que tu agendarias o confirmarias la cita. Solo mide interes; el equipo dara seguimiento despues.\n"
         "No inventes equipamiento. Espanol (Mexico). Sin prefijos."
     ),
     "faq_insufficient": (

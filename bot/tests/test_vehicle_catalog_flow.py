@@ -139,7 +139,7 @@ class VehicleCatalogFlowTests(GraphTestCase):
             ),
             patch(
                 "src.nodes.car_selection.generate_vehicle_purchase_question",
-                return_value="¿Te interesa comprar este vehículo ? 🚗✨",
+                return_value="¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? 🚗✨",
             ),
         ):
             updated = self.graph.invoke(state)
@@ -147,7 +147,7 @@ class VehicleCatalogFlowTests(GraphTestCase):
         assistant_messages = [msg.get("content", "") for msg in updated.get("messages", []) if msg.get("role") == "assistant"]
         self.assertGreaterEqual(len(assistant_messages), 3)
         self.assertIn("Lamentablemente no tenemos imagenes de este vehiculo", assistant_messages[-2])
-        self.assertIn("¿Te interesa comprar este vehículo ? 🚗✨", assistant_messages[-1])
+        self.assertIn("¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? 🚗✨", assistant_messages[-1])
 
     def test_multiturn_greeting_models_selection_and_model_details_flow(self) -> None:
         versa_2011 = {
@@ -248,7 +248,10 @@ class VehicleCatalogFlowTests(GraphTestCase):
         state["awaiting_purchase_confirmation"] = True
         state["selected_vehicle_id"] = "veh-selected"
         state["selected_car"] = "Nissan March 2018"
-        state["last_bot_message"] = "¿Te interesa comprar este vehículo o quieres ver más imágenes del mismo? 🚗✨"
+        state["last_bot_message"] = (
+            "¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? "
+            "También puedes pedir ver más imágenes del mismo. 🚗✨"
+        )
         state = with_user_message(state, "quiero ver otros arriba de 100 mil y hasta 200 mil")
 
         with (

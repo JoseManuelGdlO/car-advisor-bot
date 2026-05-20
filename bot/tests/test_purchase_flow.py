@@ -13,7 +13,9 @@ class PurchaseFlowTests(GraphTestCase):
         state["selected_car"] = "Nissan Versa 2004"
         state["selected_vehicle_id"] = "veh-1"
         state["awaiting_purchase_confirmation"] = True
-        state["last_bot_message"] = "Te interesa comprar este vehiculo? Responde si o no."
+        state["last_bot_message"] = (
+            "¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? Responde si o no."
+        )
         state = with_user_message(state, "si")
 
         vehicles = [{"id": "veh-1", "brand": "Nissan", "model": "Versa", "year": 2004, "status": "available"}]
@@ -45,7 +47,9 @@ class PurchaseFlowTests(GraphTestCase):
         state["awaiting_purchase_confirmation"] = True
         state["vehicle_images_cursor"] = 2
         state["vehicle_images_has_more"] = True
-        state["last_bot_message"] = "Te interesa comprar este vehiculo? Responde si o no."
+        state["last_bot_message"] = (
+            "¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? Responde si o no."
+        )
         state = with_user_message(state, "muestrame mas imagenes")
 
         vehicles = [{"id": "veh-1", "brand": "Nissan", "model": "Versa", "year": 2004, "status": "available"}]
@@ -72,7 +76,9 @@ class PurchaseFlowTests(GraphTestCase):
         state["awaiting_purchase_confirmation"] = True
         state["vehicle_images_cursor"] = 7
         state["vehicle_images_has_more"] = False
-        state["last_bot_message"] = "Te interesa comprar este vehiculo? Responde si o no."
+        state["last_bot_message"] = (
+            "¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? Responde si o no."
+        )
         state = with_user_message(state, "quiero ver mas imagenes")
 
         vehicles = [{"id": "veh-1", "brand": "Nissan", "model": "Versa", "year": 2004, "status": "available"}]
@@ -101,7 +107,10 @@ class PurchaseFlowTests(GraphTestCase):
         state["selected_vehicle_id"] = "veh-ram"
         state["awaiting_purchase_confirmation"] = True
         state["vehicle_images_last_batch"] = ["/img/1.jpg"]
-        state["last_bot_message"] = "¿Te interesa comprar este vehículo o quieres ver más imágenes del mismo?"
+        state["last_bot_message"] = (
+            "¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? "
+            "También puedes pedir ver más imágenes del mismo."
+        )
         state = with_user_message(state, "que precio tiene?")
 
         vehicles = [{"id": "veh-ram", "brand": "Dodge", "model": "Ram", "year": 2015, "status": "available"}]
@@ -150,7 +159,10 @@ class PurchaseFlowTests(GraphTestCase):
         state["selected_vehicle_id"] = "veh-ram"
         state["awaiting_purchase_confirmation"] = True
         state["vehicle_images_last_batch"] = []
-        state["last_bot_message"] = "¿Te interesa comprar este vehículo o quieres ver más imágenes del mismo?"
+        state["last_bot_message"] = (
+            "¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? "
+            "También puedes pedir ver más imágenes del mismo."
+        )
         state = with_user_message(state, "cuantos kilometros tiene?")
 
         vehicles = [{"id": "veh-ram", "brand": "Dodge", "model": "Ram", "year": 2015, "status": "available"}]
@@ -194,7 +206,10 @@ class PurchaseFlowTests(GraphTestCase):
         state["selected_car"] = "Dodge Ram 2015"
         state["selected_vehicle_id"] = "veh-ram"
         state["awaiting_purchase_confirmation"] = True
-        state["last_bot_message"] = "¿Te interesa comprar este vehículo o quieres ver más imágenes del mismo?"
+        state["last_bot_message"] = (
+            "¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? "
+            "También puedes pedir ver más imágenes del mismo."
+        )
         state = with_user_message(state, "Antes quiero ver el modelo nissan versa")
 
         vehicles = [
