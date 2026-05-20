@@ -67,6 +67,7 @@ class TestChatSuppressed(unittest.TestCase):
                 "message": "Hola",
                 "platform": "web",
                 "persist_to_backend": True,
+                "owner_user_id": "owner-1",
             },
         )
         self.assertEqual(response.status_code, 200)

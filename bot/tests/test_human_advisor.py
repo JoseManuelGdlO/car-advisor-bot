@@ -67,7 +67,8 @@ class TestHandleHumanAdvisorRequest(unittest.TestCase):
         msgs = out.get("messages") or []
         self.assertTrue(msgs and msgs[-1].get("role") == "assistant")
         ack = str(msgs[-1].get("content", "")).lower()
-        self.assertIn("asesor", ack)
+        self.assertIn("contacten", ack)
+        self.assertNotIn("asesor", ack)
         self.assertNotIn("sigo aqui", ack)
 
     def test_ack_without_asesor_when_contact_complete(self) -> None:

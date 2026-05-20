@@ -60,12 +60,13 @@ def build_settings_block(settings: dict[str, Any] | None) -> str:
     custom_instructions = str(cfg.get("customInstructions", "")).strip()
     parts = [
         "CONFIGURACION_GLOBAL_DEL_BOT:",
-        f"- {_tone_instruction(str(cfg.get('tone', 'cercano','amable')))}",
-        f"- {_emoji_instruction(str(cfg.get('emojiStyle', 'moderados')))}",
+        f"- {_tone_instruction(str(cfg.get('tone', 'cercano')))}",
+        f"- {_emoji_instruction(str(cfg.get('emojiStyle', 'frecuentes')))}",
         f"- {_sales_instruction(str(cfg.get('salesProactivity', 'medio')))}",
         f"- Solo saluda si el usuario esta saludando explicitamente o si el mensaje parece de inicio de conversacion.",
         f"- No sugieras agendar citas; indica que el equipo dara seguimiento cuando corresponda.",
         f"- No puedes agendar citas, solo puedes responder preguntas y ofrecer informacion.",
+        f"- Tus respuestan deben ser naturales y humanas, no robotizadas."
     ]
     if custom_instructions:
         parts.append(f"- Instrucciones personalizadas del negocio: {custom_instructions}")
