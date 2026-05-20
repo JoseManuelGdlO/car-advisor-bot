@@ -66,6 +66,25 @@ def is_more_images_request(user_text: str, more_images_signals_normalized: set[s
     return any(signal in normalized for signal in more_images_signals_normalized)
 
 
+def is_first_images_request(
+    user_text: str,
+    first_images_signals_normalized: set[str],
+    *,
+    more_images_signals_normalized: set[str] | None = None,
+) -> bool:
+    """Detecta pedido explícito de ver fotos/imágenes por primera vez (no paginación)."""
+
+    normalized = normalize_user_text(user_text)
+    if not normalized:
+        return False
+    if more_images_signals_normalized and is_more_images_request(user_text, more_images_signals_normalized):
+        return False
+    more_markers = ("mas ", "más ", "siguientes ", "otras fotos", "otras imagenes")
+    if any(marker in normalized for marker in more_markers):
+        return False
+    return any(signal in normalized for signal in first_images_signals_normalized)
+
+
 def is_financing_request(user_text: str, financing_signals_normalized: set[str]) -> bool:
     """Detecta preguntas de financiamiento con señales normalizadas."""
 

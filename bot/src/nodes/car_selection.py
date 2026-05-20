@@ -22,6 +22,7 @@ from src.services.llm_responses import (
 )
 from src.services.car_selection_fallback import (
     is_financing_request,
+    is_first_images_request,
     is_general_request,
     is_more_images_request,
     is_promotions_request,
@@ -42,7 +43,6 @@ from src.utils.formatters import (
     format_available_vehicles_grouped,
     format_candidate_options,
     format_filtered_vehicles,
-    format_images_bulleted_list,
     format_two_vehicle_comparison_grounding,
     format_vehicle_name,
     format_vehicle_detail,
@@ -50,16 +50,20 @@ from src.utils.formatters import (
 from src.utils.signals import (
     FEATURE_SIGNALS,
     FINANCING_SIGNALS,
+    FIRST_IMAGES_SIGNALS,
     GENERAL_SIGNALS,
     MORE_IMAGES_SIGNALS,
-    NO_IMAGES_AVAILABLE_MESSAGE,
     NO_MORE_IMAGES_MESSAGE,
     PROMOTIONS_SIGNALS,
 )
-from src.utils.whatsapp_markers import (
-    build_whatsapp_image_marker_block as build_shared_whatsapp_image_marker_block,
-    normalize_image_url_for_chat,
+from src.utils.vehicle_images import (
+    build_vehicle_images_message,
+    build_whatsapp_images_block,
+    fetch_top_images_for_vehicle,
+    format_images_block_for_chat,
+    reset_vehicle_images_state,
 )
+from src.utils.whatsapp_markers import normalize_image_url_for_chat
 from src.utils.app_logging import get_app_logger, log_flow_trace
 from src.utils.state_helpers import append_assistant_message, latest_user_message
 
@@ -75,6 +79,7 @@ def _normalize_signal_set(values: set[str]) -> set[str]:
 _GENERAL_SIGNALS_NORMALIZED = _normalize_signal_set(GENERAL_SIGNALS)
 _FEATURE_SIGNALS_NORMALIZED = _normalize_signal_set(FEATURE_SIGNALS)
 _MORE_IMAGES_SIGNALS_NORMALIZED = _normalize_signal_set(MORE_IMAGES_SIGNALS)
+_FIRST_IMAGES_SIGNALS_NORMALIZED = _normalize_signal_set(FIRST_IMAGES_SIGNALS)
 _FINANCING_SIGNALS_NORMALIZED = _normalize_signal_set(FINANCING_SIGNALS)
 _PROMOTIONS_SIGNALS_NORMALIZED = _normalize_signal_set(PROMOTIONS_SIGNALS)
 
@@ -125,35 +130,27 @@ def _find_candidate_from_pending(state: clientState, user_text: str) -> dict[str
 
 def _format_images_block(images: list[str]) -> str:
     """Renderiza bloque de imágenes en texto para canales no-WhatsApp."""
-    if not images:
-        return generate_verified_user_message(
-            mode="operational",
-            verified_facts_block=(
-                "tipo: bloque_imagenes_vacio\n"
-                f"texto_literal_sistema: {NO_IMAGES_AVAILABLE_MESSAGE}\n"
-            ),
-            user_message="",
-            fallback=NO_IMAGES_AVAILABLE_MESSAGE,
-            temperature=0.35,
-        )
-    return format_images_bulleted_list(images, _image_url_for_chat)
+    return format_images_block_for_chat(images, resolve_url_fn=_image_url_for_chat)
 
 
 def _build_whatsapp_image_marker_block(state: clientState, vehicle_id: str, images: list[str]) -> str:
     """Genera marcadores JSON para envío de imágenes por WhatsApp."""
-    user_id = str(state.get("user_id", "")).strip()
-    if not user_id or not vehicle_id or not images:
-        return ""
-    return build_shared_whatsapp_image_marker_block(
-        to=user_id,
-        vehicle_id=vehicle_id,
-        image_urls=images,
-    )
+    return build_whatsapp_images_block(state, vehicle_id, images)
 
 
-def _build_purchase_question(include_images_option: bool) -> str:
+def _purchase_images_invite_mode(state: clientState) -> str:
+    """Modo de invitación a fotos en pregunta de cierre: none | first | more."""
+
+    if state.get("vehicle_images_last_batch"):
+        return "more"
+    if str(state.get("selected_vehicle_id", "")).strip():
+        return "first"
+    return "none"
+
+
+def _build_purchase_question(state: clientState) -> str:
     """Genera pregunta de cierre comercial según contexto de imágenes."""
-    return generate_vehicle_purchase_question(include_images_option=include_images_option)
+    return generate_vehicle_purchase_question(images_invite_mode=_purchase_images_invite_mode(state))
 
 
 def _build_no_more_images_message() -> str:
@@ -189,28 +186,26 @@ def _image_url_for_chat(raw_url: str) -> str:
 
 def _reset_vehicle_images_state(state: clientState) -> None:
     """Reinicia vehicle images state para evitar residuos de estado."""
-    state["vehicle_images_cursor"] = 0
-    state["vehicle_images_has_more"] = False
-    state["vehicle_images_last_batch"] = []
+    reset_vehicle_images_state(state)
 
 
-def _fetch_top_images_for_selected_vehicle(state: clientState, vehicle_id: str) -> list[str]:
-    """Obtiene top images for selected vehicle desde servicios externos."""
-    try:
-        payload = fetch_vehicle_images(vehicle_id, mode="top", limit=2)
-        images = payload.get("images", [])
-        state["vehicle_images_last_batch"] = images if isinstance(images, list) else []
-        state["vehicle_images_has_more"] = bool(payload.get("hasMore"))
-        next_cursor = payload.get("nextCursor")
-        if isinstance(next_cursor, int) and next_cursor >= 0:
-            state["vehicle_images_cursor"] = next_cursor
-        else:
-            state["vehicle_images_cursor"] = len(state["vehicle_images_last_batch"])
-        return state["vehicle_images_last_batch"]
-    except Exception:
-        _debug("top_images_fetch_error", vehicle_id=vehicle_id)
-        _reset_vehicle_images_state(state)
-        return []
+def _respond_with_first_images(state: clientState) -> clientState:
+    """Entrega primer lote de imágenes del vehículo seleccionado."""
+
+    vehicle_id = str(state.get("selected_vehicle_id", "")).strip()
+    if not vehicle_id:
+        return append_assistant_message(state, "Primero selecciona un vehiculo para poder mostrarte imagenes.")
+
+    images = fetch_top_images_for_vehicle(state, vehicle_id, limit=2)
+    _debug("first_images_fetched", vehicle_id=vehicle_id, count=len(images))
+    message = build_vehicle_images_message(
+        state,
+        vehicle_id,
+        images,
+        format_block_fn=_format_images_block,
+        whatsapp_block_fn=_build_whatsapp_image_marker_block,
+    )
+    return append_assistant_message(state, message)
 
 
 def _respond_with_more_images(state: clientState) -> clientState:
@@ -218,6 +213,9 @@ def _respond_with_more_images(state: clientState) -> clientState:
     vehicle_id = str(state.get("selected_vehicle_id", "")).strip()
     if not vehicle_id:
         return append_assistant_message(state, "Primero selecciona un vehiculo para poder mostrarte imagenes.")
+
+    if not state.get("vehicle_images_last_batch"):
+        return _respond_with_first_images(state)
 
     if not state.get("vehicle_images_has_more"):
         return append_assistant_message(
@@ -251,20 +249,13 @@ def _respond_with_more_images(state: clientState) -> clientState:
             "o para que veas el vehiculo en persona; tambien puedo mostrarte otro modelo.",
         )
 
-    platform = str(state.get("platform", "web")).strip().lower() or "web"
-    if platform == "whatsapp":
-        marker_block = _build_whatsapp_image_marker_block(state, vehicle_id, images)
-        message = marker_block or _format_images_block(images)
-        if state.get("vehicle_images_has_more"):
-            message = f"{message}\n\nSi quieres ver mas imagenes, dímelo."
-        else:
-            message = f"{message}\n\nEstas son todas las imagenes disponibles de este vehiculo."
-    else:
-        message = _format_images_block(images)
-        if state.get("vehicle_images_has_more"):
-            message = f"{message}\n\nSi quieres ver mas imagenes, dímelo."
-        else:
-            message = f"{message}\n\nEstas son todas las imagenes disponibles de este vehiculo."
+    message = build_vehicle_images_message(
+        state,
+        vehicle_id,
+        images,
+        format_block_fn=_format_images_block,
+        whatsapp_block_fn=_build_whatsapp_image_marker_block,
+    )
     return append_assistant_message(state, message)
 
 
@@ -273,10 +264,9 @@ def _respond_selected_vehicle_inventory_qa(state: clientState, user_text: str) -
 
     vehicle_id = str(state.get("selected_vehicle_id", "")).strip()
     selected_label = str(state.get("selected_car", "")).strip()
-    include_images_option = bool(state.get("vehicle_images_last_batch"))
     if not vehicle_id:
         _debug("inventory_qa_missing_selected_id")
-        question = _build_purchase_question(include_images_option=include_images_option)
+        question = _build_purchase_question(state)
         return append_assistant_message(state, question)
 
     detail = fetch_vehicle_by_id(vehicle_id)
@@ -289,14 +279,14 @@ def _respond_selected_vehicle_inventory_qa(state: clientState, user_text: str) -
             fallback="No pude consultar la ficha en este momento. Intenta de nuevo en unos segundos.",
             temperature=0.35,
         )
-        question = _build_purchase_question(include_images_option=include_images_option)
+        question = _build_purchase_question(state)
         return _append_assistant_blocks(state, [msg, question])
 
     platform = str(state.get("platform", "web")).strip().lower() or "web"
     grounded = format_vehicle_detail(detail, platform=platform)
     name = selected_label or format_vehicle_name(detail)
     body = generate_selected_vehicle_qa_response(name, grounded, user_text)
-    question = _build_purchase_question(include_images_option=include_images_option)
+    question = _build_purchase_question(state)
     state["awaiting_purchase_confirmation"] = True
     _debug("answered_inventory_qa_while_awaiting_confirmation", vehicle_id=vehicle_id)
     return _append_assistant_blocks(state, [body, question])
@@ -440,7 +430,7 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
     state["selected_car"] = format_vehicle_name(detail)
     state["last_vehicle_candidates"] = []
     state["awaiting_purchase_confirmation"] = True
-    top_images = _fetch_top_images_for_selected_vehicle(state, vehicle_id)
+    _reset_vehicle_images_state(state)
     _debug(
         "vehicle_selected",
         selected_vehicle_id=state["selected_vehicle_id"],
@@ -451,20 +441,23 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
     platform = str(state.get("platform", "web")).strip().lower() or "web"
     grounded_vehicle_facts = format_vehicle_detail(detail, platform=platform)
     detail_narrative = generate_vehicle_detail_conversation(state["selected_car"], grounded_vehicle_facts)
-    if platform == "whatsapp":
-        images_block = _build_whatsapp_image_marker_block(state, vehicle_id, top_images) or _format_images_block(top_images)
-    else:
-        images_block = _format_images_block(top_images)
-    if state.get("vehicle_images_has_more"):
-        images_block = f"{images_block}\nSi quieres ver mas imagenes, dímelo."
-    purchase_question = _build_purchase_question(include_images_option=bool(top_images))
+    purchase_question = _build_purchase_question(state)
     first_block = detail_narrative
     blocks: list[str] = []
     if financing_removed_notice:
         blocks.append(financing_removed_notice)
     if promotion_removed_notice:
         blocks.append(promotion_removed_notice)
-    blocks.extend([first_block, images_block, purchase_question])
+    blocks.extend([first_block, purchase_question])
+    user_text = latest_user_message(state)
+    if is_first_images_request(
+        user_text,
+        _FIRST_IMAGES_SIGNALS_NORMALIZED,
+        more_images_signals_normalized=_MORE_IMAGES_SIGNALS_NORMALIZED,
+    ):
+        _debug("vehicle_detail_same_turn_first_images", vehicle_id=vehicle_id)
+        _append_assistant_blocks(state, blocks)
+        return _respond_with_first_images(state)
     return _append_assistant_blocks(state, blocks)
 
 
@@ -987,6 +980,12 @@ def car_selection(state: clientState) -> clientState:
             state["current_node"] = "financing"
             _debug("route_change", next_node="financing", reason="financing_request")
             return state
+        if step_flags.get("ask_images") or is_first_images_request(
+            user_text,
+            _FIRST_IMAGES_SIGNALS_NORMALIZED,
+            more_images_signals_normalized=_MORE_IMAGES_SIGNALS_NORMALIZED,
+        ):
+            return _respond_with_first_images(state)
         if step_flags.get("ask_more_images"):
             return _respond_with_more_images(state)
         if is_selected_vehicle_specs_request(
@@ -1013,7 +1012,15 @@ def car_selection(state: clientState) -> clientState:
             selected_car=state.get("selected_car", ""),
         )
         if decision == "VER_MAS_IMAGENES" or is_more_images_request(user_text, _MORE_IMAGES_SIGNALS_NORMALIZED):
-            return _respond_with_more_images(state)
+            if state.get("vehicle_images_last_batch"):
+                return _respond_with_more_images(state)
+            return _respond_with_first_images(state)
+        if is_first_images_request(
+            user_text,
+            _FIRST_IMAGES_SIGNALS_NORMALIZED,
+            more_images_signals_normalized=_MORE_IMAGES_SIGNALS_NORMALIZED,
+        ):
+            return _respond_with_first_images(state)
         if decision == "PREGUNTA_MODELO":
             other = _pick_vehicle_from_filters(user_text, vehicles)
             cur_id = str(state.get("selected_vehicle_id", "")).strip()
@@ -1035,7 +1042,7 @@ def car_selection(state: clientState) -> clientState:
             _debug("route_change", next_node="lead_capture")
             return state
         _debug("purchase_confirmation_unknown", user_text=user_text)
-        question = _build_purchase_question(include_images_option=bool(state.get("vehicle_images_last_batch")))
+        question = _build_purchase_question(state)
         return append_assistant_message(state, question)
 
     if _should_invoke_vehicle_comparison_llm(state, user_text):

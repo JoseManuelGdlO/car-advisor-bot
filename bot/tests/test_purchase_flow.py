@@ -47,15 +47,27 @@ class PurchaseFlowTests(GraphTestCase):
         state["awaiting_purchase_confirmation"] = True
         state["vehicle_images_cursor"] = 2
         state["vehicle_images_has_more"] = True
+        state["vehicle_images_last_batch"] = ["/img/1.jpg", "/img/2.jpg"]
         state["last_bot_message"] = (
             "¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? Responde si o no."
         )
         state = with_user_message(state, "muestrame mas imagenes")
 
         vehicles = [{"id": "veh-1", "brand": "Nissan", "model": "Versa", "year": 2004, "status": "available"}]
+        step_neutral = {
+            "ask_promotions": False,
+            "ask_financing": False,
+            "ask_images": False,
+            "ask_more_images": False,
+            "wants_compare_two_vehicles": False,
+            "wants_other_vehicles": False,
+            "confirm_purchase": False,
+            "reject_purchase": False,
+        }
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
             patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.classify_vehicle_step_flags", return_value=step_neutral),
             patch("src.nodes.car_selection.classify_purchase_confirmation_intent", return_value="VER_MAS_IMAGENES"),
             patch(
                 "src.nodes.car_selection.fetch_vehicle_images",
@@ -76,6 +88,7 @@ class PurchaseFlowTests(GraphTestCase):
         state["awaiting_purchase_confirmation"] = True
         state["vehicle_images_cursor"] = 7
         state["vehicle_images_has_more"] = False
+        state["vehicle_images_last_batch"] = ["/img/1.jpg"]
         state["last_bot_message"] = (
             "¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? Responde si o no."
         )
@@ -232,6 +245,7 @@ class PurchaseFlowTests(GraphTestCase):
         step_neutral = {
             "ask_promotions": False,
             "ask_financing": False,
+            "ask_images": False,
             "ask_more_images": False,
             "wants_other_vehicles": False,
             "confirm_purchase": False,
@@ -248,15 +262,46 @@ class PurchaseFlowTests(GraphTestCase):
                 "src.nodes.car_selection.generate_vehicle_detail_conversation",
                 return_value="Detalle del vehiculo: Nissan Versa 2011.",
             ),
-            patch(
-                "src.nodes.car_selection.fetch_vehicle_images",
-                return_value={"images": ["/img/versa-1.jpg", "/img/versa-2.jpg"], "nextCursor": 2, "hasMore": True, "mode": "top"},
-            ),
         ):
             updated = self.graph.invoke(state)
 
         self.assertEqual(updated.get("selected_vehicle_id"), "veh-versa")
         self.assertEqual(updated.get("selected_car"), "Nissan Versa 2004")
+
+    def test_purchase_classifier_first_images_fetches_top_batch(self) -> None:
+        state = initial_state()
+        state["current_node"] = "car_selection"
+        state["selected_car"] = "Nissan Versa 2004"
+        state["selected_vehicle_id"] = "veh-1"
+        state["awaiting_purchase_confirmation"] = True
+        state = with_user_message(state, "muestrame fotos del auto")
+
+        vehicles = [{"id": "veh-1", "brand": "Nissan", "model": "Versa", "year": 2004, "status": "available"}]
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch(
+                "src.nodes.car_selection.classify_vehicle_step_flags",
+                return_value={
+                    "ask_promotions": False,
+                    "ask_financing": False,
+                    "ask_images": True,
+                    "ask_more_images": False,
+                    "wants_compare_two_vehicles": False,
+                    "wants_other_vehicles": False,
+                    "confirm_purchase": False,
+                    "reject_purchase": False,
+                },
+            ),
+            patch(
+                "src.utils.vehicle_images.fetch_vehicle_images",
+                return_value={"images": ["/img/1.jpg"], "nextCursor": 1, "hasMore": False, "mode": "top"},
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertEqual(updated.get("vehicle_images_last_batch"), ["/img/1.jpg"])
+        self.assertIn("/img/1.jpg", updated["messages"][-1]["content"])
 
     def test_more_images_reply_does_not_route_to_faq_when_awaiting_confirmation(self) -> None:
         state = initial_state()

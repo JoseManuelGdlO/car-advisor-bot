@@ -15,15 +15,14 @@ from src.services.llm_responses import (
 )
 from src.state import clientState
 from src.tools.database import fetch_financing_plans, fetch_financing_plans_by_vehicle
+from src.services.car_selection_fallback import is_first_images_request
 from src.tools.vehicles import (
     canonicalize_with_typo_support,
     fetch_vehicle_by_id,
-    fetch_vehicle_images,
     normalize_user_text,
     resolve_single_vehicle_from_text,
 )
 from src.utils.formatters import (
-    format_images_bulleted_list,
     format_financing_plan_comparison,
     format_financing_plan_vehicles,
     format_financing_plans,
@@ -37,14 +36,26 @@ from src.utils.signals import (
     CATALOG_SIGNALS,
     EXPLICIT_CATALOG_BROWSE_TOKENS,
     FINANCING_SIGNALS,
+    FIRST_IMAGES_SIGNALS,
+    MORE_IMAGES_SIGNALS,
     PLAN_VEHICLE_INFO_SIGNALS,
     PROMOTIONS_SIGNALS,
 )
-from src.utils.whatsapp_markers import build_whatsapp_image_marker_block, normalize_image_url_for_chat
+from src.utils.vehicle_images import (
+    build_vehicle_images_message,
+    build_whatsapp_images_block,
+    fetch_top_images_for_vehicle,
+    format_images_block_for_chat,
+    reset_vehicle_images_state,
+)
+from src.utils.whatsapp_markers import normalize_image_url_for_chat
 from src.utils.app_logging import get_app_logger, log_flow_trace
 from src.utils.state_helpers import append_assistant_message, latest_user_message
 
 _log = get_app_logger("financing")
+
+_FIRST_IMAGES_SIGNALS_NORMALIZED = {normalize_user_text(value) for value in FIRST_IMAGES_SIGNALS}
+_MORE_IMAGES_SIGNALS_NORMALIZED = {normalize_user_text(value) for value in MORE_IMAGES_SIGNALS}
 
 
 def _debug(event: str, **payload: Any) -> None:
@@ -442,32 +453,8 @@ def _image_url_for_chat(raw_url: str) -> str:
     return normalize_image_url_for_chat(raw_url)
 
 
-def _build_vehicle_images_block(vehicle_id: str) -> str:
-    """Construye vehicle images block para la respuesta."""
-    try:
-        payload = fetch_vehicle_images(vehicle_id, mode="top", limit=3)
-    except Exception:
-        return ""
-    images = payload.get("images", [])
-    if not isinstance(images, list) or not images:
-        return ""
-    normalized_images = [str(url).strip() for url in images if str(url).strip()]
-    if not normalized_images:
-        return ""
-    return format_images_bulleted_list(normalized_images, _image_url_for_chat)
-
-
-def _build_whatsapp_vehicle_images_block(state: clientState, vehicle_id: str) -> str:
-    """Construye whatsapp vehicle images block para la respuesta."""
-    user_id = str(state.get("user_id", "")).strip()
-    if not user_id or not vehicle_id:
-        return ""
-    return build_whatsapp_image_marker_block(
-        to=user_id,
-        vehicle_id=vehicle_id,
-        limit=3,
-        mode="top",
-    )
+def _format_financing_images_block(images: list[str]) -> str:
+    return format_images_block_for_chat(images, resolve_url_fn=_image_url_for_chat)
 
 
 def _respond_plan_vehicle_info(state: clientState, plan: dict[str, Any]) -> clientState:
@@ -496,11 +483,9 @@ def _respond_plan_vehicle_info(state: clientState, plan: dict[str, Any]) -> clie
     detail_source = detail if isinstance(detail, dict) else target_vehicle
     vehicle_name = format_vehicle_name(detail_source)
     vehicle_text = format_vehicle_detail(detail_source, platform=str(state.get("platform", "web")))
-    platform = str(state.get("platform", "web")).strip().lower() or "web"
-    if platform == "whatsapp":
-        images_block = _build_whatsapp_vehicle_images_block(state, vehicle_id) or _build_vehicle_images_block(vehicle_id)
-    else:
-        images_block = _build_vehicle_images_block(vehicle_id)
+    state["selected_vehicle_id"] = vehicle_id
+    state["selected_car"] = vehicle_name
+    reset_vehicle_images_state(state)
     plan_id = str(plan.get("id", "")).strip()
     lender = str(plan.get("lender", "")).strip()
     verified = "\n".join(
@@ -517,19 +502,37 @@ def _respond_plan_vehicle_info(state: clientState, plan: dict[str, Any]) -> clie
             "",
             "pregunta_cierre_literal_sugerida:",
             f"Quieres este plan de financiamiento para {vehicle_name}? "
-            "Si si, te paso a seleccionar este vehiculo y seguimos con tus datos.",
+            "Si si, te paso a seleccionar este vehiculo y seguimos con tus datos. "
+            "Tambien puedes pedir ver fotos o imagenes del vehiculo.",
         ]
     )
+    user_text = latest_user_message(state)
     body = generate_verified_user_message(
         mode="financing_plan_vehicle",
         verified_facts_block=verified,
-        user_message=latest_user_message(state),
-        fallback=f"Claro, te comparto el vehiculo del {plan_name}: {vehicle_name}.\n\n{vehicle_text}",
+        user_message=user_text,
+        fallback=(
+            f"Claro, te comparto el vehiculo del {plan_name}: {vehicle_name}.\n\n{vehicle_text}\n\n"
+            "Si quieres ver fotos o imagenes del vehiculo, solo dimelo."
+        ),
         temperature=0.42,
     )
     blocks = [body]
-    if images_block:
-        blocks.append(images_block)
+    if is_first_images_request(
+        user_text,
+        _FIRST_IMAGES_SIGNALS_NORMALIZED,
+        more_images_signals_normalized=_MORE_IMAGES_SIGNALS_NORMALIZED,
+    ):
+        images = fetch_top_images_for_vehicle(state, vehicle_id, limit=3)
+        blocks.append(
+            build_vehicle_images_message(
+                state,
+                vehicle_id,
+                images,
+                format_block_fn=_format_financing_images_block,
+                whatsapp_block_fn=build_whatsapp_images_block,
+            )
+        )
     return append_assistant_message(state, "\n\n".join(blocks))
 
 

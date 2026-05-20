@@ -89,10 +89,6 @@ class VehicleCatalogFlowTests(GraphTestCase):
                         "src.nodes.car_selection.generate_vehicle_detail_conversation",
                         return_value="Detalle del vehiculo: Nissan Versa 2004, color blanco.",
                     ),
-                    patch(
-                        "src.nodes.car_selection.fetch_vehicle_images",
-                        return_value={"images": ["/img/1.jpg", "/img/2.jpg"], "nextCursor": 2, "hasMore": True, "mode": "top"},
-                    ),
                 ):
                     updated = self.graph.invoke(state)
 
@@ -103,8 +99,9 @@ class VehicleCatalogFlowTests(GraphTestCase):
                 joined = "\n".join(assistant_texts)
                 self.assertIn("Detalle del vehiculo:", joined)
                 self.assertIn("Nissan Versa", joined)
+                self.assertNotIn("/img/1.jpg", joined)
 
-    def test_vehicle_detail_without_images_uses_no_images_copy(self) -> None:
+    def test_vehicle_detail_without_images_on_request_uses_no_images_copy(self) -> None:
         vehicles = [
             {
                 "id": "veh-1",
@@ -132,7 +129,6 @@ class VehicleCatalogFlowTests(GraphTestCase):
                 "src.nodes.car_selection.generate_vehicle_detail_conversation",
                 return_value="Detalle del vehiculo: Nissan Versa 2004, color blanco.",
             ),
-            patch("src.nodes.car_selection.fetch_vehicle_images", return_value={"images": [], "hasMore": False, "mode": "top"}),
             patch(
                 "src.nodes.car_selection.generate_verified_user_message",
                 side_effect=lambda **kw: kw["fallback"],
@@ -145,9 +141,86 @@ class VehicleCatalogFlowTests(GraphTestCase):
             updated = self.graph.invoke(state)
 
         assistant_messages = [msg.get("content", "") for msg in updated.get("messages", []) if msg.get("role") == "assistant"]
-        self.assertGreaterEqual(len(assistant_messages), 3)
-        self.assertIn("Lamentablemente no tenemos imagenes de este vehiculo", assistant_messages[-2])
-        self.assertIn("¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? 🚗✨", assistant_messages[-1])
+        joined = "\n".join(assistant_messages)
+        self.assertNotIn("Lamentablemente no tenemos imagenes de este vehiculo", joined)
+
+        state = with_user_message(updated, "muestrame fotos del versa")
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch(
+                "src.utils.vehicle_images.fetch_vehicle_images",
+                return_value={"images": [], "hasMore": False, "mode": "top"},
+            ),
+            patch(
+                "src.nodes.car_selection.classify_vehicle_step_flags",
+                return_value={
+                    "ask_promotions": False,
+                    "ask_financing": False,
+                    "ask_images": True,
+                    "ask_more_images": False,
+                    "wants_compare_two_vehicles": False,
+                    "wants_other_vehicles": False,
+                    "confirm_purchase": False,
+                    "reject_purchase": False,
+                },
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        assistant_messages = [msg.get("content", "") for msg in updated.get("messages", []) if msg.get("role") == "assistant"]
+        last_msg = assistant_messages[-1].lower()
+        self.assertIn("no tenemos", last_msg)
+        self.assertTrue("im" in last_msg and ("agen" in last_msg or "ágen" in last_msg))
+
+    def test_first_images_request_after_detail_sends_batch(self) -> None:
+        vehicles = [
+            {
+                "id": "veh-1",
+                "brand": "Nissan",
+                "model": "Versa",
+                "year": 2004,
+                "status": "available",
+                "price": 350000,
+                "km": 200000,
+                "transmission": "automatica",
+                "engine": "1.6",
+                "color": "blanco",
+                "description": "",
+            }
+        ]
+        state = initial_state()
+        state["current_node"] = "car_selection"
+        state["selected_car"] = "Nissan Versa 2004"
+        state["selected_vehicle_id"] = "veh-1"
+        state["awaiting_purchase_confirmation"] = True
+        state = with_user_message(state, "muestrame fotos")
+
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch(
+                "src.nodes.car_selection.classify_vehicle_step_flags",
+                return_value={
+                    "ask_promotions": False,
+                    "ask_financing": False,
+                    "ask_images": True,
+                    "ask_more_images": False,
+                    "wants_compare_two_vehicles": False,
+                    "wants_other_vehicles": False,
+                    "confirm_purchase": False,
+                    "reject_purchase": False,
+                },
+            ),
+            patch(
+                "src.utils.vehicle_images.fetch_vehicle_images",
+                return_value={"images": ["/img/1.jpg", "/img/2.jpg"], "nextCursor": 2, "hasMore": True, "mode": "top"},
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertEqual(updated.get("vehicle_images_last_batch"), ["/img/1.jpg", "/img/2.jpg"])
+        self.assertIn("/img/1.jpg", updated["messages"][-1]["content"])
 
     def test_multiturn_greeting_models_selection_and_model_details_flow(self) -> None:
         versa_2011 = {
@@ -191,10 +264,6 @@ class VehicleCatalogFlowTests(GraphTestCase):
                 return_value="Aqui tienes la informacion completa del Nissan Versa 2011.",
             ),
             patch(
-                "src.nodes.car_selection.fetch_vehicle_images",
-                return_value={"images": ["/img/versa-2011-1.jpg"], "nextCursor": 1, "hasMore": False, "mode": "top"},
-            ),
-            patch(
                 "src.nodes.car_selection.generate_verified_user_message",
                 side_effect=lambda **kw: kw["fallback"],
             ),
@@ -230,10 +299,6 @@ class VehicleCatalogFlowTests(GraphTestCase):
                 "src.nodes.car_selection.generate_vehicle_detail_conversation",
                 return_value="Encontramos un Nissan Versa 2011 dentro de tu presupuesto.",
             ),
-            patch(
-                "src.nodes.car_selection.fetch_vehicle_images",
-                return_value={"images": [], "nextCursor": None, "hasMore": False, "mode": "top"},
-            ),
         ):
             updated = self.graph.invoke(state)
 
@@ -264,6 +329,7 @@ class VehicleCatalogFlowTests(GraphTestCase):
                     "wants_compare_two_vehicles": False,
                     "ask_promotions": False,
                     "ask_financing": False,
+                    "ask_images": False,
                     "ask_more_images": False,
                     "wants_other_vehicles": True,
                     "confirm_purchase": False,
@@ -275,10 +341,6 @@ class VehicleCatalogFlowTests(GraphTestCase):
             patch(
                 "src.nodes.car_selection.generate_vehicle_detail_conversation",
                 return_value="Encontramos un Nissan Versa 2011 dentro del rango solicitado.",
-            ),
-            patch(
-                "src.nodes.car_selection.fetch_vehicle_images",
-                return_value={"images": [], "nextCursor": None, "hasMore": False, "mode": "top"},
             ),
         ):
             updated = self.graph.invoke(state)

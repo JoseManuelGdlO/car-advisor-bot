@@ -103,6 +103,7 @@ def intent_checker(state: clientState) -> clientState:
             for key in (
                 "ask_promotions",
                 "ask_financing",
+                "ask_images",
                 "ask_more_images",
                 "wants_other_vehicles",
                 "confirm_purchase",

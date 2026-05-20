@@ -27,7 +27,7 @@ class clientState(TypedDict, total=False):
     - last_vehicle_candidates: candidatos previos para desambiguar seleccion.
     - vehicle_images_cursor: cursor para paginacion de imagenes del vehiculo seleccionado.
     - vehicle_images_has_more: indica si hay mas imagenes por pedir al backend.
-    - vehicle_images_last_batch: ultimo lote de URLs de imagenes enviado al usuario.
+    - vehicle_images_last_batch: ultimo lote de URLs de imagenes enviado al usuario (vacio = aun no se enviaron fotos).
     - user_id: identificador de conversacion (en web/whatsapp suele ser el telefono).
     - owner_user_id: UUID del tenant (vendedor). Obligatorio en /chat con token global antes de leer catálogo; viene del webhook o body.
     - lead_phone_attempts: reintentos al validar telefono en plataformas que lo piden.

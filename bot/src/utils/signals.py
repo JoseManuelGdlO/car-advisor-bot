@@ -30,6 +30,29 @@ FEATURE_SIGNALS = {
     "gris",
 }
 
+FIRST_IMAGES_SIGNALS = {
+    "ver fotos",
+    "ver foto",
+    "ver imagenes",
+    "ver imagen",
+    "ver las fotos",
+    "ver las imagenes",
+    "muestrame fotos",
+    "muéstrame fotos",
+    "muestrame imagenes",
+    "muéstrame imagenes",
+    "quiero ver fotos",
+    "quiero ver imagenes",
+    "tienen fotos",
+    "hay fotos",
+    "mandame fotos",
+    "mándame fotos",
+    "envia fotos",
+    "envía fotos",
+    "pasame fotos",
+    "pásame fotos",
+}
+
 MORE_IMAGES_SIGNALS = {
     "ver mas imagenes",
     "ver más imagenes",

@@ -500,14 +500,17 @@ def build_vehicle_step_flags_prompt(
         f"{system_prompt}\n\n"
         "CLASIFICADOR_FLAGS_PASO_VEHICULO:\n"
         "Analiza el mensaje del usuario y responde SOLO con JSON de una linea con estas claves booleanas exactas:\n"
-        '{ "ask_promotions": <bool>, "ask_financing": <bool>, "ask_more_images": <bool>, '
+        '{ "ask_promotions": <bool>, "ask_financing": <bool>, "ask_images": <bool>, "ask_more_images": <bool>, '
         '"wants_compare_two_vehicles": <bool>, "wants_other_vehicles": <bool>, "confirm_purchase": <bool>, "reject_purchase": <bool> }\n'
         "Reglas:\n"
         "- wants_compare_two_vehicles=true cuando quiere comparar dos carros (compara, vs, diferencias, cual conviene mas, "
         "entre X y Y, este contra otro modelo, compara con otro que nombra por marca/modelo, etc.).\n"
         "- ask_promotions=true cuando pide promociones/ofertas/descuentos para el vehiculo actual o en general.\n"
         "- ask_financing=true cuando pide credito/financiamiento/tasa/plazo/mensualidades.\n"
-        "- ask_more_images=true cuando pide mas fotos/imagenes del vehiculo actual.\n"
+        "- ask_images=true cuando pide ver fotos/imagenes del vehiculo actual por primera vez (muestrame fotos, quiero ver imagenes, "
+        "tienen fotos del auto). No uses ask_images si solo habla de ver el vehiculo en persona o agendar prueba de manejo.\n"
+        "- ask_more_images=true cuando pide mas fotos/imagenes del vehiculo actual despues de un envio previo (mas fotos, siguientes imagenes).\n"
+        "- Si es claramente primer pedido de fotos, ask_images=true y ask_more_images=false.\n"
         "- wants_other_vehicles=true cuando quiere ver otro modelo/u otro carro/catalogo sin pedir comparacion explícita.\n"
         "- wants_other_vehicles=false si solo pide datos/ficha/informacion/especificaciones/caracteristicas del modelo o vehiculo "
         "ya mostrado (ej. 'dame los datos del modelo', 'muestrame la ficha') sin pedir otro carro ni el catalogo.\n"

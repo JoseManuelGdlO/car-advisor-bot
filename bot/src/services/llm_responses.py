@@ -751,15 +751,21 @@ def generate_lead_capture_intro(
     )
 
 
-def generate_vehicle_purchase_question(*, include_images_option: bool) -> str:
-    """Genera pregunta de cierre (interes en prueba de manejo o visita en persona) anclada a reglas literales."""
+def generate_vehicle_purchase_question(*, images_invite_mode: str = "none") -> str:
+    """Genera pregunta de cierre (interes en prueba de manejo o visita en persona) anclada a reglas literales.
 
+    images_invite_mode: "none" | "first" | "more"
+    """
+
+    mode = (images_invite_mode or "none").strip().lower()
+    if mode not in {"none", "first", "more"}:
+        mode = "none"
     common_rules = (
         "prohibido: fechas, horas, dias, lugar, disponibilidad de agenda, coordinar cita\n"
-        "solo_pregunta_interes: si (respuesta esperada: si, no, o ver mas imagenes si aplica)\n"
+        "solo_pregunta_interes: si (respuesta esperada: si, no, o pedir fotos/imagenes si aplica)\n"
         "el_equipo_dara_seguimiento: si (el bot no agenda ni confirma horarios)\n"
     )
-    if include_images_option:
+    if mode == "more":
         literal = (
             "instruccion_sistema: El usuario puede confirmar interes en prueba de manejo o ver el vehiculo en persona, "
             "o pedir ver mas imagenes del mismo.\n"
@@ -772,10 +778,23 @@ def generate_vehicle_purchase_question(*, include_images_option: bool) -> str:
             "¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? "
             "También puedes pedir ver más imágenes del mismo. 🚗✨"
         )
+    elif mode == "first":
+        literal = (
+            "instruccion_sistema: El usuario puede confirmar interes en prueba de manejo o ver el vehiculo en persona, "
+            "o pedir ver fotos/imagenes del vehiculo (primer envio).\n"
+            + common_rules
+            + "texto_base_literal: ¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? "
+            "También puedes pedir ver fotos o imágenes del vehículo. 🚗✨\n"
+            "permite_emojis: si (maximo 2)\n"
+        )
+        fallback = (
+            "¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? "
+            "También puedes pedir ver fotos o imágenes del vehículo. 🚗✨"
+        )
     else:
         literal = (
             "instruccion_sistema: El usuario puede confirmar interes en prueba de manejo o ver el vehiculo en persona "
-            "(sin opcion de mas imagenes en este turno).\n"
+            "(sin opcion de imagenes en este turno).\n"
             + common_rules
             + "texto_base_literal: ¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? 🚗✨\n"
             "permite_emojis: si (maximo 2)\n"
@@ -1026,6 +1045,7 @@ def classify_vehicle_step_flags(
     out = {
         "ask_promotions": False,
         "ask_financing": False,
+        "ask_images": False,
         "ask_more_images": False,
         "wants_compare_two_vehicles": False,
         "wants_other_vehicles": False,

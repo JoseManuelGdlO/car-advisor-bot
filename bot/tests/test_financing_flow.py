@@ -245,7 +245,6 @@ class FinancingFlowTests(GraphTestCase):
             patch("src.nodes.car_selection.fetch_vehicles", return_value=[versa_2011, versa_2001]),
             patch("src.nodes.car_selection.search_vehicles", side_effect=[[versa_2011, versa_2001], [versa_2011]]),
             patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=versa_2011),
-            patch("src.nodes.car_selection.fetch_vehicle_images", return_value={"images": ["Imagen del vehiculo"], "nextCursor": 1, "hasMore": False, "mode": "top"}),
             patch("src.nodes.car_selection.generate_vehicle_candidates_selection_message", return_value="1. Nissan Versa 2011\n2. Nissan Versa 2001"),
             patch(
                 "src.nodes.car_selection.generate_vehicle_detail_conversation",

@@ -5,6 +5,7 @@ import unittest
 from src.services.car_selection_fallback import (
     contains_signal_phrase,
     is_financing_request,
+    is_first_images_request,
     is_general_request,
     is_more_images_request,
     is_promotions_request,
@@ -19,6 +20,7 @@ class CarSelectionFallbackTests(unittest.TestCase):
         self.general = {"que carros tienes", "catalogo"}
         self.features = {"color", "modelo", "año"}
         self.more_images = {"mas imagenes", "ver mas fotos"}
+        self.first_images = {"ver fotos", "muestrame fotos", "muestrame imagenes", "quiero ver fotos"}
         self.financing = {"plan de pagos", "financiamiento"}
         self.promotions = {"promociones", "descuento"}
 
@@ -47,6 +49,22 @@ class CarSelectionFallbackTests(unittest.TestCase):
         self.assertTrue(is_more_images_request("muestrame mas imagenes", self.more_images))
         self.assertTrue(is_financing_request("quiero un plan de pagos", self.financing))
         self.assertTrue(is_promotions_request("tienes promociones hoy", self.promotions))
+
+    def test_first_images_request_excludes_pagination_phrases(self) -> None:
+        self.assertTrue(
+            is_first_images_request(
+                "muestrame fotos del auto",
+                self.first_images,
+                more_images_signals_normalized=self.more_images,
+            )
+        )
+        self.assertFalse(
+            is_first_images_request(
+                "muestrame mas imagenes",
+                self.first_images,
+                more_images_signals_normalized=self.more_images,
+            )
+        )
 
     def test_selected_vehicle_specs_request_false_when_changes_vehicle(self) -> None:
         selected_id = "veh-1"
