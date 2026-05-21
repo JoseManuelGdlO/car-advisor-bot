@@ -98,6 +98,30 @@ PROMOTIONS_SIGNALS = {
     "bonos",
 }
 
+TEST_DRIVE_VISIT_SIGNALS = {
+    "prueba de manejo",
+    "prueba manejo",
+    "agendar prueba",
+    "agendar una prueba",
+    "quiero probar",
+    "quiero una prueba",
+    "probar el auto",
+    "probar el carro",
+    "probar el vehiculo",
+    "test drive",
+    "ver en persona",
+    "verlo en persona",
+    "verla en persona",
+    "ver el vehiculo en persona",
+    "ver el auto en persona",
+    "ver el carro en persona",
+    "visita en persona",
+    "visitar el vehiculo",
+    "visitar el auto",
+    "coordinar visita",
+    "agendar visita",
+}
+
 CATALOG_SIGNALS = {
     "modelo",
     "modelos",

@@ -6,6 +6,7 @@ import re
 
 from src.state import clientState
 
+from src.services.car_selection_fallback import contains_signal_phrase
 from src.services.llm_responses import classify_router_intent, generate_other_response
 from src.tools.vehicles import normalize_user_text
 from src.utils.human_advisor_notify import handle_human_advisor_request, human_advisor_heuristic_match
@@ -57,7 +58,7 @@ def _is_financing_request(text: str) -> bool:
     normalized = normalize_user_text(text)
     if not normalized:
         return False
-    return any(signal in normalized for signal in FINANCING_SIGNALS)
+    return any(contains_signal_phrase(normalized, signal) for signal in FINANCING_SIGNALS)
 
 
 def _is_promotions_request(text: str) -> bool:
@@ -65,7 +66,7 @@ def _is_promotions_request(text: str) -> bool:
     normalized = normalize_user_text(text)
     if not normalized:
         return False
-    return any(signal in normalized for signal in PROMOTIONS_SIGNALS)
+    return any(contains_signal_phrase(normalized, signal) for signal in PROMOTIONS_SIGNALS)
 
 
 def _is_simple_greeting(text: str) -> bool:

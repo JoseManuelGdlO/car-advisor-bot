@@ -22,6 +22,13 @@ class TestRouterHybrid(unittest.TestCase):
         self.assertEqual(out.get("current_node"), "financing")
         self.assertEqual(out.get("intent"), "financing")
 
+    def test_interesa_does_not_trigger_financing_signal(self) -> None:
+        state = with_user_message(initial_state(), "Me interesa el corolla, que año es?")
+        with patch("src.nodes.router.classify_router_intent", return_value="VEHICLE_CATALOG"):
+            out = router(dict(state))
+        self.assertNotEqual(out.get("current_node"), "financing")
+        self.assertNotEqual(out.get("intent"), "financing")
+
     def test_classifier_receives_sanitized_intent_after_faq(self) -> None:
         state = with_user_message(initial_state(), "cualquier cosa ambigua")
         state["intent"] = "faq"

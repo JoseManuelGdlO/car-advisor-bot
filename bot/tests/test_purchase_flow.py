@@ -6,6 +6,60 @@ from tests.test_helpers import GraphTestCase, initial_state, with_user_message
 
 
 class PurchaseFlowTests(GraphTestCase):
+    def test_test_drive_typo_routes_to_lead_capture_without_classifier_si(self) -> None:
+        state = initial_state()
+        state["current_node"] = "car_selection"
+        state["intent"] = "vehicle_catalog"
+        state["selected_car"] = "Toyota Corolla LE 2021"
+        state["selected_vehicle_id"] = "veh-1"
+        state["awaiting_purchase_confirmation"] = True
+        state["last_bot_message"] = (
+            "¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? "
+            "También puedes pedir ver fotos o imágenes del vehículo. 🚗✨"
+        )
+        state = with_user_message(state, "quiero una prubea de maneja")
+
+        vehicles = [
+            {
+                "id": "veh-1",
+                "brand": "Toyota",
+                "model": "Corolla LE",
+                "year": 2021,
+                "status": "available",
+            }
+        ]
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch(
+                "src.nodes.car_selection.classify_vehicle_step_flags",
+                return_value={
+                    "ask_promotions": False,
+                    "ask_financing": False,
+                    "ask_images": False,
+                    "ask_more_images": False,
+                    "wants_compare_two_vehicles": False,
+                    "wants_other_vehicles": False,
+                    "confirm_purchase": False,
+                    "reject_purchase": False,
+                },
+            ),
+            patch("src.nodes.car_selection.classify_purchase_confirmation_intent", return_value="UNKNOWN"),
+            patch(
+                "src.nodes.lead_capture.generate_lead_capture_intro",
+                return_value="Necesitamos datos para un asesor (Toyota Corolla LE 2021). Cual es tu nombre completo?",
+            ),
+            patch(
+                "src.nodes.lead_capture.generate_verified_user_message",
+                side_effect=lambda **kw: kw["fallback"],
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertEqual(updated.get("current_node"), "lead_capture")
+        self.assertFalse(updated.get("awaiting_purchase_confirmation"))
+        self.assertIn("Toyota Corolla LE 2021", updated["messages"][-1]["content"])
+
     def test_purchase_yes_continues_to_lead_capture_same_turn(self) -> None:
         state = initial_state()
         state["current_node"] = "car_selection"

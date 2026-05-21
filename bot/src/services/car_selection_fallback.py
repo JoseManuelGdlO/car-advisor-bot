@@ -85,6 +85,32 @@ def is_first_images_request(
     return any(signal in normalized for signal in first_images_signals_normalized)
 
 
+_TEST_DRIVE_LOOSE_RE = re.compile(
+    r"\b(?:"
+    r"pru[eb]+\w*(?:\s+(?:de\s+)?manej\w*)?"
+    r"|agendar\s+pru[eb]+\w*"
+    r"|quiero\s+(?:una\s+)?pru[eb]+\w*(?:\s+(?:de\s+)?manej\w*)?"
+    r")\b"
+)
+_IN_PERSON_VISIT_LOOSE_RE = re.compile(
+    r"\b(?:ver\w*\s+en\s+persona|visita\s+en\s+persona)\b"
+)
+
+
+def is_test_drive_or_visit_request(
+    user_text: str,
+    test_drive_visit_signals_normalized: set[str],
+) -> bool:
+    """Detecta interes en prueba de manejo o visita en persona (tolera typos leves)."""
+
+    normalized = normalize_user_text(user_text)
+    if not normalized:
+        return False
+    if any(contains_signal_phrase(normalized, signal) for signal in test_drive_visit_signals_normalized):
+        return True
+    return bool(_TEST_DRIVE_LOOSE_RE.search(normalized) or _IN_PERSON_VISIT_LOOSE_RE.search(normalized))
+
+
 def is_financing_request(user_text: str, financing_signals_normalized: set[str]) -> bool:
     """Detecta preguntas de financiamiento con señales normalizadas."""
 

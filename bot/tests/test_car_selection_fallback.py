@@ -10,9 +10,12 @@ from src.services.car_selection_fallback import (
     is_more_images_request,
     is_promotions_request,
     is_selected_vehicle_specs_request,
+    is_test_drive_or_visit_request,
     looks_like_feature_request,
     looks_like_specific_vehicle_request,
 )
+from src.tools.vehicles import normalize_user_text
+from src.utils.signals import TEST_DRIVE_VISIT_SIGNALS
 
 
 class CarSelectionFallbackTests(unittest.TestCase):
@@ -23,6 +26,7 @@ class CarSelectionFallbackTests(unittest.TestCase):
         self.first_images = {"ver fotos", "muestrame fotos", "muestrame imagenes", "quiero ver fotos"}
         self.financing = {"plan de pagos", "financiamiento"}
         self.promotions = {"promociones", "descuento"}
+        self.test_drive_visit = {normalize_user_text(s) for s in TEST_DRIVE_VISIT_SIGNALS}
 
     def test_contains_signal_phrase_respects_word_boundaries(self) -> None:
         self.assertTrue(contains_signal_phrase("quiero plan de pagos", "plan de pagos"))
@@ -44,6 +48,14 @@ class CarSelectionFallbackTests(unittest.TestCase):
             looks_like_feature_request_fn=lambda _: False,
         )
         self.assertTrue(result)
+
+    def test_test_drive_or_visit_request_handles_typos(self) -> None:
+        self.assertTrue(
+            is_test_drive_or_visit_request("quiero una prubea de maneja", self.test_drive_visit)
+        )
+        self.assertTrue(is_test_drive_or_visit_request("agendar prueba de manejo", self.test_drive_visit))
+        self.assertTrue(is_test_drive_or_visit_request("me interesa verlo en persona", self.test_drive_visit))
+        self.assertFalse(is_test_drive_or_visit_request("cuanto cuesta", self.test_drive_visit))
 
     def test_more_images_financing_promotions_requests(self) -> None:
         self.assertTrue(is_more_images_request("muestrame mas imagenes", self.more_images))
