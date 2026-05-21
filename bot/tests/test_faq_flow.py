@@ -23,6 +23,7 @@ class FaqFlowTests(GraphTestCase):
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": True}),
             patch("src.nodes.faq.fetch_faq_candidates", return_value=["Estamos en Av. Siempre Viva 123."]),
+            patch("src.nodes.faq.generate_faq_resume_transition", return_value="¿Seguimos con la selección?"),
             patch("src.nodes.faq.generate_faq_user_turn", return_value="Estamos en Av. Siempre Viva 123."),
         ):
             updated = self.graph.invoke(state)
@@ -51,6 +52,7 @@ class FaqFlowTests(GraphTestCase):
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": True}),
             patch("src.nodes.faq.fetch_faq_candidates", return_value=["Estamos en Centro."]),
+            patch("src.nodes.faq.generate_faq_resume_transition", return_value="¿Seguimos con tus datos?"),
             patch("src.nodes.faq.generate_faq_user_turn", return_value="Estamos en Centro."),
         ):
             after_faq = self.graph.invoke(faq_turn)

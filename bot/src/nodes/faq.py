@@ -3,8 +3,15 @@
 from src.state import clientState
 from src.tools.database import fetch_faq_candidates
 
-from src.services.llm_responses import generate_faq_user_turn
-from src.utils.state_helpers import append_assistant_message, latest_user_message
+from src.services.llm_responses import (
+    generate_faq_resume_transition,
+    generate_faq_user_turn,
+)
+from src.utils.state_helpers import (
+    append_assistant_message,
+    latest_human_ai_pair,
+    latest_user_message,
+)
 
 
 def faq(state: clientState) -> clientState:
@@ -16,23 +23,12 @@ def faq(state: clientState) -> clientState:
 
     if state.get("is_faq_interrupt"):
         resume_to_step = str(state.get("resume_to_step", "car_selection"))
-        transitions = {
-            "car_selection": (
-                "Perfecto. Sigamos con la selección de vehículos "
-            ),
-            "lead_capture": (
-                "Genial. Sigamos con el enlace para agendar tu prueba de manejo o visita al vehiculo"
-            ),
-            "financing": (
-                "Excelente. Volvamos al financiamiento, tienes alguna preferencia?"
-            ),
-            "promotions": (
-                "Perfecto. Sigamos con las promociones vigentes, quieres el detalle de alguna?"
-            ),
-        }
-        transition = transitions.get(
-            resume_to_step,
-            "Perfecto. Continuemos con tu proceso. ¿En qué te apoyo ahora?",
+        _last_user, last_ai = latest_human_ai_pair(state)
+        transition = generate_faq_resume_transition(
+            user_message=question,
+            last_bot_message=last_ai or str(state.get("last_bot_message", "")),
+            resume_to_step=resume_to_step,
+            state=state,
         )
         message = generate_faq_user_turn(
             user_question=question,

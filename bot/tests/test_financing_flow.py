@@ -240,6 +240,7 @@ class FinancingFlowTests(GraphTestCase):
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", side_effect=faq_flags),
             patch("src.nodes.faq.fetch_faq_candidates", return_value=["Estamos ubicados por el colegio REX."]),
+            patch("src.nodes.faq.generate_faq_resume_transition", return_value="¿Seguimos con el financiamiento?"),
             patch("src.nodes.faq.generate_faq_user_turn", return_value="Estamos ubicados por el colegio REX."),
             patch("src.nodes.car_selection.fetch_vehicles", return_value=[versa_2011, versa_2001]),
             patch("src.nodes.car_selection.search_vehicles", side_effect=[[versa_2011, versa_2001], [versa_2011]]),

@@ -10,6 +10,7 @@ from typing import Any
 
 from langchain_openai import ChatOpenAI
 
+from src.state import clientState
 from src.tools.database import get_bot_settings
 from src.utils.prompts import (
     build_answer_first_faq_prompt,
@@ -1444,6 +1445,201 @@ def generate_faq_response(user_question: str, faq_candidates: list[str]) -> str:
         context_blocks=context,
         mode="faq",
         fallback=fallback,
+    )
+
+
+_FAQ_RESUME_TRANSITION_FALLBACKS: dict[str, str] = {
+    "car_selection": "Perfecto. Sigamos con la selección de vehículos ",
+    "lead_capture": (
+        "Genial. Seguimos con tus datos para apartar el vehículo"
+    ),
+    "financing": "Excelente. Volvamos al financiamiento, tienes alguna preferencia?",
+    "promotions": (
+        "Perfecto. Sigamos con las promociones vigentes, quieres el detalle de alguna?"
+    ),
+}
+
+def _faq_resume_flow_snapshot(state: clientState) -> dict[str, str | bool | int]:
+    """Extrae hechos del estado para reanudar sin repetir pasos ya resueltos."""
+
+    selected_car = str(state.get("selected_car", "")).strip()
+    pending = state.get("last_vehicle_candidates")
+    pending_n = len(pending) if isinstance(pending, list) else 0
+    return {
+        "selected_car": selected_car,
+        "has_selected_car": bool(selected_car),
+        "awaiting_purchase_confirmation": bool(state.get("awaiting_purchase_confirmation")),
+        "pending_vehicle_candidates": pending_n,
+        "financing_plan_name": str(state.get("selected_financing_plan_name", "")).strip(),
+        "has_financing_plan": bool(str(state.get("selected_financing_plan_name", "")).strip()),
+        "awaiting_financing_plan_selection": bool(state.get("awaiting_financing_plan_selection")),
+        "awaiting_financing_vehicle_selection": bool(state.get("awaiting_financing_vehicle_selection")),
+        "promotion_title": str(state.get("selected_promotion_title", "")).strip(),
+        "has_promotion": bool(str(state.get("selected_promotion_title", "")).strip()),
+        "awaiting_promotion_selection": bool(state.get("awaiting_promotion_selection")),
+        "awaiting_promotion_vehicle_selection": bool(state.get("awaiting_promotion_vehicle_selection")),
+        "awaiting_promotion_vehicle_interest_confirmation": bool(
+            state.get("awaiting_promotion_vehicle_interest_confirmation")
+        ),
+        "awaiting_promotion_apply_confirmation": bool(state.get("awaiting_promotion_apply_confirmation")),
+    }
+
+
+def _faq_resume_step_context(step: str, snapshot: dict[str, str | bool | int]) -> str:
+    car = str(snapshot.get("selected_car", "")).strip()
+    if step == "car_selection":
+        if car and snapshot.get("awaiting_purchase_confirmation"):
+            return (
+                f"confirmacion de interes en prueba de manejo o visita del vehiculo ya elegido ({car})"
+            )
+        if car:
+            return f"seguimiento del vehiculo ya elegido ({car}); no reiniciar busqueda en catalogo"
+        if int(snapshot.get("pending_vehicle_candidates", 0)) > 0:
+            return "desambiguacion entre candidatos de vehiculo ya listados"
+        return "busqueda o seleccion inicial en catalogo"
+    if step == "lead_capture":
+        if car:
+            return f"agenda de prueba de manejo o visita para el vehiculo ({car})"
+        return "agenda de prueba de manejo o visita"
+    if step == "financing":
+        plan = str(snapshot.get("financing_plan_name", "")).strip()
+        if plan:
+            return f"continuacion con plan de financiamiento ya elegido ({plan})"
+        if snapshot.get("awaiting_financing_vehicle_selection"):
+            return "seleccion de vehiculo dentro de un plan de financiamiento"
+        if snapshot.get("awaiting_financing_plan_selection"):
+            return "seleccion de plan de financiamiento"
+        if car:
+            return f"opciones de financiamiento para el vehiculo ({car})"
+        return "consulta de planes o preferencias de financiamiento"
+    if step == "promotions":
+        promo = str(snapshot.get("promotion_title", "")).strip()
+        if promo:
+            return f"continuacion con promocion ya elegida ({promo})"
+        if snapshot.get("awaiting_promotion_apply_confirmation"):
+            return "confirmacion para aplicar una promocion mostrada"
+        if snapshot.get("awaiting_promotion_vehicle_interest_confirmation"):
+            return "confirmacion de interes en vehiculo bajo promocion"
+        if snapshot.get("awaiting_promotion_vehicle_selection"):
+            return "seleccion de vehiculo aplicable a una promocion"
+        if snapshot.get("awaiting_promotion_selection"):
+            return "seleccion de promocion vigente"
+        if car:
+            return f"promociones aplicables al vehiculo ({car})"
+        return "promociones vigentes y vehiculos aplicables"
+    return "continuacion del proceso de compra o asesoria"
+
+
+def _faq_resume_flow_facts_block(snapshot: dict[str, str | bool | int]) -> str:
+    car = str(snapshot.get("selected_car", "")).strip() or "(ninguno)"
+    plan = str(snapshot.get("financing_plan_name", "")).strip() or "(ninguno)"
+    promo = str(snapshot.get("promotion_title", "")).strip() or "(ninguno)"
+    return "\n".join(
+        [
+            f"vehiculo_seleccionado: {car}",
+            f"esperando_confirmacion_compra: {str(bool(snapshot.get('awaiting_purchase_confirmation'))).lower()}",
+            f"candidatos_vehiculo_pendientes: {int(snapshot.get('pending_vehicle_candidates', 0))}",
+            f"plan_financiamiento_seleccionado: {plan}",
+            f"esperando_seleccion_plan: {str(bool(snapshot.get('awaiting_financing_plan_selection'))).lower()}",
+            f"esperando_seleccion_vehiculo_en_plan: {str(bool(snapshot.get('awaiting_financing_vehicle_selection'))).lower()}",
+            f"promocion_seleccionada: {promo}",
+            f"esperando_seleccion_promocion: {str(bool(snapshot.get('awaiting_promotion_selection'))).lower()}",
+            f"esperando_seleccion_vehiculo_promocion: {str(bool(snapshot.get('awaiting_promotion_vehicle_selection'))).lower()}",
+            f"esperando_confirmacion_interes_promocion: {str(bool(snapshot.get('awaiting_promotion_vehicle_interest_confirmation'))).lower()}",
+            f"esperando_confirmacion_aplicar_promocion: {str(bool(snapshot.get('awaiting_promotion_apply_confirmation'))).lower()}",
+        ]
+    )
+
+
+def _faq_resume_transition_fallback(
+    resume_to_step: str,
+    snapshot: dict[str, str | bool | int],
+) -> str:
+    step = str(resume_to_step or "").strip()
+    car = str(snapshot.get("selected_car", "")).strip()
+    plan = str(snapshot.get("financing_plan_name", "")).strip()
+    promo = str(snapshot.get("promotion_title", "")).strip()
+
+    if step == "car_selection":
+        if car and snapshot.get("awaiting_purchase_confirmation"):
+            return (
+                f"¿Seguimos con tu interés en {car} para una prueba de manejo o visita en persona?"
+            )
+        if car:
+            return f"¿Te gustaría seguir con {car} o ver más detalles del mismo?"
+        if int(snapshot.get("pending_vehicle_candidates", 0)) > 0:
+            return "¿Cuál de las opciones que te mostré te interesa más?"
+        return _FAQ_RESUME_TRANSITION_FALLBACKS["car_selection"]
+
+    if step == "lead_capture":
+        if car:
+            return f"¿Seguimos con el enlace para agendar tu prueba de manejo o visita con el {car}?"
+        return _FAQ_RESUME_TRANSITION_FALLBACKS["lead_capture"]
+
+    if step == "financing":
+        if plan:
+            return f"¿Seguimos con el plan {plan}?"
+        if snapshot.get("awaiting_financing_vehicle_selection"):
+            return "¿Cuál vehículo del plan te gustaría revisar?"
+        if snapshot.get("awaiting_financing_plan_selection"):
+            return "¿Cuál plan de financiamiento te gustaría revisar?"
+        if car:
+            return f"¿Quieres ver opciones de financiamiento para el {car}?"
+        return _FAQ_RESUME_TRANSITION_FALLBACKS["financing"]
+
+    if step == "promotions":
+        if promo:
+            return f"¿Seguimos con la promoción {promo}?"
+        if snapshot.get("awaiting_promotion_apply_confirmation"):
+            return "¿Confirmas que quieres aplicar esa promoción?"
+        if snapshot.get("awaiting_promotion_vehicle_interest_confirmation"):
+            return "¿Te interesa ese vehículo con la promoción?"
+        if snapshot.get("awaiting_promotion_vehicle_selection"):
+            return "¿Cuál vehículo de la promoción te gustaría revisar?"
+        if snapshot.get("awaiting_promotion_selection"):
+            return "¿Cuál promoción vigente te gustaría revisar?"
+        if car:
+            return f"¿Quieres ver promociones aplicables al {car}?"
+        return _FAQ_RESUME_TRANSITION_FALLBACKS["promotions"]
+
+    return "Perfecto. Continuemos con tu proceso. ¿En qué te apoyo ahora?"
+
+
+def generate_faq_resume_transition(
+    *,
+    user_message: str,
+    last_bot_message: str,
+    resume_to_step: str,
+    state: clientState | None = None,
+) -> str:
+    """Genera pregunta de reanudacion tras FAQ interruptiva, anclada al ultimo mensaje del bot."""
+
+    step = str(resume_to_step or "car_selection").strip() or "car_selection"
+    snapshot = _faq_resume_flow_snapshot(state or {})
+    fallback = _faq_resume_transition_fallback(step, snapshot)
+    last_bot = str(last_bot_message or "").strip()
+    if not last_bot:
+        return fallback
+
+    user_faq = str(user_message or "").strip()
+    step_context = _faq_resume_step_context(step, snapshot)
+    flow_facts = _faq_resume_flow_facts_block(snapshot)
+    verified = "\n".join(
+        [
+            f"paso_a_reanudar: {step}",
+            f"contexto_del_paso: {step_context}",
+            "estado_flujo:",
+            flow_facts,
+            f"ultimo_mensaje_bot: {last_bot[:500]}",
+            f"mensaje_usuario_faq: {user_faq[:500] or '(sin mensaje)'}",
+        ]
+    )
+    return generate_verified_user_message(
+        mode="faq_resume_transition",
+        verified_facts_block=verified,
+        user_message=user_faq,
+        fallback=fallback,
+        temperature=0.4,
     )
 
 

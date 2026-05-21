@@ -223,12 +223,27 @@ _VERIFIED_MODE_INSTRUCTIONS: dict[str, str] = {
         "Usa solo DATOS_VERIFICADOS. Ofrece ayuda general (catalogo, planes, contacto) sin inventar datos del negocio.\n"
         "Breve. Espanol (Mexico)."
     ),
+    "faq_resume_transition": (
+        "TAREA: Generar UNA sola pregunta breve de reanudacion del flujo comercial interrumpido.\n"
+        "DATOS_VERIFICADOS incluye paso_a_reanudar, contexto_del_paso, estado_flujo, ultimo_mensaje_bot y mensaje_usuario_faq.\n"
+        "La pregunta debe retomar lo que el bot estaba pidiendo en ultimo_mensaje_bot y el estado_flujo, no un guion generico.\n"
+        "Si vehiculo_seleccionado no es (ninguno): PROHIBIDO preguntar si quiere ver catalogo, modelos disponibles, marcas "
+        "o si tiene vehiculo en mente; retoma el paso concreto (confirmacion de interes, detalle, imagenes, etc.).\n"
+        "Si plan_financiamiento_seleccionado no es (ninguno): no pidas elegir plan desde cero; continua con ese plan.\n"
+        "Si promocion_seleccionada no es (ninguno): no pidas elegir promocion desde cero; continua con esa promocion.\n"
+        "No repitas ni respondas la duda FAQ del usuario (eso va en otro mensaje).\n"
+        "No inventes datos del negocio, horarios, direcciones ni politicas.\n"
+        "PROHIBIDO: agendar citas con fecha, hora, dia o lugar; prometer que coordinaras agenda.\n"
+        "Puedes usar un conector minimo (ej. Perfecto, Claro) antes de la pregunta.\n"
+        "Maximo 1-2 oraciones. Debe terminar en pregunta. Espanol (Mexico). Sin prefijos."
+    ),
     "faq_turn": (
         "TAREA: Responder la duda del usuario usando EXCLUSIVAMENTE el texto en BASE_FAQ_DESDE_BD dentro de DATOS_VERIFICADOS.\n"
         "No inventes horarios, direcciones, politicas ni datos que no aparezcan en BASE_FAQ_DESDE_BD.\n"
         "Si faq_respuesta_compacta es true, limita la parte de la respuesta FAQ a un solo parrafo corto (idea principal).\n"
-        "Despues de la respuesta FAQ, si transicion_literal no es '(ninguna)', agrega esa frase tal cual (puede ajustar mayusculas iniciales para encajar).\n"
-        "Al final, si cierre_literal no es '(ninguno)', incluye esa pregunta o cierre tal cual.\n"
+        "Despues de la respuesta FAQ, si transicion_literal no es '(ninguna)', integra esa pregunta de transicion "
+        "de forma natural (conectores y mayusculas; conserva el sentido de la pregunta).\n"
+        "Al final, si cierre_literal no es '(ninguno)', incluye esa pregunta o cierre de forma natural.\n"
         "Un solo mensaje coherente. Espanol (Mexico). Sin prefijos tipo 'Respuesta:'."
     ),
 }
