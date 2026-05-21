@@ -165,10 +165,12 @@ class FinancingFlowTests(GraphTestCase):
             self.assertEqual(state.get("current_node"), "lead_capture")
             self.assertEqual(state.get("selected_vehicle_id"), "veh-2")
 
-            state = self.graph.invoke(with_user_message(state, "Javier Karim Reyes"))
-            self.assertIn("correo", state["messages"][-1]["content"].lower())
-
-            state = self.graph.invoke(with_user_message(state, "javier@karim.com"))
+            state = self.graph.invoke(
+                with_user_message(
+                    state,
+                    "Javier Karim Reyes, 5512345678, javier@karim.com",
+                )
+            )
             self.assertFalse(state.get("lead_capture_done"))
             self.assertTrue(state.get("awaiting_lead_capture_final_confirmation"))
             state = self.graph.invoke(with_user_message(state, "si, confirmo"))
@@ -287,8 +289,12 @@ class FinancingFlowTests(GraphTestCase):
             self.assertEqual(state.get("current_node"), "lead_capture")
             self.assertEqual(state.get("selected_financing_plan_id"), "plan-shilo")
 
-            state = self.graph.invoke(with_user_message(state, "javier karim reyes"))
-            state = self.graph.invoke(with_user_message(state, "javier@kaim.com"))
+            state = self.graph.invoke(
+                with_user_message(
+                    state,
+                    "Javier Karim Reyes, 5512345678, javier@kaim.com",
+                )
+            )
             self.assertFalse(state.get("lead_capture_done"))
             self.assertTrue(state.get("awaiting_lead_capture_final_confirmation"))
             state = self.graph.invoke(with_user_message(state, "si correcto"))

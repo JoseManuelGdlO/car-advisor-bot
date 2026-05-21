@@ -724,14 +724,14 @@ def generate_lead_capture_intro(
     """Mensaje inicial para captura de lead, anclado a DATOS_VERIFICADOS del estado."""
 
     name = (selected_car or "").strip() or "este vehiculo"
+    bulk_ask = (
+        "comparteme en un solo mensaje tu nombre completo, "
+        "numero de telefono (solo digitos) y correo electronico"
+    )
     fallback = (
-        f"Continuamos con {name}. Necesitamos unos datos para darte seguimiento y "
-        f"continuar con la compra de {name}. Cual es tu nombre completo?"
+        f"Continuamos con {name}. Para darte seguimiento con {name}, {bulk_ask}."
         if resuming
-        else (
-            f"Para darte seguimiento con la compra de {name}, "
-            f"te pediremos unos datos. Cual es tu nombre completo?"
-        )
+        else f"Para darte seguimiento con la compra de {name}, {bulk_ask}."
     )
     block = str(verified_facts_block or "").strip()
     if not block:

@@ -168,3 +168,67 @@ def extract_email(text: str) -> str:
     if not match:
         return ""
     return normalize_stored_email(match.group(1))
+
+
+def extract_longest_phone_digits(text: str) -> str:
+    """Devuelve digitos de telefono (secuencia larga o digitos espaciados concatenados)."""
+
+    raw = str(text or "")
+    min_len = phone_min_digits()
+    contiguous_best = ""
+    for match in re.finditer(r"\d+", raw):
+        digits = match.group(0)
+        if len(digits) >= min_len and len(digits) > len(contiguous_best):
+            contiguous_best = digits
+    spaced = "".join(c for c in raw if c.isdigit())
+    if len(spaced) >= min_len and len(spaced) >= len(contiguous_best):
+        return spaced
+    return contiguous_best
+
+
+def _remove_phone_occurrence(text: str, phone: str) -> str:
+    """Quita del texto la primera aparicion del telefono (digitos pueden estar separados)."""
+
+    if not phone:
+        return text
+    digits_needed = list(phone)
+    out: list[str] = []
+    for ch in text:
+        if ch.isdigit() and digits_needed and ch == digits_needed[0]:
+            digits_needed.pop(0)
+            out.append(" ")
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def parse_contact_from_message(text: str) -> dict[str, str]:
+    """Extrae nombre, telefono y correo de un mensaje libre (orden: email, telefono, nombre)."""
+
+    raw = str(text or "").strip()
+    if not raw:
+        return {}
+    out: dict[str, str] = {}
+    email = extract_email(raw)
+    work = raw
+    if email:
+        out["email"] = email
+        work = re.sub(re.escape(email), " ", work, flags=re.IGNORECASE, count=1)
+    phone = extract_longest_phone_digits(work)
+    if phone:
+        out["telefono"] = phone
+        work = _remove_phone_occurrence(work, phone)
+    work = re.sub(
+        r"\b(?:tel|telefono|teléfono|cel|celular|numero|número)\b",
+        " ",
+        work,
+        flags=re.IGNORECASE,
+    )
+    name = extract_name(work)
+    if name and (
+        is_valid_full_name(name)
+        or is_initial_only_name(name)
+        or len(name.split()) >= 3
+    ):
+        out["nombre"] = name
+    return out

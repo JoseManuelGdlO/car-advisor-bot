@@ -101,7 +101,7 @@ def build_other_response_prompt(
         "A continuacion aparece DATOS_VERIFICADOS: solo configuracion/estilo del bot y mensaje del usuario. "
         "No inventes inventario, precios, promociones, planes de financiamiento ni disponibilidad de vehiculos.\n"
         "Reglas:\n"
-        "- Solo saluda si el usuario esta saludando explicitamente o si el mensaje parece de inicio de conversacion.\n"
+        "- Solo saluda si el usuario esta saludando explicitamente o si el mensaje parece de inicio de conversacion o es primer mensaje del usuario.\n"
         "- Si el usuario agradece (por ejemplo: gracias, muchas gracias), responde agradeciendo de vuelta "
         "(por ejemplo: con gusto/de nada) y NO vuelvas a saludar.\n"
         "- Si no hay saludo ni agradecimiento, responde sin saludo de apertura.\n"
@@ -200,10 +200,15 @@ _VERIFIED_MODE_INSTRUCTIONS: dict[str, str] = {
     "lead_capture_intro": (
         "TAREA: Mensaje inicial de captura de datos de contacto.\n"
         "DATOS_VERIFICADOS describe el vehiculo de interes, si es reanudacion, y datos ya capturados (solo lo que conste).\n"
-        "Explica brevemente que se necesitan datos para dar seguimiento; termina pidiendo NOMBRE COMPLETO "
-        "(debe aparecer la palabra 'nombre' en la pregunta).\n"
-        "No pidas nombre, telefono y email en un solo formato tipo formulario.\n"
+        "Explica brevemente que se necesitan datos para dar seguimiento.\n"
+        "Pide en UN solo mensaje: nombre completo, numero de telefono (solo digitos) y correo electronico.\n"
+        "Deben aparecer las palabras nombre, telefono (o teléfono) y correo (o email) en la solicitud.\n"
         "Un parrafo corto o dos frases. Espanol (Mexico). Sin prefijos."
+    ),
+    "lead_capture_missing": (
+        "TAREA: Mensaje breve indicando que datos de contacto aun faltan o son invalidos.\n"
+        "DATOS_VERIFICADOS lista campos_faltantes y campos_invalidos; pide solo esos datos.\n"
+        "El usuario puede enviarlos juntos en un solo mensaje. Espanol (Mexico). Sin prefijos."
     ),
     "lead_capture_step": (
         "TAREA: Mensaje corto para solicitar o corregir un dato de contacto (telefono, email, nombre).\n"

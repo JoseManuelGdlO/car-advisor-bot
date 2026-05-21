@@ -32,6 +32,7 @@ class clientState(TypedDict, total=False):
     - owner_user_id: UUID del tenant (vendedor). Obligatorio en /chat con token global antes de leer catálogo; viene del webhook o body.
     - lead_phone_attempts: reintentos al validar telefono en plataformas que lo piden.
     - awaiting_lead_capture_final_confirmation: True cuando ya hay nombre/telefono/email y el bot mostro el resumen pendiente de confirmacion del usuario.
+    - lead_capture_awaiting_bulk: True tras pedir nombre/telefono/correo en un solo mensaje; espera la respuesta del usuario.
     - lead_capture_done: True cuando ya se notifico y persistio el lead en esta conversacion.
     - selected_financing_plan_*: datos del plan seleccionado por el usuario.
     - financing_plan_candidates: lista temporal de planes para seleccion.
@@ -71,6 +72,7 @@ class clientState(TypedDict, total=False):
     owner_user_id: str
     lead_phone_attempts: int
     awaiting_lead_capture_final_confirmation: bool
+    lead_capture_awaiting_bulk: bool
     lead_capture_done: bool
     vehicle_images_cursor: int
     vehicle_images_has_more: bool

@@ -47,7 +47,10 @@ class PurchaseFlowTests(GraphTestCase):
             patch("src.nodes.car_selection.classify_purchase_confirmation_intent", return_value="UNKNOWN"),
             patch(
                 "src.nodes.lead_capture.generate_lead_capture_intro",
-                return_value="Necesitamos datos para un asesor (Toyota Corolla LE 2021). Cual es tu nombre completo?",
+                return_value=(
+                    "Para dar seguimiento (Toyota Corolla LE 2021), comparteme en un solo mensaje "
+                    "tu nombre completo, telefono y correo electronico."
+                ),
             ),
             patch(
                 "src.nodes.lead_capture.generate_verified_user_message",
@@ -79,7 +82,10 @@ class PurchaseFlowTests(GraphTestCase):
             patch("src.nodes.car_selection.classify_purchase_confirmation_intent", return_value="SI"),
             patch(
                 "src.nodes.lead_capture.generate_lead_capture_intro",
-                return_value="Necesitamos datos para un asesor (Nissan Versa 2004). Cual es tu nombre completo?",
+                return_value=(
+                    "Para dar seguimiento (Nissan Versa 2004), comparteme en un solo mensaje "
+                    "tu nombre completo, telefono y correo electronico."
+                ),
             ),
             patch(
                 "src.nodes.lead_capture.generate_verified_user_message",

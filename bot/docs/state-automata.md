@@ -9,7 +9,7 @@ Este documento define el diagrama de estados del flujo conversacional actual.
 - `car_selection`: explora catalogo, filtra, compara dos vehiculos (sin cambiar `selected_vehicle_id` hasta nueva eleccion) y permite avanzar a compra.
 - `financing`: consulta planes financieros y cruza con vehiculos.
 - `promotions`: consulta promociones y cruza con vehiculos aplicables.
-- `lead_capture`: captura nombre, telefono y email para notificar al asesor.
+- `lead_capture`: captura nombre, telefono y email en un mensaje (con seguimiento de faltantes) y notifica al asesor.
 - `faq`: resuelve preguntas puntuales del usuario.
 
 ## Eventos principales
