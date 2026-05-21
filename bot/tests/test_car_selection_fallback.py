@@ -13,6 +13,7 @@ from src.services.car_selection_fallback import (
     is_test_drive_or_visit_request,
     looks_like_feature_request,
     looks_like_specific_vehicle_request,
+    user_asks_for_color,
     user_asks_for_price,
 )
 from src.tools.vehicles import normalize_user_text
@@ -98,6 +99,15 @@ class CarSelectionFallbackTests(unittest.TestCase):
         self.assertFalse(user_asks_for_price("tienen nissan versa"))
         self.assertFalse(user_asks_for_price("dame la ficha tecnica"))
         self.assertFalse(user_asks_for_price("compara versa con march"))
+
+    def test_user_asks_for_color_detects_color_questions(self) -> None:
+        self.assertTrue(user_asks_for_color("de que color es?"))
+        self.assertTrue(user_asks_for_color("que color tiene el versa"))
+        self.assertTrue(user_asks_for_color("comparar colores entre los dos"))
+        self.assertTrue(user_asks_for_color("cual es la pintura"))
+        self.assertFalse(user_asks_for_color("tienen nissan versa"))
+        self.assertFalse(user_asks_for_color("dame la ficha tecnica"))
+        self.assertFalse(user_asks_for_color("compara versa con march"))
 
     def test_selected_vehicle_specs_request_true_when_same_vehicle_or_unresolved(self) -> None:
         selected_id = "veh-1"

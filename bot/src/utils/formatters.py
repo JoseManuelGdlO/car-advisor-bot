@@ -145,7 +145,13 @@ def format_filtered_vehicles(vehicles: list[dict[str, Any]], platform: str = "we
     return "\n".join(lines).strip()
 
 
-def format_vehicle_detail(vehicle: dict[str, Any], platform: str = "web", *, include_price: bool = False,) -> str:
+def format_vehicle_detail(
+    vehicle: dict[str, Any],
+    platform: str = "web",
+    *,
+    include_price: bool = False,
+    include_color: bool = False,
+) -> str:
     """Construye detalle del vehiculo en lista vertical corta."""
 
     brand = _title_or_default(vehicle.get("brand"))
@@ -162,13 +168,14 @@ def format_vehicle_detail(vehicle: dict[str, Any], platform: str = "web", *, inc
         lines.append(f"{_bold_label('Precio', platform)}: {_format_currency(vehicle.get('price'))}")
     lines.extend(
         [
-        f"{_bold_label('Kilometraje', platform)}: {_format_int(vehicle.get('km'), 'km')}",
-        f"{_bold_label('Transmisión', platform)}: {_title_or_default(vehicle.get('transmission'))}",
-        f"{_bold_label('Motor', platform)}: {_title_or_default(vehicle.get('engine'))}",
-        f"{_bold_label('Color', platform)}: {_title_or_default(vehicle.get('color'))}",
-        f"{_bold_label('Descripción', platform)}: {description}",
+            f"{_bold_label('Kilometraje', platform)}: {_format_int(vehicle.get('km'), 'km')}",
+            f"{_bold_label('Transmisión', platform)}: {_title_or_default(vehicle.get('transmission'))}",
+            f"{_bold_label('Motor', platform)}: {_title_or_default(vehicle.get('engine'))}",
         ]
     )
+    if include_color:
+        lines.append(f"{_bold_label('Color', platform)}: {_title_or_default(vehicle.get('color'))}")
+    lines.append(f"{_bold_label('Descripción', platform)}: {description}")
     return "\n".join(lines)
 
 
@@ -178,6 +185,7 @@ def format_two_vehicle_comparison_grounding(
     platform: str = "web",
     *,
     include_price: bool = False,
+    include_color: bool = False,
 ) -> str:
     """Une dos fichas `format_vehicle_detail` para anclar narrativa de comparacion al LLM."""
 
@@ -185,8 +193,18 @@ def format_two_vehicle_comparison_grounding(
         return ""
     name_a = format_vehicle_name(vehicle_a)
     name_b = format_vehicle_name(vehicle_b)
-    block_a = format_vehicle_detail(vehicle_a, platform=platform, include_price=include_price)
-    block_b = format_vehicle_detail(vehicle_b, platform=platform, include_price=include_price)
+    block_a = format_vehicle_detail(
+        vehicle_a,
+        platform=platform,
+        include_price=include_price,
+        include_color=include_color,
+    )
+    block_b = format_vehicle_detail(
+        vehicle_b,
+        platform=platform,
+        include_price=include_price,
+        include_color=include_color,
+    )
     return (
         f"VEHICULO_A ({name_a}):\n{block_a}\n\n"
         f"VEHICULO_B ({name_b}):\n{block_b}"

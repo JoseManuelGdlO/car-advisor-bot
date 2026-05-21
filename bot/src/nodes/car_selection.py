@@ -30,6 +30,7 @@ from src.services.car_selection_fallback import (
     is_test_drive_or_visit_request,
     looks_like_feature_request,
     looks_like_specific_vehicle_request,
+    user_asks_for_color,
     user_asks_for_price,
 )
 from src.tools.vehicles import (
@@ -291,6 +292,7 @@ def _respond_selected_vehicle_inventory_qa(state: clientState, user_text: str) -
         detail,
         platform=platform,
         include_price=user_asks_for_price(user_text),
+        include_color=user_asks_for_color(user_text),
     )
     name = selected_label or format_vehicle_name(detail)
     body = generate_selected_vehicle_qa_response(name, grounded, user_text)
@@ -452,6 +454,7 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
         detail,
         platform=platform,
         include_price=user_asks_for_price(user_text),
+        include_color=user_asks_for_color(user_text),
     )
     detail_narrative = generate_vehicle_detail_conversation(state["selected_car"], grounded_vehicle_facts)
     purchase_question = _build_purchase_question(state)
@@ -707,6 +710,7 @@ def _respond_with_vehicle_comparison(
         detail_b,
         platform=platform,
         include_price=user_asks_for_price(user_q),
+        include_color=user_asks_for_color(user_q),
     )
     narrative = generate_vehicle_comparison_conversation(
         name_a,

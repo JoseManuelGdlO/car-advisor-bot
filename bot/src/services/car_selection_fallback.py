@@ -148,6 +148,28 @@ def user_asks_for_price(user_text: str) -> bool:
     return any(contains_signal_phrase(normalized, signal) for signal in _PRICE_QUESTION_SIGNALS)
 
 
+_COLOR_QUESTION_SIGNALS: tuple[str, ...] = (
+    "color",
+    "de que color",
+    "que color",
+    "cual color",
+    "en que color",
+    "tonalidad",
+    "pintura",
+    "comparar colores",
+    "diferencia de color",
+)
+
+
+def user_asks_for_color(user_text: str) -> bool:
+    """True si el mensaje pide el color del vehiculo o comparacion orientada a color."""
+
+    normalized = normalize_user_text(user_text)
+    if not normalized:
+        return False
+    return any(contains_signal_phrase(normalized, signal) for signal in _COLOR_QUESTION_SIGNALS)
+
+
 def is_promotions_request(user_text: str, promotions_signals_normalized: set[str]) -> bool:
     """Detecta interés en promociones u ofertas vigentes."""
 
