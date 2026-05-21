@@ -10,6 +10,7 @@ from src.utils.formatters import (
     format_images_bulleted_list,
     format_promotion_comparison,
     format_two_vehicle_comparison_grounding,
+    format_vehicle_detail,
     format_vehicle_name,
 )
 
@@ -66,10 +67,20 @@ class TestFormatTwoVehicleComparisonGrounding(unittest.TestCase):
             "description": "",
         }
 
-    def test_web_has_both_sections_and_prices(self) -> None:
+    def test_web_has_both_sections_without_price_by_default(self) -> None:
         out = format_two_vehicle_comparison_grounding(self.v1, self.v2, platform="web")
         self.assertIn("VEHICULO_A (", out)
         self.assertIn("VEHICULO_B (", out)
+        self.assertNotIn("**Precio**", out)
+        self.assertNotIn("$350,000.00", out)
+
+    def test_web_includes_prices_when_requested(self) -> None:
+        out = format_two_vehicle_comparison_grounding(
+            self.v1,
+            self.v2,
+            platform="web",
+            include_price=True,
+        )
         self.assertIn("**Precio**", out)
         self.assertIn("$350,000.00", out)
         self.assertIn("$280,000.50", out)
@@ -78,6 +89,41 @@ class TestFormatTwoVehicleComparisonGrounding(unittest.TestCase):
         out = format_two_vehicle_comparison_grounding(self.v1, self.v2, platform="whatsapp")
         self.assertIn("*Marca*", out)
         self.assertNotIn("**Marca**", out)
+
+
+class TestFormatVehicleDetail(unittest.TestCase):
+    def test_omits_price_by_default(self) -> None:
+        vehicle = {
+            "brand": "Nissan",
+            "model": "Versa",
+            "year": 2011,
+            "price": "350000",
+            "km": 45000,
+            "transmission": "automatica",
+            "engine": "1.6",
+            "color": "rojo",
+            "description": "Unidad impecable",
+        }
+        out = format_vehicle_detail(vehicle, platform="web")
+        self.assertNotIn("**Precio**", out)
+        self.assertNotIn("$350,000.00", out)
+        self.assertIn("**Marca**", out)
+
+    def test_includes_price_when_requested(self) -> None:
+        vehicle = {
+            "brand": "Nissan",
+            "model": "Versa",
+            "year": 2011,
+            "price": "350000",
+            "km": 45000,
+            "transmission": "automatica",
+            "engine": "1.6",
+            "color": "rojo",
+            "description": "Unidad impecable",
+        }
+        out = format_vehicle_detail(vehicle, platform="web", include_price=True)
+        self.assertIn("**Precio**", out)
+        self.assertIn("$350,000.00", out)
 
 
 class TestFormatFinancingPlanComparison(unittest.TestCase):

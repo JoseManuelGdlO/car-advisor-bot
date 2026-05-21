@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from src.services.car_selection_fallback import user_asks_for_price
 from src.services.llm_responses import (
     classify_promotion_comparison_payload,
     classify_promotions_step_flags,
@@ -370,7 +371,11 @@ def _show_vehicle_and_confirm_interest(state: clientState, vehicle: dict[str, An
     state["selected_car"] = format_vehicle_name(vehicle)
     state["awaiting_promotion_vehicle_interest_confirmation"] = True
     state["awaiting_promotion_vehicle_selection"] = False
-    detail = format_vehicle_detail(vehicle, platform=str(state.get("platform", "web")))
+    detail = format_vehicle_detail(
+        vehicle,
+        platform=str(state.get("platform", "web")),
+        include_price=user_asks_for_price(latest_user_message(state)),
+    )
     promotion_title = str(state.get("selected_promotion_title", "")).strip() or "esta promocion"
     promo_id = str(state.get("selected_promotion_id", "")).strip()
     verified = "\n".join(

@@ -15,7 +15,7 @@ from src.services.llm_responses import (
 )
 from src.state import clientState
 from src.tools.database import fetch_financing_plans, fetch_financing_plans_by_vehicle
-from src.services.car_selection_fallback import is_first_images_request
+from src.services.car_selection_fallback import is_first_images_request, user_asks_for_price
 from src.tools.vehicles import (
     canonicalize_with_typo_support,
     fetch_vehicle_by_id,
@@ -482,7 +482,11 @@ def _respond_plan_vehicle_info(state: clientState, plan: dict[str, Any]) -> clie
     detail = fetch_vehicle_by_id(vehicle_id) if vehicle_id else None
     detail_source = detail if isinstance(detail, dict) else target_vehicle
     vehicle_name = format_vehicle_name(detail_source)
-    vehicle_text = format_vehicle_detail(detail_source, platform=str(state.get("platform", "web")))
+    vehicle_text = format_vehicle_detail(
+        detail_source,
+        platform=str(state.get("platform", "web")),
+        include_price=user_asks_for_price(latest_user_message(state)),
+    )
     state["selected_vehicle_id"] = vehicle_id
     state["selected_car"] = vehicle_name
     reset_vehicle_images_state(state)

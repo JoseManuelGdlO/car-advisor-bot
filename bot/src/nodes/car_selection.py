@@ -30,6 +30,7 @@ from src.services.car_selection_fallback import (
     is_test_drive_or_visit_request,
     looks_like_feature_request,
     looks_like_specific_vehicle_request,
+    user_asks_for_price,
 )
 from src.tools.vehicles import (
     canonicalize_with_typo_support,
@@ -286,7 +287,11 @@ def _respond_selected_vehicle_inventory_qa(state: clientState, user_text: str) -
         return _append_assistant_blocks(state, [msg, question])
 
     platform = str(state.get("platform", "web")).strip().lower() or "web"
-    grounded = format_vehicle_detail(detail, platform=platform)
+    grounded = format_vehicle_detail(
+        detail,
+        platform=platform,
+        include_price=user_asks_for_price(user_text),
+    )
     name = selected_label or format_vehicle_name(detail)
     body = generate_selected_vehicle_qa_response(name, grounded, user_text)
     question = _build_purchase_question(state)
@@ -442,7 +447,12 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
     )
 
     platform = str(state.get("platform", "web")).strip().lower() or "web"
-    grounded_vehicle_facts = format_vehicle_detail(detail, platform=platform)
+    user_text = latest_user_message(state)
+    grounded_vehicle_facts = format_vehicle_detail(
+        detail,
+        platform=platform,
+        include_price=user_asks_for_price(user_text),
+    )
     detail_narrative = generate_vehicle_detail_conversation(state["selected_car"], grounded_vehicle_facts)
     purchase_question = _build_purchase_question(state)
     first_block = detail_narrative
@@ -452,7 +462,6 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
     if promotion_removed_notice:
         blocks.append(promotion_removed_notice)
     blocks.extend([first_block, purchase_question])
-    user_text = latest_user_message(state)
     if is_first_images_request(
         user_text,
         _FIRST_IMAGES_SIGNALS_NORMALIZED,
@@ -693,7 +702,12 @@ def _respond_with_vehicle_comparison(
     name_a = format_vehicle_name(detail_a)
     name_b = format_vehicle_name(detail_b)
     user_q = latest_user_message(state)
-    grounded = format_two_vehicle_comparison_grounding(detail_a, detail_b, platform=platform)
+    grounded = format_two_vehicle_comparison_grounding(
+        detail_a,
+        detail_b,
+        platform=platform,
+        include_price=user_asks_for_price(user_q),
+    )
     narrative = generate_vehicle_comparison_conversation(
         name_a,
         name_b,

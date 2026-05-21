@@ -16,6 +16,9 @@ _SYSTEM_RULES_BLOCK = (
     "- Si faltan datos, pide lo minimo necesario para avanzar.\n"
     "- Manten un tono humano y claro.\n"
     "- No uses las palabras 'asesor' ni 'asesora' en mensajes al usuario."
+    "- No repitas el mismo mensaje en diferentes formatos."
+    "- Trata de mantener la conversacion fluida y natural."
+    "- Usa lenguaje natural y no robotizado."
 )
 
 
@@ -62,7 +65,7 @@ def build_settings_block(settings: dict[str, Any] | None) -> str:
         "CONFIGURACION_GLOBAL_DEL_BOT:",
         f"- {_tone_instruction(str(cfg.get('tone', 'cercano')))}",
         f"- {_emoji_instruction(str(cfg.get('emojiStyle', 'frecuentes')))}",
-        f"- {_sales_instruction(str(cfg.get('salesProactivity', 'medio')))}",
+        f"- {_sales_instruction(str(cfg.get('salesProactivity', 'bajo')))}",
         f"- Solo saluda si el usuario esta saludando explicitamente o si el mensaje parece de inicio de conversacion.",
         f"- No sugieras agendar citas; indica que el equipo dara seguimiento cuando corresponda.",
         f"- No puedes agendar citas, solo puedes responder preguntas y ofrecer informacion.",
@@ -281,10 +284,11 @@ def build_vehicle_detail_conversation_prompt(
         f"{facts}\n\n"
         "Instrucciones obligatorias:\n"
         "- Redacta en espanol (Mexico) un texto conversacional, como un consultor de agencia presentando el auto en chat.\n"
-        "- Usa SOLO informacion que aparezca literalmente en DATOS_VERIFICADOS (mismos valores: precio, km, motor, etc.). "
+        "- Usa SOLO informacion que aparezca literalmente en DATOS_VERIFICADOS (mismos valores: km, motor, etc.). "
         "No inventes equipamiento, garantias, historial, consumo, seguridad, financiamiento, promociones ni disponibilidad extra.\n"
         "- No agregues cifras, fechas ni hechos que no esten en el bloque.\n"
-        "- Incluye de forma natural todos los campos que aparezcan en DATOS_VERIFICADOS (marca, modelo, año, precio, kilometraje, "
+        "- No menciones precio, costo ni valor del vehiculo a menos que DATOS_VERIFICADOS incluya la linea Precio.\n"
+        "- Incluye de forma natural todos los campos que aparezcan en DATOS_VERIFICADOS (marca, modelo, año, kilometraje, "
         "transmision, motor, color y descripcion). Si algun valor es N/D o indica que no hay descripcion, dilo con naturalidad sin inventar detalles.\n"
         "- No uses listas con viñetas ni formato 'Etiqueta: valor' en lineas separadas; integra todo en parrafos o frases enlazadas.\n"
         "- Evita markdown de tablas o listas; maximo un salto de linea entre dos parrafos cortos si ayuda a la lectura.\n"
@@ -319,10 +323,11 @@ def build_vehicle_comparison_conversation_prompt(
         f"Contexto del usuario (pedido de comparacion): {um}\n\n"
         "Instrucciones obligatorias:\n"
         "- Redacta en espanol (Mexico) un texto conversacional: como un consultor que contrasta las dos unidades en chat.\n"
-        "- Usa SOLO informacion que aparezca en DATOS_VERIFICADOS para ambas unidades (mismos valores: precio, km, motor, etc.). "
+        "- Usa SOLO informacion que aparezca en DATOS_VERIFICADOS para ambas unidades (mismos valores: km, motor, etc.). "
         "No inventes equipamiento, garantias, historial, consumo, seguridad, financiamiento, promociones ni datos que no esten en las fichas.\n"
         "- Menciona a ambos vehiculos de forma clara (puedes usar los nombres de las secciones o marca/modelo/año del bloque).\n"
-        "- Contrasta de forma natural lo que difiere (precio, kilometraje, motor, año, color, descripcion, estado) sin inventar similitudes no respaldadas.\n"
+        "- No menciones precio, costo ni valor salvo que ambas fichas en DATOS_VERIFICADOS incluyan la linea Precio.\n"
+        "- Contrasta de forma natural lo que difiere (kilometraje, motor, año, color, descripcion, estado) sin inventar similitudes no respaldadas.\n"
         "- No uses listas con viñetas ni formato tabla 'campo | A | B' ni lineas tipo 'Etiqueta: valor' repetidas como ficha; integra todo en parrafos o frases enlazadas.\n"
         "- Evita markdown de tablas; como maximo un salto de linea entre dos parrafos cortos si ayuda a la lectura.\n"
         "- No cierres con una pregunta fija literal obligatoria: el sistema agregara el cierre. Termina el texto despues de la comparacion, "
@@ -352,8 +357,10 @@ def build_selected_vehicle_qa_prompt(
         f"PREGUNTA_DEL_USUARIO: {question}\n\n"
         "Instrucciones obligatorias:\n"
         "- Responde en espanol (Mexico), tono claro y breve (1-3 oraciones salvo que la pregunta exija un poco mas).\n"
-        "- Usa EXCLUSIVAMENTE informacion que aparezca en DATOS_VERIFICADOS (mismos valores: precio, kilometraje, motor, color, etc.). "
+        "- Usa EXCLUSIVAMENTE informacion que aparezca en DATOS_VERIFICADOS (mismos valores: kilometraje, motor, color, etc.). "
         "No inventes equipamiento, garantias, historial, consumo, revisiones, financiamiento ni promociones.\n"
+        "- Si preguntan por precio, costo o valor, respondelo solo si DATOS_VERIFICADOS incluye la linea Precio; "
+        "si no esta en el bloque, dilo con naturalidad y sugiere que el equipo pueda confirmarlo.\n"
         "- Si el dato no esta en DATOS_VERIFICADOS o figura como N/D, dilo con naturalidad y sugiere que el equipo pueda confirmarlo.\n"
         "- No repitas toda la ficha: centrate en lo que pregunto el usuario.\n"
         "- No saludes ni menciones que eres una IA.\n"

@@ -120,6 +120,34 @@ def is_financing_request(user_text: str, financing_signals_normalized: set[str])
     return any(contains_signal_phrase(normalized, signal) for signal in financing_signals_normalized)
 
 
+_PRICE_QUESTION_SIGNALS: tuple[str, ...] = (
+    "precio",
+    "cuanto cuesta",
+    "cuanto vale",
+    "cuanto sale",
+    "cuanto es",
+    "cuanto cuestan",
+    "costo",
+    "valor del auto",
+    "valor del carro",
+    "valor del vehiculo",
+    "comparar precios",
+    "diferencia de precio",
+    "mas barato",
+    "mas caro",
+    "menos caro",
+)
+
+
+def user_asks_for_price(user_text: str) -> bool:
+    """True si el mensaje pide precio, costo o comparacion orientada a precio."""
+
+    normalized = normalize_user_text(user_text)
+    if not normalized:
+        return False
+    return any(contains_signal_phrase(normalized, signal) for signal in _PRICE_QUESTION_SIGNALS)
+
+
 def is_promotions_request(user_text: str, promotions_signals_normalized: set[str]) -> bool:
     """Detecta interés en promociones u ofertas vigentes."""
 
