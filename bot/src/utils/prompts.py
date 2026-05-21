@@ -41,7 +41,7 @@ def _emoji_instruction(emoji_style: str) -> str:
     mapping = {
         "nunca": "No uses emojis.",
         "pocos": "Usa pocos emojis y solo si aportan claridad.",
-        "frecuentes": "Puedes usar emojis con frecuencia moderada y buen criterio.",
+        "frecuentes": "Puedes usar emojis con frecuencia y buen criterio.",
     }
     return mapping.get(value, mapping["pocos"])
 
@@ -299,6 +299,8 @@ def build_vehicle_detail_conversation_prompt(
         "transmision, motor, color y descripcion). Si algun valor es N/D o indica que no hay descripcion, dilo con naturalidad sin inventar detalles.\n"
         "- No uses listas con viñetas ni formato 'Etiqueta: valor' en lineas separadas; integra todo en parrafos o frases enlazadas.\n"
         "- Evita markdown de tablas o listas; maximo un salto de linea entre dos parrafos cortos si ayuda a la lectura.\n"
+        "- No agregues cierre invitando a pedir mas informacion, ver otros modelos, seguir explorando el catalogo\n"
+        "- Termina el texto al describir el vehiculo segun DATOS_VERIFICADOS, sin preguntas ni ofertas de catalogo adicional.\n"
         "- Devuelve UNICAMENTE el mensaje para el usuario, sin titulos, sin prefijos tipo 'Respuesta:' ni comillas."
     )
 

@@ -544,10 +544,7 @@ def _grounded_facts_to_fallback_paragraph(vehicle_name: str, facts_block: str) -
     if not pairs:
         return f"Te comparto lo que tenemos de {name}. {facts_block.strip()}"
     body = ". ".join(pairs)
-    return (
-        f"Con gusto te platico del {name}: {body}. "
-        "Si quieres, seguimos con mas detalles o vemos otro modelo."
-    )
+    return f"Con gusto te platico del {name}: {body}."
 
 
 def generate_vehicle_detail_conversation(vehicle_name: str, grounded_facts_block: str) -> str:

@@ -18,20 +18,16 @@ def faq(state: clientState) -> clientState:
         resume_to_step = str(state.get("resume_to_step", "car_selection"))
         transitions = {
             "car_selection": (
-                "Perfecto. Sigamos con el catálogo: ¿quieres que busquemos por marca o modelo, "
-                "o te muestro opciones según tu presupuesto?"
+                "Perfecto. Sigamos con la selección de vehículos "
             ),
             "lead_capture": (
-                "Genial. Seguimos con tus datos para apartar el vehículo: "
-                "¿con qué dato quieres continuar (nombre, teléfono o correo)?"
+                "Genial. Seguimos con tus datos para apartar el vehículo"
             ),
             "financing": (
-                "Excelente. Volvamos al financiamiento: "
-                "¿prefieres revisar enganche, mensualidad o plazos?"
+                "Excelente. Volvamos al financiamiento, tienes alguna preferencia?"
             ),
             "promotions": (
-                "Perfecto. Sigamos con las promociones vigentes: "
-                "¿quieres el detalle de alguna o seguimos con otra?"
+                "Perfecto. Sigamos con las promociones vigentes, quieres el detalle de alguna?"
             ),
         }
         transition = transitions.get(
