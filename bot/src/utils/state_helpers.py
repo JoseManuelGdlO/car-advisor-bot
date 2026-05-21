@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import json
-from typing import Any
-
 from src.state import clientState
 
 
@@ -57,28 +54,3 @@ def is_faq_intent(text: str) -> bool:
         "ubicacion",
     ]
     return any(term in normalized for term in faq_terms)
-
-
-def parse_customer_info(raw_text: str) -> dict[str, Any]:
-    """Parsea datos de cliente en formato 'nombre:..., telefono:..., email:...'."""
-
-    info: dict[str, Any] = {}
-    if not raw_text:
-        return info
-
-    try:
-        parsed = json.loads(raw_text)
-        if isinstance(parsed, dict):
-            return parsed
-    except Exception:
-        pass
-
-    for token in raw_text.split(","):
-        if ":" not in token:
-            continue
-        key, value = token.split(":", 1)
-        key_norm = key.strip().lower()
-        value_norm = value.strip()
-        if key_norm and value_norm:
-            info[key_norm] = value_norm
-    return info

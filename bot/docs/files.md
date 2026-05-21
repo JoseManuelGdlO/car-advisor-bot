@@ -12,7 +12,7 @@ La carpeta de nodos ahora esta separada por responsabilidad:
 - `car_selection`: unifica catalogo, filtros y detalle de vehiculos.
 - `financing`: manejo de planes financieros y seleccion de vehiculo por plan.
 - `promotions`: manejo de promociones y seleccion de vehiculo aplicable.
-- `lead_capture`: captura datos del cliente y notifica a asesor.
+- `lead_capture`: comparte enlace de agenda (prueba de manejo o visita), notifica al asesor y desactiva el bot.
 - `faq`: respuesta corta para preguntas generales.
 - `intent_checker`: detecta interrupciones FAQ y marca reanudacion.
 - `router`: clasifica intencion principal y enruta el flujo.

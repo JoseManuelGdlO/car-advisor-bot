@@ -46,22 +46,24 @@ class PurchaseFlowTests(GraphTestCase):
             ),
             patch("src.nodes.car_selection.classify_purchase_confirmation_intent", return_value="UNKNOWN"),
             patch(
-                "src.nodes.lead_capture.generate_lead_capture_intro",
+                "src.nodes.lead_capture.generate_lead_capture_scheduling_message",
                 return_value=(
-                    "Para dar seguimiento (Toyota Corolla LE 2021), comparteme en un solo mensaje "
-                    "tu nombre completo, telefono y correo electronico."
+                    "Para agendar Toyota Corolla LE 2021 abre: "
+                    "https://calendar.app.google/tYniJNfcrd8qXvut8"
                 ),
             ),
-            patch(
-                "src.nodes.lead_capture.generate_verified_user_message",
-                side_effect=lambda **kw: kw["fallback"],
-            ),
+            patch("src.nodes.lead_capture.notify_advisor"),
+            patch("src.nodes.lead_capture.push_event_to_backend"),
+            patch("src.nodes.lead_capture.deactivate_bot", side_effect=lambda s, **_: {**s, "bot_disabled": True}),
         ):
             updated = self.graph.invoke(state)
 
-        self.assertEqual(updated.get("current_node"), "lead_capture")
+        self.assertEqual(updated.get("current_node"), "router")
+        self.assertTrue(updated.get("lead_capture_done"))
         self.assertFalse(updated.get("awaiting_purchase_confirmation"))
-        self.assertIn("Toyota Corolla LE 2021", updated["messages"][-1]["content"])
+        last = updated["messages"][-1]["content"]
+        self.assertIn("Toyota Corolla LE 2021", last)
+        self.assertIn("calendar.app.google", last)
 
     def test_purchase_yes_continues_to_lead_capture_same_turn(self) -> None:
         state = initial_state()
@@ -81,22 +83,24 @@ class PurchaseFlowTests(GraphTestCase):
             patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
             patch("src.nodes.car_selection.classify_purchase_confirmation_intent", return_value="SI"),
             patch(
-                "src.nodes.lead_capture.generate_lead_capture_intro",
+                "src.nodes.lead_capture.generate_lead_capture_scheduling_message",
                 return_value=(
-                    "Para dar seguimiento (Nissan Versa 2004), comparteme en un solo mensaje "
-                    "tu nombre completo, telefono y correo electronico."
+                    "Para agendar Nissan Versa 2004 abre: "
+                    "https://calendar.app.google/tYniJNfcrd8qXvut8"
                 ),
             ),
-            patch(
-                "src.nodes.lead_capture.generate_verified_user_message",
-                side_effect=lambda **kw: kw["fallback"],
-            ),
+            patch("src.nodes.lead_capture.notify_advisor"),
+            patch("src.nodes.lead_capture.push_event_to_backend"),
+            patch("src.nodes.lead_capture.deactivate_bot", side_effect=lambda s, **_: {**s, "bot_disabled": True}),
         ):
             updated = self.graph.invoke(state)
 
-        self.assertEqual(updated.get("current_node"), "lead_capture")
+        self.assertEqual(updated.get("current_node"), "router")
+        self.assertTrue(updated.get("lead_capture_done"))
         self.assertFalse(updated.get("awaiting_purchase_confirmation"))
-        self.assertIn("Nissan Versa 2004", updated["messages"][-1]["content"])
+        last = updated["messages"][-1]["content"]
+        self.assertIn("Nissan Versa 2004", last)
+        self.assertIn("calendar.app.google", last)
 
     def test_purchase_classifier_more_images_fetches_next_batch(self) -> None:
         state = initial_state()

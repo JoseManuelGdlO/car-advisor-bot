@@ -145,9 +145,8 @@ def _route_after_lead_capture(state: clientState) -> str:
         _log_transition("lead_capture", "car_selection", "consulta de otros vehiculos")
         return "car_selection"
     if node == "lead_capture":
-        # El nodo espera una nueva respuesta del usuario (nombre/telefono/email).
-        # Cerramos el invoke actual y en el siguiente turno intent_checker retomara lead_capture.
-        _log_transition("lead_capture", "end", "esperando datos del usuario")
+        # Tras compartir el enlace de agenda el nodo pasa a router y desactiva el bot.
+        _log_transition("lead_capture", "end", "mensaje de agenda enviado")
         return "end"
     _log_transition("lead_capture", "end")
     return "end"

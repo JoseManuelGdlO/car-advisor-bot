@@ -48,11 +48,18 @@ class FinancingFlowTests(GraphTestCase):
                 "src.nodes.financing.generate_verified_user_message",
                 side_effect=lambda **kw: kw["fallback"],
             ),
+            patch(
+                "src.nodes.lead_capture.generate_lead_capture_scheduling_message",
+                return_value="Agenda en https://calendar.app.google/tYniJNfcrd8qXvut8",
+            ),
+            patch("src.nodes.lead_capture.notify_advisor"),
+            patch("src.nodes.lead_capture.push_event_to_backend"),
+            patch("src.nodes.lead_capture.deactivate_bot", side_effect=lambda s, **_: {**s, "bot_disabled": True}),
         ):
             updated = self.graph.invoke(state)
 
-        self.assertEqual(updated.get("current_node"), "lead_capture")
-        self.assertEqual(updated.get("intent"), "lead_capture")
+        self.assertEqual(updated.get("current_node"), "router")
+        self.assertTrue(updated.get("lead_capture_done"))
         self.assertFalse(updated.get("awaiting_financing_plan_selection"))
         self.assertEqual(updated.get("selected_financing_plan_id"), "")
         assistant_texts = [
@@ -145,15 +152,15 @@ class FinancingFlowTests(GraphTestCase):
                 side_effect=lambda **kw: kw["fallback"],
             ),
             patch(
-                "src.nodes.lead_capture.generate_verified_user_message",
-                side_effect=lambda **kw: kw["fallback"],
-            ),
-            patch(
-                "src.nodes.lead_capture.classify_lead_capture_summary_confirmation",
-                return_value="CONFIRM",
+                "src.nodes.lead_capture.generate_lead_capture_scheduling_message",
+                return_value=(
+                    "Agenda Nissan Versa 2001 en "
+                    "https://calendar.app.google/tYniJNfcrd8qXvut8"
+                ),
             ),
             patch("src.nodes.lead_capture.notify_advisor") as notify_mock,
             patch("src.nodes.lead_capture.push_event_to_backend") as event_mock,
+            patch("src.nodes.lead_capture.deactivate_bot", side_effect=lambda s, **_: {**s, "bot_disabled": True}),
         ):
             state = self.graph.invoke(with_user_message(state, "quiero financiamiento para un versa 2011"))
             self.assertTrue(state.get("awaiting_financing_plan_selection"))
@@ -162,20 +169,10 @@ class FinancingFlowTests(GraphTestCase):
             self.assertTrue(state.get("awaiting_financing_vehicle_selection"))
 
             state = self.graph.invoke(with_user_message(state, "2"))
-            self.assertEqual(state.get("current_node"), "lead_capture")
             self.assertEqual(state.get("selected_vehicle_id"), "veh-2")
-
-            state = self.graph.invoke(
-                with_user_message(
-                    state,
-                    "Javier Karim Reyes, 5512345678, javier@karim.com",
-                )
-            )
-            self.assertFalse(state.get("lead_capture_done"))
-            self.assertTrue(state.get("awaiting_lead_capture_final_confirmation"))
-            state = self.graph.invoke(with_user_message(state, "si, confirmo"))
             self.assertTrue(state.get("lead_capture_done"))
             self.assertEqual(state.get("current_node"), "router")
+            self.assertIn("calendar.app.google", state["messages"][-1]["content"])
             notify_mock.assert_called_once()
             event_mock.assert_called_once()
 
@@ -264,15 +261,15 @@ class FinancingFlowTests(GraphTestCase):
             ),
             patch("src.nodes.financing.classify_financing_plan_selection_intent", return_value="ASK_EXPLICIT_PLAN"),
             patch(
-                "src.nodes.lead_capture.generate_verified_user_message",
-                side_effect=lambda **kw: kw["fallback"],
-            ),
-            patch(
-                "src.nodes.lead_capture.classify_lead_capture_summary_confirmation",
-                return_value="CONFIRM",
+                "src.nodes.lead_capture.generate_lead_capture_scheduling_message",
+                return_value=(
+                    "Agenda Nissan Versa 2011 en "
+                    "https://calendar.app.google/tYniJNfcrd8qXvut8"
+                ),
             ),
             patch("src.nodes.lead_capture.notify_advisor") as notify_mock,
             patch("src.nodes.lead_capture.push_event_to_backend") as event_mock,
+            patch("src.nodes.lead_capture.deactivate_bot", side_effect=lambda s, **_: {**s, "bot_disabled": True}),
         ):
             state = self.graph.invoke(with_user_message(state, "tienes carros versa?"))
             state = self.graph.invoke(with_user_message(state, "Cómo es el nissan versa 2011?"))
@@ -286,20 +283,14 @@ class FinancingFlowTests(GraphTestCase):
             self.assertEqual(state.get("selected_financing_plan_id"), "")
 
             state = self.graph.invoke(with_user_message(state, "el financiamiento shilo"))
-            self.assertEqual(state.get("current_node"), "lead_capture")
             self.assertEqual(state.get("selected_financing_plan_id"), "plan-shilo")
 
-            state = self.graph.invoke(
-                with_user_message(
-                    state,
-                    "Javier Karim Reyes, 5512345678, javier@kaim.com",
-                )
-            )
-            self.assertFalse(state.get("lead_capture_done"))
-            self.assertTrue(state.get("awaiting_lead_capture_final_confirmation"))
-            state = self.graph.invoke(with_user_message(state, "si correcto"))
+            if not state.get("lead_capture_done"):
+                state = self.graph.invoke(with_user_message(state, "si quiero agendar visita"))
+
             self.assertTrue(state.get("lead_capture_done"))
             self.assertEqual(state.get("current_node"), "router")
+            self.assertIn("calendar.app.google", state["messages"][-1]["content"])
             notify_mock.assert_called_once()
             event_mock.assert_called_once()
 

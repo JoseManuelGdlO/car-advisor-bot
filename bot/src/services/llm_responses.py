@@ -34,7 +34,6 @@ from src.utils.prompts import (
     build_promotions_step_flags_prompt,
     build_financing_step_flags_prompt,
     build_lead_capture_navigation_classifier_prompt,
-    build_lead_capture_summary_confirmation_classifier_prompt,
     build_settings_block,
     build_verified_user_message_prompt,
 )
@@ -715,36 +714,52 @@ def generate_vehicle_candidates_selection_message(options_text: str, user_messag
     )
 
 
-def generate_lead_capture_intro(
+CALENDAR_SCHEDULING_URL = "https://calendar.app.google/tYniJNfcrd8qXvut8"
+
+
+def _lead_capture_scheduling_fallback(selected_car: str, *, resuming: bool = False) -> str:
+    """Texto fijo si falla el LLM al compartir el enlace de agenda."""
+
+    name = (selected_car or "").strip() or "este vehiculo"
+    url = CALENDAR_SCHEDULING_URL
+    intro = (
+        f"Continuamos con {name}. Para agendar tu prueba de manejo o ver {name} en persona:"
+        if resuming
+        else f"Perfecto. Para agendar tu prueba de manejo o ver {name} en persona:"
+    )
+    return (
+        f"{intro}\n\n"
+        f"1. Abre este enlace: {url}\n"
+        "2. Elige la fecha y hora que te convenga.\n"
+        "3. Completa tus datos en el formulario y confirma la cita.\n\n"
+        "Al confirmar, recibiras un correo con los detalles de tu cita."
+    )
+
+
+def generate_lead_capture_scheduling_message(
     selected_car: str,
     resuming: bool = False,
     *,
     verified_facts_block: str | None = None,
 ) -> str:
-    """Mensaje inicial para captura de lead, anclado a DATOS_VERIFICADOS del estado."""
+    """Instrucciones de agenda con link de calendario, ancladas a DATOS_VERIFICADOS."""
 
     name = (selected_car or "").strip() or "este vehiculo"
-    bulk_ask = (
-        "comparteme en un solo mensaje tu nombre completo, "
-        "numero de telefono (solo digitos) y correo electronico"
-    )
-    fallback = (
-        f"Continuamos con {name}. Para darte seguimiento con {name}, {bulk_ask}."
-        if resuming
-        else f"Para darte seguimiento con la compra de {name}, {bulk_ask}."
-    )
+    fallback = _lead_capture_scheduling_fallback(name, resuming=resuming)
     block = str(verified_facts_block or "").strip()
     if not block:
         block = (
             f"vehiculo_seleccionado: {name}\n"
+            f"url_agenda_literal: {CALENDAR_SCHEDULING_URL}\n"
+            "confirmacion_cita_correo: al confirmar la cita en el calendario recibiras un correo de confirmacion\n"
             f"reanudacion_flujo: {str(resuming).lower()}\n"
         )
     return generate_verified_user_message(
-        mode="lead_capture_intro",
+        mode="lead_capture_scheduling",
         verified_facts_block=block,
         user_message="",
         fallback=fallback,
-        temperature=0.45,
+        temperature=0.35,
     )
 
 
@@ -998,37 +1013,6 @@ def classify_lead_capture_navigation(
             temperature=0.0,
         )
         return "STAY"
-
-
-def classify_lead_capture_summary_confirmation(
-    previous_bot_message: str,
-    user_message: str,
-) -> str:
-    """Clasifica la respuesta del usuario al resumen final de datos del lead."""
-
-    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
-    try:
-        settings = get_bot_settings()
-        llm = ChatOpenAI(model=model_name, temperature=0)
-        prompt = build_lead_capture_summary_confirmation_classifier_prompt(
-            previous_bot_message=previous_bot_message,
-            user_message=user_message,
-            bot_settings=settings,
-        )
-        content = llm.invoke(prompt).content
-        normalized = str(content).strip().upper()
-        if normalized in {"CONFIRM", "EDIT_NOMBRE", "EDIT_TELEFONO", "EDIT_EMAIL", "UNCLEAR"}:
-            return normalized
-        return "UNCLEAR"
-    except Exception as exc:
-        _log_llm_invoke_failure(
-            "classify_lead_capture_summary_confirmation",
-            exc,
-            model_name=model_name,
-            prompt_kind="lead_capture_summary_confirmation_classifier",
-            temperature=0.0,
-        )
-        return "UNCLEAR"
 
 
 def classify_vehicle_step_flags(

@@ -37,7 +37,7 @@ class FaqFlowTests(GraphTestCase):
         state["messages"] = [
             {
                 "role": "assistant",
-                "content": "Para apartar Nissan Versa 2004, comparte tus datos en formato nombre:..., telefono:..., email:....",
+                "content": "Para agendar Nissan Versa 2004 usa el enlace de calendario.",
                 "type": "AIMessage",
             }
         ]
@@ -68,20 +68,27 @@ class FaqFlowTests(GraphTestCase):
         resume_state["platform"] = "web"
         resume_state["user_id"] = "5512345678"
         resume_state["messages"] = [
-            {"role": "assistant", "content": "Para contactarte con un asesor, cual es tu nombre completo?", "type": "AIMessage"},
-            {"role": "user", "content": "Juan Pérez", "type": "HumanMessage"},
+            {"role": "assistant", "content": "Estamos en Centro.", "type": "AIMessage"},
+            {"role": "user", "content": "donde se ubican?", "type": "HumanMessage"},
         ]
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
             patch(
-                "src.nodes.lead_capture.generate_verified_user_message",
-                side_effect=lambda **kw: kw["fallback"],
+                "src.nodes.lead_capture.generate_lead_capture_scheduling_message",
+                return_value=(
+                    "Agenda Nissan Versa 2004 en "
+                    "https://calendar.app.google/tYniJNfcrd8qXvut8"
+                ),
             ),
+            patch("src.nodes.lead_capture.notify_advisor"),
+            patch("src.nodes.lead_capture.push_event_to_backend"),
+            patch("src.nodes.lead_capture.deactivate_bot", side_effect=lambda s, **_: {**s, "bot_disabled": True}),
         ):
             resumed = self.graph.invoke(resume_state)
 
-        self.assertEqual(resumed.get("current_node"), "lead_capture")
-        self.assertIn("correo", resumed["messages"][-1]["content"].lower())
+        self.assertEqual(resumed.get("current_node"), "router")
+        self.assertTrue(resumed.get("lead_capture_done"))
+        self.assertIn("calendar.app.google", resumed["messages"][-1]["content"])
 
     def test_faq_non_interrupt_sets_intent_other(self) -> None:
         state = initial_state()

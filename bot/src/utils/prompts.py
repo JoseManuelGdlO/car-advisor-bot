@@ -197,34 +197,17 @@ _VERIFIED_MODE_INSTRUCTIONS: dict[str, str] = {
         "Agrega instrucciones claras para elegir o confirmar segun lo que indique el bloque.\n"
         "No inventes promociones. Espanol (Mexico)."
     ),
-    "lead_capture_intro": (
-        "TAREA: Mensaje inicial de captura de datos de contacto.\n"
-        "DATOS_VERIFICADOS describe el vehiculo de interes, si es reanudacion, y datos ya capturados (solo lo que conste).\n"
-        "Explica brevemente que se necesitan datos para dar seguimiento.\n"
-        "Pide en UN solo mensaje: nombre completo, numero de telefono (solo digitos) y correo electronico.\n"
-        "Deben aparecer las palabras nombre, telefono (o teléfono) y correo (o email) en la solicitud.\n"
-        "Un parrafo corto o dos frases. Espanol (Mexico). Sin prefijos."
-    ),
-    "lead_capture_missing": (
-        "TAREA: Mensaje breve indicando que datos de contacto aun faltan o son invalidos.\n"
-        "DATOS_VERIFICADOS lista campos_faltantes y campos_invalidos; pide solo esos datos.\n"
-        "El usuario puede enviarlos juntos en un solo mensaje. Espanol (Mexico). Sin prefijos."
-    ),
-    "lead_capture_step": (
-        "TAREA: Mensaje corto para solicitar o corregir un dato de contacto (telefono, email, nombre).\n"
-        "Usa solo reglas y estado descritos en DATOS_VERIFICADOS.\n"
-        "No inventes politicas del negocio no listadas. Espanol (Mexico). Breve."
-    ),
-    "lead_capture_summary_confirm": (
-        "TAREA: Mostrar un resumen de los datos de contacto y del vehiculo de interes tal como aparecen en DATOS_VERIFICADOS.\n"
-        "Pide confirmacion explicita (si los datos son correctos) e indica que si algo esta mal puede decir que dato corregir "
-        "(nombre, telefono o correo).\n"
-        "No inventes datos: solo los valores listados en DATOS_VERIFICADOS. Espanol (Mexico). Un solo mensaje. Sin prefijos."
-    ),
-    "lead_capture_close": (
-        "TAREA: Confirmar al usuario que sus datos fueron recibidos y que el equipo dara seguimiento pronto.\n"
-        "DATOS_VERIFICADOS incluye nombre del vehiculo, resultado de notificacion (exito/fallo) y datos permitidos.\n"
-        "No uses la palabra 'asesor'. No inventes tiempos de respuesta no listados. Espanol (Mexico). Tono cercano."
+    "lead_capture_scheduling": (
+        "TAREA: Instrucciones claras para agendar prueba de manejo o ver el vehiculo en persona.\n"
+        "DATOS_VERIFICADOS incluye vehiculo_seleccionado, url_agenda_literal (URL exacta a copiar) y confirmacion_cita_correo.\n"
+        "Estructura obligatoria en tu respuesta:\n"
+        "1) Menciona el vehiculo por nombre (vehiculo_seleccionado).\n"
+        "2) Indica que para prueba de manejo o ver el auto en persona debe usar el enlace.\n"
+        "3) Pasos numerados o viñetas: abrir el link → elegir fecha y hora → completar datos en el formulario → confirmar.\n"
+        "4) Incluye la URL literal de url_agenda_literal tal cual (copiable).\n"
+        "5) Al confirmar la cita en el calendario recibira un correo (segun confirmacion_cita_correo).\n"
+        "PROHIBIDO: pedir nombre, telefono o correo por chat; inventar otra URL; fechas/horas concretas del negocio.\n"
+        "Espanol (Mexico). Tono cercano. Lista corta o 2-4 frases. Sin prefijos."
     ),
     "purchase_question": (
         "TAREA: Pregunta de cierre para saber si le interesa una prueba de manejo o ver el vehiculo en persona "
@@ -804,48 +787,17 @@ def build_lead_capture_navigation_classifier_prompt(
     return (
         f"{system_prompt}\n\n"
         "CLASIFICADOR_NAVEGACION_LEAD_CAPTURE:\n"
-        "Estas dentro de captura de datos (nombre/telefono/correo) o en el paso de resumen y confirmacion final de esos datos.\n"
+        "Estas en el paso de agenda (el bot va a compartir o acaba de compartir un enlace para agendar prueba de manejo o visita).\n"
         "Clasifica SOLO si el usuario quiere cambiar de tema en este turno.\n"
         "Responde SOLO con una etiqueta exacta:\n"
-        "- STAY: continuar captura de lead (incluye confirmacion del resumen, correccion de un dato, confirmaciones de interes, "
-        "respuestas ambiguas, datos de contacto).\n"
+        "- STAY: continuar en agenda o interes en el vehiculo actual (confirmaciones, dudas sobre el link, gracias, etc.).\n"
         "- PROMOTIONS: pide promociones/ofertas/descuentos/bonos.\n"
         "- FINANCING: pide planes/tasas/plazos/credito/enganche.\n"
         "- CAR_SELECTION: pide ver otros modelos/vehiculos/catalogo distintos al actual.\n"
         "Reglas criticas:\n"
         "- Si el usuario expresa interes en el vehiculo actual (ej. 'me interesa', 'si quiero este') => STAY.\n"
-        "- Si responde con posibles datos de contacto (nombre, telefono, correo) => STAY.\n"
         "- Solo usa CAR_SELECTION cuando sea explicito que quiere ver otras opciones.\n\n"
         f"Vehiculo actual: {vehicle}\n"
-        f"Mensaje previo del bot: {previous}\n"
-        f"Mensaje del usuario: {current}\n"
-    )
-
-
-def build_lead_capture_summary_confirmation_classifier_prompt(
-    previous_bot_message: str,
-    user_message: str,
-    bot_settings: dict[str, Any] | None,
-) -> str:
-    """Prompt clasificador: respuesta al resumen de datos antes de enviar el lead."""
-
-    system_prompt = build_system_prompt(bot_settings)
-    previous = previous_bot_message.strip() or "(sin mensaje previo)"
-    current = user_message.strip() or "(mensaje vacio)"
-    return (
-        f"{system_prompt}\n\n"
-        "CLASIFICADOR_CONFIRMACION_RESUMEN_LEAD:\n"
-        "El bot acaba de mostrar un resumen con nombre, telefono, correo y vehiculo de interes, y pidio confirmacion o correccion.\n"
-        "Clasifica la intencion del ultimo mensaje del usuario. Responde SOLO con una etiqueta exacta:\n"
-        "- CONFIRM: confirma que los datos estan bien o quiere continuar (si, correcto, ok, adelante, confirmo, esta bien, dale, etc.).\n"
-        "- EDIT_NOMBRE: quiere cambiar o corregir el nombre o dice que el nombre esta mal.\n"
-        "- EDIT_TELEFONO: quiere cambiar o corregir el telefono/celular o dice que el numero esta mal.\n"
-        "- EDIT_EMAIL: quiere cambiar o corregir el correo/email o dice que el correo esta mal.\n"
-        "- UNCLEAR: no se entiende si confirma o que dato corrige; mensaje vacio irrelevante; saludos sin confirmar.\n"
-        "Reglas:\n"
-        "- Si mezcla confirmacion y duda menor sin pedir cambio concreto => CONFIRM.\n"
-        "- Si entrega un nuevo dato sustituyendo uno (ej. otro correo) sin decir 'cambiar' => clasifica el campo que sustituye.\n"
-        "- Si pide cambiar mas de un campo sin prioridad clara => UNCLEAR.\n\n"
         f"Mensaje previo del bot: {previous}\n"
         f"Mensaje del usuario: {current}\n"
     )

@@ -14,7 +14,7 @@ class clientState(TypedDict, total=False):
     - current_node: estado lógico actual del flujo.
     - selected_car: vehículo seleccionado por el usuario.
     - selected_vehicle_id: id del vehiculo seleccionado para consultas detalladas.
-    - customer_info: datos del lead capturados durante la conversación.
+    - customer_info: datos de contacto opcionales (p. ej. escalacion a asesor humano).
 
     Campos de apoyo para frontend/API:
     - last_bot_message: último texto generado para mostrar al usuario.
@@ -30,10 +30,7 @@ class clientState(TypedDict, total=False):
     - vehicle_images_last_batch: ultimo lote de URLs de imagenes enviado al usuario (vacio = aun no se enviaron fotos).
     - user_id: identificador de conversacion (en web/whatsapp suele ser el telefono).
     - owner_user_id: UUID del tenant (vendedor). Obligatorio en /chat con token global antes de leer catálogo; viene del webhook o body.
-    - lead_phone_attempts: reintentos al validar telefono en plataformas que lo piden.
-    - awaiting_lead_capture_final_confirmation: True cuando ya hay nombre/telefono/email y el bot mostro el resumen pendiente de confirmacion del usuario.
-    - lead_capture_awaiting_bulk: True tras pedir nombre/telefono/correo en un solo mensaje; espera la respuesta del usuario.
-    - lead_capture_done: True cuando ya se notifico y persistio el lead en esta conversacion.
+    - lead_capture_done: True cuando ya se compartio el enlace de agenda, se notifico interes y el bot quedo desactivado.
     - selected_financing_plan_*: datos del plan seleccionado por el usuario.
     - financing_plan_candidates: lista temporal de planes para seleccion.
     - financing_vehicle_candidates: lista temporal de vehiculos dentro del plan.
@@ -70,9 +67,6 @@ class clientState(TypedDict, total=False):
     platform: str
     user_id: str
     owner_user_id: str
-    lead_phone_attempts: int
-    awaiting_lead_capture_final_confirmation: bool
-    lead_capture_awaiting_bulk: bool
     lead_capture_done: bool
     vehicle_images_cursor: int
     vehicle_images_has_more: bool

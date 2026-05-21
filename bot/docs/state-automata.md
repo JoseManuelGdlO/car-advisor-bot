@@ -9,7 +9,7 @@ Este documento define el diagrama de estados del flujo conversacional actual.
 - `car_selection`: explora catalogo, filtra, compara dos vehiculos (sin cambiar `selected_vehicle_id` hasta nueva eleccion) y permite avanzar a compra.
 - `financing`: consulta planes financieros y cruza con vehiculos.
 - `promotions`: consulta promociones y cruza con vehiculos aplicables.
-- `lead_capture`: captura nombre, telefono y email en un mensaje (con seguimiento de faltantes) y notifica al asesor.
+- `lead_capture`: comparte enlace de Google Calendar para agendar prueba de manejo o visita, notifica al asesor y desactiva el bot.
 - `faq`: resuelve preguntas puntuales del usuario.
 
 ## Eventos principales
@@ -19,7 +19,7 @@ Este documento define el diagrama de estados del flujo conversacional actual.
 - `user_requests_financing`: usuario pregunta por pagos, credito o enganche.
 - `user_requests_promotions`: usuario pregunta por promociones o descuentos.
 - `user_selects_car`: usuario confirma interes en un vehiculo.
-- `user_sends_contact_info`: usuario comparte `nombre`, `telefono`, `email`.
+- `user_confirms_visit_interest`: usuario confirma interes en prueba de manejo o visita (desde car_selection/financing/promotions).
 
 ## Diagrama
 
@@ -56,7 +56,7 @@ stateDiagram-v2
     promotions --> [*]: render_promotions
 
     faq --> [*]: render_faq_response
-    lead_capture --> [*]: missing_contact_info_or_notify_advisor_done
+    lead_capture --> [*]: scheduling_link_shown_and_handoff
 ```
 
 ## Condiciones de transicion

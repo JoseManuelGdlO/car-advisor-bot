@@ -21,7 +21,7 @@ def faq(state: clientState) -> clientState:
                 "Perfecto. Sigamos con la selección de vehículos "
             ),
             "lead_capture": (
-                "Genial. Seguimos con tus datos para apartar el vehículo"
+                "Genial. Sigamos con el enlace para agendar tu prueba de manejo o visita al vehiculo"
             ),
             "financing": (
                 "Excelente. Volvamos al financiamiento, tienes alguna preferencia?"

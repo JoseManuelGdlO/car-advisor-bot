@@ -78,17 +78,17 @@ Las variables de entorno se fusionan al importar el paquete `tests` (ver `tests/
 
 ---
 
-### `test_lead_capture_summary_correction_flow.py`
+### `test_lead_capture_scheduling_flow.py`
 
-**Rol:** integración y unidad ligera sobre `lead_capture`.
+**Rol:** integración sobre `lead_capture` (agenda por link).
 
-**Cubre:** corrección de email tras el resumen y confirmación con creación de lead; `_collect_missing_contact_fields` cuando el email se rellena en el mismo turno.
+**Cubre:** un turno con enlace de calendario, vehículo, notify/evento y `bot_disabled`; rama `lead_capture_done` sin repetir el link.
 
 ---
 
 ### `test_lead_capture_override_intent.py`
 
-**Rol:** integración — desvíos desde captura de lead.
+**Rol:** integración — desvíos desde agenda de lead_capture.
 
 **Cubre:** override hacia catálogo con intent `vehicle_catalog`; fallo de notificación que aún persiste evento de lead completado.
 
