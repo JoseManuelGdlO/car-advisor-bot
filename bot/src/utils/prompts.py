@@ -19,6 +19,7 @@ _SYSTEM_RULES_BLOCK = (
     "- No repitas el mismo mensaje en diferentes formatos."
     "- Trata de mantener la conversacion fluida y natural."
     "- Usa lenguaje natural y no robotizado."
+    "- Prioriza respuestas cortas y faciles de leer en el chat; evita textos largos salvo que el usuario pida mas detalle."
 )
 
 
@@ -115,6 +116,7 @@ def build_other_response_prompt(
 _VERIFIED_MODE_INSTRUCTIONS: dict[str, str] = {
     "catalog_availability": (
         "TAREA: Presenta el catalogo o disponibilidad al usuario.\n"
+        "Respuesta corta y facil de leer en chat; el listado ya aporta detalle, no lo alargues con prosa extra.\n"
         "El bloque DATOS_VERIFICADOS incluye el listado agrupado del inventario (o mensaje de vacio del sistema) "
         "y puede incluir la ultima pregunta del usuario y banderas (por ejemplo si pidio un modelo no disponible).\n"
         "Redacta en espanol (Mexico) un mensaje unico para el chat: tono de consultor de agencia.\n"
@@ -159,22 +161,25 @@ _VERIFIED_MODE_INSTRUCTIONS: dict[str, str] = {
         "Sé breve, empatico y claro. Espanol (Mexico). Un solo mensaje. Sin prefijos."
     ),
     "financing_prose_only": (
-        "TAREA: Redacta un mensaje CONVERSACIONAL (en parrafos) que explique los planes de financiamiento del bloque "
+        "TAREA: Redacta un mensaje CONVERSACIONAL breve (parrafos cortos) que explique los planes de financiamiento del bloque "
         "DATOS_VERIFICADOS, incluyendo los datos clave de cada plan (nombre, tasa, plazo y requisitos cuando existan).\n"
+        "Mantén la respuesta escaneable en chat: prioriza datos clave y evita alargar sin necesidad.\n"
         "NO uses formato de lista ni numeracion en la salida (sin bullets, sin 1., 2., etc.).\n"
         "No inventes planes, condiciones ni requisitos. Usa solo lo que conste en DATOS_VERIFICADOS.\n"
         "Cierra con una invitacion breve para que el usuario elija un plan. Espanol (Mexico). Sin prefijos."
     ),
     "financing_plan_vehicle": (
         "TAREA: Presentar el vehiculo vinculado a un plan de financiamiento y motivar la siguiente accion.\n"
+        "Respuesta corta y facil de leer en chat; evita parrafos largos.\n"
         "DATOS_VERIFICADOS incluye datos del plan y la ficha del vehiculo (texto del sistema). "
         "Puedes integrar la ficha tal cual en una seccion si el bloque la trae formateada, o parafrasear solo "
         "si no contradices valores (mejor mantener la ficha literal si ya viene en el bloque).\n"
         "No inventes condiciones de credito no listadas. Espanol (Mexico). Un solo mensaje."
     ),
     "promotion_prose_only": (
-        "TAREA: Redacta un mensaje CONVERSACIONAL (en parrafos) que explique las promociones del bloque "
+        "TAREA: Redacta un mensaje CONVERSACIONAL breve (parrafos cortos) que explique las promociones del bloque "
         "DATOS_VERIFICADOS, incluyendo para cada una los datos clave (titulo, descripcion, vigencia y vehiculos aplicables cuando existan).\n"
+        "Mantén la respuesta escaneable en chat: prioriza datos clave y evita alargar sin necesidad.\n"
         "NO uses formato de lista ni numeracion en la salida (sin bullets, sin 1., 2., etc.).\n"
         "No inventes promociones, vigencias ni vehiculos aplicables. Usa solo lo que conste en DATOS_VERIFICADOS.\n"
         "Cierra con una invitacion breve para que el usuario indique cual promocion le interesa aplicar. "
@@ -182,6 +187,7 @@ _VERIFIED_MODE_INSTRUCTIONS: dict[str, str] = {
     ),
     "promotion_vehicle_confirm": (
         "TAREA: Mostrar la ficha del vehiculo bajo una promocion y pedir confirmacion de interes.\n"
+        "Respuesta corta y facil de leer en chat; evita parrafos largos.\n"
         "DATOS_VERIFICADOS incluye ficha formateada y titulo/datos de la promocion. No inventes beneficios no listados.\n"
         "Un solo mensaje. Espanol (Mexico)."
     ),
@@ -283,7 +289,8 @@ def build_vehicle_detail_conversation_prompt(
         "DATOS_VERIFICADOS:\n"
         f"{facts}\n\n"
         "Instrucciones obligatorias:\n"
-        "- Redacta en espanol (Mexico) un texto conversacional, como un consultor de agencia presentando el auto en chat.\n"
+        "- Redacta en espanol (Mexico) un texto conversacional breve, como un consultor de agencia presentando el auto en chat; "
+        "prioriza legibilidad (parrafos cortos) y evita alargar sin necesidad.\n"
         "- Usa SOLO informacion que aparezca literalmente en DATOS_VERIFICADOS (mismos valores: km, motor, etc.). "
         "No inventes equipamiento, garantias, historial, consumo, seguridad, financiamiento, promociones ni disponibilidad extra.\n"
         "- No agregues cifras, fechas ni hechos que no esten en el bloque.\n"
@@ -292,7 +299,6 @@ def build_vehicle_detail_conversation_prompt(
         "transmision, motor, color y descripcion). Si algun valor es N/D o indica que no hay descripcion, dilo con naturalidad sin inventar detalles.\n"
         "- No uses listas con viñetas ni formato 'Etiqueta: valor' en lineas separadas; integra todo en parrafos o frases enlazadas.\n"
         "- Evita markdown de tablas o listas; maximo un salto de linea entre dos parrafos cortos si ayuda a la lectura.\n"
-        "- Cierra con una invitacion breve a seguir platicando (por ejemplo caracteristicas o ver otros modelos), sin prometer cosas no respaldadas por DATOS_VERIFICADOS.\n"
         "- Devuelve UNICAMENTE el mensaje para el usuario, sin titulos, sin prefijos tipo 'Respuesta:' ni comillas."
     )
 
@@ -322,7 +328,8 @@ def build_vehicle_comparison_conversation_prompt(
         f"{facts}\n\n"
         f"Contexto del usuario (pedido de comparacion): {um}\n\n"
         "Instrucciones obligatorias:\n"
-        "- Redacta en espanol (Mexico) un texto conversacional: como un consultor que contrasta las dos unidades en chat.\n"
+        "- Redacta en espanol (Mexico) un texto conversacional breve: como un consultor que contrasta las dos unidades en chat; "
+        "prioriza legibilidad (parrafos cortos) y evita alargar sin necesidad.\n"
         "- Usa SOLO informacion que aparezca en DATOS_VERIFICADOS para ambas unidades (mismos valores: km, motor, etc.). "
         "No inventes equipamiento, garantias, historial, consumo, seguridad, financiamiento, promociones ni datos que no esten en las fichas.\n"
         "- Menciona a ambos vehiculos de forma clara (puedes usar los nombres de las secciones o marca/modelo/año del bloque).\n"
