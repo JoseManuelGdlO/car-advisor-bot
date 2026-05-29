@@ -9,3 +9,6 @@ La UI es el mismo build de `frontend` copiado a `www` (ver `scripts/sync-web.mjs
 3. `npm run sync` en `mobile` para copiar `dist` y actualizar proyectos nativos.
 
 `localhost` en el móvil **no** es tu PC; usa IP o dominio público.
+
+Firm pass admin123 
+Alias key0
