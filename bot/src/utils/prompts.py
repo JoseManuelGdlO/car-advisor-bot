@@ -682,6 +682,44 @@ def build_promotion_selection_extract_prompt(
     )
 
 
+def build_vehicle_pending_selection_extract_prompt(
+    *,
+    previous_bot_message: str,
+    user_message: str,
+    numbered_candidate_lines: str,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Extrae que vehiculo de la lista eligio el usuario (indice o fragmento de nombre)."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    previous = previous_bot_message.strip() or "(sin mensaje previo)"
+    current = user_message.strip() or "(mensaje vacio)"
+    lines = numbered_candidate_lines.strip() or "(sin lista numerada)"
+    return (
+        f"{system_prompt}\n\n"
+        "EXTRACTOR_SELECCION_VEHICULO_PENDIENTE:\n"
+        "El usuario esta en un paso donde debe elegir UN vehiculo de la lista numerada.\n"
+        "Responde SOLO con JSON de una linea con estas claves exactas:\n"
+        '{ "vehicle_index": <number|null>, "name_query": <string>, "no_match": <bool> }\n'
+        "Reglas:\n"
+        "- vehicle_index: numero 1-based alineado con la lista numerada (ej. 'la 2', 'numero 1', 'opcion 3').\n"
+        "- name_query: fragmento corto del nombre/modelo tal como lo dijo el usuario (ej. 'mazda 3', 'el 3', "
+        "'cx-5', 'esta bien el 3'). Debe poder mapearse a UN solo renglon de la lista; vacio si usas vehicle_index.\n"
+        "- Distingue indice de lista vs digito del modelo: si hay 2 opciones y el usuario dice 'el 3 esta bien' "
+        "refiriendose a un modelo con '3' en el nombre (ej. Mazda 3), usa name_query='3' y vehicle_index=null, "
+        "NO vehicle_index=3.\n"
+        "- Usa vehicle_index SOLO cuando el usuario elige explicitamente por posicion en la lista "
+        "(ej. 'opcion 1', 'el segundo', '3' solo si claramente es el tercer renglon y existe).\n"
+        "- no_match=true SOLO si el mensaje no refiere a ningun vehiculo de la lista (saludo, pregunta general, otro tema).\n"
+        "- Si el usuario alude a un vehiculo por palabras clave que aparecen en un solo renglon, "
+        "usa name_query con esas palabras y vehicle_index=null.\n"
+        "- Nunca inventes vehiculos que no esten en la lista.\n\n"
+        f"Vehiculos listados:\n{lines}\n\n"
+        f"Mensaje previo del bot: {previous}\n"
+        f"Mensaje del usuario: {current}\n"
+    )
+
+
 def build_financing_step_flags_prompt(
     previous_bot_message: str,
     user_message: str,

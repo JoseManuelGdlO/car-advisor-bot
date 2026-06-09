@@ -13,6 +13,7 @@ from src.services.llm_responses import (
     classify_purchase_confirmation_intent,
     classify_vehicle_comparison_payload,
     classify_vehicle_step_flags,
+    extract_vehicle_pending_selection_payload,
     generate_selected_vehicle_qa_response,
     generate_vehicle_candidates_selection_message,
     generate_vehicle_comparison_conversation,
@@ -95,41 +96,162 @@ def _debug(event: str, **payload: Any) -> None:
     log_flow_trace(_log, "car_selection", event, **payload)
 
 
-def _find_candidate_from_pending(state: clientState, user_text: str) -> dict[str, Any] | None:
-    """Resuelve selección del usuario contra candidatos pendientes (nombre o índice)."""
+PendingSelectionResult = dict[str, Any] | list[dict[str, Any]] | None
+
+
+def _pending_matches_for_name_query(
+    name_query: str,
+    pending: list[dict[str, Any]],
+    options: list[str],
+) -> list[dict[str, Any]]:
+    """Busca candidatos cuyo nombre contiene el fragmento indicado por el usuario."""
+
+    name_q = normalize_user_text(name_query)
+    if not name_q:
+        return []
+    matches: list[dict[str, Any]] = []
+    for item, label in zip(pending, options):
+        if not isinstance(item, dict):
+            continue
+        normalized_label = normalize_user_text(label)
+        if not normalized_label:
+            continue
+        if name_q in normalized_label or normalized_label in name_q:
+            matches.append(item)
+            continue
+        parts = [part for part in name_q.split() if part]
+        if parts and all(
+            re.search(rf"(?<![a-z0-9]){re.escape(part)}(?![a-z0-9])", normalized_label) for part in parts
+        ):
+            matches.append(item)
+    if matches:
+        return matches
+    picked_label = canonicalize_with_typo_support(name_query, options, threshold=0.72)
+    if not picked_label:
+        return []
+    for item in pending:
+        if isinstance(item, dict) and format_vehicle_name(item) == picked_label:
+            return [item]
+    return []
+
+
+def _resolve_pending_vehicle_from_extract(
+    pending: list[dict[str, Any]],
+    options: list[str],
+    payload: dict[str, Any],
+) -> PendingSelectionResult:
+    """Mapea salida JSON del extractor LLM a un vehiculo pendiente (o lista si hay ambiguedad)."""
+
+    if not pending or not isinstance(payload, dict):
+        return None
+    if payload.get("no_match") is True:
+        return None
+    raw_idx = payload.get("vehicle_index")
+    if isinstance(raw_idx, (int, float)) and not isinstance(raw_idx, bool) and int(raw_idx) == raw_idx:
+        i = int(raw_idx) - 1
+        if 0 <= i < len(pending) and isinstance(pending[i], dict):
+            return pending[i]
+    name_q = str(payload.get("name_query") or "").strip()
+    if not name_q:
+        return None
+    matches = _pending_matches_for_name_query(name_q, pending, options)
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        return matches
+    return None
+
+
+def _respond_pending_selection_clarification(
+    state: clientState,
+    ambiguous_matches: list[dict[str, Any]],
+) -> clientState:
+    """Re-pregunta cuando el usuario alude a varios candidatos pendientes a la vez."""
+
+    state["last_vehicle_candidates"] = ambiguous_matches[:8]
+    options = format_candidate_options(ambiguous_matches)
+    user_text = latest_user_message(state)
+    message = (
+        generate_vehicle_candidates_selection_message(options, user_message=user_text)
+        if options
+        else generate_verified_user_message(
+            mode="operational",
+            verified_facts_block="situacion: seleccion_vehiculo_ambigua\n",
+            user_message=user_text,
+            fallback=(
+                "Encontre varios carros que podrian coincidir. "
+                "¿Cual te interesa? Puedes responder con el nombre o el numero."
+            ),
+            temperature=0.35,
+        )
+    )
+    _debug("pending_candidate_ambiguous_clarification", count=len(ambiguous_matches))
+    return append_assistant_message(state, message)
+
+
+def _find_candidate_from_pending(state: clientState, user_text: str) -> PendingSelectionResult:
+    """Resuelve selección del usuario contra candidatos pendientes (nombre, índice o LLM)."""
     pending = state.get("last_vehicle_candidates", [])
     if not isinstance(pending, list) or not pending:
         _debug("pending_candidates_empty")
         return None
-    options = [format_vehicle_name(item) for item in pending if isinstance(item, dict)]
+    dict_pending = [item for item in pending if isinstance(item, dict)]
+    if not dict_pending:
+        _debug("pending_candidates_empty")
+        return None
+    options = [format_vehicle_name(item) for item in dict_pending]
     _debug("pending_candidates_detected", options=options)
     picked_label = canonicalize_with_typo_support(user_text, options, threshold=0.72)
-    if not picked_label:
-        normalized = normalize_user_text(user_text)
-        # Evita falsas selecciones por digitos que son parte del nombre del modelo, no el indice de lista:
-        # solo usamos seleccion por indice cuando el usuario realmente esta eligiendo opcion.
-        explicit_index_selection = bool(
-            re.fullmatch(r"\d{1,2}", normalized)
-            or re.search(
-                r"\b(opcion|opción|numero|número|num|elijo|selecciono|me quedo con|quiero la|quiero el)\b",
-                normalized,
-            )
+    if picked_label:
+        for item in dict_pending:
+            if format_vehicle_name(item) == picked_label:
+                _debug("pending_candidate_selected_by_name", selected=picked_label)
+                return item
+        _debug("pending_candidate_label_without_match", picked_label=picked_label)
+        return None
+
+    normalized = normalize_user_text(user_text)
+    # Evita falsas selecciones por digitos que son parte del nombre del modelo, no el indice de lista:
+    # solo usamos seleccion por indice cuando el usuario realmente esta eligiendo opcion.
+    explicit_index_selection = bool(
+        re.fullmatch(r"\d{1,2}", normalized)
+        or re.search(
+            r"\b(opcion|opción|numero|número|num|elijo|selecciono|me quedo con|quiero la|quiero el)\b",
+            normalized,
         )
-        index_match = re.search(r"\b(\d{1,2})\b", normalized)
-        if explicit_index_selection and index_match:
-            idx = int(index_match.group(1)) - 1
-            if 0 <= idx < len(pending) and isinstance(pending[idx], dict):
-                _debug("pending_candidate_selected_by_index", index=idx, value=format_vehicle_name(pending[idx]))
-                return pending[idx]
+    )
+    index_match = re.search(r"\b(\d{1,2})\b", normalized)
+    if explicit_index_selection and index_match:
+        idx = int(index_match.group(1)) - 1
+        if 0 <= idx < len(dict_pending):
+            _debug(
+                "pending_candidate_selected_by_index",
+                index=idx,
+                value=format_vehicle_name(dict_pending[idx]),
+            )
+            return dict_pending[idx]
+
+    numbered = format_candidate_options(dict_pending)
+    if not numbered.strip():
         _debug("pending_candidate_not_matched", user_text=user_text)
         return None
-    for item in pending:
-        if not isinstance(item, dict):
-            continue
-        if format_vehicle_name(item) == picked_label:
-            _debug("pending_candidate_selected_by_name", selected=picked_label)
-            return item
-    _debug("pending_candidate_label_without_match", picked_label=picked_label)
+    payload = extract_vehicle_pending_selection_payload(
+        previous_bot_message=str(state.get("last_bot_message", "")).strip(),
+        user_message=user_text,
+        numbered_candidate_lines=numbered,
+    )
+    resolved = _resolve_pending_vehicle_from_extract(dict_pending, options, payload)
+    if isinstance(resolved, dict):
+        _debug(
+            "pending_candidate_selected_by_llm",
+            selected=format_vehicle_name(resolved),
+            payload=payload,
+        )
+        return resolved
+    if isinstance(resolved, list):
+        _debug("pending_candidate_ambiguous_from_llm", count=len(resolved), payload=payload)
+        return resolved
+    _debug("pending_candidate_not_matched", user_text=user_text, llm_payload=payload)
     return None
 
 
@@ -1091,20 +1213,22 @@ def car_selection(state: clientState) -> clientState:
         if cmp_state is not None:
             return cmp_state
 
-    selected_pending = _find_candidate_from_pending(state, user_text)
-    if selected_pending:
+    pending_result = _find_candidate_from_pending(state, user_text)
+    if isinstance(pending_result, list):
+        return _respond_pending_selection_clarification(state, pending_result)
+    if isinstance(pending_result, dict):
         vctx = state.get("vehicle_comparison_ctx")
         if isinstance(vctx, dict) and vctx:
             other_q = str(vctx.get("other_query") or "").strip()
             peer = str(vctx.get("peer_resolved_id") or "").strip()
             if other_q and not peer:
                 _debug("comparison_first_pick", other_query=other_q)
-                return _comparison_after_first_vehicle_chosen(state, vehicles, selected_pending, other_q)
+                return _comparison_after_first_vehicle_chosen(state, vehicles, pending_result, other_q)
             if peer:
                 _debug("comparison_second_pick", peer_resolved_id=peer)
-                return _comparison_after_second_vehicle_chosen(state, peer, selected_pending)
+                return _comparison_after_second_vehicle_chosen(state, peer, pending_result)
         _debug("continuing_from_pending_candidates")
-        return _respond_with_vehicle_detail(state, selected_pending)
+        return _respond_with_vehicle_detail(state, pending_result)
 
     if is_general_request(user_text, _GENERAL_SIGNALS_NORMALIZED):
         _debug("branch_general_request")
