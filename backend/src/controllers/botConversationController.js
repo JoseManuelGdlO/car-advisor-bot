@@ -4,7 +4,7 @@ import { normalizeInboundChannel } from "../utils/integrationChannel.js";
 import { env } from "../config/env.js";
 import { ChannelConversationContext, ClientLead, Conversation } from "../models/index.js";
 import { setBotSessionDisabled } from "../services/botEngineClient.js";
-import { upsertConversationEvent } from "../services/conversationService.js";
+import { releaseBotControlForExternalUser, upsertConversationEvent } from "../services/conversationService.js";
 import { appLog } from "../utils/appLogger.js";
 import { resolveRequestOwner } from "../utils/resolveRequestOwner.js";
 
@@ -18,6 +18,7 @@ const botEngineBaseUrl = () => String(env.bot.engineUrl || "").replace(/\/$/, ""
 export const botResetConversation = async (req, res) => {
   // Reinicia la sesión conversacional en el motor del bot para un user_id + canal.
   // 1) normaliza inputs.
+  const ownerUserId = resolveRequestOwner(req, { bodyField: "owner_user_id" });
   const normalizedUserId = String(req.body?.user_id || "").trim();
   const resolvedChannel = normalizeInboundChannel(req.body?.platform || env.bot.defaultInboundChannel || "web");
   appLog.info(
@@ -66,13 +67,29 @@ export const botResetConversation = async (req, res) => {
     console.error("[botResetConversation] invalid JSON from bot", text.slice(0, 200));
     throw new ApiError(502, "Invalid response from bot engine");
   }
+  let botControlReleased = { released: false, conversationId: null };
+  try {
+    botControlReleased = await releaseBotControlForExternalUser({
+      ownerUserId,
+      userId: normalizedUserId,
+      platform: resolvedChannel,
+    });
+  } catch (err) {
+    console.error("[botResetConversation] release bot control failed", err);
+  }
   appLog.info("botResetConversation", "ok");
   appLog.debug("botResetConversation", {
     status: data && typeof data === "object" ? String(data.status ?? "") : "",
     deleted_rows: data && typeof data === "object" ? String(data.deleted_rows ?? "") : "",
     user_id: data && typeof data === "object" ? String(data.user_id ?? "") : "",
+    bot_control_released: String(botControlReleased.released),
+    conversation_id: botControlReleased.conversationId || "",
   });
-  return res.status(200).json(data);
+  return res.status(200).json({
+    ...(data && typeof data === "object" ? data : {}),
+    bot_control_released: botControlReleased.released,
+    conversation_id: botControlReleased.conversationId,
+  });
 };
 
 export const botUpsertConversation = async (req, res) => {

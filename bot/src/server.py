@@ -26,6 +26,7 @@ from src.tools.database import (
     delete_bot_session,
     fetch_active_bot_session,
     push_assistant_message_to_backend,
+    set_conversation_human_controlled,
     upsert_inbound_user_message,
     upsert_bot_session_state,
 )
@@ -418,6 +419,29 @@ def reset_session(payload: ResetRequest) -> ResetResponse:
     else:
         _server_log.info("[RESET] POST /reset platform=%r", payload.platform,)
     try:
+        loaded_state, conv_from_session = fetch_active_bot_session(
+            payload.user_id,
+            payload.platform,
+        )
+        conversation_id = conv_from_session
+        if not conversation_id and loaded_state:
+            conversation_id = str(loaded_state.get("conversation_id", "")).strip() or None
+        owner_user_id = None
+        if loaded_state:
+            owner_user_id = str(loaded_state.get("owner_user_id", "")).strip() or None
+        if not owner_user_id:
+            owner_user_id = str(os.getenv("BOT_CRM_OWNER_USER_ID", "")).strip() or None
+        if conversation_id:
+            released = set_conversation_human_controlled(
+                conversation_id,
+                is_human_controlled=False,
+                owner_user_id=owner_user_id,
+            )
+            _server_log.info(
+                "[RESET] release_human_control conversation_id=%s released=%s",
+                conversation_id,
+                released,
+            )
         deleted = delete_bot_session(payload.user_id, payload.platform)
         _server_log.info("[RESET] delete_bot_session deleted_rows=%s", deleted)
         return ResetResponse(

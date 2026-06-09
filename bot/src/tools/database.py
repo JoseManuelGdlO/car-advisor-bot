@@ -347,6 +347,7 @@ def set_conversation_human_controlled(
     conversation_id: str,
     *,
     is_human_controlled: bool = True,
+    owner_user_id: str | None = None,
 ) -> bool:
     """Marca la conversacion en CRM como control humano (handoff tras notificacion)."""
 
@@ -363,7 +364,10 @@ def set_conversation_human_controlled(
     try:
         response = requests.patch(
             url,
-            json=_with_owner_body({"isHumanControlled": is_human_controlled}),
+            json=_with_owner_body(
+                {"isHumanControlled": is_human_controlled},
+                explicit=owner_user_id,
+            ),
             headers=headers,
             timeout=6,
         )

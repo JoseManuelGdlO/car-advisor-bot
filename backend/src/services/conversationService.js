@@ -9,6 +9,7 @@ import {
   resolveWhatsappConnectIntegrationById,
 } from "./integrationResolverService.js";
 import { sendInstagramImageMessage, sendInstagramTextMessage } from "./metaInstagramClient.js";
+import { setBotSessionDisabled } from "./botEngineClient.js";
 import { sendPushToOwner } from "./pushService.js";
 import { runWithWcToken } from "./wcAuthCache.js";
 import { wcClient } from "./wcClient.js";
@@ -328,4 +329,76 @@ export const sendConversationAttachmentMessage = async ({
     text: storedText,
     phone: recipient,
   });
+};
+
+const findConversationForExternalUser = async ({ ownerUserId, userId, platform }) => {
+  const inboundChannel = normalizeInboundChannel(platform || "web");
+  const normalizedUserId = String(userId || "").trim();
+  if (!normalizedUserId) return null;
+
+  const context = await ChannelConversationContext.findOne({
+    where: {
+      ownerUserId,
+      externalUserId: normalizedUserId,
+      channel: inboundChannel,
+    },
+    order: [["updatedAt", "DESC"]],
+  });
+  if (context?.conversationId) {
+    const conv = await Conversation.findOne({
+      where: { id: context.conversationId, ownerUserId },
+    });
+    if (conv) return conv;
+  }
+
+  const lead = await ClientLead.findOne({
+    where: { ownerUserId, phone: normalizedUserId },
+  });
+  if (!lead) return null;
+
+  const convByChannel = await Conversation.findOne({
+    where: { ownerUserId, clientLeadId: lead.id, channel: inboundChannel },
+    order: [["updatedAt", "DESC"]],
+  });
+  if (convByChannel) return convByChannel;
+
+  return Conversation.findOne({
+    where: { ownerUserId, clientLeadId: lead.id },
+    order: [["updatedAt", "DESC"]],
+  });
+};
+
+/** Reactiva el bot en CRM tras reset de sesion (revierte handoff de lead_capture). */
+export const releaseBotControlForExternalUser = async ({ ownerUserId, userId, platform }) => {
+  if (!ownerUserId) throw new ApiError(500, "owner user is not configured");
+  const inboundChannel = normalizeInboundChannel(platform || "web");
+  const normalizedUserId = String(userId || "").trim();
+  if (!normalizedUserId) {
+    return { released: false, conversationId: null };
+  }
+
+  const conv = await findConversationForExternalUser({
+    ownerUserId,
+    userId: normalizedUserId,
+    platform: inboundChannel,
+  });
+  if (!conv) {
+    return { released: false, conversationId: null };
+  }
+  if (!conv.isHumanControlled) {
+    return { released: false, conversationId: conv.id };
+  }
+
+  await conv.update({
+    isHumanControlled: false,
+    handoffAt: null,
+    handoffByUserId: null,
+  });
+  await setBotSessionDisabled({
+    userId: normalizedUserId,
+    platform: inboundChannel,
+    botDisabled: false,
+  });
+
+  return { released: true, conversationId: conv.id };
 };
