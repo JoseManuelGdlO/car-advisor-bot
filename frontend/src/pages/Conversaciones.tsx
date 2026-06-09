@@ -6,9 +6,7 @@ import { Avatar } from "@/components/Avatar";
 import { ChannelIcon } from "@/components/ChannelIcon";
 import { Channel } from "@/data/mockData";
 import { cn } from "@/lib/utils";
-import { useAuth } from "@/context/AuthContext";
-import { useQuery } from "@tanstack/react-query";
-import { crmApi } from "@/services/crm";
+import { useConversationsQuery } from "@/hooks/useConversationsQuery";
 
 const channelFilters: { key: "all" | Channel; label: string }[] = [
   { key: "all", label: "Todos" },
@@ -32,8 +30,7 @@ const formatDateTime = (value: string) => {
 
 export default function Conversaciones() {
   const navigate = useNavigate();
-  const { token } = useAuth();
-  const { data } = useQuery({ queryKey: ["conversations"], queryFn: () => crmApi.getConversations(token!), enabled: Boolean(token) });
+  const { data } = useConversationsQuery();
   const conversations = (data || []) as any[];
   const [filter, setFilter] = useState<"all" | Channel>("all");
   const [q, setQ] = useState("");

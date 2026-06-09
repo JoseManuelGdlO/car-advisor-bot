@@ -1,8 +1,9 @@
 import { useEffect, useRef } from "react";
 import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
-import { PushNotifications, Token, ActionPerformed } from "@capacitor/push-notifications";
+import { PushNotifications, Token, ActionPerformed, PushNotificationSchema } from "@capacitor/push-notifications";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { pushApi, type PushPlatform } from "@/services/push";
 
@@ -31,8 +32,21 @@ const parseConversationIdFromUrl = (url: string) => {
 
 export function PushBridge() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { token } = useAuth();
   const lastRegisteredDeviceTokenRef = useRef<string>("");
+
+  const refreshConversationQueries = (conversationId?: string) => {
+    void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    if (conversationId) {
+      void queryClient.invalidateQueries({ queryKey: ["messages", conversationId] });
+    }
+  };
+
+  const resolveConversationIdFromPushData = (data: Record<string, unknown>) =>
+    resolveConversationId(data.conversationId) ||
+    resolveConversationId(data.conversation_id) ||
+    resolveConversationId(data.chatId);
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
@@ -71,11 +85,14 @@ export function PushBridge() {
 
     const onActionPerformed = (action: ActionPerformed) => {
       const data = action.notification.data || {};
-      const conversationId =
-        resolveConversationId(data.conversationId) ||
-        resolveConversationId(data.conversation_id) ||
-        resolveConversationId(data.chatId);
+      const conversationId = resolveConversationIdFromPushData(data);
+      refreshConversationQueries(conversationId);
       openConversation(conversationId);
+    };
+
+    const onPushReceived = (notification: PushNotificationSchema) => {
+      const data = notification.data || {};
+      refreshConversationQueries(resolveConversationIdFromPushData(data));
     };
 
     setupPush().catch(() => undefined);
@@ -83,6 +100,7 @@ export function PushBridge() {
       onRegistration(registration).catch(() => undefined);
     });
     PushNotifications.addListener("registrationError", () => undefined);
+    PushNotifications.addListener("pushNotificationReceived", onPushReceived);
     PushNotifications.addListener("pushNotificationActionPerformed", onActionPerformed);
     const urlHandle = CapacitorApp.addListener("appUrlOpen", ({ url }) => {
       const conversationId = parseConversationIdFromUrl(url);
@@ -93,7 +111,7 @@ export function PushBridge() {
       PushNotifications.removeAllListeners().catch(() => undefined);
       urlHandle.then((handle) => handle.remove()).catch(() => undefined);
     };
-  }, [navigate, token]);
+  }, [navigate, queryClient, token]);
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform() || !token) return;

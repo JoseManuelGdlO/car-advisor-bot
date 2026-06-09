@@ -6,8 +6,8 @@ import { ChannelIcon } from "@/components/ChannelIcon";
 import type { Channel } from "@/data/mockData";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
-import { useQuery } from "@tanstack/react-query";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useConversationMessagesQuery, useConversationsQuery } from "@/hooks/useConversationsQuery";
 import { crmApi } from "@/services/crm";
 import { toast } from "sonner";
 import {
@@ -85,23 +85,16 @@ export default function ChatDetalle() {
   const navigate = useNavigate();
   const { token } = useAuth();
   const queryClient = useQueryClient();
-  const { data: conversations } = useQuery({
-    queryKey: ["conversations"],
-    queryFn: () => crmApi.getConversations(token!),
-    enabled: Boolean(token),
-  });
+  const { data: conversations } = useConversationsQuery();
   const conv = (conversations as ConversationWithClient[] | undefined)?.find((c) => c.id === id);
-  const { data: messages } = useQuery({
-    queryKey: ["messages", id],
-    queryFn: () => crmApi.getConversationMessages(token!, id!),
-    enabled: Boolean(token && id),
-  });
+  const { data: messages } = useConversationMessagesQuery(id);
   const client = conv?.client;
   const [draft, setDraft] = useState("");
   const [emojiOpen, setEmojiOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const hasAutoScrolledRef = useRef(false);
+  const isNearBottomRef = useRef(true);
   const refreshConversationData = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["messages", id] }),
@@ -196,17 +189,32 @@ export default function ChatDetalle() {
 
   useEffect(() => {
     hasAutoScrolledRef.current = false;
+    isNearBottomRef.current = true;
   }, [id]);
 
+  const handleMessagesScroll = () => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    isNearBottomRef.current = distanceFromBottom < 80;
+  };
+
   useEffect(() => {
-    if (hasAutoScrolledRef.current) return;
     const messageList = (messages || []) as ChatMessageRow[];
     if (!messageList.length) return;
-    messagesContainerRef.current?.scrollTo({
-      top: messagesContainerRef.current.scrollHeight,
-      behavior: "auto",
-    });
-    hasAutoScrolledRef.current = true;
+
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    if (!hasAutoScrolledRef.current) {
+      container.scrollTo({ top: container.scrollHeight, behavior: "auto" });
+      hasAutoScrolledRef.current = true;
+      return;
+    }
+
+    if (isNearBottomRef.current) {
+      container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+    }
   }, [messages]);
 
   if (!conv || !client) {
@@ -302,7 +310,7 @@ export default function ChatDetalle() {
       </div>
 
       {/* Messages */}
-      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto bg-chat-pattern px-3 py-4 space-y-2">
+      <div ref={messagesContainerRef} onScroll={handleMessagesScroll} className="flex-1 overflow-y-auto bg-chat-pattern px-3 py-4 space-y-2">
         {((messages || []) as ChatMessageRow[]).map((m) => {
           const mine = m.from !== "client";
           const isBot = m.from === "bot";

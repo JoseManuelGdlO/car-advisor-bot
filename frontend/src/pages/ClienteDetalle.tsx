@@ -7,6 +7,7 @@ import { ChannelIcon } from "@/components/ChannelIcon";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
 import { useQuery } from "@tanstack/react-query";
+import { useConversationsQuery } from "@/hooks/useConversationsQuery";
 import { crmApi } from "@/services/crm";
 import type { ConversationDto } from "@/services/crm";
 
@@ -62,7 +63,7 @@ export default function ClienteDetalle() {
   const { id } = useParams();
   const { token } = useAuth();
   const { data: client } = useQuery({ queryKey: ["client", id], queryFn: () => crmApi.getClient(token!, id!), enabled: Boolean(token && id) });
-  const { data: conversations } = useQuery({ queryKey: ["conversations"], queryFn: () => crmApi.getConversations(token!), enabled: Boolean(token) });
+  const { data: conversations } = useConversationsQuery();
   const conv = (conversations || []).find((c: ConversationDto) => c.clientLeadId === id || c.clientId === id);
   const convMessages = Array.isArray(conv?.messages) ? conv.messages : [];
   const parsedNotes = client?.notes ? parseSellerNotes(client.notes) : null;
