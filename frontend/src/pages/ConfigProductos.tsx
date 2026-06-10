@@ -20,6 +20,8 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { FormErrorAlert } from "@/components/FormErrorAlert";
+import { normalizeApiError } from "@/lib/formErrors";
 
 const filters: { key: "all" | CarStatus; label: string }[] = [
   { key: "all", label: "Todos" },
@@ -100,6 +102,7 @@ export default function ConfigProductos() {
   const [updating, setUpdating] = useState<string>("");
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [vehicleFormError, setVehicleFormError] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [imageUrls, setImageUrls] = useState<string[]>([]);
@@ -197,6 +200,7 @@ export default function ConfigProductos() {
     if (!token) return;
     if (!form.brand || !form.model || !form.year || !form.price || !form.transmission || !form.engine || !form.color) return;
     setCreating(true);
+    setVehicleFormError("");
     try {
       const uploaded = selectedFiles.length > 0 ? (await crmApi.uploadVehicleImages(token, selectedFiles)).imageUrls : [];
       const payload = {
@@ -240,6 +244,8 @@ export default function ConfigProductos() {
         metadataText: "",
         outboundPriority: "0",
       });
+    } catch (err) {
+      setVehicleFormError(normalizeApiError(err, "No se pudo guardar el vehículo.").formError);
     } finally {
       setCreating(false);
     }
@@ -266,7 +272,13 @@ export default function ConfigProductos() {
         subtitle={`${cars.length} autos en catálogo`}
         back
         action={
-          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <Dialog
+            open={createOpen}
+            onOpenChange={(open) => {
+              setCreateOpen(open);
+              if (!open) setVehicleFormError("");
+            }}
+          >
             <DialogTrigger asChild>
               <Button
                 size="sm"
@@ -466,6 +478,7 @@ Versión: Highline`}
                 >
                   {creating ? "Guardando..." : editingId ? "Guardar cambios" : "Crear nuevo auto"}
                 </Button>
+                <FormErrorAlert title="No se pudo guardar el vehículo" message={vehicleFormError} />
               </div>
             </DialogContent>
           </Dialog>

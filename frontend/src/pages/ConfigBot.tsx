@@ -7,7 +7,9 @@ import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Clock3, Plus, Save, Trash2 } from "lucide-react";
+import { FormErrorAlert } from "@/components/FormErrorAlert";
 import { hasInvalidRanges } from "@/lib/botSchedule";
+import { normalizeApiError } from "@/lib/formErrors";
 
 const DAYS = [
   { key: "monday", label: "Lunes" },
@@ -56,8 +58,9 @@ export default function ConfigBot() {
       setError(null);
       queryClient.invalidateQueries({ queryKey: ["bot-settings"] });
     },
-    onError: (err: Error) => {
-      setError(err.message || "No se pudo guardar la configuración del bot");
+    onError: (err: unknown) => {
+      const { formError } = normalizeApiError(err, "No se pudo guardar la configuración del bot");
+      setError(formError);
     },
   });
 
@@ -182,7 +185,7 @@ export default function ConfigBot() {
         </div>
 
         {invalidRanges ? <p className="text-xs text-destructive px-1">Revisa los horarios: la hora inicio debe ser menor que la final.</p> : null}
-        {error ? <p className="text-xs text-destructive px-1">{error}</p> : null}
+        <FormErrorAlert title="No se pudo guardar la configuración" message={error} className="mx-1" />
 
         <Button
           className="w-full"

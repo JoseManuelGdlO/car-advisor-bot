@@ -6,6 +6,8 @@ import { useAuth } from "@/context/AuthContext";
 import { crmApi, type BotSettingsDto } from "@/services/crm";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { FormErrorAlert } from "@/components/FormErrorAlert";
+import { normalizeApiError } from "@/lib/formErrors";
 
 type BehaviorForm = Pick<BotSettingsDto, "tone" | "emojiStyle" | "salesProactivity" | "customInstructions">;
 
@@ -50,8 +52,9 @@ export default function ConfigComportamientoBot() {
       setError(null);
       queryClient.invalidateQueries({ queryKey: ["bot-settings"] });
     },
-    onError: (err: Error) => {
-      setError(err.message || "No se pudo guardar el comportamiento del bot");
+    onError: (err: unknown) => {
+      const { formError } = normalizeApiError(err, "No se pudo guardar el comportamiento del bot");
+      setError(formError);
     },
   });
 
@@ -129,7 +132,7 @@ export default function ConfigComportamientoBot() {
           </div>
         </div>
 
-        {error ? <p className="text-xs text-destructive px-1">{error}</p> : null}
+        <FormErrorAlert title="No se pudo guardar el comportamiento" message={error} className="mx-1" />
 
         <Button className="w-full" disabled={!token || isLoading || saveMutation.isPending || !hasChanges} onClick={() => saveMutation.mutate()}>
           <Save className="w-4 h-4 mr-2" />

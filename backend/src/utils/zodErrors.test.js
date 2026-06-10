@@ -16,6 +16,17 @@ test("formatZodIssues: password too_small en español", () => {
   }
 });
 
+test("formatZodIssues: unrecognized_keys en español", () => {
+  const schema = z.object({ name: z.string() }).strict();
+  const parsed = schema.safeParse({ name: "Ana", extraField: "x" });
+  assert.equal(parsed.success, false);
+  if (parsed.success) return;
+  const { message, errors } = formatZodIssues(parsed.error.issues);
+  assert.equal(errors.length, 1);
+  assert.match(errors[0].message, /no es válido/i);
+  assert.equal(message, errors[0].message);
+});
+
 test("formatZodIssues: varios campos usa resumen", () => {
   try {
     z.object({

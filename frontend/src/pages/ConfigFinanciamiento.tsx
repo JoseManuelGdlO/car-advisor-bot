@@ -10,6 +10,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useAuth } from "@/context/AuthContext";
 import { FinancingPlanDto, FinancingRequirementDto, crmApi } from "@/services/crm";
+import { FormErrorAlert } from "@/components/FormErrorAlert";
+import { normalizeApiError } from "@/lib/formErrors";
 
 type PlanFormState = {
   id?: string;
@@ -40,6 +42,9 @@ export default function ConfigFinanciamiento() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletingPlan, setDeletingPlan] = useState<FinancingPlanDto | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [planFormError, setPlanFormError] = useState("");
+  const [requirementFormError, setRequirementFormError] = useState("");
+  const [deleteFormError, setDeleteFormError] = useState("");
 
   const { data: plansData = [] } = useQuery({
     queryKey: ["financing-plans"],
@@ -68,6 +73,7 @@ export default function ConfigFinanciamiento() {
   const submitPlan = async (event: FormEvent) => {
     event.preventDefault();
     if (!token || !form.name || !form.lender || !form.rate || !form.maxTermMonths) return;
+    setPlanFormError("");
     const payload = {
       name: form.name,
       lender: form.lender,
@@ -76,13 +82,17 @@ export default function ConfigFinanciamiento() {
       active: form.active,
       showRate: form.showRate,
     };
-    if (form.id) {
-      await crmApi.updateFinancingPlan(token, form.id, payload);
-    } else {
-      await crmApi.createFinancingPlan(token, payload);
+    try {
+      if (form.id) {
+        await crmApi.updateFinancingPlan(token, form.id, payload);
+      } else {
+        await crmApi.createFinancingPlan(token, payload);
+      }
+      await queryClient.invalidateQueries({ queryKey: ["financing-plans"] });
+      resetForm();
+    } catch (err) {
+      setPlanFormError(normalizeApiError(err, "No se pudo guardar el plan.").formError);
     }
-    await queryClient.invalidateQueries({ queryKey: ["financing-plans"] });
-    resetForm();
   };
 
   const openDeletePlan = (plan: FinancingPlanDto) => {
@@ -93,20 +103,31 @@ export default function ConfigFinanciamiento() {
   const deletePlan = async () => {
     if (!token || !deletingPlan) return;
     setDeleting(true);
-    await crmApi.deleteFinancingPlan(token, deletingPlan.id);
-    await queryClient.invalidateQueries({ queryKey: ["financing-plans"] });
-    setDeleting(false);
-    setDeleteOpen(false);
-    setDeletingPlan(null);
+    setDeleteFormError("");
+    try {
+      await crmApi.deleteFinancingPlan(token, deletingPlan.id);
+      await queryClient.invalidateQueries({ queryKey: ["financing-plans"] });
+      setDeleteOpen(false);
+      setDeletingPlan(null);
+    } catch (err) {
+      setDeleteFormError(normalizeApiError(err, "No se pudo eliminar el plan.").formError);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const createRequirement = async (event: FormEvent) => {
     event.preventDefault();
     if (!token || !requirementTitle || !requirementDescription) return;
-    await crmApi.createFinancingRequirement(token, { title: requirementTitle, description: requirementDescription });
-    await queryClient.invalidateQueries({ queryKey: ["financing-requirements"] });
-    setRequirementTitle("");
-    setRequirementDescription("");
+    setRequirementFormError("");
+    try {
+      await crmApi.createFinancingRequirement(token, { title: requirementTitle, description: requirementDescription });
+      await queryClient.invalidateQueries({ queryKey: ["financing-requirements"] });
+      setRequirementTitle("");
+      setRequirementDescription("");
+    } catch (err) {
+      setRequirementFormError(normalizeApiError(err, "No se pudo agregar el requisito.").formError);
+    }
   };
 
   const toggleRequirement = async (planId: string, requirementId: string, selected: boolean) => {
@@ -171,6 +192,7 @@ export default function ConfigFinanciamiento() {
               </Button>
             ) : null}
           </div>
+          <FormErrorAlert title="No se pudo guardar el plan" message={planFormError} />
         </form>
 
         <form onSubmit={createRequirement} className="bg-card rounded-2xl border border-border p-4 space-y-3 shadow-card">
@@ -184,6 +206,7 @@ export default function ConfigFinanciamiento() {
           <Button size="sm" type="submit" className="rounded-full h-9 px-3">
             <Plus className="w-4 h-4" /> Agregar requisito
           </Button>
+          <FormErrorAlert title="No se pudo agregar el requisito" message={requirementFormError} />
         </form>
 
         <ul className="space-y-3">
@@ -247,7 +270,13 @@ export default function ConfigFinanciamiento() {
         </ul>
       </div>
 
-      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+      <Dialog
+        open={deleteOpen}
+        onOpenChange={(open) => {
+          setDeleteOpen(open);
+          if (!open) setDeleteFormError("");
+        }}
+      >
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Eliminar plan de financiamiento</DialogTitle>
@@ -263,6 +292,7 @@ export default function ConfigFinanciamiento() {
                 {deleting ? "Eliminando..." : "Si, eliminar"}
               </Button>
             </div>
+            <FormErrorAlert title="No se pudo eliminar el plan" message={deleteFormError} />
           </div>
         </DialogContent>
       </Dialog>

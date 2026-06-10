@@ -79,9 +79,9 @@ export const patchAccountProfile = async (req, res, next) => {
     const user = await User.findByPk(req.auth.userId);
     if (!user) throw new ApiError(404, "User not found");
     const userPatch = userPatchSchema.safeParse(req.body?.user || {});
-    if (!userPatch.success) throw new ApiError(400, userPatch.error.message);
+    if (!userPatch.success) throw userPatch.error;
     const businessPatch = businessPatchSchema.safeParse(req.body?.business || {});
-    if (!businessPatch.success) throw new ApiError(400, businessPatch.error.message);
+    if (!businessPatch.success) throw businessPatch.error;
 
     const u = userPatch.data;
     if (Object.keys(u).length) {

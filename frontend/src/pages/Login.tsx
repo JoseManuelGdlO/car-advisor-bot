@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/context/AuthContext";
 import { ApiRequestError } from "@/lib/api";
 import { GOOGLE_CALENDAR_URL_ERROR, isGoogleCalendarSchedulingUrl } from "@/lib/calendarUrl";
+import { splitApiRequestError, zodIssuesToFieldErrors } from "@/lib/formErrors";
 import { cn } from "@/lib/utils";
 import { GoogleCalendarLinkHelpDialog } from "@/components/GoogleCalendarLinkHelpDialog";
 
@@ -29,38 +30,7 @@ const loginFormSchema = z.object({
   password: z.string().min(4, "La contraseña debe tener al menos 4 caracteres."),
 });
 
-function zodIssuesToFieldErrors(issues: z.ZodIssue[]): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const iss of issues) {
-    const key = iss.path[0];
-    if (typeof key === "string" && !out[key]) {
-      out[key] = iss.message;
-    }
-  }
-  return out;
-}
-
-/** Mensaje global vs por campo a partir de la respuesta del API. */
-function splitApiRequestError(err: ApiRequestError): { formError: string; fieldErrors: Record<string, string> } {
-  const fieldErrors = { ...err.fieldErrors };
-  const formFromPayload = fieldErrors._form;
-  delete fieldErrors._form;
-
-  const known = new Set(["name", "email", "password", "calendarSchedulingUrl"]);
-  const keys = Object.keys(fieldErrors);
-  const onlyKnownFields = keys.length > 0 && keys.every((k) => known.has(k));
-
-  let formError = "";
-  if (formFromPayload) {
-    formError = formFromPayload;
-  } else if (keys.length === 0) {
-    formError = err.message;
-  } else if (!onlyKnownFields) {
-    formError = err.message;
-  }
-
-  return { formError, fieldErrors };
-}
+const LOGIN_KNOWN_FIELDS = ["name", "email", "password", "calendarSchedulingUrl"] as const;
 
 export default function Login() {
   const navigate = useNavigate();
@@ -117,7 +87,9 @@ export default function Login() {
       navigate("/dashboard");
     } catch (err) {
       if (ApiRequestError.is(err)) {
-        const { formError: nextForm, fieldErrors: nextFields } = splitApiRequestError(err);
+        const { formError: nextForm, fieldErrors: nextFields } = splitApiRequestError(err, {
+          knownFields: LOGIN_KNOWN_FIELDS,
+        });
         setFormError(nextForm);
         setFieldErrors(nextFields);
         return;

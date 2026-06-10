@@ -15,6 +15,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { FormErrorAlert } from "@/components/FormErrorAlert";
+import { normalizeApiError } from "@/lib/formErrors";
 
 type FaqItem = { id: string; question: string; answer: string };
 
@@ -31,6 +33,9 @@ export default function ConfigFaqs() {
   const [editAnswer, setEditAnswer] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletingFaq, setDeletingFaq] = useState<FaqItem | null>(null);
+  const [createError, setCreateError] = useState("");
+  const [editError, setEditError] = useState("");
+  const [deleteError, setDeleteError] = useState("");
   const { data: faqs = [] } = useQuery({ queryKey: ["faqs"], queryFn: () => crmApi.getFaqs(token!), enabled: Boolean(token) }) as {
     data: FaqItem[];
   };
@@ -39,12 +44,15 @@ export default function ConfigFaqs() {
     event.preventDefault();
     if (!token || !question.trim() || !answer.trim()) return;
     setSaving(true);
+    setCreateError("");
     try {
       await crmApi.createFaq(token, { question: question.trim(), answer: answer.trim() });
       await queryClient.invalidateQueries({ queryKey: ["faqs"] });
       setQuestion("");
       setAnswer("");
       setOpen(false);
+    } catch (err) {
+      setCreateError(normalizeApiError(err, "No se pudo crear la FAQ.").formError);
     } finally {
       setSaving(false);
     }
@@ -61,6 +69,7 @@ export default function ConfigFaqs() {
     event.preventDefault();
     if (!token || !editingFaqId || !editQuestion.trim() || !editAnswer.trim()) return;
     setSaving(true);
+    setEditError("");
     try {
       await crmApi.updateFaq(token, editingFaqId, { question: editQuestion.trim(), answer: editAnswer.trim() });
       await queryClient.invalidateQueries({ queryKey: ["faqs"] });
@@ -68,6 +77,8 @@ export default function ConfigFaqs() {
       setEditingFaqId("");
       setEditQuestion("");
       setEditAnswer("");
+    } catch (err) {
+      setEditError(normalizeApiError(err, "No se pudo actualizar la FAQ.").formError);
     } finally {
       setSaving(false);
     }
@@ -81,11 +92,14 @@ export default function ConfigFaqs() {
   const onDeleteFaq = async () => {
     if (!token || !deletingFaq) return;
     setSaving(true);
+    setDeleteError("");
     try {
       await crmApi.deleteFaq(token, deletingFaq.id);
       await queryClient.invalidateQueries({ queryKey: ["faqs"] });
       setDeleteOpen(false);
       setDeletingFaq(null);
+    } catch (err) {
+      setDeleteError(normalizeApiError(err, "No se pudo eliminar la FAQ.").formError);
     } finally {
       setSaving(false);
     }
@@ -98,7 +112,13 @@ export default function ConfigFaqs() {
         subtitle={`${faqs.length} respuestas activas`}
         back
         action={
-          <Dialog open={open} onOpenChange={setOpen}>
+          <Dialog
+            open={open}
+            onOpenChange={(next) => {
+              setOpen(next);
+              if (!next) setCreateError("");
+            }}
+          >
             <DialogTrigger asChild>
               <Button size="sm" className="rounded-full h-9 px-3 shadow-green">
                 <Plus className="w-4 h-4" /> Nueva
@@ -115,6 +135,7 @@ export default function ConfigFaqs() {
                 <Button type="submit" className="w-full" disabled={saving || !question.trim() || !answer.trim()}>
                   {saving ? "Guardando..." : "Guardar FAQ"}
                 </Button>
+                <FormErrorAlert title="No se pudo crear la FAQ" message={createError} />
               </form>
             </DialogContent>
           </Dialog>
@@ -156,7 +177,13 @@ export default function ConfigFaqs() {
         ))}
       </ul>
 
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+      <Dialog
+        open={editOpen}
+        onOpenChange={(next) => {
+          setEditOpen(next);
+          if (!next) setEditError("");
+        }}
+      >
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Editar FAQ</DialogTitle>
@@ -168,11 +195,18 @@ export default function ConfigFaqs() {
             <Button type="submit" className="w-full" disabled={saving || !editQuestion.trim() || !editAnswer.trim()}>
               {saving ? "Guardando..." : "Guardar cambios"}
             </Button>
+            <FormErrorAlert title="No se pudo actualizar la FAQ" message={editError} />
           </form>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+      <Dialog
+        open={deleteOpen}
+        onOpenChange={(next) => {
+          setDeleteOpen(next);
+          if (!next) setDeleteError("");
+        }}
+      >
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Eliminar FAQ</DialogTitle>
@@ -188,6 +222,7 @@ export default function ConfigFaqs() {
                 {saving ? "Eliminando..." : "Si, estoy seguro"}
               </Button>
             </div>
+            <FormErrorAlert title="No se pudo eliminar la FAQ" message={deleteError} />
           </div>
         </DialogContent>
       </Dialog>

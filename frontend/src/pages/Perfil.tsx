@@ -31,7 +31,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { GoogleCalendarLinkHelpDialog } from "@/components/GoogleCalendarLinkHelpDialog";
+import { FieldErrorText, FormErrorAlert } from "@/components/FormErrorAlert";
 import { GOOGLE_CALENDAR_URL_ERROR, isGoogleCalendarSchedulingUrl } from "@/lib/calendarUrl";
+import { normalizeApiError } from "@/lib/formErrors";
+import { cn } from "@/lib/utils";
 
 const emptyBusiness: BusinessProfileDto = {
   tradeName: null,
@@ -47,6 +50,25 @@ const emptyBusiness: BusinessProfileDto = {
   description: null,
   logoUrl: null,
 };
+
+const PROFILE_KNOWN_FIELDS = [
+  "name",
+  "phone",
+  "defaultPlatform",
+  "calendarSchedulingUrl",
+  "tradeName",
+  "legalName",
+  "taxId",
+  "businessPhone",
+  "businessEmail",
+  "website",
+  "addressLine",
+  "city",
+  "state",
+  "country",
+  "description",
+  "logoUrl",
+] as const;
 
 export default function Perfil() {
   const navigate = useNavigate();
@@ -78,7 +100,9 @@ export default function Perfil() {
   });
 
   const [userForm, setUserForm] = useState({ name: "", phone: "", defaultPlatform: "", calendarSchedulingUrl: "" });
-  const [userFormError, setUserFormError] = useState("");
+  const [profileFormError, setProfileFormError] = useState("");
+  const [profileFieldErrors, setProfileFieldErrors] = useState<Record<string, string>>({});
+  const [deleteFormError, setDeleteFormError] = useState("");
   const [bizForm, setBizForm] = useState<BusinessProfileDto>(emptyBusiness);
   const [credOpenFor, setCredOpenFor] = useState<string | null>(null);
   const [credJson, setCredJson] = useState("{}");
@@ -158,13 +182,23 @@ export default function Perfil() {
       });
     },
     onSuccess: async () => {
-      setUserFormError("");
+      setProfileFormError("");
+      setProfileFieldErrors({});
       setCalendarUrlEditing(false);
       await queryClient.invalidateQueries({ queryKey: ["account-profile"] });
       await refreshProfile();
     },
     onError: (error) => {
-      setUserFormError(error instanceof Error ? error.message : "No se pudo guardar el perfil.");
+      if (error instanceof Error && error.message === GOOGLE_CALENDAR_URL_ERROR) {
+        setProfileFormError("");
+        setProfileFieldErrors({ calendarSchedulingUrl: error.message });
+        return;
+      }
+      const { formError, fieldErrors } = normalizeApiError(error, "No se pudo guardar el perfil.", {
+        knownFields: PROFILE_KNOWN_FIELDS,
+      });
+      setProfileFormError(formError);
+      setProfileFieldErrors(fieldErrors);
     },
   });
 
@@ -192,8 +226,8 @@ export default function Perfil() {
       });
     },
     onError: (error) => {
-      const message = error instanceof Error && error.message.trim() ? error.message : "No se pudieron guardar las credenciales.";
-      setCredError(message);
+      const { formError } = normalizeApiError(error, "No se pudieron guardar las credenciales.");
+      setCredError(formError);
     },
   });
 
@@ -219,8 +253,13 @@ export default function Perfil() {
   const deleteAccountMutation = useMutation({
     mutationFn: () => accountApi.deleteAccount(token!, { confirmText: deleteConfirmText }),
     onSuccess: async () => {
+      setDeleteFormError("");
       await logout();
       navigate("/login", { replace: true });
+    },
+    onError: (error) => {
+      const { formError } = normalizeApiError(error, "No se pudo eliminar la cuenta.");
+      setDeleteFormError(formError);
     },
   });
 
@@ -272,7 +311,8 @@ export default function Perfil() {
       setQrViewerOpen(true);
     },
     onError: (error, integrationId) => {
-      setLastQrErrorByIntegrationId((prev) => ({ ...prev, [integrationId]: (error as Error).message }));
+      const { formError } = normalizeApiError(error, "No se pudo generar el QR.");
+      setLastQrErrorByIntegrationId((prev) => ({ ...prev, [integrationId]: formError }));
     },
     onSettled: () => {
       setQrLoadingIntegrationId(null);
@@ -347,9 +387,22 @@ export default function Perfil() {
           </div>
           <div className="space-y-2">
             <Label className="text-xs">Nombre</Label>
-            <Input value={userForm.name} onChange={(e) => setUserForm((s) => ({ ...s, name: e.target.value }))} />
+            <Input
+              value={userForm.name}
+              onChange={(e) => setUserForm((s) => ({ ...s, name: e.target.value }))}
+              className={cn(profileFieldErrors.name && "border-destructive focus-visible:ring-destructive")}
+              aria-invalid={Boolean(profileFieldErrors.name)}
+            />
+            <FieldErrorText error={profileFieldErrors.name} />
             <Label className="text-xs">Teléfono</Label>
-            <Input value={userForm.phone} onChange={(e) => setUserForm((s) => ({ ...s, phone: e.target.value }))} placeholder="+57..." />
+            <Input
+              value={userForm.phone}
+              onChange={(e) => setUserForm((s) => ({ ...s, phone: e.target.value }))}
+              placeholder="+57..."
+              className={cn(profileFieldErrors.phone && "border-destructive focus-visible:ring-destructive")}
+              aria-invalid={Boolean(profileFieldErrors.phone)}
+            />
+            <FieldErrorText error={profileFieldErrors.phone} />
             <Label className="text-xs">Canal por defecto</Label>
             <select
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
@@ -378,7 +431,10 @@ export default function Perfil() {
                   onChange={(e) => setUserForm((s) => ({ ...s, calendarSchedulingUrl: e.target.value }))}
                   placeholder="https://calendar.app.google/..."
                   autoFocus
+                  className={cn(profileFieldErrors.calendarSchedulingUrl && "border-destructive focus-visible:ring-destructive")}
+                  aria-invalid={Boolean(profileFieldErrors.calendarSchedulingUrl)}
                 />
+                <FieldErrorText error={profileFieldErrors.calendarSchedulingUrl} />
                 <Button
                   type="button"
                   variant="ghost"
@@ -429,30 +485,42 @@ export default function Perfil() {
             <p className="font-semibold text-sm">Datos del negocio</p>
           </div>
           <div className="grid gap-2">
-            <Input placeholder="Nombre comercial" value={bizForm.tradeName || ""} onChange={(e) => setBizForm((s) => ({ ...s, tradeName: e.target.value }))} />
-            <Input placeholder="Razón social" value={bizForm.legalName || ""} onChange={(e) => setBizForm((s) => ({ ...s, legalName: e.target.value }))} />
-            <Input placeholder="NIT / ID fiscal" value={bizForm.taxId || ""} onChange={(e) => setBizForm((s) => ({ ...s, taxId: e.target.value }))} />
-            <Input placeholder="Teléfono del negocio" value={bizForm.businessPhone || ""} onChange={(e) => setBizForm((s) => ({ ...s, businessPhone: e.target.value }))} />
-            <Input placeholder="Email del negocio" value={bizForm.businessEmail || ""} onChange={(e) => setBizForm((s) => ({ ...s, businessEmail: e.target.value }))} />
-            <Input placeholder="Sitio web" value={bizForm.website || ""} onChange={(e) => setBizForm((s) => ({ ...s, website: e.target.value }))} />
-            <Input placeholder="Dirección" value={bizForm.addressLine || ""} onChange={(e) => setBizForm((s) => ({ ...s, addressLine: e.target.value }))} />
+            <Input placeholder="Nombre comercial" value={bizForm.tradeName || ""} onChange={(e) => setBizForm((s) => ({ ...s, tradeName: e.target.value }))} className={cn(profileFieldErrors.tradeName && "border-destructive")} />
+            <FieldErrorText error={profileFieldErrors.tradeName} />
+            <Input placeholder="Razón social" value={bizForm.legalName || ""} onChange={(e) => setBizForm((s) => ({ ...s, legalName: e.target.value }))} className={cn(profileFieldErrors.legalName && "border-destructive")} />
+            <FieldErrorText error={profileFieldErrors.legalName} />
+            <Input placeholder="NIT / ID fiscal" value={bizForm.taxId || ""} onChange={(e) => setBizForm((s) => ({ ...s, taxId: e.target.value }))} className={cn(profileFieldErrors.taxId && "border-destructive")} />
+            <FieldErrorText error={profileFieldErrors.taxId} />
+            <Input placeholder="Teléfono del negocio" value={bizForm.businessPhone || ""} onChange={(e) => setBizForm((s) => ({ ...s, businessPhone: e.target.value }))} className={cn(profileFieldErrors.businessPhone && "border-destructive")} />
+            <FieldErrorText error={profileFieldErrors.businessPhone} />
+            <Input placeholder="Email del negocio" value={bizForm.businessEmail || ""} onChange={(e) => setBizForm((s) => ({ ...s, businessEmail: e.target.value }))} className={cn(profileFieldErrors.businessEmail && "border-destructive")} />
+            <FieldErrorText error={profileFieldErrors.businessEmail} />
+            <Input placeholder="Sitio web" value={bizForm.website || ""} onChange={(e) => setBizForm((s) => ({ ...s, website: e.target.value }))} className={cn(profileFieldErrors.website && "border-destructive")} />
+            <FieldErrorText error={profileFieldErrors.website} />
+            <Input placeholder="Dirección" value={bizForm.addressLine || ""} onChange={(e) => setBizForm((s) => ({ ...s, addressLine: e.target.value }))} className={cn(profileFieldErrors.addressLine && "border-destructive")} />
+            <FieldErrorText error={profileFieldErrors.addressLine} />
             <div className="grid grid-cols-2 gap-2">
-              <Input placeholder="Ciudad" value={bizForm.city || ""} onChange={(e) => setBizForm((s) => ({ ...s, city: e.target.value }))} />
-              <Input placeholder="Estado / Depto" value={bizForm.state || ""} onChange={(e) => setBizForm((s) => ({ ...s, state: e.target.value }))} />
+              <div>
+                <Input placeholder="Ciudad" value={bizForm.city || ""} onChange={(e) => setBizForm((s) => ({ ...s, city: e.target.value }))} className={cn(profileFieldErrors.city && "border-destructive")} />
+                <FieldErrorText error={profileFieldErrors.city} />
+              </div>
+              <div>
+                <Input placeholder="Estado / Depto" value={bizForm.state || ""} onChange={(e) => setBizForm((s) => ({ ...s, state: e.target.value }))} className={cn(profileFieldErrors.state && "border-destructive")} />
+                <FieldErrorText error={profileFieldErrors.state} />
+              </div>
             </div>
-            <Input placeholder="País" value={bizForm.country || ""} onChange={(e) => setBizForm((s) => ({ ...s, country: e.target.value }))} />
-            <Textarea placeholder="Descripción corta del negocio" value={bizForm.description || ""} onChange={(e) => setBizForm((s) => ({ ...s, description: e.target.value }))} rows={3} />
-            <Input placeholder="URL del logo" value={bizForm.logoUrl || ""} onChange={(e) => setBizForm((s) => ({ ...s, logoUrl: e.target.value }))} />
+            <Input placeholder="País" value={bizForm.country || ""} onChange={(e) => setBizForm((s) => ({ ...s, country: e.target.value }))} className={cn(profileFieldErrors.country && "border-destructive")} />
+            <FieldErrorText error={profileFieldErrors.country} />
+            <Textarea placeholder="Descripción corta del negocio" value={bizForm.description || ""} onChange={(e) => setBizForm((s) => ({ ...s, description: e.target.value }))} rows={3} className={cn(profileFieldErrors.description && "border-destructive")} />
+            <FieldErrorText error={profileFieldErrors.description} />
+            <Input placeholder="URL del logo" value={bizForm.logoUrl || ""} onChange={(e) => setBizForm((s) => ({ ...s, logoUrl: e.target.value }))} className={cn(profileFieldErrors.logoUrl && "border-destructive")} />
+            <FieldErrorText error={profileFieldErrors.logoUrl} />
           </div>
           <Button className="w-full" disabled={!token || profileLoading || !dirty || saveProfileMutation.isPending} onClick={() => saveProfileMutation.mutate()}>
             <Save className="w-4 h-4 mr-2" />
             {saveProfileMutation.isPending ? "Guardando..." : "Guardar perfil"}
           </Button>
-          {saveProfileMutation.isError || userFormError ? (
-            <p className="text-xs text-destructive">
-              {userFormError || (saveProfileMutation.error as Error).message}
-            </p>
-          ) : null}
+          <FormErrorAlert title="No se pudo guardar el perfil" message={profileFormError} />
         </div>
 
         <div className="bg-card rounded-2xl p-4 shadow-card border border-border space-y-3">
@@ -764,7 +832,7 @@ export default function Perfil() {
             >
               {saveCredsMutation.isPending ? "Guardando..." : "Guardar credenciales"}
             </Button>
-            {credError ? <p className="text-xs text-destructive">{credError}</p> : null}
+            <FormErrorAlert title="No se pudieron guardar las credenciales" message={credError} />
           </DialogContent>
         </Dialog>
 
@@ -916,7 +984,13 @@ export default function Perfil() {
               </p>
             </div>
           </div>
-          <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <Dialog
+            open={deleteDialogOpen}
+            onOpenChange={(open) => {
+              setDeleteDialogOpen(open);
+              if (!open) setDeleteFormError("");
+            }}
+          >
             <DialogTrigger asChild>
               <Button variant="destructive" className="w-full">Iniciar eliminación de cuenta</Button>
             </DialogTrigger>
@@ -943,9 +1017,7 @@ export default function Perfil() {
               >
                 {deleteAccountMutation.isPending ? "Eliminando..." : "Eliminar cuenta definitivamente"}
               </Button>
-              {deleteAccountMutation.isError ? (
-                <p className="text-xs text-destructive">{(deleteAccountMutation.error as Error).message}</p>
-              ) : null}
+              <FormErrorAlert title="No se pudo eliminar la cuenta" message={deleteFormError} />
             </DialogContent>
           </Dialog>
         </div>

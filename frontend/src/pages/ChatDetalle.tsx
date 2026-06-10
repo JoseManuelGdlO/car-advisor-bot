@@ -10,6 +10,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useConversationMessagesQuery, useConversationsQuery } from "@/hooks/useConversationsQuery";
 import { crmApi } from "@/services/crm";
 import { toast } from "sonner";
+import { normalizeApiError } from "@/lib/formErrors";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -136,7 +137,7 @@ export default function ChatDetalle() {
       await refreshConversationData();
       toast.success("Mensaje enviado.");
     },
-    onError: (error: Error) => toast.error(error.message || "No se pudo enviar el mensaje."),
+    onError: (error: unknown) => toast.error(normalizeApiError(error, "No se pudo enviar el mensaje.").formError),
   });
 
   const sendAttachmentMutation = useMutation({
@@ -145,7 +146,7 @@ export default function ChatDetalle() {
       await refreshConversationData();
       toast.success("Adjunto enviado.");
     },
-    onError: (error: Error) => toast.error(error.message || "No se pudo enviar el adjunto."),
+    onError: (error: unknown) => toast.error(normalizeApiError(error, "No se pudo enviar el adjunto.").formError),
   });
 
   const controlMutation = useMutation({
@@ -154,7 +155,8 @@ export default function ChatDetalle() {
       await refreshConversationData();
       toast.success(isHumanControlled ? "Tomaste el control de la conversación." : "Devolviste el control al bot.");
     },
-    onError: (error: Error) => toast.error(error.message || "No se pudo actualizar el control de la conversación."),
+    onError: (error: unknown) =>
+      toast.error(normalizeApiError(error, "No se pudo actualizar el control de la conversación.").formError),
   });
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {

@@ -19,6 +19,14 @@ export class ApiRequestError extends Error {
   }
 }
 
+function fieldKeyFromPath(path: unknown): string {
+  if (!Array.isArray(path) || path.length === 0) return "_form";
+  const segments = path.filter((segment): segment is string => typeof segment === "string");
+  if (segments.length === 0) return "_form";
+  if (segments.length === 1) return segments[0];
+  return segments.join(".");
+}
+
 function parseFieldErrorsFromPayload(payload: unknown): Record<string, string> {
   if (!payload || typeof payload !== "object") return {};
   const raw = (payload as { errors?: unknown }).errors;
@@ -29,9 +37,12 @@ function parseFieldErrorsFromPayload(payload: unknown): Record<string, string> {
     const path = (item as { path?: unknown }).path;
     const msg = (item as { message?: unknown }).message;
     if (typeof msg !== "string") continue;
-    const key =
-      Array.isArray(path) && path.length > 0 && typeof path[0] === "string" ? path[0] : "_form";
+    const key = fieldKeyFromPath(path);
     if (!out[key]) out[key] = msg;
+    const leaf = Array.isArray(path) ? path[path.length - 1] : null;
+    if (typeof leaf === "string" && leaf !== key && !out[leaf]) {
+      out[leaf] = msg;
+    }
   }
   return out;
 }
