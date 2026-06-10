@@ -404,7 +404,30 @@ def _try_apply_promotion_to_preselected_vehicle(
     state["promotion_vehicle_candidates"] = []
 
     if not chain_financing:
-        return None
+        state["current_node"] = "lead_capture"
+        state["intent"] = "lead_capture"
+        _debug(
+            "route_change",
+            next_node="lead_capture",
+            reason="promotion_applied_preselected_vehicle",
+            selected_vehicle_id=preselected_id,
+            promotion_title=str(state.get("selected_promotion_title", "")).strip(),
+        )
+        return append_assistant_message(
+            state,
+            generate_verified_user_message(
+                mode="operational",
+                verified_facts_block=(
+                    "evento: promocion_aplicada_a_vehiculo_preseleccionado\n"
+                    f"vehicle_id: {preselected_id}\n"
+                    f"vehicle_etiqueta: {state.get('selected_car', '')}\n"
+                    f"promocion_titulo: {str(state.get('selected_promotion_title', '')).strip()}\n"
+                ),
+                user_message=latest_user_message(state),
+                fallback="Perfecto, avancemos con tus datos para aplicar la promocion a este vehiculo.",
+                temperature=0.35,
+            ),
+        )
 
     state["pending_financing_after_promotion"] = True
     state["current_node"] = "financing"
