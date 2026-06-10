@@ -641,7 +641,10 @@ def financing(state: clientState) -> clientState:
         )
 
     # Permite salir de financiamiento hacia promociones cuando el usuario cambia de tema.
-    if _is_promotions_query(user_text):
+    if state.get("pending_financing_after_promotion"):
+        state["pending_financing_after_promotion"] = False
+        _debug("promotion_chain_resume", action="skip_promotions_redirect")
+    elif _is_promotions_query(user_text) and not _is_financing_query(user_text):
         state["awaiting_financing_plan_selection"] = False
         state["awaiting_financing_vehicle_selection"] = False
         state["financing_plan_candidates"] = []
@@ -1020,9 +1023,12 @@ def financing(state: clientState) -> clientState:
                 if has_single_plan
                 else "Si te interesa alguno, dime el nombre o numero del plan."
             )
+            promo_title = str(state.get("selected_promotion_title", "")).strip()
+            promo_line = f"Promocion aplicada: {promo_title}\n" if promo_title else ""
             question = _compose_answer_first_block(
                 user_text=user_text,
                 context_blocks=(
+                    f"{promo_line}"
                     f"Vehiculo consultado: {selected_car or 'este vehiculo'}\n\n"
                     f"Planes disponibles:\n{message}"
                 ),

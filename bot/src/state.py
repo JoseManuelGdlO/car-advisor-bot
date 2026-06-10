@@ -41,6 +41,7 @@ class clientState(TypedDict, total=False):
     - awaiting_promotion_selection / awaiting_promotion_vehicle_selection / awaiting_promotion_vehicle_interest_confirmation:
       banderas de paso para nodo promotions.
     - awaiting_promotion_apply_confirmation: el bot mostro un resumen de una promo y espera confirmacion para avanzar.
+    - pending_financing_after_promotion: promotions aplico una promo y el mismo turno debe continuar en financing.
     - vehicle_comparison_ctx: contexto opcional para desambiguar comparacion de dos vehiculos
       (claves: other_query str, peer_resolved_id str opcional).
     - human_advisor_requested: True si el usuario pidio hablar con un asesor humano (CRM/UI).
@@ -90,6 +91,7 @@ class clientState(TypedDict, total=False):
     awaiting_promotion_vehicle_selection: bool
     awaiting_promotion_vehicle_interest_confirmation: bool
     awaiting_promotion_apply_confirmation: bool
+    pending_financing_after_promotion: bool
     vehicle_comparison_ctx: dict[str, Any]
     human_advisor_requested: bool
     human_advisor_push_sent: bool

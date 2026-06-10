@@ -364,6 +364,61 @@ def _load_promotion_vehicles(state: clientState, promotion: dict[str, Any]) -> l
     return available_only or resolved
 
 
+def _try_apply_promotion_to_preselected_vehicle(
+    state: clientState,
+    selected_promotion: dict[str, Any],
+    *,
+    chain_financing: bool,
+) -> clientState | None:
+    """Aplica la promo al vehiculo ya en contexto; opcionalmente encadena a financing."""
+    preselected_id = str(state.get("selected_vehicle_id", "")).strip()
+    if not preselected_id:
+        return None
+
+    promotion_vehicles = _load_promotion_vehicles(state, selected_promotion)
+    allowed_ids = {
+        str(vehicle.get("id", "")).strip()
+        for vehicle in promotion_vehicles
+        if isinstance(vehicle, dict) and str(vehicle.get("id", "")).strip()
+    }
+    if preselected_id not in allowed_ids:
+        return None
+
+    matching = next(
+        (
+            vehicle
+            for vehicle in promotion_vehicles
+            if isinstance(vehicle, dict) and str(vehicle.get("id", "")).strip() == preselected_id
+        ),
+        None,
+    )
+    if not isinstance(matching, dict):
+        return None
+
+    state["selected_vehicle_id"] = preselected_id
+    state["selected_car"] = format_vehicle_name(matching)
+    state["awaiting_promotion_selection"] = False
+    state["awaiting_promotion_apply_confirmation"] = False
+    state["awaiting_promotion_vehicle_selection"] = False
+    state["awaiting_promotion_vehicle_interest_confirmation"] = False
+    state["promotion_vehicle_candidates"] = []
+
+    if not chain_financing:
+        return None
+
+    state["pending_financing_after_promotion"] = True
+    state["current_node"] = "financing"
+    state["intent"] = "financing"
+    _debug(
+        "route_change",
+        next_node="financing",
+        reason="promotion_applied_chain_financing",
+        selected_vehicle_id=preselected_id,
+        promotion_title=str(state.get("selected_promotion_title", "")).strip(),
+    )
+    return state
+
+
 def _show_vehicle_and_confirm_interest(state: clientState, vehicle: dict[str, Any]) -> clientState:
     """Helper de apoyo para show vehicle and confirm interest."""
     vehicle_id = str(vehicle.get("id", "")).strip()
@@ -502,18 +557,22 @@ def promotions(state: clientState) -> clientState:
         if cmp_out is not None:
             return cmp_out
 
-    if nav_flags.get("ask_financing"):
-        state["current_node"] = "financing"
-        state["intent"] = "financing"
-        _debug("route_change", next_node="financing", reason="financing_requested")
-        return state
-
     _promotion_flow_active = bool(
         state.get("awaiting_promotion_selection")
         or state.get("awaiting_promotion_vehicle_selection")
         or state.get("awaiting_promotion_vehicle_interest_confirmation")
         or state.get("awaiting_promotion_apply_confirmation")
     )
+    _compound_apply_and_financing = bool(
+        nav_flags.get("ask_financing")
+        and _promotion_flow_active
+        and (nav_flags.get("apply_promotion") or nav_flags.get("select_promotion"))
+    )
+    if nav_flags.get("ask_financing") and not _compound_apply_and_financing:
+        state["current_node"] = "financing"
+        state["intent"] = "financing"
+        _debug("route_change", next_node="financing", reason="financing_requested")
+        return state
     if (
         nav_flags.get("ask_other_vehicles")
         and not nav_flags.get("ask_promotions")
@@ -804,6 +863,15 @@ def promotions(state: clientState) -> clientState:
                         temperature=0.45,
                     ),
                 )
+
+        if has_explicit_apply:
+            chained = _try_apply_promotion_to_preselected_vehicle(
+                state,
+                selected_promotion,
+                chain_financing=bool(nav_flags.get("ask_financing")),
+            )
+            if chained is not None:
+                return chained
 
         state["awaiting_promotion_apply_confirmation"] = False
         promotion_vehicles = _load_promotion_vehicles(state, selected_promotion)

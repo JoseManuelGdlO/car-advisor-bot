@@ -245,6 +245,7 @@ PLAN_VEHICLE_INFO_SIGNALS = {
 }
 
 EXPLICIT_PROMOTION_APPLY_SIGNALS = {
+    "aplico",
     "aplicar",
     "quiero esa promocion",
     "quiero aplicar",

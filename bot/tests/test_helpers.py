@@ -54,6 +54,7 @@ def initial_state() -> dict:
         "awaiting_promotion_vehicle_selection": False,
         "awaiting_promotion_vehicle_interest_confirmation": False,
         "awaiting_promotion_apply_confirmation": False,
+        "pending_financing_after_promotion": False,
         "vehicle_comparison_ctx": {},
         "human_advisor_requested": False,
         "human_advisor_push_sent": False,
