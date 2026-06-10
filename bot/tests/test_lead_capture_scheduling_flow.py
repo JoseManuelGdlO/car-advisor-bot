@@ -7,7 +7,7 @@ from unittest.mock import patch
 import unittest
 
 from src.nodes.lead_capture import lead_capture
-from src.services.llm_responses import CALENDAR_SCHEDULING_URL
+from src.services.llm_responses import DEFAULT_CALENDAR_SCHEDULING_URL
 from tests.test_helpers import initial_state, with_user_message
 
 
@@ -23,7 +23,7 @@ class LeadCaptureSchedulingFlowTests(unittest.TestCase):
 
         scheduling_text = (
             f"Perfecto. Para agendar tu prueba de manejo o ver Honda Civic 2020 en persona:\n\n"
-            f"1. Abre este enlace: {CALENDAR_SCHEDULING_URL}\n"
+            f"1. Abre este enlace: {DEFAULT_CALENDAR_SCHEDULING_URL}\n"
             "2. Elige la fecha y hora que te convenga.\n"
             "3. Completa tus datos en el formulario y confirma la cita.\n\n"
             "Al confirmar, recibiras un correo con los detalles de tu cita."
@@ -47,7 +47,7 @@ class LeadCaptureSchedulingFlowTests(unittest.TestCase):
 
         last_msg = str(s["messages"][-1].get("content", ""))
         self.assertIn("Honda Civic 2020", last_msg)
-        self.assertIn(CALENDAR_SCHEDULING_URL, last_msg)
+        self.assertIn(DEFAULT_CALENDAR_SCHEDULING_URL, last_msg)
         self.assertNotIn("nombre completo", last_msg.lower())
         self.assertNotIn("correo electronico", last_msg.lower())
 
@@ -73,7 +73,7 @@ class LeadCaptureSchedulingFlowTests(unittest.TestCase):
         self.assertEqual(s.get("current_node"), "router")
         last_msg = str(s["messages"][-1].get("content", ""))
         self.assertIn("Honda Civic 2020", last_msg)
-        self.assertNotIn(CALENDAR_SCHEDULING_URL, last_msg)
+        self.assertNotIn(DEFAULT_CALENDAR_SCHEDULING_URL, last_msg)
 
 
 if __name__ == "__main__":

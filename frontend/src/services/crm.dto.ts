@@ -72,6 +72,7 @@ export type BotSettingsDto = {
   emojiStyle: "nunca" | "pocos" | "frecuentes";
   salesProactivity: "bajo" | "medio" | "alto";
   customInstructions: string;
+  calendarSchedulingUrl: string;
 };
 
 export type DashboardKpisDto = {

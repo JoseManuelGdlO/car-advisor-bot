@@ -9,10 +9,10 @@ from src.tools.database import push_event_to_backend
 from src.tools.vehicles import notify_advisor
 from src.utils.bot_control import deactivate_bot
 from src.services.llm_responses import (
-    CALENDAR_SCHEDULING_URL,
     classify_lead_capture_navigation,
     generate_lead_capture_scheduling_message,
     generate_verified_user_message,
+    get_calendar_scheduling_url,
 )
 from src.utils.app_logging import get_app_logger, log_flow_trace
 from src.utils.state_helpers import append_assistant_message, latest_user_message
@@ -242,7 +242,7 @@ def lead_capture(state: clientState) -> clientState:
         user_id=user_id,
         owner_user_id=owner_user_id,
     )
-    _debug("scheduling_link_shown", calendar_url=CALENDAR_SCHEDULING_URL, notify_success=notify_success)
+    _debug("scheduling_link_shown", calendar_url=get_calendar_scheduling_url(), notify_success=notify_success)
 
     state["lead_capture_done"] = True
     state["current_node"] = "router"

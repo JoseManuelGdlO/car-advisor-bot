@@ -3,7 +3,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from src.nodes.lead_capture import lead_capture
-from src.services.llm_responses import CALENDAR_SCHEDULING_URL
+from src.services.llm_responses import DEFAULT_CALENDAR_SCHEDULING_URL
 from tests.test_helpers import GraphTestCase, initial_state, with_user_message
 
 
@@ -42,7 +42,7 @@ class LeadCaptureOverrideIntentTests(GraphTestCase):
         state["user_id"] = "session-123"
         state["owner_user_id"] = "owner-123"
 
-        scheduling_text = f"Agenda aqui: {CALENDAR_SCHEDULING_URL} para Dodge Ram 2015."
+        scheduling_text = f"Agenda aqui: {DEFAULT_CALENDAR_SCHEDULING_URL} para Dodge Ram 2015."
 
         with (
             patch("src.nodes.lead_capture.classify_lead_capture_navigation", return_value=""),
@@ -59,7 +59,7 @@ class LeadCaptureOverrideIntentTests(GraphTestCase):
         self.assertTrue(updated.get("lead_capture_done"))
         self.assertTrue(updated.get("bot_disabled"))
         self.assertEqual(updated.get("current_node"), "router")
-        self.assertIn(CALENDAR_SCHEDULING_URL, updated["messages"][-1]["content"])
+        self.assertIn(DEFAULT_CALENDAR_SCHEDULING_URL, updated["messages"][-1]["content"])
         notify_mock.assert_called_once()
         event_mock.assert_called_once()
         event_payload = event_mock.call_args.args[0]

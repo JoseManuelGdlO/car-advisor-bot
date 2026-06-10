@@ -25,6 +25,7 @@ module.exports = {
         email: "vendedor@autos.mx",
         password_hash: hash,
         name: "Andres Vendedor",
+        calendar_scheduling_url: "https://calendar.app.google/tYniJNfcrd8qXvut8",
         active: true,
         created_at: now,
         updated_at: now,

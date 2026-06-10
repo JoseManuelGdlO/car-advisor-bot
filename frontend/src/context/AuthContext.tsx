@@ -11,13 +11,14 @@ export type AuthUser = {
   name: string;
   phone?: string | null;
   defaultPlatform?: string | null;
+  calendarSchedulingUrl?: string;
 };
 
 type AuthContextType = {
   token: string | null;
   user: AuthUser | null;
   login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string, calendarSchedulingUrl: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 };
@@ -92,6 +93,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       name: profile.user.name,
       phone: profile.user.phone,
       defaultPlatform: profile.user.defaultPlatform,
+      calendarSchedulingUrl: profile.user.calendarSchedulingUrl,
     });
   }, [token]);
 
@@ -119,13 +121,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             name: profile.user.name,
             phone: profile.user.phone,
             defaultPlatform: profile.user.defaultPlatform,
+            calendarSchedulingUrl: profile.user.calendarSchedulingUrl,
           });
         } catch {
           setUser(res.user);
         }
       },
-      async register(name, email, password) {
-        await apiRequest("/auth/register", "POST", { name, email, password });
+      async register(name, email, password, calendarSchedulingUrl) {
+        await apiRequest("/auth/register", "POST", { name, email, password, calendarSchedulingUrl });
       },
       logout,
       refreshProfile,

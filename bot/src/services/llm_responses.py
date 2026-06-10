@@ -716,14 +716,22 @@ def generate_vehicle_candidates_selection_message(options_text: str, user_messag
     )
 
 
-CALENDAR_SCHEDULING_URL = "https://calendar.app.google/tYniJNfcrd8qXvut8"
+DEFAULT_CALENDAR_SCHEDULING_URL = "https://calendar.app.google/tYniJNfcrd8qXvut8"
+
+
+def get_calendar_scheduling_url() -> str:
+    """URL de agenda del owner actual (fallback defensivo si el backend no responde)."""
+
+    settings = get_bot_settings()
+    url = str(settings.get("calendarSchedulingUrl", "")).strip()
+    return url or DEFAULT_CALENDAR_SCHEDULING_URL
 
 
 def _lead_capture_scheduling_fallback(selected_car: str, *, resuming: bool = False) -> str:
     """Texto fijo si falla el LLM al compartir el enlace de agenda."""
 
     name = (selected_car or "").strip() or "este vehiculo"
-    url = CALENDAR_SCHEDULING_URL
+    url = get_calendar_scheduling_url()
     intro = (
         f"Continuamos con {name}. Para agendar tu prueba de manejo o ver {name} en persona:"
         if resuming
@@ -752,7 +760,7 @@ def generate_lead_capture_scheduling_message(
     if not block:
         block = (
             f"vehiculo_seleccionado: {name}\n"
-            f"url_agenda_literal: {CALENDAR_SCHEDULING_URL}\n"
+            f"url_agenda_literal: {get_calendar_scheduling_url()}\n"
             "confirmacion_cita_correo: al confirmar la cita en el calendario recibiras un correo de confirmacion\n"
             f"reanudacion_flujo: {str(resuming).lower()}\n"
         )

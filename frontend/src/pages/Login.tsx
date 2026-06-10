@@ -8,12 +8,20 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/context/AuthContext";
 import { ApiRequestError } from "@/lib/api";
+import { GOOGLE_CALENDAR_URL_ERROR, isGoogleCalendarSchedulingUrl } from "@/lib/calendarUrl";
 import { cn } from "@/lib/utils";
+import { GoogleCalendarLinkHelpDialog } from "@/components/GoogleCalendarLinkHelpDialog";
 
 const registerFormSchema = z.object({
   name: z.string().trim().min(2, "El nombre debe tener al menos 2 caracteres."),
   email: z.string().trim().email("Introduce un correo electrónico válido."),
   password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres."),
+  calendarSchedulingUrl: z
+    .string()
+    .trim()
+    .min(1, "El link de calendario es obligatorio.")
+    .max(500, "El link de calendario no puede tener más de 500 caracteres.")
+    .refine(isGoogleCalendarSchedulingUrl, { message: GOOGLE_CALENDAR_URL_ERROR }),
 });
 
 const loginFormSchema = z.object({
@@ -38,7 +46,7 @@ function splitApiRequestError(err: ApiRequestError): { formError: string; fieldE
   const formFromPayload = fieldErrors._form;
   delete fieldErrors._form;
 
-  const known = new Set(["name", "email", "password"]);
+  const known = new Set(["name", "email", "password", "calendarSchedulingUrl"]);
   const keys = Object.keys(fieldErrors);
   const onlyKnownFields = keys.length > 0 && keys.every((k) => known.has(k));
 
@@ -61,6 +69,7 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
   const [name, setName] = useState("");
+  const [calendarSchedulingUrl, setCalendarSchedulingUrl] = useState("");
   const [formError, setFormError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [isRegisterMode, setIsRegisterMode] = useState(false);
@@ -83,6 +92,7 @@ export default function Login() {
         name: name.trim(),
         email: emailTrim,
         password: passVal,
+        calendarSchedulingUrl: calendarSchedulingUrl.trim(),
       });
       if (!parsed.success) {
         setFieldErrors(zodIssuesToFieldErrors(parsed.error.issues));
@@ -101,7 +111,7 @@ export default function Login() {
 
     try {
       if (isRegisterMode) {
-        await register(name.trim(), emailTrim, passVal);
+        await register(name.trim(), emailTrim, passVal, calendarSchedulingUrl.trim());
       }
       await login(emailTrim, passVal, rememberMe);
       navigate("/dashboard");
@@ -124,6 +134,7 @@ export default function Login() {
   const errName = fieldErrors.name;
   const errEmail = fieldErrors.email;
   const errPassword = fieldErrors.password;
+  const errCalendarSchedulingUrl = fieldErrors.calendarSchedulingUrl;
 
   return (
     <div className="min-h-full flex flex-col bg-gradient-hero text-primary-foreground">
@@ -180,6 +191,33 @@ export default function Login() {
               </p>
             ) : null}
           </div>
+
+          {isRegisterMode && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="calendar-url">Link de calendario de Google</Label>
+                <GoogleCalendarLinkHelpDialog />
+              </div>
+              <Input
+                id="calendar-url"
+                type="url"
+                value={calendarSchedulingUrl}
+                onChange={(e) => setCalendarSchedulingUrl(e.target.value)}
+                placeholder="https://calendar.app.google/..."
+                className={cn(
+                  "h-12 rounded-xl",
+                  errCalendarSchedulingUrl && "border-destructive focus-visible:ring-destructive",
+                )}
+                aria-invalid={Boolean(errCalendarSchedulingUrl)}
+                aria-describedby={errCalendarSchedulingUrl ? "calendar-url-error" : undefined}
+              />
+              {errCalendarSchedulingUrl ? (
+                <p id="calendar-url-error" className="text-xs text-destructive">
+                  {errCalendarSchedulingUrl}
+                </p>
+              ) : null}
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <Label htmlFor="pass">Contraseña</Label>

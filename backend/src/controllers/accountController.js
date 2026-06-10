@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { BusinessProfile, User } from "../models/index.js";
 import { ApiError } from "../utils/errors.js";
+import { calendarSchedulingUrlSchema } from "../utils/calendarUrl.js";
 
 const businessPatchSchema = z
   .object({
@@ -24,6 +25,7 @@ const userPatchSchema = z
     name: z.string().min(2).max(120).optional(),
     phone: z.string().max(32).optional().nullable(),
     defaultPlatform: z.enum(["whatsapp", "facebook", "telegram", "web", "api", "instagram"]).optional().nullable(),
+    calendarSchedulingUrl: calendarSchedulingUrlSchema.optional(),
   })
   .strict();
 
@@ -62,6 +64,7 @@ export const getAccountProfile = async (req, res, next) => {
         name: user.name,
         phone: user.phone,
         defaultPlatform: user.defaultPlatform,
+        calendarSchedulingUrl: user.calendarSchedulingUrl,
       },
       business: toBusinessDto(business),
     });
@@ -86,6 +89,7 @@ export const patchAccountProfile = async (req, res, next) => {
         ...(u.name !== undefined ? { name: u.name } : {}),
         ...(u.phone !== undefined ? { phone: u.phone || null } : {}),
         ...(u.defaultPlatform !== undefined ? { defaultPlatform: u.defaultPlatform || null } : {}),
+        ...(u.calendarSchedulingUrl !== undefined ? { calendarSchedulingUrl: u.calendarSchedulingUrl } : {}),
       });
     }
 
@@ -120,6 +124,7 @@ export const patchAccountProfile = async (req, res, next) => {
         name: user.name,
         phone: user.phone,
         defaultPlatform: user.defaultPlatform,
+        calendarSchedulingUrl: user.calendarSchedulingUrl,
       },
       business: toBusinessDto(business),
     });

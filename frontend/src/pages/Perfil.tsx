@@ -30,6 +30,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { GoogleCalendarLinkHelpDialog } from "@/components/GoogleCalendarLinkHelpDialog";
+import { GOOGLE_CALENDAR_URL_ERROR, isGoogleCalendarSchedulingUrl } from "@/lib/calendarUrl";
 
 const emptyBusiness: BusinessProfileDto = {
   tradeName: null,
@@ -75,7 +77,8 @@ export default function Perfil() {
     enabled: Boolean(token),
   });
 
-  const [userForm, setUserForm] = useState({ name: "", phone: "", defaultPlatform: "" });
+  const [userForm, setUserForm] = useState({ name: "", phone: "", defaultPlatform: "", calendarSchedulingUrl: "" });
+  const [userFormError, setUserFormError] = useState("");
   const [bizForm, setBizForm] = useState<BusinessProfileDto>(emptyBusiness);
   const [credOpenFor, setCredOpenFor] = useState<string | null>(null);
   const [credJson, setCredJson] = useState("{}");
@@ -102,6 +105,7 @@ export default function Perfil() {
   const [qrLoadingIntegrationId, setQrLoadingIntegrationId] = useState<string | null>(null);
   const [qrViewerOpen, setQrViewerOpen] = useState(false);
   const [qrViewerIntegrationId, setQrViewerIntegrationId] = useState<string | null>(null);
+  const [calendarUrlEditing, setCalendarUrlEditing] = useState(false);
 
   useEffect(() => {
     if (token) {
@@ -115,17 +119,26 @@ export default function Perfil() {
       name: profile.user.name || "",
       phone: profile.user.phone || "",
       defaultPlatform: profile.user.defaultPlatform || "",
+      calendarSchedulingUrl: profile.user.calendarSchedulingUrl || "",
     });
+    setCalendarUrlEditing(false);
     setBizForm({ ...emptyBusiness, ...(profile.business || {}) });
   }, [profile]);
 
+  const savedCalendarUrl = profile?.user.calendarSchedulingUrl?.trim() || "";
+
   const saveProfileMutation = useMutation({
-    mutationFn: () =>
-      accountApi.patchProfile(token!, {
+    mutationFn: () => {
+      const calendarSchedulingUrl = (userForm.calendarSchedulingUrl || savedCalendarUrl).trim();
+      if (!isGoogleCalendarSchedulingUrl(calendarSchedulingUrl)) {
+        throw new Error(GOOGLE_CALENDAR_URL_ERROR);
+      }
+      return accountApi.patchProfile(token!, {
         user: {
           name: userForm.name.trim(),
           phone: userForm.phone.trim() || null,
           defaultPlatform: (userForm.defaultPlatform || null) as "whatsapp" | "facebook" | "telegram" | "web" | "api" | "instagram" | null,
+          calendarSchedulingUrl,
         },
         business: {
           ...bizForm,
@@ -142,10 +155,16 @@ export default function Perfil() {
           description: bizForm.description?.trim() || null,
           logoUrl: bizForm.logoUrl?.trim() || null,
         },
-      }),
+      });
+    },
     onSuccess: async () => {
+      setUserFormError("");
+      setCalendarUrlEditing(false);
       await queryClient.invalidateQueries({ queryKey: ["account-profile"] });
       await refreshProfile();
+    },
+    onError: (error) => {
+      setUserFormError(error instanceof Error ? error.message : "No se pudo guardar el perfil.");
     },
   });
 
@@ -213,13 +232,15 @@ export default function Perfil() {
 
   const dirty = useMemo(() => {
     if (!profile) return false;
+    const calendarValue = (userForm.calendarSchedulingUrl || savedCalendarUrl).trim();
     const u =
       profile.user.name !== userForm.name.trim() ||
       (profile.user.phone || "") !== (userForm.phone.trim() || "") ||
-      (profile.user.defaultPlatform || "") !== (userForm.defaultPlatform || "");
+      (profile.user.defaultPlatform || "") !== (userForm.defaultPlatform || "") ||
+      savedCalendarUrl !== calendarValue;
     const b = JSON.stringify(profile.business || {}) !== JSON.stringify({ ...emptyBusiness, ...bizForm });
     return u || b;
-  }, [profile, userForm, bizForm]);
+  }, [profile, userForm, bizForm, savedCalendarUrl]);
 
   const channelLabel = (c: IntegrationDto["channel"]) => {
     const m: Record<string, string> = {
@@ -343,6 +364,62 @@ export default function Perfil() {
               <option value="api">API</option>
               <option value="instagram">Instagram</option>
             </select>
+            <div className="flex items-center justify-between gap-2 pt-1">
+              <Label className="text-xs">Link de calendario de Google</Label>
+              <GoogleCalendarLinkHelpDialog />
+            </div>
+            {profileLoading ? (
+              <p className="text-xs text-muted-foreground">Cargando enlace...</p>
+            ) : calendarUrlEditing ? (
+              <div className="space-y-2">
+                <Input
+                  type="url"
+                  value={userForm.calendarSchedulingUrl || savedCalendarUrl}
+                  onChange={(e) => setUserForm((s) => ({ ...s, calendarSchedulingUrl: e.target.value }))}
+                  placeholder="https://calendar.app.google/..."
+                  autoFocus
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 px-2 text-xs"
+                  onClick={() => {
+                    setCalendarUrlEditing(false);
+                    setUserForm((s) => ({ ...s, calendarSchedulingUrl: savedCalendarUrl }));
+                  }}
+                >
+                  Cancelar
+                </Button>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 space-y-2">
+                {savedCalendarUrl ? (
+                  <a
+                    href={savedCalendarUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block text-xs text-primary-dark break-all hover:underline"
+                  >
+                    {savedCalendarUrl}
+                  </a>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Aún no tienes un enlace de calendario configurado.</p>
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8"
+                  onClick={() => {
+                    setUserForm((s) => ({ ...s, calendarSchedulingUrl: savedCalendarUrl }));
+                    setCalendarUrlEditing(true);
+                  }}
+                >
+                  {savedCalendarUrl ? "Cambiar URL" : "Agregar URL"}
+                </Button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -371,8 +448,10 @@ export default function Perfil() {
             <Save className="w-4 h-4 mr-2" />
             {saveProfileMutation.isPending ? "Guardando..." : "Guardar perfil"}
           </Button>
-          {saveProfileMutation.isError ? (
-            <p className="text-xs text-destructive">{(saveProfileMutation.error as Error).message}</p>
+          {saveProfileMutation.isError || userFormError ? (
+            <p className="text-xs text-destructive">
+              {userFormError || (saveProfileMutation.error as Error).message}
+            </p>
           ) : null}
         </div>
 

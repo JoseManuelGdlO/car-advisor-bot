@@ -6,6 +6,7 @@ export type AccountUserDto = {
   name: string;
   phone: string | null;
   defaultPlatform: string | null;
+  calendarSchedulingUrl: string;
 };
 
 export type BusinessProfileDto = {
@@ -30,7 +31,7 @@ export type AccountProfileResponse = {
 
 export const accountApi = {
   getProfile: (token: string) => apiRequest<AccountProfileResponse>("/account/profile", "GET", undefined, token),
-  patchProfile: (token: string, body: { user?: Partial<Pick<AccountUserDto, "name" | "phone" | "defaultPlatform">>; business?: Partial<BusinessProfileDto> }) =>
+  patchProfile: (token: string, body: { user?: Partial<Pick<AccountUserDto, "name" | "phone" | "defaultPlatform" | "calendarSchedulingUrl">>; business?: Partial<BusinessProfileDto> }) =>
     apiRequest<AccountProfileResponse>("/account/profile", "PATCH", body, token),
   deleteAccount: (token: string, body: { confirmText: string }) => apiRequest<void>("/account", "DELETE", body, token),
 };

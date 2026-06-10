@@ -2,6 +2,7 @@ import { z } from "zod";
 import { User, ServiceToken } from "../models/index.js";
 import { ApiError } from "../utils/errors.js";
 import { comparePassword, hashPassword, randomToken, sha256, signUserJwt } from "../utils/auth.js";
+import { calendarSchedulingUrlSchema } from "../utils/calendarUrl.js";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -11,14 +12,22 @@ const loginSchema = z.object({
 export const register = async (req, res, next) => {
   try {
     // Registro de usuario final con validación mínima de perfil/credenciales.
-    const { email, password, name } = z.object({
-      email: z.string().email(),
-      password: z.string().min(6),
-      name: z.string().min(2),
-    }).parse(req.body);
+    const { email, password, name, calendarSchedulingUrl } = z
+      .object({
+        email: z.string().email(),
+        password: z.string().min(6),
+        name: z.string().min(2),
+        calendarSchedulingUrl: calendarSchedulingUrlSchema,
+      })
+      .parse(req.body);
     const exists = await User.findOne({ where: { email } });
     if (exists) throw new ApiError(409, "Ya existe una cuenta con este correo.");
-    const user = await User.create({ email, name, passwordHash: await hashPassword(password) });
+    const user = await User.create({
+      email,
+      name,
+      passwordHash: await hashPassword(password),
+      calendarSchedulingUrl,
+    });
     return res.status(201).json({ id: user.id, email: user.email, name: user.name });
   } catch (err) {
     return next(err);

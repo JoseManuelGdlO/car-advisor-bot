@@ -32,5 +32,10 @@ export default function UserModel(sequelize) {
       type: DataTypes.BOOLEAN,
       defaultValue: true,
     },
+    calendarSchedulingUrl: {
+      type: DataTypes.STRING(500),
+      allowNull: false,
+      field: "calendar_scheduling_url",
+    },
   });
 }

@@ -19,11 +19,14 @@ from src.context.tenant_context import get_owner_user_id
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_CALENDAR_SCHEDULING_URL = "https://calendar.app.google/tYniJNfcrd8qXvut8"
+
 DEFAULT_BOT_SETTINGS = {
     "tone": "cercano",
     "emojiStyle": "frecuentes",
     "salesProactivity": "alto",
     "customInstructions": "Eres una persona muy amable y autentica",
+    "calendarSchedulingUrl": DEFAULT_CALENDAR_SCHEDULING_URL,
 }
 
 
@@ -150,6 +153,10 @@ def get_bot_settings() -> dict[str, str]:
             "customInstructions": _clean_setting(
                 payload.get("customInstructions"),
                 DEFAULT_BOT_SETTINGS["customInstructions"],
+            ),
+            "calendarSchedulingUrl": _clean_setting(
+                payload.get("calendarSchedulingUrl"),
+                DEFAULT_BOT_SETTINGS["calendarSchedulingUrl"],
             ),
         }
     except Exception:
