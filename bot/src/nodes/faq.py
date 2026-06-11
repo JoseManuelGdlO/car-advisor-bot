@@ -58,4 +58,5 @@ def faq(state: clientState) -> clientState:
             compact_faq_body=False,
         )
         state["intent"] = "other"
+        state["current_node"] = "router"
     return append_assistant_message(state, message)

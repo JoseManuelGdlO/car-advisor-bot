@@ -532,6 +532,8 @@ def build_vehicle_step_flags_prompt(
         "entre X y Y, este contra otro modelo, compara con otro que nombra por marca/modelo, etc.).\n"
         "- ask_promotions=true cuando pide promociones/ofertas/descuentos para el vehiculo actual o en general.\n"
         "- ask_financing=true cuando pide credito/financiamiento/tasa/plazo/mensualidades.\n"
+        "- ask_financing=false si pide prueba de manejo, agendar prueba o ver/visitar el vehiculo en persona "
+        "(incluye 'quiero una prueba', 'agendar prueba', typos como 'prubea'). En esos casos usa confirm_purchase=true.\n"
         "- ask_images=true cuando pide ver fotos/imagenes del vehiculo actual por primera vez (muestrame fotos, quiero ver imagenes, "
         "tienen fotos del auto). No uses ask_images si solo habla de ver el vehiculo en persona o agendar prueba de manejo.\n"
         "- ask_more_images=true cuando pide mas fotos/imagenes del vehiculo actual despues de un envio previo (mas fotos, siguientes imagenes).\n"

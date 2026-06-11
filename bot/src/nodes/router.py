@@ -19,7 +19,7 @@ from src.utils.signals import (
     ROUTER_VEHICLE_SUBSTR_SIGNALS,
 )
 from src.utils.app_logging import get_app_logger, log_flow_trace
-from src.utils.state_helpers import append_assistant_message, is_faq_intent, latest_user_message
+from src.utils.state_helpers import append_assistant_message, is_faq_intent, latest_human_ai_pair, latest_user_message
 
 _log = get_app_logger("router")
 
@@ -30,7 +30,7 @@ def _debug_router(event: str, **payload: object) -> None:
     log_flow_trace(_log, "router", event, **payload)
 
 
-def _is_vehicle_request(text: str) -> bool:
+def _is_vehicle_request(text: str, *, last_bot_message: str = "") -> bool:
     """Retorna True cuando is vehicle request."""
     normalized = normalize_user_text(text)
     if not normalized:
@@ -100,7 +100,7 @@ def _is_business_location_faq(text: str) -> bool:
     return any(s in n for s in BUSINESS_LOCATION_FAQ_SUBSTR)
 
 
-def _extended_router_heuristic(user_text: str) -> str | None:
+def _extended_router_heuristic(user_text: str, *, last_bot_message: str = "") -> str | None:
     """Etiqueta alineada con classify_router_intent o None si no hay señal clara."""
 
     if human_advisor_heuristic_match(user_text):
@@ -109,7 +109,7 @@ def _extended_router_heuristic(user_text: str) -> str | None:
         return "FINANCING"
     if _is_promotions_request(user_text):
         return "PROMOTIONS"
-    if _is_vehicle_request(user_text) or _looks_like_specific_vehicle_request(user_text):
+    if _is_vehicle_request(user_text, last_bot_message=last_bot_message) or _looks_like_specific_vehicle_request(user_text):
         return "VEHICLE_CATALOG"
     if is_faq_intent(user_text) or _is_business_location_faq(user_text):
         return "FAQ"
@@ -187,6 +187,8 @@ def router(state: clientState) -> clientState:
     state["current_node"] = "router"
     user_text = latest_user_message(state)
     text = normalize_user_text(user_text)
+    _last_user, last_ai = latest_human_ai_pair(state)
+    last_bot_message = last_ai or str(state.get("last_bot_message", ""))
     _debug_router(
         "entry",
         user_text=user_text,
@@ -215,7 +217,9 @@ def router(state: clientState) -> clientState:
         return state
 
     faq_like = is_faq_intent(text)
-    vehicle_like = _is_vehicle_request(text) or _looks_like_specific_vehicle_request(text)
+    vehicle_like = _is_vehicle_request(user_text, last_bot_message=last_bot_message) or _looks_like_specific_vehicle_request(
+        user_text
+    )
     if faq_like and vehicle_like:
         state["intent"] = "vehicle_catalog"
         state["current_node"] = "car_selection"
@@ -265,7 +269,7 @@ def router(state: clientState) -> clientState:
         _debug_router("route_to_other", reason="simple_greeting")
         return append_assistant_message(state, message)
 
-    heuristic_intent = _extended_router_heuristic(user_text)
+    heuristic_intent = _extended_router_heuristic(user_text, last_bot_message=last_bot_message)
     previous_intent_sanitized = _sanitize_previous_intent_for_classifier(str(state.get("intent", "")))
     llm_intent = classify_router_intent(user_text, previous_intent_sanitized)
     _debug_router(

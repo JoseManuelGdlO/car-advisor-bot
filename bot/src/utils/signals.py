@@ -14,6 +14,18 @@ GENERAL_SIGNALS = {
     "mostrar vehiculos",
     "mostrar vehiculos disponibles",
     "mostrar carros",
+    "como cuales",
+    "de cuales",
+    "que cuales",
+    "y cuales",
+    "cuales manejas",
+    "cuales manejan",
+    "cuales tienes",
+    "cuales tienen",
+    "que marcas manejas",
+    "que marcas manejan",
+    "que marcas tienes",
+    "que marcas tienen",
 }
 
 FEATURE_SIGNALS = {

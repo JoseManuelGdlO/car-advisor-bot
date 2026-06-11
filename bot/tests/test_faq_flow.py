@@ -103,5 +103,35 @@ class FaqFlowTests(GraphTestCase):
         ):
             updated = self.graph.invoke(state)
         self.assertEqual(updated.get("intent"), "other")
+        self.assertEqual(updated.get("current_node"), "router")
         self.assertIn("Falsa 123", updated["messages"][-1]["content"])
+
+    def test_followup_after_faq_routes_to_catalog_not_faq(self) -> None:
+        state = initial_state()
+        state = with_user_message(state, "donde estan ubicados?")
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.router.classify_router_intent", return_value="FAQ"),
+            patch("src.nodes.faq.fetch_faq_candidates", return_value=["REX."]),
+            patch("src.nodes.faq.generate_faq_user_turn", return_value="Estamos por REX."),
+        ):
+            after_location = self.graph.invoke(state)
+
+        state2 = with_user_message(after_location, "de cuales manejas?")
+        vehicles = [
+            {"id": "veh-1", "brand": "Toyota", "model": "Corolla", "year": 2020, "status": "available"},
+        ]
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.router.classify_router_intent", return_value="FAQ"),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch(
+                "src.nodes.car_selection.generate_vehicle_candidates_selection_message",
+                return_value="Toyota Corolla 2020",
+            ),
+        ):
+            updated = self.graph.invoke(state2)
+
+        self.assertEqual(updated.get("current_node"), "car_selection")
+        self.assertIn("Toyota", updated["messages"][-1]["content"])
 

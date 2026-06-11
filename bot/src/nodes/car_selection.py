@@ -1118,6 +1118,19 @@ def car_selection(state: clientState) -> clientState:
             state["intent"] = "promotions"
             _debug("route_change", next_node="promotions", reason="llm_flags")
             return state
+        if step_flags.get("confirm_purchase") or is_test_drive_or_visit_request(
+            user_text,
+            _TEST_DRIVE_VISIT_SIGNALS_NORMALIZED,
+        ):
+            state["awaiting_purchase_confirmation"] = False
+            state["current_node"] = "lead_capture"
+            state["intent"] = "lead_capture"
+            _debug(
+                "route_change",
+                next_node="lead_capture",
+                reason="test_drive_or_visit" if not step_flags.get("confirm_purchase") else "llm_flags",
+            )
+            return state
         if step_flags.get("ask_financing") or is_financing_request(user_text, _FINANCING_SIGNALS_NORMALIZED):
             state["awaiting_purchase_confirmation"] = False
             state["current_node"] = "financing"
@@ -1143,19 +1156,6 @@ def car_selection(state: clientState) -> clientState:
             return _respond_other_vehicles_with_optional_filters(state, vehicles, user_text)
         if step_flags.get("reject_purchase"):
             return _respond_available_list(state, vehicles)
-        if step_flags.get("confirm_purchase") or is_test_drive_or_visit_request(
-            user_text,
-            _TEST_DRIVE_VISIT_SIGNALS_NORMALIZED,
-        ):
-            state["awaiting_purchase_confirmation"] = False
-            state["current_node"] = "lead_capture"
-            state["intent"] = "lead_capture"
-            _debug(
-                "route_change",
-                next_node="lead_capture",
-                reason="test_drive_or_visit" if not step_flags.get("confirm_purchase") else "llm_flags",
-            )
-            return state
         decision = classify_purchase_confirmation_intent(previous_bot_message, user_text)
         _debug(
             "purchase_confirmation_classified",

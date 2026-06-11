@@ -55,8 +55,8 @@ def _route_after_intent_checker(state: clientState) -> str:
     """Define si se continua flujo o se enruta a FAQ interruptiva."""
 
     node = state.get("current_node", "router")
-    if node == "faq":
-        _log.info("[GRAPH] route_after_intent_checker: FAQ detectada, redirigiendo a faq")
+    if node == "faq" and state.get("is_faq_interrupt"):
+        _log.info("[GRAPH] route_after_intent_checker: FAQ interruptiva, redirigiendo a faq")
         _log_transition("intent_checker", "faq", "faq interruptiva")
         return "faq"
     if node == "lead_capture":
