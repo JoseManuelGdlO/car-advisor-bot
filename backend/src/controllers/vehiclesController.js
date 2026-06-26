@@ -113,3 +113,10 @@ export const uploadVehicleImages = async (req, res) => {
   const imageUrls = files.map((file) => `/uploads/autobot/${file.filename}`);
   return res.status(201).json({ imageUrls });
 };
+
+export const deleteVehicle = async (req, res, next) => {
+  const row = await Vehicle.findOne({ where: { id: req.params.id, ...ownerWhere(req.auth.userId) } });
+  if (!row) return next(new ApiError(404, "Vehicle not found"));
+  await row.destroy();
+  return res.status(204).send();
+};

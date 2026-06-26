@@ -80,7 +80,12 @@ export const crmApi = {
       metadata?: Record<string, string | number | boolean>;
       outboundPriority?: number;
     }
+
   ) => apiRequest(`/vehicles/${id}`, "PATCH", payload, token),
+  // Se agrega el metodo de eliminacion de vehiculos del catalogo de productos.
+  deleteVehicle: (token: string, id: string) => 
+    apiRequest(`/vehicles/${id}`, "DELETE", undefined, token),
+
   uploadVehicleImages: async (token: string, files: File[]) => {
     const formData = new FormData();
     files.forEach((file) => formData.append("images", file));
