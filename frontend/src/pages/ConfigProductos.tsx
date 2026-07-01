@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { FormErrorAlert } from "@/components/FormErrorAlert";
 import { normalizeApiError } from "@/lib/formErrors";
+import { toast } from "sonner";
 
 const filters: { key: "all" | CarStatus; label: string }[] = [
   { key: "all", label: "Todos" },
@@ -160,9 +161,10 @@ const deleteVehicle = async () => {
     await queryClient.invalidateQueries({ queryKey: ["promotions"] });
     setDeleteDialogOpen(false);
     setVehicleToDelete(null);
+    toast.success("Auto eliminado correctamente.");
   } catch (err) {
     console.error("Error al eliminar vehículo:", err);
-    alert("No se pudo eliminar el vehículo. Por favor, intenta de nuevo.");
+    toast.error("No se pudo eliminar el vehículo. Por favor, intenta de nuevo.");
   } finally {
     setUpdating("");
   }
@@ -251,8 +253,10 @@ const deleteVehicle = async () => {
       };
       if (editingId) {
         await crmApi.updateVehicle(token, editingId, payload);
+        toast.success("Auto actualizado correctamente.");
       } else {
         await crmApi.createVehicle(token, payload);
+        toast.success("Auto creado correctamente.");
       }
       await queryClient.invalidateQueries({ queryKey: ["vehicles"] });
       setCreateOpen(false);
