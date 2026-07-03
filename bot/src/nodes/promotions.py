@@ -364,6 +364,20 @@ def _load_promotion_vehicles(state: clientState, promotion: dict[str, Any]) -> l
     return available_only or resolved
 
 
+def _find_preselected_in_promotion_vehicles(
+    state: clientState,
+    promotion_vehicles: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Devuelve el vehiculo preseleccionado si pertenece a la lista de la promocion."""
+    preselected_id = str(state.get("selected_vehicle_id", "")).strip()
+    if not preselected_id:
+        return None
+    for vehicle in promotion_vehicles:
+        if isinstance(vehicle, dict) and str(vehicle.get("id", "")).strip() == preselected_id:
+            return vehicle
+    return None
+
+
 def _try_apply_promotion_to_preselected_vehicle(
     state: clientState,
     selected_promotion: dict[str, Any],
@@ -568,6 +582,7 @@ def promotions(state: clientState) -> clientState:
         user_message=user_text,
         current_promotion_title=str(state.get("selected_promotion_title", "")).strip(),
         numbered_promotion_lines=numbered_promotions,
+        selected_vehicle_name=str(state.get("selected_car", "")).strip(),
     )
     _debug("nav_flags", **nav_flags)
 
@@ -799,6 +814,19 @@ def promotions(state: clientState) -> clientState:
         ask_vehicle_info_flag = bool(nav_flags.get("ask_promotion_vehicle_info"))
         if not ask_vehicle_info_flag and _is_vehicle_info_request(user_text):
             ask_vehicle_info_flag = True
+
+        if ask_vehicle_info_flag:
+            promotion_vehicles_for_guard = _load_promotion_vehicles(state, selected_promotion)
+            if (
+                _find_preselected_in_promotion_vehicles(state, promotion_vehicles_for_guard)
+                and not _is_vehicle_info_request(user_text)
+            ):
+                ask_vehicle_info_flag = False
+                _debug(
+                    "ask_vehicle_info_suppressed",
+                    reason="preselected_vehicle_in_promotion",
+                    selected_vehicle_id=str(state.get("selected_vehicle_id", "")).strip(),
+                )
 
         if not has_explicit_apply and not ask_vehicle_info_flag:
             title = str(state.get("selected_promotion_title", "")).strip() or "esa promocion"

@@ -595,6 +595,7 @@ def build_promotions_step_flags_prompt(
     user_message: str,
     current_promotion_title: str,
     numbered_promotion_lines: str,
+    selected_vehicle_name: str = "",
     bot_settings: dict[str, Any] | None,
 ) -> str:
     """Prompt clasificador por flags para navegacion dentro del nodo promotions."""
@@ -604,6 +605,7 @@ def build_promotions_step_flags_prompt(
     current = user_message.strip() or "(mensaje vacio)"
     promotion = current_promotion_title.strip() or "(sin promocion seleccionada)"
     numbered = numbered_promotion_lines.strip() or "(sin lista numerada reciente)"
+    vehicle_ctx = selected_vehicle_name.strip() or "(ninguno)"
     return (
         f"{system_prompt}\n\n"
         "CLASIFICADOR_FLAGS_PROMOTIONS:\n"
@@ -643,7 +645,15 @@ def build_promotions_step_flags_prompt(
         "- confirm_no=true: respuesta negativa clara a una pregunta de confirmacion del bot.\n"
         '  Ejemplos: "no", "mejor no", "cancela esa promo".\n'
         "- Si un mensaje solo pide detalles de la promocion (beneficios, vigencia) sin elegir ni aplicar, "
-        "usa ask_promotions=true y deja select_promotion=false y apply_promotion=false.\n\n"
+        "usa ask_promotions=true y deja select_promotion=false y apply_promotion=false.\n"
+        "Vehiculo ya en contexto de la conversacion:\n"
+        f"- Vehiculo ya en contexto: {vehicle_ctx}\n"
+        "- Si hay vehiculo en contexto (no es \"(ninguno)\") y el usuario expresa interes suave en una "
+        "promocion concreta (ej. \"me interesa\", \"suena bien\", \"esa promo\", \"la del bono\", \"me late\") "
+        "SIN pedir explicitamente ver o listar los autos aplicables:\n"
+        "  * select_promotion=true, apply_promotion=false, ask_promotion_vehicle_info=false\n"
+        "- ask_promotion_vehicle_info=true SOLO cuando pide ver, listar o elegir entre los vehiculos de la promo "
+        '(ej. "muestrame los carros que aplican", "cuales SUVs entran", "quiero ver el catalogo de esa promo").\n\n'
         f"Promocion actual (si ya hay una seleccionada): {promotion}\n"
         f"Mensaje previo del bot: {previous}\n"
         f"Mensaje del usuario: {current}\n"

@@ -1367,6 +1367,7 @@ def classify_promotions_step_flags(
     user_message: str,
     current_promotion_title: str = "",
     numbered_promotion_lines: str = "",
+    selected_vehicle_name: str = "",
 ) -> dict[str, bool]:
     """Clasifica flags de navegacion dentro del nodo promotions."""
 
@@ -1391,6 +1392,7 @@ def classify_promotions_step_flags(
             user_message=user_message,
             current_promotion_title=current_promotion_title,
             numbered_promotion_lines=numbered_promotion_lines,
+            selected_vehicle_name=selected_vehicle_name,
             bot_settings=settings,
         )
         parsed = _parse_json_object_from_llm(str(llm.invoke(prompt).content or ""))
