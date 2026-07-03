@@ -13,6 +13,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -22,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { FormErrorAlert } from "@/components/FormErrorAlert";
 import { normalizeApiError } from "@/lib/formErrors";
+import { toast } from "sonner";
 
 const filters: { key: "all" | CarStatus; label: string }[] = [
   { key: "all", label: "Todos" },
@@ -122,6 +124,9 @@ export default function ConfigProductos() {
     outboundPriority: "0",
   });
   const focusedVehicleId = searchParams.get("vehicleId");
+  // Dentro del componente ConfigProductos, después de los otros useState
+const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+const [vehicleToDelete, setVehicleToDelete] = useState<string | null>(null);
 
   const list = useMemo(() => {
     return cars.filter((c) => {
@@ -137,6 +142,33 @@ export default function ConfigProductos() {
     if (!element) return;
     element.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [focusedVehicleId, list.length]);
+
+ // En lugar de confirm(), ahora abre el diálogo
+const confirmDeleteVehicle = (vehicleId: string) => {
+  setVehicleToDelete(vehicleId);
+  setDeleteDialogOpen(true);
+};
+
+// Esta es la función que realmente elimina después de la confirmación
+const deleteVehicle = async () => {
+  if (!token || !vehicleToDelete) return;
+  
+  setUpdating(`delete:${vehicleToDelete}`);
+  try {
+    await crmApi.deleteVehicle(token, vehicleToDelete);
+    await queryClient.invalidateQueries({ queryKey: ["vehicles"] });
+    await queryClient.invalidateQueries({ queryKey: ["financing-plans"] });
+    await queryClient.invalidateQueries({ queryKey: ["promotions"] });
+    setDeleteDialogOpen(false);
+    setVehicleToDelete(null);
+    toast.success("Auto eliminado correctamente.");
+  } catch (err) {
+    console.error("Error al eliminar vehículo:", err);
+    toast.error("No se pudo eliminar el vehículo. Por favor, intenta de nuevo.");
+  } finally {
+    setUpdating("");
+  }
+};
 
   const togglePlanForVehicle = async (vehicleId: string, planId: string, selected: boolean) => {
     if (!token) return;
@@ -221,8 +253,10 @@ export default function ConfigProductos() {
       };
       if (editingId) {
         await crmApi.updateVehicle(token, editingId, payload);
+        toast.success("Auto actualizado correctamente.");
       } else {
         await crmApi.createVehicle(token, payload);
+        toast.success("Auto creado correctamente.");
       }
       await queryClient.invalidateQueries({ queryKey: ["vehicles"] });
       setCreateOpen(false);
@@ -584,6 +618,16 @@ Versión: Highline`}
                   >
                     <Pencil className="w-3.5 h-3.5 mr-0.5 shrink-0" /> Editar
                   </Button>
+                  <Button
+                        size="sm"
+                        variant="destructive"
+                        className="h-8 px-2 rounded-lg text-[11px] leading-tight gap-1"
+                        onClick={() => confirmDeleteVehicle(c.id)}
+                        disabled={updating === `delete:${c.id}`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                        {updating === `delete:${c.id}` ? "..." :"Eliminar"}
+                      </Button>
                   <Dialog>
                     <DialogTrigger asChild>
                       <Button
@@ -673,6 +717,41 @@ Versión: Highline`}
           );
         })}
       </div>
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-red-600 flex items-center gap-2">
+              <Trash2 className="w-5 h-5" />
+              Eliminar vehículo
+            </DialogTitle>
+            <DialogDescription>
+              ¿Estás seguro de que deseas eliminar este vehículo?
+              <br />
+              <span className="text-red-500 text-sm font-medium">
+                Esta acción no se puede deshacer.
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteDialogOpen(false);
+                setVehicleToDelete(null);
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={deleteVehicle}
+              disabled={updating === `delete:${vehicleToDelete}`}
+            >
+              {updating === `delete:${vehicleToDelete}` ? "Eliminando..." : "Sí, eliminar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

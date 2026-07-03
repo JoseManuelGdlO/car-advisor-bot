@@ -1,4 +1,5 @@
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { toast } from "sonner";
 import { Phone, MessageCircle, Car, FileText, Landmark, Tag } from "lucide-react";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { Avatar } from "@/components/Avatar";
@@ -61,10 +62,21 @@ function buildPromotionHref(promotionId?: string) {
 
 export default function ClienteDetalle() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { token } = useAuth();
   const { data: client } = useQuery({ queryKey: ["client", id], queryFn: () => crmApi.getClient(token!, id!), enabled: Boolean(token && id) });
   const { data: conversations } = useConversationsQuery();
-  const conv = (conversations || []).find((c: ConversationDto) => c.clientLeadId === id || c.clientId === id);
+  const conv = (conversations || []).find(
+    (c: ConversationDto) => c.clientLeadId === id || c.clientId === id || c.client?.id === id
+  );
+
+  const openChat = () => {
+    if (conv?.id) {
+      navigate(`/chat/${conv.id}`);
+      return;
+    }
+    toast.error("No hay conversación activa con este cliente.");
+  };
   const convMessages = Array.isArray(conv?.messages) ? conv.messages : [];
   const parsedNotes = client?.notes ? parseSellerNotes(client.notes) : null;
   const customerInfo = parsedNotes?.customer_info;
@@ -102,7 +114,7 @@ export default function ClienteDetalle() {
             <Button variant="outline" className="h-10 rounded-xl gap-2">
               <Phone className="w-4 h-4" /> Llamar
             </Button>
-            <Button className="h-10 rounded-xl gap-2 shadow-green">
+            <Button className="h-10 rounded-xl gap-2 shadow-green" onClick={openChat}>
               <MessageCircle className="w-4 h-4" /> Chat
             </Button>
           </div>
