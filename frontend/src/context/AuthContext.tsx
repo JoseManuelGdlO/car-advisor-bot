@@ -18,7 +18,7 @@ type AuthContextType = {
   token: string | null;
   user: AuthUser | null;
   login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
-  register: (name: string, email: string, password: string, calendarSchedulingUrl: string) => Promise<void>;
+  register: (name: string, email: string, password: string, calendarSchedulingUrl?: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 };
@@ -128,7 +128,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       },
       async register(name, email, password, calendarSchedulingUrl) {
-        await apiRequest("/auth/register", "POST", { name, email, password, calendarSchedulingUrl });
+        const trimmedCalendarSchedulingUrl = calendarSchedulingUrl?.trim();
+        await apiRequest("/auth/register", "POST", {
+          name,
+          email,
+          password,
+          ...(trimmedCalendarSchedulingUrl ? { calendarSchedulingUrl: trimmedCalendarSchedulingUrl } : {}),
+        });
       },
       logout,
       refreshProfile,

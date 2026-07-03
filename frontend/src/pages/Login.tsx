@@ -20,9 +20,10 @@ const registerFormSchema = z.object({
   calendarSchedulingUrl: z
     .string()
     .trim()
-    .min(1, "El link de calendario es obligatorio.")
     .max(500, "El link de calendario no puede tener más de 500 caracteres.")
-    .refine(isGoogleCalendarSchedulingUrl, { message: GOOGLE_CALENDAR_URL_ERROR }),
+    .refine((value) => !value || isGoogleCalendarSchedulingUrl(value), {
+      message: GOOGLE_CALENDAR_URL_ERROR,
+    }),
 });
 
 const loginFormSchema = z.object({
@@ -167,7 +168,7 @@ export default function Login() {
           {isRegisterMode && (
             <div className="space-y-1.5">
               <div className="flex items-center justify-between gap-2">
-                <Label htmlFor="calendar-url">Link de calendario de Google</Label>
+                <Label htmlFor="calendar-url">Link de calendario de Google (opcional)</Label>
                 <GoogleCalendarLinkHelpDialog />
               </div>
               <Input
@@ -220,11 +221,13 @@ export default function Login() {
             ) : null}
           </div>
 
-          <div className="text-right">
-            <button type="button" className="text-xs font-semibold text-primary-dark hover:underline">
-              ¿Olvidaste tu contraseña?
-            </button>
-          </div>
+          {!isRegisterMode && (
+            <div className="text-right">
+              <button type="button" className="text-xs font-semibold text-primary-dark hover:underline">
+                ¿Olvidaste tu contraseña?
+              </button>
+            </div>
+          )}
 
           <div className="flex items-center justify-between rounded-xl border border-border bg-card px-3 py-2">
             <Label htmlFor="remember-me" className="text-sm cursor-pointer">
