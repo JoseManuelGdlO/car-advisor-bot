@@ -10,6 +10,7 @@ from src.services.llm_responses import (
     classify_financing_plan_comparison_payload,
     classify_financing_step_flags,
     classify_financing_plan_selection_intent,
+    extract_financing_plan_selection_payload,
     generate_financing_plans_user_message,
     generate_verified_user_message,
 )
@@ -43,6 +44,7 @@ from src.utils.signals import (
     FIRST_IMAGES_SIGNALS,
     MORE_IMAGES_SIGNALS,
     PLAN_VEHICLE_INFO_SIGNALS,
+    PROMOTION_TOKEN_STOPWORDS,
     PROMOTIONS_SIGNALS,
 )
 from src.utils.vehicle_images import (
@@ -302,6 +304,78 @@ def _pick_plan_from_state(state: clientState, user_text: str) -> dict[str, Any] 
     if not selected:
         return None
     return mapping.get(selected)
+
+
+def _plan_significant_tokens(text: str) -> set[str]:
+    """Tokens significativos para mapear name_query del extractor LLM a un plan."""
+    normalized = normalize_user_text(text)
+    if not normalized:
+        return set()
+    out: set[str] = set()
+    for token in normalized.replace("'", " ").split():
+        token = token.strip()
+        if len(token) < 2 or token in PROMOTION_TOKEN_STOPWORDS:
+            continue
+        out.add(token)
+    return out
+
+
+def _plan_searchable_label(plan: dict[str, Any]) -> str:
+    """Texto normalizado con nombre, prestamista y vehiculos del plan para matching."""
+    parts = [str(plan.get("name", "")).strip(), str(plan.get("lender", "")).strip()]
+    for vehicle in _available_plan_vehicles(plan):
+        label = format_vehicle_name(vehicle)
+        if label:
+            parts.append(label)
+    return normalize_user_text(" ".join(part for part in parts if part))
+
+
+def _normalize_plan_name_query(text: str) -> str:
+    """Normaliza fragmentos del extractor LLM (ej. 5p -> 5 puertas)."""
+    normalized = normalize_user_text(text)
+    if not normalized:
+        return ""
+    normalized = re.sub(r"\b5p\b", "5 puertas", normalized)
+    normalized = re.sub(r"\b3p\b", "3 puertas", normalized)
+    return normalized
+
+
+def _resolve_plan_from_extract(
+    candidates: list[dict[str, Any]], payload: dict[str, Any]
+) -> dict[str, Any] | None:
+    """Mapea salida JSON del extractor LLM a un dict de plan de financiamiento."""
+    if not candidates or not isinstance(payload, dict):
+        return None
+    if payload.get("no_match") is True:
+        return None
+    raw_idx = payload.get("plan_index")
+    if isinstance(raw_idx, (int, float)) and not isinstance(raw_idx, bool) and int(raw_idx) == raw_idx:
+        i = int(raw_idx) - 1
+        if 0 <= i < len(candidates):
+            return candidates[i]
+    name_q = _normalize_plan_name_query(str(payload.get("name_query") or ""))
+    if not name_q:
+        return None
+    substring_matches: list[dict[str, Any]] = []
+    for candidate in candidates:
+        label = _plan_searchable_label(candidate)
+        if not label:
+            continue
+        if name_q in label or label in name_q:
+            substring_matches.append(candidate)
+    if len(substring_matches) == 1:
+        return substring_matches[0]
+    q_tokens = _plan_significant_tokens(name_q)
+    if not q_tokens:
+        return None
+    matches: list[dict[str, Any]] = []
+    for candidate in candidates:
+        label_tokens = _plan_significant_tokens(_plan_searchable_label(candidate))
+        if q_tokens <= label_tokens:
+            matches.append(candidate)
+    if len(matches) == 1:
+        return matches[0]
+    return None
 
 
 def _extract_plan_by_index(state: clientState, user_text: str) -> dict[str, Any] | None:
@@ -777,6 +851,24 @@ def financing(state: clientState) -> clientState:
                     plan_name=str(selected_plan_for_info.get("name", "")).strip(),
                 )
                 return _respond_plan_vehicle_info(state, selected_plan_for_info)
+        if not selected_plan:
+            dict_candidates = [p for p in candidates if isinstance(p, dict)]
+            numbered = _numbered_financing_plan_lines(dict_candidates)
+            if numbered.strip() and dict_candidates:
+                payload = extract_financing_plan_selection_payload(
+                    previous_bot_message=str(state.get("last_bot_message", "")).strip(),
+                    user_message=user_text,
+                    numbered_plan_lines=numbered,
+                )
+                extracted = _resolve_plan_from_extract(dict_candidates, payload)
+                if extracted:
+                    selected_plan = extracted
+                    _debug(
+                        "plan_pick",
+                        source="llm_extract",
+                        name=str(extracted.get("name", "")).strip(),
+                        payload=payload,
+                    )
         if not selected_plan:
             selected_vehicle_id = str(state.get("selected_vehicle_id", "")).strip()
             selected_car = str(state.get("selected_car", "")).strip()

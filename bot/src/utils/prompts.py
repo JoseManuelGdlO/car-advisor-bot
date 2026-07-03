@@ -166,6 +166,7 @@ _VERIFIED_MODE_INSTRUCTIONS: dict[str, str] = {
         "Mantén la respuesta escaneable en chat: prioriza datos clave y evita alargar sin necesidad.\n"
         "NO uses formato de lista ni numeracion en la salida (sin bullets, sin 1., 2., etc.).\n"
         "No inventes planes, condiciones ni requisitos. Usa solo lo que conste en DATOS_VERIFICADOS.\n"
+        "Cuando te refieras a un plan concreto, usa el nombre exacto tal como aparece en DATOS_VERIFICADOS (no inventes apodos ni abreviaturas).\n"
         "Cierra con una invitacion breve para que el usuario elija un plan. Espanol (Mexico). Sin prefijos."
     ),
     "financing_plan_vehicle": (
@@ -679,6 +680,40 @@ def build_promotion_selection_extract_prompt(
         "usa title_query con esas palabras y promotion_index=null.\n"
         "- Nunca inventes titulos que no esten en la lista.\n\n"
         f"Promociones listadas:\n{lines}\n\n"
+        f"Mensaje previo del bot: {previous}\n"
+        f"Mensaje del usuario: {current}\n"
+    )
+
+
+def build_financing_plan_selection_extract_prompt(
+    *,
+    previous_bot_message: str,
+    user_message: str,
+    numbered_plan_lines: str,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Extrae que plan de financiamiento de la lista eligio el usuario (indice o fragmento de nombre)."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    previous = previous_bot_message.strip() or "(sin mensaje previo)"
+    current = user_message.strip() or "(mensaje vacio)"
+    lines = numbered_plan_lines.strip() or "(sin lista numerada)"
+    return (
+        f"{system_prompt}\n\n"
+        "EXTRACTOR_SELECCION_PLAN_FINANCIAMIENTO:\n"
+        "El usuario esta en un paso donde debe elegir UN plan de financiamiento de la lista numerada.\n"
+        "Responde SOLO con JSON de una linea con estas claves exactas:\n"
+        '{ "plan_index": <number|null>, "name_query": <string>, "no_match": <bool> }\n'
+        "Reglas:\n"
+        "- plan_index: numero 1-based alineado con la lista numerada (ej. 'la 2', 'numero 1', 'la segunda').\n"
+        "- name_query: fragmento corto del nombre del plan, prestamista o modelo de vehiculo tal como lo dijo el usuario "
+        "(ej. 'jimny 5p', 'financiamiento shilo', 'bbva'). Debe poder mapearse a UN solo renglon de la lista; vacio si usas plan_index.\n"
+        "- no_match=true SOLO si el mensaje no refiere a ningun plan de la lista (saludo, pregunta general, otro tema).\n"
+        "- Si el usuario alude a un plan por palabras clave que aparecen en un solo renglon (nombre, prestamista o vehiculo), "
+        "usa name_query con esas palabras y plan_index=null.\n"
+        "- Acepta abreviaturas comunes del usuario (ej. '5p' por '5 puertas') si identifican un solo plan de la lista.\n"
+        "- Nunca inventes planes que no esten en la lista.\n\n"
+        f"Planes listados:\n{lines}\n\n"
         f"Mensaje previo del bot: {previous}\n"
         f"Mensaje del usuario: {current}\n"
     )

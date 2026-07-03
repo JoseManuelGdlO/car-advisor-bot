@@ -116,6 +116,96 @@ class FinancingFlowTests(GraphTestCase):
         self.assertEqual(updated.get("intent"), "promotions")
         self.assertFalse(updated.get("is_faq_interrupt"))
 
+    def test_financing_plan_selection_via_llm_extract_advances_flow(self) -> None:
+        jimny_plan = {
+            "id": "plan-jimny",
+            "name": "Financiamiento Jimny 5 Puertas",
+            "lender": "Santander",
+            "active": True,
+            "vehicles": [
+                {
+                    "id": "veh-jimny",
+                    "brand": "Suzuki",
+                    "model": "Jimny 5 Puertas",
+                    "year": 2025,
+                    "status": "available",
+                }
+            ],
+        }
+        other_plan = {
+            "id": "plan-baleno",
+            "name": "Financiamiento Baleno",
+            "lender": "BBVA",
+            "active": True,
+            "vehicles": [
+                {
+                    "id": "veh-baleno",
+                    "brand": "Suzuki",
+                    "model": "Baleno",
+                    "year": 2025,
+                    "status": "available",
+                }
+            ],
+        }
+        state = initial_state()
+        state["current_node"] = "financing"
+        state["intent"] = "financing"
+        state["awaiting_financing_plan_selection"] = True
+        state["selected_vehicle_id"] = "veh-baleno"
+        state["selected_car"] = "Suzuki Baleno GLX 2025"
+        state["financing_plan_candidates"] = [other_plan, jimny_plan]
+        state["messages"] = [
+            {
+                "role": "assistant",
+                "content": (
+                    "Si te interesa uno en particular, dime el nombre o numero del plan. "
+                    "Despues te pedire seleccionar el vehiculo dentro de ese plan."
+                ),
+                "type": "AIMessage",
+            }
+        ]
+
+        state = with_user_message(state, "Elijo el plan Jimny 5P")
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch(
+                "src.nodes.financing.classify_financing_step_flags",
+                return_value={
+                    "reject_financing_keep_purchase": False,
+                    "ask_explicit_plan": False,
+                    "wants_compare_two_plans": False,
+                },
+            ),
+            patch(
+                "src.nodes.financing.extract_financing_plan_selection_payload",
+                return_value={"no_match": False, "plan_index": None, "name_query": "jimny 5p"},
+            ),
+            patch(
+                "src.nodes.financing.generate_financing_plans_user_message",
+                side_effect=lambda **kw: kw.get("follow_up_hint") or kw.get("fallback_semantic") or "",
+            ),
+            patch(
+                "src.nodes.financing.generate_verified_user_message",
+                side_effect=lambda **kw: kw["fallback"],
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertEqual(updated.get("selected_financing_plan_id"), "plan-jimny")
+        self.assertFalse(updated.get("awaiting_financing_plan_selection"))
+        last_assistant = ""
+        for message in reversed(updated.get("messages", [])):
+            if message.get("role") == "assistant":
+                last_assistant = str(message.get("content", "")).lower()
+                break
+        self.assertNotIn("dime cual plan te interesa", last_assistant)
+        advanced = (
+            updated.get("awaiting_financing_vehicle_selection")
+            or updated.get("current_node") in ("car_selection", "lead_capture")
+            or updated.get("selected_vehicle_id") == "veh-jimny"
+        )
+        self.assertTrue(advanced)
+
     def test_financing_multi_vehicle_to_lead_capture_notifies_and_returns_router(self) -> None:
         plan_a = {
             "id": "plan-a",
