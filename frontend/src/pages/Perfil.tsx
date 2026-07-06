@@ -35,6 +35,7 @@ import { FieldErrorText, FormErrorAlert } from "@/components/FormErrorAlert";
 import { GOOGLE_CALENDAR_URL_ERROR, isGoogleCalendarSchedulingUrl } from "@/lib/calendarUrl";
 import { normalizeApiError } from "@/lib/formErrors";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 const emptyBusiness: BusinessProfileDto = {
   tradeName: null,
@@ -119,6 +120,8 @@ export default function Perfil() {
   });
   const [newTokenName, setNewTokenName] = useState("");
   const [tokenDialogOpen, setTokenDialogOpen] = useState(false);
+  const [integrationDialogOpen, setIntegrationDialogOpen] = useState(false);
+  const [integrationFormKey, setIntegrationFormKey] = useState(0);
   const [lastCreatedToken, setLastCreatedToken] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
@@ -204,7 +207,15 @@ export default function Perfil() {
 
   const createIntegrationMutation = useMutation({
     mutationFn: (body: Parameters<typeof integrationsApi.create>[1]) => integrationsApi.create(token!, body),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["integrations"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["integrations"] });
+      toast.success("Integración creada correctamente.");
+      setIntegrationFormKey((key) => key + 1);
+      setIntegrationDialogOpen(false);
+    },
+    onError: (error) => {
+      toast.error(normalizeApiError(error, "No se pudo crear la integración.").formError);
+    },
   });
 
   const saveCredsMutation = useMutation({
@@ -529,7 +540,7 @@ export default function Perfil() {
               <Link2 className="w-5 h-5 text-info" />
               <p className="font-semibold text-sm">Integraciones</p>
             </div>
-            <Dialog>
+            <Dialog open={integrationDialogOpen} onOpenChange={setIntegrationDialogOpen}>
               <DialogTrigger asChild>
                 <Button size="sm" variant="outline" className="h-8">
                   <Plus className="w-3.5 h-3.5 mr-1" /> Canal
@@ -538,9 +549,10 @@ export default function Perfil() {
               <DialogContent className="max-w-md">
                 <DialogHeader>
                   <DialogTitle>Nueva integración</DialogTitle>
-                  <DialogDescription>Define el canal y el proveedor (por defecto Meta).</DialogDescription>
+                  <DialogDescription>Define el canal y el proveedor (por defecto WhatsApp connect).</DialogDescription>
                 </DialogHeader>
                 <NewIntegrationForm
+                  key={integrationFormKey}
                   disabled={createIntegrationMutation.isPending}
                   onSubmit={(body) => createIntegrationMutation.mutate(body)}
                 />
@@ -1047,12 +1059,12 @@ function NewIntegrationForm({
   onSubmit: (body: { channel: IntegrationDto["channel"]; provider?: string; displayName?: string }) => void;
 }) {
   const [channel, setChannel] = useState<IntegrationDto["channel"]>("whatsapp");
-  const [provider, setProvider] = useState("meta");
+  const [provider, setProvider] = useState("whatsapp-connect");
   const [displayName, setDisplayName] = useState("");
 
   useEffect(() => {
     if (channel === "whatsapp") {
-      setProvider((prev) => (prev === "meta" || prev === "whatsapp-connect" ? prev : "meta"));
+      setProvider((prev) => (prev === "meta" || prev === "whatsapp-connect" ? prev : "whatsapp-connect"));
       return;
     }
     if (channel === "instagram") {
