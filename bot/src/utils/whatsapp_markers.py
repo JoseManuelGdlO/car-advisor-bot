@@ -3,33 +3,15 @@
 from __future__ import annotations
 
 import json
-import os
-import re
-from urllib.parse import urlsplit, urlunsplit
-from typing import Any
 
-from src.tools.vehicles import build_whatsapp_image_messages
+from src.tools.vehicles import _normalize_public_image_url, build_whatsapp_image_messages
 from src.utils.signals import WC_DOCUMENT_MARKER_PREFIX, WC_IMAGE_MARKER_PREFIX
 
 
 def normalize_image_url_for_chat(raw_url: str) -> str:
-    """Normaliza URL de imagen relativa/absoluta al host backend."""
+    """Normaliza URL relativa/absoluta con base pública accesible desde WhatsApp Connect."""
 
-    cleaned = str(raw_url or "").strip()
-    if not cleaned:
-        return ""
-    if cleaned.startswith("http://") or cleaned.startswith("https://"):
-        return cleaned
-    backend_api_url = str(os.getenv("BACKEND_API_URL", "")).strip()
-    if backend_api_url:
-        parts = urlsplit(backend_api_url)
-        path = re.sub(r"/api/?$", "", parts.path or "", flags=re.IGNORECASE) or ""
-        base = urlunsplit((parts.scheme, parts.netloc, path, "", "")).rstrip("/")
-    else:
-        base = "http://localhost:4000"
-    if cleaned.startswith("/"):
-        return f"{base}{cleaned}"
-    return f"{base}/{cleaned}"
+    return _normalize_public_image_url(raw_url)
 
 
 def build_whatsapp_image_marker_block(

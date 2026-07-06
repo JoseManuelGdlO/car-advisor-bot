@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from unittest import TestCase
 from unittest.mock import patch
 
@@ -32,10 +33,48 @@ class VehicleResolverTests(TestCase):
 
 class WhatsappMarkerHelpersTests(TestCase):
     def test_normalize_image_url_for_chat_builds_absolute_url(self) -> None:
-        with patch.dict("os.environ", {"BACKEND_API_URL": "https://api.example.com/api"}):
+        with patch.dict(
+            os.environ,
+            {
+                "BACKEND_API_URL": "https://api.example.com/api",
+                "BACKEND_PUBLIC_URL": "",
+                "VEHICLE_IMAGES_PUBLIC_BASE_URL": "",
+            },
+            clear=False,
+        ):
             self.assertEqual(
                 normalize_image_url_for_chat("/uploads/cars/versa.jpg"),
                 "https://api.example.com/uploads/cars/versa.jpg",
+            )
+
+    def test_normalize_image_url_for_chat_prefers_backend_public_url(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "BACKEND_API_URL": "http://backend:4000/api",
+                "BACKEND_PUBLIC_URL": "https://cdn.example.com",
+                "VEHICLE_IMAGES_PUBLIC_BASE_URL": "",
+            },
+            clear=False,
+        ):
+            self.assertEqual(
+                normalize_image_url_for_chat("/uploads/autobot/ficha.pdf"),
+                "https://cdn.example.com/uploads/autobot/ficha.pdf",
+            )
+
+    def test_normalize_image_url_for_chat_prefers_vehicle_images_public_base_url(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "BACKEND_API_URL": "http://backend:4000/api",
+                "BACKEND_PUBLIC_URL": "https://cdn.example.com",
+                "VEHICLE_IMAGES_PUBLIC_BASE_URL": "https://media.example.com",
+            },
+            clear=False,
+        ):
+            self.assertEqual(
+                normalize_image_url_for_chat("/uploads/autobot/ficha.pdf"),
+                "https://media.example.com/uploads/autobot/ficha.pdf",
             )
 
     def test_marker_block_ignores_empty_image_urls(self) -> None:
