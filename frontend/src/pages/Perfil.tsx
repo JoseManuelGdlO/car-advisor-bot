@@ -8,7 +8,6 @@ import {
   ChevronRight,
   Building2,
   Link2,
-  KeyRound,
   Settings,
   Clock3,
   Save,
@@ -24,7 +23,6 @@ import { useAuth } from "@/context/AuthContext";
 import { accountApi, type BusinessProfileDto } from "@/services/account";
 import { crmApi } from "@/services/crm";
 import { integrationsApi, type IntegrationDto } from "@/services/integrations";
-import { authApi } from "@/services/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -94,12 +92,6 @@ export default function Perfil() {
     enabled: Boolean(token),
   });
 
-  const { data: serviceTokens = [] } = useQuery({
-    queryKey: ["service-tokens"],
-    queryFn: () => authApi.listServiceTokens(token!),
-    enabled: Boolean(token),
-  });
-
   const [userForm, setUserForm] = useState({ name: "", phone: "", defaultPlatform: "", calendarSchedulingUrl: "" });
   const [profileFormError, setProfileFormError] = useState("");
   const [profileFieldErrors, setProfileFieldErrors] = useState<Record<string, string>>({});
@@ -118,11 +110,8 @@ export default function Perfil() {
     pageId: "",
     pageAccessToken: "",
   });
-  const [newTokenName, setNewTokenName] = useState("");
-  const [tokenDialogOpen, setTokenDialogOpen] = useState(false);
   const [integrationDialogOpen, setIntegrationDialogOpen] = useState(false);
   const [integrationFormKey, setIntegrationFormKey] = useState(0);
-  const [lastCreatedToken, setLastCreatedToken] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [lastQrByIntegrationId, setLastQrByIntegrationId] = useState<Record<string, { url: string; expiresAt: string }>>({});
@@ -245,20 +234,6 @@ export default function Perfil() {
   const testIntegrationMutation = useMutation({
     mutationFn: (id: string) => integrationsApi.test(token!, id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["integrations"] }),
-  });
-
-  const createTokenMutation = useMutation({
-    mutationFn: () => authApi.createServiceToken(token!, newTokenName.trim()),
-    onSuccess: (res) => {
-      setLastCreatedToken(res.token);
-      setNewTokenName("");
-      queryClient.invalidateQueries({ queryKey: ["service-tokens"] });
-    },
-  });
-
-  const revokeTokenMutation = useMutation({
-    mutationFn: (id: string) => authApi.revokeServiceToken(token!, id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["service-tokens"] }),
   });
 
   const deleteAccountMutation = useMutation({
@@ -880,53 +855,6 @@ export default function Perfil() {
             )}
           </DialogContent>
         </Dialog>
-
-        <div className="bg-card rounded-2xl p-4 shadow-card border border-border space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <KeyRound className="w-5 h-5 text-warning" />
-              <p className="font-semibold text-sm">Tokens API (bot)</p>
-            </div>
-            <Dialog open={tokenDialogOpen} onOpenChange={setTokenDialogOpen}>
-              <DialogTrigger asChild>
-                <Button size="sm" variant="outline" className="h-8" onClick={() => setLastCreatedToken(null)}>
-                  <Plus className="w-3.5 h-3.5 mr-1" /> Nuevo
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Crear token de servicio</DialogTitle>
-                  <DialogDescription>El valor completo solo se muestra una vez.</DialogDescription>
-                </DialogHeader>
-                <Input placeholder="Nombre (ej. n8n producción)" value={newTokenName} onChange={(e) => setNewTokenName(e.target.value)} />
-                <Button className="w-full" disabled={!newTokenName.trim() || createTokenMutation.isPending} onClick={() => createTokenMutation.mutate()}>
-                  {createTokenMutation.isPending ? "Creando..." : "Crear"}
-                </Button>
-                {lastCreatedToken ? (
-                  <div className="rounded-lg border border-border p-2 text-xs break-all">
-                    <p className="font-semibold mb-1">Copia y guarda ahora:</p>
-                    <code>{lastCreatedToken}</code>
-                  </div>
-                ) : null}
-              </DialogContent>
-            </Dialog>
-          </div>
-          <ul className="space-y-2">
-            {serviceTokens.map((t) => (
-              <li key={t.id} className="flex items-center justify-between gap-2 text-xs border border-border rounded-lg px-3 py-2">
-                <div>
-                  <p className="font-semibold">{t.name}</p>
-                  <p className="text-muted-foreground">{t.revokedAt ? "Revocado" : "Activo"}</p>
-                </div>
-                {!t.revokedAt ? (
-                  <Button size="sm" variant="destructive" className="h-8" onClick={() => revokeTokenMutation.mutate(t.id)} disabled={revokeTokenMutation.isPending}>
-                    Revocar
-                  </Button>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </div>
 
         <ul className="bg-card rounded-2xl shadow-card border border-border overflow-hidden">
           <li>
