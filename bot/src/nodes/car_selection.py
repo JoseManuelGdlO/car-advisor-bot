@@ -68,7 +68,7 @@ from src.utils.vehicle_images import (
     format_images_block_for_chat,
     reset_vehicle_images_state,
 )
-from src.utils.whatsapp_markers import normalize_image_url_for_chat
+from src.utils.whatsapp_markers import build_whatsapp_document_marker_block, normalize_image_url_for_chat
 from src.utils.app_logging import get_app_logger, log_flow_trace
 from src.utils.state_helpers import append_assistant_message, latest_user_message
 
@@ -386,6 +386,26 @@ def _respond_with_more_images(state: clientState) -> clientState:
     return append_assistant_message(state, message)
 
 
+def _build_technical_sheet_message(state: clientState, detail: dict[str, Any]) -> str:
+    """Arma mensaje de ficha técnica: documento nativo en WhatsApp, URL en web."""
+
+    url = str(detail.get("technicalSheetUrl") or "").strip()
+    if not url:
+        return ""
+    platform = str(state.get("platform", "web")).strip().lower() or "web"
+    absolute = normalize_image_url_for_chat(url)
+    file_name = url.split("/")[-1] or "ficha-tecnica.pdf"
+    if platform == "whatsapp":
+        user_id = str(state.get("user_id", "")).strip()
+        return build_whatsapp_document_marker_block(
+            to=user_id,
+            document_url=absolute,
+            file_name=file_name,
+            caption="Aquí tienes la ficha técnica",
+        )
+    return f"Aquí tienes la ficha técnica:\n{absolute}"
+
+
 def _respond_selected_vehicle_inventory_qa(state: clientState, user_text: str) -> clientState:
     """Responde preguntas sobre el vehiculo seleccionado (ficha BD) sin salir de confirmacion de compra."""
 
@@ -421,7 +441,12 @@ def _respond_selected_vehicle_inventory_qa(state: clientState, user_text: str) -
     question = _build_purchase_question(state)
     state["awaiting_purchase_confirmation"] = True
     _debug("answered_inventory_qa_while_awaiting_confirmation", vehicle_id=vehicle_id)
-    return _append_assistant_blocks(state, [body, question])
+    blocks = [body]
+    sheet_msg = _build_technical_sheet_message(state, detail)
+    if sheet_msg:
+        blocks.append(sheet_msg)
+    blocks.append(question)
+    return _append_assistant_blocks(state, blocks)
 
 
 def _pick_vehicle_from_filters(
@@ -586,7 +611,11 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
         blocks.append(financing_removed_notice)
     if promotion_removed_notice:
         blocks.append(promotion_removed_notice)
-    blocks.extend([first_block, purchase_question])
+    blocks.append(first_block)
+    sheet_msg = _build_technical_sheet_message(state, detail)
+    if sheet_msg:
+        blocks.append(sheet_msg)
+    blocks.append(purchase_question)
     if is_first_images_request(
         user_text,
         _FIRST_IMAGES_SIGNALS_NORMALIZED,

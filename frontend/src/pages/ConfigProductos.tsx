@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ArrowDown, ArrowUp, Car, Check, Pencil, Plus, Search, Tag, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Car, Check, FileText, Pencil, Plus, Search, Tag, Trash2 } from "lucide-react";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -128,6 +128,7 @@ export default function ConfigProductos() {
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [selectedTechnicalSheet, setSelectedTechnicalSheet] = useState<File | null>(null);
   const [technicalSheetUrl, setTechnicalSheetUrl] = useState("");
+  const [technicalSheetPreviewUrl, setTechnicalSheetPreviewUrl] = useState("");
   const [priceFocused, setPriceFocused] = useState(false);
   const [form, setForm] = useState({
     brand: "",
@@ -160,6 +161,15 @@ export default function ConfigProductos() {
     if (!element) return;
     element.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [focusedVehicleId, list.length]);
+
+  useEffect(() => {
+    if (selectedTechnicalSheet) {
+      const objectUrl = URL.createObjectURL(selectedTechnicalSheet);
+      setTechnicalSheetPreviewUrl(objectUrl);
+      return () => URL.revokeObjectURL(objectUrl);
+    }
+    setTechnicalSheetPreviewUrl(technicalSheetUrl ? toMediaUrl(technicalSheetUrl) : "");
+  }, [selectedTechnicalSheet, technicalSheetUrl]);
 
   const togglePlanForVehicle = async (vehicleId: string, planId: string, selected: boolean) => {
     if (!token) return;
@@ -525,17 +535,28 @@ export default function ConfigProductos() {
                 </p>
                 {technicalSheetUrl || selectedTechnicalSheet ? (
                   <div className="flex items-center gap-2 border border-border rounded-lg p-2">
+                    <div className="relative w-12 h-12 shrink-0 rounded border border-border bg-muted overflow-hidden flex items-center justify-center">
+                      {technicalSheetPreviewUrl ? (
+                        <embed
+                          src={technicalSheetPreviewUrl}
+                          type="application/pdf"
+                          className="w-full h-full pointer-events-none"
+                        />
+                      ) : (
+                        <FileText className="w-5 h-5 text-muted-foreground" />
+                      )}
+                    </div>
                     {technicalSheetUrl ? (
                       <a
                         href={toMediaUrl(technicalSheetUrl)}
                         target="_blank"
                         rel="noreferrer"
-                        className="text-xs text-primary truncate flex-1"
+                        className="text-[11px] text-primary truncate flex-1"
                       >
                         {technicalSheetUrl.split("/").pop()}
                       </a>
                     ) : (
-                      <p className="text-xs text-muted-foreground flex-1 truncate">{selectedTechnicalSheet?.name}</p>
+                      <p className="text-[11px] text-muted-foreground flex-1 truncate">{selectedTechnicalSheet?.name}</p>
                     )}
                     <Button
                       type="button"

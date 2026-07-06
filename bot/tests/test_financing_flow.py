@@ -327,6 +327,11 @@ class FinancingFlowTests(GraphTestCase):
         def resolve_vehicle_hint(user_text: str, **_kwargs: object) -> dict[str, object] | None:
             return versa_2011 if "versa" in str(user_text).lower() else None
 
+        def pick_plan_from_state_side_effect(_state: object, user_text: str) -> dict[str, object] | None:
+            if "financiamiento shilo" in user_text.lower():
+                return shilo_plan
+            return None
+
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", side_effect=faq_flags),
             patch("src.nodes.faq.fetch_faq_candidates", return_value=["Estamos ubicados por el colegio REX."]),
@@ -351,6 +356,8 @@ class FinancingFlowTests(GraphTestCase):
                 side_effect=lambda **kw: kw["fallback"],
             ),
             patch("src.nodes.financing.classify_financing_plan_selection_intent", return_value="ASK_EXPLICIT_PLAN"),
+            patch("src.nodes.financing._pick_plan_from_state", side_effect=pick_plan_from_state_side_effect),
+            patch("src.nodes.financing.extract_financing_plan_selection_payload", return_value={}),
             patch(
                 "src.nodes.lead_capture.generate_lead_capture_scheduling_message",
                 return_value=(

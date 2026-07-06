@@ -9,7 +9,7 @@ from urllib.parse import urlsplit, urlunsplit
 from typing import Any
 
 from src.tools.vehicles import build_whatsapp_image_messages
-from src.utils.signals import WC_IMAGE_MARKER_PREFIX
+from src.utils.signals import WC_DOCUMENT_MARKER_PREFIX, WC_IMAGE_MARKER_PREFIX
 
 
 def normalize_image_url_for_chat(raw_url: str) -> str:
@@ -58,3 +58,29 @@ def build_whatsapp_image_marker_block(
             continue
         marker_lines.append(f"{WC_IMAGE_MARKER_PREFIX}{json.dumps(message, ensure_ascii=True)}")
     return "\n".join(marker_lines)
+
+
+def build_whatsapp_document_marker_block(
+    *,
+    to: str,
+    document_url: str,
+    file_name: str,
+    caption: str = "",
+) -> str:
+    """Construye marcador JSON para envío de documento PDF por WhatsApp."""
+
+    normalized_to = str(to or "").strip()
+    normalized_url = str(document_url or "").strip()
+    normalized_name = str(file_name or "").strip()
+    if not normalized_to or not normalized_url or not normalized_name:
+        return ""
+    message: dict[str, str] = {
+        "to": normalized_to,
+        "type": "document",
+        "documentUrl": normalized_url,
+        "fileName": normalized_name,
+    }
+    normalized_caption = str(caption or "").strip()
+    if normalized_caption:
+        message["caption"] = normalized_caption
+    return f"{WC_DOCUMENT_MARKER_PREFIX}{json.dumps(message, ensure_ascii=True)}"

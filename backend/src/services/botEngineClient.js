@@ -4,6 +4,7 @@ import { logWcWebhook } from "../utils/wcWebhookLog.js";
 
 const BOT_MESSAGE_SEPARATOR = "\n\n<<BOT_MSG_BREAK>>\n\n";
 const WC_IMAGE_MARKER_PREFIX = "<<WC_IMAGE_JSON>>";
+const WC_DOCUMENT_MARKER_PREFIX = "<<WC_DOCUMENT_JSON>>";
 
 // Sanitiza URL base para evitar dobles slashes al concatenar paths.
 const botEngineBaseUrl = () => String(env.bot.engineUrl || "").replace(/\/$/, "");
@@ -99,24 +100,41 @@ export const runBotChat = async ({ userId, platform, message, ownerUserId, conve
     for (const line of lines) {
       const trimmed = String(line || "").trim();
       if (!trimmed) continue;
-      if (!trimmed.startsWith(WC_IMAGE_MARKER_PREFIX)) {
-        textLines.push(trimmed);
+      if (trimmed.startsWith(WC_IMAGE_MARKER_PREFIX)) {
+        const rawJson = trimmed.slice(WC_IMAGE_MARKER_PREFIX.length);
+        try {
+          const parsed = JSON.parse(rawJson);
+          const imageUrl = String(parsed?.imageUrl || "").trim();
+          if (!imageUrl) continue;
+          normalizedMessages.push({
+            type: "image",
+            imageUrl,
+            caption: String(parsed?.caption || "").trim(),
+          });
+        } catch {
+          textLines.push(trimmed);
+        }
         continue;
       }
-      // 4) Si viene payload embebido de imagen, lo transforma a mensaje estructurado.
-      const rawJson = trimmed.slice(WC_IMAGE_MARKER_PREFIX.length);
-      try {
-        const parsed = JSON.parse(rawJson);
-        const imageUrl = String(parsed?.imageUrl || "").trim();
-        if (!imageUrl) continue;
-        normalizedMessages.push({
-          type: "image",
-          imageUrl,
-          caption: String(parsed?.caption || "").trim(),
-        });
-      } catch {
-        textLines.push(trimmed);
+      if (trimmed.startsWith(WC_DOCUMENT_MARKER_PREFIX)) {
+        const rawJson = trimmed.slice(WC_DOCUMENT_MARKER_PREFIX.length);
+        try {
+          const parsed = JSON.parse(rawJson);
+          const documentUrl = String(parsed?.documentUrl || "").trim();
+          const fileName = String(parsed?.fileName || "").trim();
+          if (!documentUrl || !fileName) continue;
+          normalizedMessages.push({
+            type: "document",
+            documentUrl,
+            fileName,
+            caption: String(parsed?.caption || "").trim(),
+          });
+        } catch {
+          textLines.push(trimmed);
+        }
+        continue;
       }
+      textLines.push(trimmed);
     }
 
     const text = textLines.join("\n").trim();

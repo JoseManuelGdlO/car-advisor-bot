@@ -163,3 +163,76 @@ test("wcClient sendMessage valida imageUrl cuando type=image", async () => {
 
   assert.equal(callCount, 0);
 });
+
+test("wcClient sendMessage soporta payload de documento", async () => {
+  env.wc.apiUrl = "https://wc.example";
+  env.wc.serviceJwt = "svc-jwt-token";
+
+  let requestBody;
+  global.fetch = async (_url, options) => {
+    requestBody = JSON.parse(options?.body || "{}");
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ ok: true }),
+    };
+  };
+
+  await wcClient.sendMessage({
+    deviceId: "dev-1",
+    to: "5215512345678",
+    type: "document",
+    documentUrl: "https://example.com/ficha.pdf",
+    fileName: "ficha.pdf",
+    caption: "Aquí tienes la ficha técnica",
+    tenantId: "tenant-1",
+  });
+
+  assert.deepEqual(requestBody, {
+    to: "5215512345678",
+    type: "document",
+    documentUrl: "https://example.com/ficha.pdf",
+    fileName: "ficha.pdf",
+    caption: "Aquí tienes la ficha técnica",
+    tenantId: "tenant-1",
+  });
+});
+
+test("wcClient sendMessage valida documentUrl y fileName cuando type=document", async () => {
+  env.wc.apiUrl = "https://wc.example";
+  env.wc.serviceJwt = "svc-jwt-token";
+
+  let callCount = 0;
+  global.fetch = async () => {
+    callCount += 1;
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ ok: true }),
+    };
+  };
+
+  await assert.rejects(
+    () =>
+      wcClient.sendMessage({
+        deviceId: "dev-1",
+        to: "5215512345678",
+        type: "document",
+        fileName: "ficha.pdf",
+      }),
+    (err) => err?.status === 400 && err?.message === "documentUrl is required when type=document"
+  );
+
+  await assert.rejects(
+    () =>
+      wcClient.sendMessage({
+        deviceId: "dev-1",
+        to: "5215512345678",
+        type: "document",
+        documentUrl: "https://example.com/ficha.pdf",
+      }),
+    (err) => err?.status === 400 && err?.message === "fileName is required when type=document"
+  );
+
+  assert.equal(callCount, 0);
+});

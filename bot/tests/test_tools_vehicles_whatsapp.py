@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import json
 from unittest import TestCase
 from unittest.mock import patch
 
 from src.tools.vehicles import resolve_single_vehicle_from_text
-from src.utils.whatsapp_markers import build_whatsapp_image_marker_block, normalize_image_url_for_chat
+from src.utils.whatsapp_markers import (
+    build_whatsapp_document_marker_block,
+    build_whatsapp_image_marker_block,
+    normalize_image_url_for_chat,
+)
 
 
 class VehicleResolverTests(TestCase):
@@ -43,3 +48,25 @@ class WhatsappMarkerHelpersTests(TestCase):
         self.assertIn("<<WC_IMAGE_JSON>>", block)
         self.assertIn("car.jpg", block)
         self.assertEqual(block.count("<<WC_IMAGE_JSON>>"), 1)
+
+    def test_document_marker_block_builds_valid_json(self) -> None:
+        block = build_whatsapp_document_marker_block(
+            to="5215512345678",
+            document_url="https://api.example.com/uploads/autobot/ficha.pdf",
+            file_name="ficha.pdf",
+            caption="Aquí tienes la ficha técnica",
+        )
+        self.assertIn("<<WC_DOCUMENT_JSON>>", block)
+        self.assertIn("ficha.pdf", block)
+        payload = json.loads(block.replace("<<WC_DOCUMENT_JSON>>", "", 1))
+        self.assertEqual(payload["caption"], "Aquí tienes la ficha técnica")
+
+    def test_document_marker_block_returns_empty_without_required_fields(self) -> None:
+        self.assertEqual(
+            build_whatsapp_document_marker_block(
+                to="",
+                document_url="https://example.com/ficha.pdf",
+                file_name="ficha.pdf",
+            ),
+            "",
+        )

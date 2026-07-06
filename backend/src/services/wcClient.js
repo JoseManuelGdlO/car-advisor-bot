@@ -100,11 +100,19 @@ export const wcClient = {
     return { url, expiresAt: readPublicLinkExpiry(payload) };
   },
 
-  async sendMessage({ deviceId, to, type = "text", text, imageUrl, caption, tenantId }) {
+  async sendMessage({ deviceId, to, type = "text", text, imageUrl, documentUrl, fileName, caption, tenantId }) {
     // Wrapper directo al endpoint de salida de mensajes del proveedor.
     const normalizedType = String(type || "text").trim().toLowerCase();
     if (normalizedType === "image" && !String(imageUrl || "").trim()) {
       throw new ApiError(400, "imageUrl is required when type=image");
+    }
+    if (normalizedType === "document") {
+      if (!String(documentUrl || "").trim()) {
+        throw new ApiError(400, "documentUrl is required when type=document");
+      }
+      if (!String(fileName || "").trim()) {
+        throw new ApiError(400, "fileName is required when type=document");
+      }
     }
     if (normalizedType === "text" && !String(text || "").trim()) {
       throw new ApiError(400, "text is required when type=text");
@@ -118,11 +126,19 @@ export const wcClient = {
             imageUrl: String(imageUrl || "").trim(),
             ...(String(caption || "").trim() ? { caption: String(caption || "").trim() } : {}),
           }
-        : {
-            to,
-            type: "text",
-            text: String(text || ""),
-          };
+        : normalizedType === "document"
+          ? {
+              to,
+              type: "document",
+              documentUrl: String(documentUrl || "").trim(),
+              fileName: String(fileName || "").trim(),
+              ...(String(caption || "").trim() ? { caption: String(caption || "").trim() } : {}),
+            }
+          : {
+              to,
+              type: "text",
+              text: String(text || ""),
+            };
 
     const payload = await wcFetch(`/devices/${deviceId}/messages/send`, {
       method: "POST",

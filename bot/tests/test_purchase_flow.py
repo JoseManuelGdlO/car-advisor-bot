@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from unittest.mock import patch
 
 from tests.test_helpers import GraphTestCase, initial_state, with_user_message
@@ -330,6 +331,108 @@ class PurchaseFlowTests(GraphTestCase):
         self.assertEqual(updated.get("selected_vehicle_id"), "veh-ram")
         tail = "\n".join(m["content"] for m in updated["messages"][-2:])
         self.assertIn("120", tail)
+
+    def test_pregunta_modelo_sends_technical_sheet_on_whatsapp_when_available(self) -> None:
+        state = initial_state()
+        state["platform"] = "whatsapp"
+        state["user_id"] = "5215512345678"
+        state["current_node"] = "car_selection"
+        state["intent"] = "vehicle_catalog"
+        state["selected_car"] = "Dodge Ram 2015"
+        state["selected_vehicle_id"] = "veh-ram"
+        state["awaiting_purchase_confirmation"] = True
+        state["vehicle_images_last_batch"] = []
+        state["last_bot_message"] = (
+            "¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? "
+            "También puedes pedir ver más imágenes del mismo."
+        )
+        state = with_user_message(state, "dame la ficha tecnica")
+
+        vehicles = [{"id": "veh-ram", "brand": "Dodge", "model": "Ram", "year": 2015, "status": "available"}]
+        ram_detail = {
+            "id": "veh-ram",
+            "brand": "Dodge",
+            "model": "Ram",
+            "year": 2015,
+            "status": "available",
+            "price": 450000,
+            "km": 120000,
+            "transmission": "automatica",
+            "engine": "5.7",
+            "color": "negro",
+            "description": "",
+            "technicalSheetUrl": "/uploads/autobot/ram-ficha.pdf",
+        }
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=ram_detail),
+            patch(
+                "src.nodes.car_selection.classify_purchase_confirmation_intent",
+                return_value="PREGUNTA_MODELO",
+            ),
+            patch(
+                "src.nodes.car_selection.generate_selected_vehicle_qa_response",
+                return_value="Te comparto los datos del vehiculo.",
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        contents = [m["content"] for m in updated["messages"] if m.get("role") == "assistant"]
+        document_blocks = [content for content in contents if "<<WC_DOCUMENT_JSON>>" in content]
+        self.assertEqual(len(document_blocks), 1)
+        self.assertIn("ram-ficha.pdf", document_blocks[0])
+        payload = json.loads(document_blocks[0].replace("<<WC_DOCUMENT_JSON>>", "", 1))
+        self.assertEqual(payload["caption"], "Aquí tienes la ficha técnica")
+
+    def test_pregunta_modelo_skips_technical_sheet_when_missing(self) -> None:
+        state = initial_state()
+        state["platform"] = "whatsapp"
+        state["user_id"] = "5215512345678"
+        state["current_node"] = "car_selection"
+        state["intent"] = "vehicle_catalog"
+        state["selected_car"] = "Dodge Ram 2015"
+        state["selected_vehicle_id"] = "veh-ram"
+        state["awaiting_purchase_confirmation"] = True
+        state["vehicle_images_last_batch"] = []
+        state["last_bot_message"] = (
+            "¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? "
+            "También puedes pedir ver más imágenes del mismo."
+        )
+        state = with_user_message(state, "dame la ficha tecnica")
+
+        vehicles = [{"id": "veh-ram", "brand": "Dodge", "model": "Ram", "year": 2015, "status": "available"}]
+        ram_detail = {
+            "id": "veh-ram",
+            "brand": "Dodge",
+            "model": "Ram",
+            "year": 2015,
+            "status": "available",
+            "price": 450000,
+            "km": 120000,
+            "transmission": "automatica",
+            "engine": "5.7",
+            "color": "negro",
+            "description": "",
+        }
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=ram_detail),
+            patch(
+                "src.nodes.car_selection.classify_purchase_confirmation_intent",
+                return_value="PREGUNTA_MODELO",
+            ),
+            patch(
+                "src.nodes.car_selection.generate_selected_vehicle_qa_response",
+                return_value="Te comparto los datos del vehiculo.",
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        contents = [m["content"] for m in updated["messages"] if m.get("role") == "assistant"]
+        self.assertFalse(any("<<WC_DOCUMENT_JSON>>" in content for content in contents))
+        self.assertEqual(len(contents), 2)
 
     def test_purchase_classifier_view_model_shows_requested_vehicle_detail(self) -> None:
         state = initial_state()

@@ -6,7 +6,7 @@ import re
 
 from src.state import clientState
 
-from src.services.car_selection_fallback import contains_signal_phrase
+from src.services.car_selection_fallback import contains_signal_phrase, is_general_request
 from src.services.llm_responses import classify_router_intent, generate_other_response
 from src.tools.vehicles import normalize_user_text
 from src.utils.human_advisor_notify import handle_human_advisor_request, human_advisor_heuristic_match
@@ -14,6 +14,7 @@ from src.utils.signals import (
     BUSINESS_LOCATION_FAQ_SUBSTR,
     FINANCING_PLANES_COMBO_SUFFIXES,
     FINANCING_SIGNALS,
+    GENERAL_SIGNALS,
     PROMOTIONS_SIGNALS,
     ROUTER_SIMPLE_GREETINGS_NORMALIZED,
     ROUTER_VEHICLE_SUBSTR_SIGNALS,
@@ -22,6 +23,8 @@ from src.utils.app_logging import get_app_logger, log_flow_trace
 from src.utils.state_helpers import append_assistant_message, is_faq_intent, latest_human_ai_pair, latest_user_message
 
 _log = get_app_logger("router")
+
+_GENERAL_SIGNALS_NORMALIZED = {normalize_user_text(signal) for signal in GENERAL_SIGNALS}
 
 
 def _debug_router(event: str, **payload: object) -> None:
@@ -35,7 +38,9 @@ def _is_vehicle_request(text: str, *, last_bot_message: str = "") -> bool:
     normalized = normalize_user_text(text)
     if not normalized:
         return False
-    return any(signal in normalized for signal in ROUTER_VEHICLE_SUBSTR_SIGNALS)
+    if any(signal in normalized for signal in ROUTER_VEHICLE_SUBSTR_SIGNALS):
+        return True
+    return is_general_request(text, _GENERAL_SIGNALS_NORMALIZED)
 
 
 def _looks_like_specific_vehicle_request(text: str) -> bool:

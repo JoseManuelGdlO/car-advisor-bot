@@ -158,12 +158,19 @@ export const ingestWhatsappConnectEvent = async ({ normalizedEvent, credentials:
     for (const reply of botReplies) {
       const normalizedType = String(reply?.type || "text").trim().toLowerCase();
       const isImage = normalizedType === "image";
+      const isDocument = normalizedType === "document";
       const replyText = String(reply?.text || "").trim();
       const imageUrl = String(reply?.imageUrl || "").trim();
+      const documentUrl = String(reply?.documentUrl || "").trim();
+      const fileName = String(reply?.fileName || "").trim();
       const caption = String(reply?.caption || "").trim();
-      const messageForCrm = isImage ? caption || "Imagen del vehiculo" : replyText;
+      const messageForCrm = isImage
+        ? caption || "Imagen del vehiculo"
+        : isDocument
+          ? caption || "Ficha técnica"
+          : replyText;
 
-      if (!messageForCrm && !imageUrl) continue;
+      if (!messageForCrm && !imageUrl && !documentUrl) continue;
       await upsertConversationEvent({
         ownerUserId: normalizedEvent.ownerUserId,
         userId: normalizedEvent.externalUserId,
@@ -186,10 +193,17 @@ export const ingestWhatsappConnectEvent = async ({ normalizedEvent, credentials:
                   imageUrl,
                   ...(caption ? { caption } : {}),
                 }
-              : {
-                  type: "text",
-                  text: replyText,
-                }),
+              : isDocument
+                ? {
+                    type: "document",
+                    documentUrl,
+                    fileName,
+                    ...(caption ? { caption } : {}),
+                  }
+                : {
+                    type: "text",
+                    text: replyText,
+                  }),
             tenantId: normalizedEvent.tenantId,
           })
       );
