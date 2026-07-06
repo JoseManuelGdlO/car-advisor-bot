@@ -44,6 +44,7 @@ export type VehicleDto = {
   status: "available" | "reserved" | "sold";
   image: string;
   imageUrls?: string[];
+  technicalSheetUrl?: string | null;
   metadata?: Record<string, string | number | boolean>;
   outboundPriority?: number;
   financingPlans?: (FinancingPlanDto & { vehicle_financing_plans?: { customRate: number | null } })[];

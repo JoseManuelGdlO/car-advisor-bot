@@ -33,7 +33,27 @@ const filters: { key: "all" | CarStatus; label: string }[] = [
 const formatPrice = (n: number) =>
   new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 0 }).format(Math.round(n));
 
+const formatPriceInput = (raw: string) => {
+  const n = Number(raw);
+  if (!raw.trim() || Number.isNaN(n)) return "";
+  const num = new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(n);
+  return `$${num} mxn`;
+};
+
+const sanitizePriceDigits = (raw: string) => raw.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1");
+
 const parsePriceInt = (raw: string) => Math.round(Number(raw));
+const PDF_MAX_BYTES = 8 * 1024 * 1024;
+
+const validateTechnicalSheet = (file: File): string | null => {
+  const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+  if (!isPdf) return "Solo se permiten archivos PDF.";
+  if (file.size > PDF_MAX_BYTES) return "El PDF no puede superar 8 MB.";
+  return null;
+};
 const mediaBase = (import.meta.env.VITE_API_BASE_URL || "http://localhost:4000/api").replace(/\/api\/?$/, "");
 const toMediaUrl = (value: string) => (value.startsWith("http") ? value : `${mediaBase}${value}`);
 const vehicleEmojis = ["🚗", "🚙", "🚘", "🚕", "🚖", "🚐", "🚚", "🚛", "🛻", "🚜", "🏎️", "🚓", "🚑", "🚒", "🚌"];
@@ -106,6 +126,9 @@ export default function ConfigProductos() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [imageUrls, setImageUrls] = useState<string[]>([]);
+  const [selectedTechnicalSheet, setSelectedTechnicalSheet] = useState<File | null>(null);
+  const [technicalSheetUrl, setTechnicalSheetUrl] = useState("");
+  const [priceFocused, setPriceFocused] = useState(false);
   const [form, setForm] = useState({
     brand: "",
     model: "",
@@ -178,6 +201,9 @@ export default function ConfigProductos() {
     setEditingId(car.id);
     setSelectedFiles([]);
     setImageUrls(car.imageUrls || []);
+    setSelectedTechnicalSheet(null);
+    setTechnicalSheetUrl(car.technicalSheetUrl || "");
+    setPriceFocused(false);
     setForm({
       brand: car.brand || "",
       model: car.model || "",
@@ -202,7 +228,18 @@ export default function ConfigProductos() {
     setCreating(true);
     setVehicleFormError("");
     try {
+      if (selectedTechnicalSheet) {
+        const pdfError = validateTechnicalSheet(selectedTechnicalSheet);
+        if (pdfError) {
+          setVehicleFormError(pdfError);
+          return;
+        }
+      }
       const uploaded = selectedFiles.length > 0 ? (await crmApi.uploadVehicleImages(token, selectedFiles)).imageUrls : [];
+      let finalTechnicalSheetUrl: string | null = technicalSheetUrl || null;
+      if (selectedTechnicalSheet) {
+        finalTechnicalSheetUrl = (await crmApi.uploadVehicleTechnicalSheet(token, selectedTechnicalSheet)).technicalSheetUrl;
+      }
       const payload = {
         brand: form.brand.trim(),
         model: form.model.trim(),
@@ -216,6 +253,7 @@ export default function ConfigProductos() {
         description: form.description.trim(),
         image: form.image.trim() || "🚗",
         imageUrls: [...imageUrls, ...uploaded],
+        technicalSheetUrl: finalTechnicalSheetUrl,
         metadata: parseMetadataInput(form.metadataText),
         outboundPriority: Number(form.outboundPriority || "0"),
       };
@@ -229,6 +267,9 @@ export default function ConfigProductos() {
       setEditingId(null);
       setSelectedFiles([]);
       setImageUrls([]);
+      setSelectedTechnicalSheet(null);
+      setTechnicalSheetUrl("");
+      setPriceFocused(false);
       setForm({
         brand: "",
         model: "",
@@ -287,6 +328,9 @@ export default function ConfigProductos() {
                   setEditingId(null);
                   setSelectedFiles([]);
                   setImageUrls([]);
+                  setSelectedTechnicalSheet(null);
+                  setTechnicalSheetUrl("");
+                  setPriceFocused(false);
                   setForm({
                     brand: "",
                     model: "",
@@ -338,12 +382,13 @@ export default function ConfigProductos() {
                   <label className="space-y-1">
                     <span className="text-xs font-semibold text-muted-foreground">Precio</span>
                     <Input
-                      type="number"
-                      step={1}
-                      min={0}
+                      type="text"
+                      inputMode="decimal"
                       placeholder="Ej. 629900"
-                      value={form.price}
-                      onChange={(e) => setForm((s) => ({ ...s, price: e.target.value }))}
+                      value={priceFocused ? form.price : formatPriceInput(form.price)}
+                      onFocus={() => setPriceFocused(true)}
+                      onBlur={() => setPriceFocused(false)}
+                      onChange={(e) => setForm((s) => ({ ...s, price: sanitizePriceDigits(e.target.value) }))}
                     />
                   </label>
                 </div>
@@ -446,6 +491,64 @@ export default function ConfigProductos() {
                         </Button>
                       </div>
                     ))}
+                  </div>
+                ) : null}
+                <label className="space-y-1 block">
+                  <span className="text-xs font-semibold text-muted-foreground">Ficha técnica (PDF)</span>
+                  <Input
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] || null;
+                      if (!file) {
+                        setSelectedTechnicalSheet(null);
+                        return;
+                      }
+                      const pdfError = validateTechnicalSheet(file);
+                      if (pdfError) {
+                        setVehicleFormError(pdfError);
+                        e.target.value = "";
+                        setSelectedTechnicalSheet(null);
+                        return;
+                      }
+                      setVehicleFormError("");
+                      setSelectedTechnicalSheet(file);
+                    }}
+                  />
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  {selectedTechnicalSheet
+                    ? `${selectedTechnicalSheet.name} seleccionado para subir (máx. 8 MB)`
+                    : technicalSheetUrl
+                      ? "Ficha técnica actual en el servidor"
+                      : "Sin ficha técnica (máx. 8 MB)"}
+                </p>
+                {technicalSheetUrl || selectedTechnicalSheet ? (
+                  <div className="flex items-center gap-2 border border-border rounded-lg p-2">
+                    {technicalSheetUrl ? (
+                      <a
+                        href={toMediaUrl(technicalSheetUrl)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs text-primary truncate flex-1"
+                      >
+                        {technicalSheetUrl.split("/").pop()}
+                      </a>
+                    ) : (
+                      <p className="text-xs text-muted-foreground flex-1 truncate">{selectedTechnicalSheet?.name}</p>
+                    )}
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="destructive"
+                      className="h-7 w-7"
+                      onClick={() => {
+                        setTechnicalSheetUrl("");
+                        setSelectedTechnicalSheet(null);
+                      }}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
                   </div>
                 ) : null}
                 <label className="space-y-1 block">

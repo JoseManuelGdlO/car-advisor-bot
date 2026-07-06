@@ -57,6 +57,7 @@ export const crmApi = {
       description?: string;
       image?: string;
       imageUrls?: string[];
+      technicalSheetUrl?: string | null;
       metadata?: Record<string, string | number | boolean>;
       outboundPriority?: number;
     }
@@ -77,6 +78,7 @@ export const crmApi = {
       description?: string;
       image?: string;
       imageUrls?: string[];
+      technicalSheetUrl?: string | null;
       metadata?: Record<string, string | number | boolean>;
       outboundPriority?: number;
     }
@@ -85,6 +87,11 @@ export const crmApi = {
     const formData = new FormData();
     files.forEach((file) => formData.append("images", file));
     return apiRequestFormData<{ imageUrls: string[] }>("/vehicles/images/upload", formData, token);
+  },
+  uploadVehicleTechnicalSheet: async (token: string, file: File) => {
+    const formData = new FormData();
+    formData.append("technicalSheet", file);
+    return apiRequestFormData<{ technicalSheetUrl: string }>("/vehicles/technical-sheet/upload", formData, token);
   },
   getFaqs: (token: string) => apiRequest("/faqs", "GET", undefined, token),
   createFaq: (token: string, payload: { question: string; answer: string }) => apiRequest("/faqs", "POST", payload, token),

@@ -74,5 +74,10 @@ export default function VehicleModel(sequelize) {
       defaultValue: 0,
       field: "outbound_priority",
     },
+    technicalSheetUrl: {
+      type: DataTypes.STRING(512),
+      allowNull: true,
+      field: "technical_sheet_url",
+    },
   });
 }

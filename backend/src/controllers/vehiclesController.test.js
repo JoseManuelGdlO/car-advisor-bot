@@ -1,8 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Op } from "sequelize";
-import { getVehiclesByFilters } from "./vehiclesController.js";
+import { getVehiclesByFilters, uploadVehicleTechnicalSheet } from "./vehiclesController.js";
 import { Vehicle } from "../models/index.js";
+import { ApiError } from "../utils/errors.js";
 
 const ownerUserId = "11111111-1111-4111-8111-111111111111";
 
@@ -14,6 +15,11 @@ const createReq = (query = {}) => ({
 const createRes = () => {
   const response = {
     payload: null,
+    statusCode: 200,
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
     json(value) {
       this.payload = value;
       return value;
@@ -72,4 +78,28 @@ test("getVehiclesByFilters ignora precios invalidos", async () => {
   } finally {
     Vehicle.findAll = originalFindAll;
   }
+});
+
+test("uploadVehicleTechnicalSheet devuelve URL cuando hay archivo", async () => {
+  const res = createRes();
+  const next = (err) => {
+    throw err;
+  };
+  await uploadVehicleTechnicalSheet(
+    { file: { filename: "test-sheet.pdf" } },
+    res,
+    next
+  );
+  assert.equal(res.payload.technicalSheetUrl, "/uploads/autobot/test-sheet.pdf");
+});
+
+test("uploadVehicleTechnicalSheet responde 400 sin archivo", async () => {
+  let captured = null;
+  const next = (err) => {
+    captured = err;
+  };
+  await uploadVehicleTechnicalSheet({ file: null }, createRes(), next);
+  assert.ok(captured instanceof ApiError);
+  assert.equal(captured.status, 400);
+  assert.equal(captured.message, "Se requiere un archivo PDF.");
 });

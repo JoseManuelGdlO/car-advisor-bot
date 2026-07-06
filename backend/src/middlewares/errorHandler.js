@@ -13,6 +13,14 @@ export const errorHandler = (err, _req, res, _next) => {
     return res.status(400).json({ message, errors });
   }
 
+  if (err?.code === "LIMIT_FILE_SIZE") {
+    return res.status(400).json({ message: "El PDF no puede superar 8 MB." });
+  }
+
+  if (err?.message === "Solo se permiten archivos PDF.") {
+    return res.status(400).json({ message: err.message });
+  }
+
   const status = err.status || 500;
   if (status >= 500) {
     console.error("[errorHandler] Unhandled server error", {

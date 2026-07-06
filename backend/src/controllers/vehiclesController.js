@@ -113,3 +113,8 @@ export const uploadVehicleImages = async (req, res) => {
   const imageUrls = files.map((file) => `/uploads/autobot/${file.filename}`);
   return res.status(201).json({ imageUrls });
 };
+
+export const uploadVehicleTechnicalSheet = async (req, res, next) => {
+  if (!req.file) return next(new ApiError(400, "Se requiere un archivo PDF."));
+  return res.status(201).json({ technicalSheetUrl: `/uploads/autobot/${req.file.filename}` });
+};
