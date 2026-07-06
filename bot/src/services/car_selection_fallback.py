@@ -90,6 +90,8 @@ _TEST_DRIVE_LOOSE_RE = re.compile(
     r"pru[eb]+\w*(?:\s+(?:de\s+)?manej\w*)?"
     r"|agendar\s+pru[eb]+\w*"
     r"|quiero\s+(?:una\s+)?pru[eb]+\w*(?:\s+(?:de\s+)?manej\w*)?"
+    r"|agendar\s+(?:una\s+)?cita\b"
+    r"|quiero\s+agendar\s+(?:una\s+)?cita\b"
     r")\b"
 )
 _IN_PERSON_VISIT_LOOSE_RE = re.compile(

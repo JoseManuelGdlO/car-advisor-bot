@@ -108,6 +108,8 @@ PROMOTIONS_SIGNALS = {
     "descuentos",
     "bono",
     "bonos",
+    "promos",
+    "promo"
 }
 
 TEST_DRIVE_VISIT_SIGNALS = {
@@ -132,6 +134,10 @@ TEST_DRIVE_VISIT_SIGNALS = {
     "visitar el auto",
     "coordinar visita",
     "agendar visita",
+    "agendar cita",
+    "agendar una cita",
+    "quiero agendar cita",
+    "quiero agendar una cita",
 }
 
 CATALOG_SIGNALS = {

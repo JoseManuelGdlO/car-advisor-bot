@@ -45,7 +45,12 @@ def _has_complete_customer_info(state: clientState) -> bool:
     return bool(info.get("nombre") and info.get("telefono") and info.get("email"))
 
 
-def _user_handoff_ack(state: clientState, *, notify_ok: bool) -> str:
+def _user_handoff_ack(
+    state: clientState,
+    *,
+    notify_ok: bool,
+    prior_advisor_contact: bool = False,
+) -> str:
     """Mensaje de cierre al usuario segun datos capturados y resultado del push."""
 
     owner_set = bool(str(state.get("owner_user_id", "")).strip())
@@ -60,10 +65,17 @@ def _user_handoff_ack(state: clientState, *, notify_ok: bool) -> str:
         )
 
     if notify_ok or not owner_set:
-        return "Listo, ya avise para que te contacten otra vez."
+        if prior_advisor_contact:
+            return "Listo, ya avise para que te contacten otra vez."
+        return "Listo, ya avise para que te contacten."
+    if prior_advisor_contact:
+        return (
+            "Registramos tu solicitud de hablar con un asesor. "
+            "Hubo un problema temporal en breve te contactan otra vez."
+        )
     return (
         "Registramos tu solicitud de hablar con un asesor. "
-        "Hubo un problema temporal al enviar la alerta; en breve te contactan."
+        "Hubo un problema temporal en breve te contactan."
     )
 
 
@@ -187,9 +199,11 @@ def handle_human_advisor_request(
     )
     _app.debug("[human_advisor] notify_done_detail user_id=%s notify_ok=%s owner_user_id_set=%s", user_id, notify_ok, bool(owner_user_id))
 
+    prior_advisor_contact = bool(state.get("human_advisor_requested")) or bool(state.get("lead_capture_done"))
+
     state["human_advisor_requested"] = True
     state["human_advisor_push_sent"] = True
 
-    ack = _user_handoff_ack(state, notify_ok=notify_ok)
+    ack = _user_handoff_ack(state, notify_ok=notify_ok, prior_advisor_contact=prior_advisor_contact)
     state = append_assistant_message(state, ack)
     return deactivate_bot(state, reason="human_advisor")

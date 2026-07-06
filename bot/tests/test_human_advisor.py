@@ -82,6 +82,17 @@ class TestHandleHumanAdvisorRequest(unittest.TestCase):
         self.assertNotIn("asesor", ack.lower())
         self.assertIn("contactamos", ack.lower())
 
+    def test_ack_first_contact_without_otra_vez(self) -> None:
+        state = initial_state()
+        ack = _user_handoff_ack(state, notify_ok=True, prior_advisor_contact=False)
+        self.assertIn("contacten", ack.lower())
+        self.assertNotIn("otra vez", ack.lower())
+
+    def test_ack_repeat_contact_uses_otra_vez(self) -> None:
+        state = initial_state()
+        ack = _user_handoff_ack(state, notify_ok=True, prior_advisor_contact=True)
+        self.assertIn("otra vez", ack.lower())
+
     def test_deactivates_bot_after_notify(self) -> None:
         state = with_user_message(initial_state(), "Necesito un asesor")
         state["owner_user_id"] = "owner-uuid"
@@ -174,6 +185,63 @@ class TestIntentCheckerHumanAdvisor(unittest.TestCase):
         with patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value=flags):
             out = intent_checker(dict(state))
         self.assertFalse(out.get("suppress_commercial_node_once"))
+
+
+    def test_scheduling_request_routes_to_lead_capture_not_human_advisor(self) -> None:
+        state = initial_state()
+        state["current_node"] = "promotions"
+        state["selected_vehicle_id"] = "veh-jimny"
+        state["selected_car"] = "Suzuki Jimny 5 Puertas 2025"
+        state["messages"] = [
+            {
+                "role": "assistant",
+                "content": "Claro, aqui tienes las promociones disponibles...",
+                "type": "AIMessage",
+            },
+            {"role": "user", "content": "Okey, quiero agendar una cita", "type": "HumanMessage"},
+        ]
+        flags = {
+            "interrumpir_por_faq": False,
+            "quiere_asesor_humano": True,
+            "tema_vehiculo_inventario": False,
+            "tema_financiamiento_credi": False,
+            "es_respuesta_o_seguimiento_al_ultimo_bot": True,
+        }
+        with patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value=flags):
+            out = intent_checker(dict(state))
+        self.assertEqual(out.get("current_node"), "lead_capture")
+        self.assertEqual(out.get("intent"), "lead_capture")
+        self.assertFalse(out.get("human_advisor_push_sent"))
+        self.assertFalse(out.get("suppress_commercial_node_once"))
+
+    def test_scheduling_without_selected_car_does_not_route_to_lead_capture(self) -> None:
+        state = initial_state()
+        state["current_node"] = "promotions"
+        state["selected_vehicle_id"] = "veh-jimny"
+        state["selected_car"] = ""
+        state["messages"] = [
+            {
+                "role": "assistant",
+                "content": "Claro, aqui tienes las promociones disponibles...",
+                "type": "AIMessage",
+            },
+            {"role": "user", "content": "Okey, quiero agendar una cita", "type": "HumanMessage"},
+        ]
+        flags = {
+            "interrumpir_por_faq": False,
+            "quiere_asesor_humano": True,
+            "tema_vehiculo_inventario": False,
+            "tema_financiamiento_credi": False,
+            "es_respuesta_o_seguimiento_al_ultimo_bot": True,
+        }
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value=flags),
+            patch("src.utils.human_advisor_notify.push_event_to_backend"),
+            patch("src.utils.human_advisor_notify.deactivate_bot", side_effect=lambda s, **_: s),
+        ):
+            out = intent_checker(dict(state))
+        self.assertNotEqual(out.get("current_node"), "lead_capture")
+        self.assertNotEqual(out.get("intent"), "lead_capture")
 
 
 class TestRouterHumanAdvisor(unittest.TestCase):

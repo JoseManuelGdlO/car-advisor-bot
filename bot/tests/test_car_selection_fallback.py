@@ -57,6 +57,7 @@ class CarSelectionFallbackTests(unittest.TestCase):
         )
         self.assertTrue(is_test_drive_or_visit_request("agendar prueba de manejo", self.test_drive_visit))
         self.assertTrue(is_test_drive_or_visit_request("me interesa verlo en persona", self.test_drive_visit))
+        self.assertTrue(is_test_drive_or_visit_request("Okey, quiero agendar una cita", self.test_drive_visit))
         self.assertFalse(is_test_drive_or_visit_request("cuanto cuesta", self.test_drive_visit))
 
     def test_more_images_financing_promotions_requests(self) -> None:

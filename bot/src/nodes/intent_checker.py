@@ -5,6 +5,7 @@ import logging
 from src.state import clientState
 from src.tools.vehicles import normalize_user_text
 
+from src.services.car_selection_fallback import is_test_drive_or_visit_request
 from src.services.llm_responses import (
     classify_faq_interrupt_flags,
     classify_vehicle_step_flags,
@@ -14,8 +15,12 @@ from src.utils.human_advisor_notify import (
     human_advisor_heuristic_match,
 )
 from src.utils.app_logging import get_app_logger
-from src.utils.signals import VEHICLE_INFO_REQUEST_SIGNALS
+from src.utils.signals import TEST_DRIVE_VISIT_SIGNALS, VEHICLE_INFO_REQUEST_SIGNALS
 from src.utils.state_helpers import latest_human_ai_pair
+
+_TEST_DRIVE_VISIT_SIGNALS_NORMALIZED = {
+    normalize_user_text(signal) for signal in TEST_DRIVE_VISIT_SIGNALS
+}
 
 logger = logging.getLogger(__name__)
 _app = get_app_logger("intent_checker")
@@ -40,6 +45,22 @@ def _promotions_flow_allows_vehicle_followup(state: clientState) -> bool:
         or state.get("awaiting_promotion_apply_confirmation")
         or str(state.get("selected_promotion_id", "")).strip()
     )
+
+
+def _has_selected_vehicle(state: clientState) -> bool:
+    """lead_capture requiere selected_car; selected_vehicle_id solo no basta."""
+
+    return bool(str(state.get("selected_car", "")).strip())
+
+
+def _should_route_scheduling_to_lead_capture(state: clientState, user_text: str) -> bool:
+    """Pedido de cita/prueba con vehiculo ya elegido va a lead_capture, no a asesor humano."""
+
+    if state.get("lead_capture_done"):
+        return False
+    if not _has_selected_vehicle(state):
+        return False
+    return is_test_drive_or_visit_request(user_text, _TEST_DRIVE_VISIT_SIGNALS_NORMALIZED)
 
 
 def _looks_like_commercial_navigation_request(user_text: str) -> bool:
@@ -129,6 +150,12 @@ def intent_checker(state: clientState) -> clientState:
         last_user
     ):
         state["is_faq_interrupt"] = False
+        return state
+
+    if _should_route_scheduling_to_lead_capture(state, last_user):
+        state["is_faq_interrupt"] = False
+        state["current_node"] = "lead_capture"
+        state["intent"] = "lead_capture"
         return state
 
     heuristic_substr = human_advisor_heuristic_match(last_user)
