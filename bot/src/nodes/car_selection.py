@@ -395,14 +395,32 @@ def _build_technical_sheet_message(state: clientState, detail: dict[str, Any]) -
     platform = str(state.get("platform", "web")).strip().lower() or "web"
     absolute = normalize_image_url_for_chat(url)
     file_name = url.split("/")[-1] or "ficha-tecnica.pdf"
+    vehicle_id = str(detail.get("id", state.get("selected_vehicle_id", ""))).strip()
     if platform == "whatsapp":
         user_id = str(state.get("user_id", "")).strip()
-        return build_whatsapp_document_marker_block(
+        message = build_whatsapp_document_marker_block(
             to=user_id,
             document_url=absolute,
             file_name=file_name,
             caption="Aquí tienes la ficha técnica",
         )
+        if message:
+            _debug(
+                "technical_sheet_sent",
+                vehicle_id=vehicle_id,
+                platform=platform,
+                file_name=file_name,
+                delivery="whatsapp_document",
+            )
+        return message
+    _debug(
+        "technical_sheet_sent",
+        vehicle_id=vehicle_id,
+        platform=platform,
+        file_name=file_name,
+        delivery="web_link",
+        document_url=absolute,
+    )
     return f"Aquí tienes la ficha técnica:\n{absolute}"
 
 

@@ -149,6 +149,12 @@ def resolve_single_vehicle_from_text(
     return None
 
 
+def _debug_vehicle_detail_fetch(event: str, **payload: Any) -> None:
+    """Trazas de detalle de vehiculo; payload completo solo con LOG_LEVEL=debug."""
+
+    log_flow_trace(_price_filters_log, "vehicles.detail", event, **payload)
+
+
 def fetch_vehicle_by_id(vehicle_id: str) -> dict[str, Any] | None:
     """Obtiene detalle puntual del vehiculo por id."""
 
@@ -163,11 +169,30 @@ def fetch_vehicle_by_id(vehicle_id: str) -> dict[str, Any] | None:
         timeout=6,
     )
     if response.status_code == 404:
+        _debug_vehicle_detail_fetch(
+            "technical_sheet_lookup",
+            vehicle_id=cleaned_id,
+            found=False,
+            has_technical_sheet=False,
+        )
         return None
     response.raise_for_status()
     payload = response.json()
     if isinstance(payload, dict):
+        technical_sheet_url = str(payload.get("technicalSheetUrl") or "").strip()
+        _debug_vehicle_detail_fetch(
+            "technical_sheet_lookup",
+            vehicle_id=cleaned_id,
+            found=True,
+            has_technical_sheet=bool(technical_sheet_url),
+        )
         return payload
+    _debug_vehicle_detail_fetch(
+        "technical_sheet_lookup",
+        vehicle_id=cleaned_id,
+        found=False,
+        has_technical_sheet=False,
+    )
     return None
 
 
