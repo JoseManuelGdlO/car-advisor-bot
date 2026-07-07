@@ -2,6 +2,11 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000/api
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
+export type ApiRequestOptions = {
+  /** Evita logout global ante 401 (p. ej. bootstrap o push en segundo plano). */
+  suppressSessionExpiry?: boolean;
+};
+
 /** Error HTTP del API con mensaje y, opcionalmente, errores por campo (`path[0]` del backend). */
 export class ApiRequestError extends Error {
   readonly status: number;
@@ -70,15 +75,27 @@ function notifySessionExpired(status: number, hadAuthHeader: boolean): void {
   }
 }
 
-async function rejectFailedResponse(res: Response, hadAuthHeader: boolean): Promise<never> {
+async function rejectFailedResponse(
+  res: Response,
+  hadAuthHeader: boolean,
+  options?: ApiRequestOptions,
+): Promise<never> {
   const payload = await res.json().catch(() => ({ message: "No se pudo completar la solicitud." }));
-  notifySessionExpired(res.status, hadAuthHeader);
+  if (!options?.suppressSessionExpiry) {
+    notifySessionExpired(res.status, hadAuthHeader);
+  }
   const message = errorMessageFromPayload(payload, "No se pudo completar la solicitud.");
   const fieldErrors = parseFieldErrorsFromPayload(payload);
   throw new ApiRequestError(message, res.status, fieldErrors);
 }
 
-export async function apiRequest<T>(path: string, method: HttpMethod = "GET", body?: unknown, token?: string): Promise<T> {
+export async function apiRequest<T>(
+  path: string,
+  method: HttpMethod = "GET",
+  body?: unknown,
+  token?: string,
+  options?: ApiRequestOptions,
+): Promise<T> {
   const hadAuthHeader = Boolean(token);
   const res = await fetch(`${API_BASE}${path}`, {
     method,
@@ -89,7 +106,7 @@ export async function apiRequest<T>(path: string, method: HttpMethod = "GET", bo
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
-    return rejectFailedResponse(res, hadAuthHeader);
+    return rejectFailedResponse(res, hadAuthHeader, options);
   }
   if (res.status === 204) {
     return undefined as T;
@@ -101,7 +118,12 @@ export async function apiRequest<T>(path: string, method: HttpMethod = "GET", bo
   return JSON.parse(text) as T;
 }
 
-export async function apiRequestFormData<T>(path: string, body: FormData, token?: string): Promise<T> {
+export async function apiRequestFormData<T>(
+  path: string,
+  body: FormData,
+  token?: string,
+  options?: ApiRequestOptions,
+): Promise<T> {
   const hadAuthHeader = Boolean(token);
   const res = await fetch(`${API_BASE}${path}`, {
     method: "POST",
@@ -111,7 +133,7 @@ export async function apiRequestFormData<T>(path: string, body: FormData, token?
     body,
   });
   if (!res.ok) {
-    return rejectFailedResponse(res, hadAuthHeader);
+    return rejectFailedResponse(res, hadAuthHeader, options);
   }
   if (res.status === 204) {
     return undefined as T;

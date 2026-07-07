@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Capacitor } from "@capacitor/core";
 import { apiRequest, setUnauthorizedHandler } from "@/lib/api";
@@ -17,6 +17,7 @@ export type AuthUser = {
 type AuthContextType = {
   token: string | null;
   user: AuthUser | null;
+  authReady: boolean;
   login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   register: (name: string, email: string, password: string, calendarSchedulingUrl?: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -35,6 +36,15 @@ const getStoredValue = (key: string): string | null => {
   return sessionStorage.getItem(key);
 };
 
+const profileToAuthUser = (profile: Awaited<ReturnType<typeof accountApi.getProfile>>): AuthUser => ({
+  id: profile.user.id,
+  email: profile.user.email,
+  name: profile.user.name,
+  phone: profile.user.phone,
+  defaultPlatform: profile.user.defaultPlatform,
+  calendarSchedulingUrl: profile.user.calendarSchedulingUrl,
+});
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
   const [token, setToken] = useState<string | null>(() => getStoredValue(TOKEN_KEY));
@@ -43,6 +53,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return raw ? JSON.parse(raw) : null;
   });
   const [rememberMe, setRememberMe] = useState<boolean>(() => localStorage.getItem(REMEMBER_KEY) === "true");
+  const [authReady, setAuthReady] = useState(false);
+  const bootstrapStartedRef = useRef(false);
+
+  const clearSession = useCallback(() => {
+    setToken(null);
+    setUser(null);
+    setRememberMe(false);
+    localStorage.removeItem(REMEMBER_KEY);
+  }, []);
 
   const logout = useCallback(async () => {
     const currentToken = token;
@@ -50,11 +69,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (Capacitor.isNativePlatform() && currentToken && deviceToken) {
       await pushApi.unregisterDevice(currentToken, deviceToken).catch(() => undefined);
     }
-    setToken(null);
-    setUser(null);
-    setRememberMe(false);
-    localStorage.removeItem(REMEMBER_KEY);
-  }, [token]);
+    clearSession();
+  }, [token, clearSession]);
 
   useEffect(() => {
     const store = rememberMe ? localStorage : sessionStorage;
@@ -84,17 +100,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem(REMEMBER_KEY, rememberMe ? "true" : "false");
   }, [rememberMe]);
 
+  useEffect(() => {
+    if (bootstrapStartedRef.current) return;
+    bootstrapStartedRef.current = true;
+
+    const bootstrap = async () => {
+      if (!token) {
+        setAuthReady(true);
+        return;
+      }
+
+      try {
+        const profile = await accountApi.getProfile(token, { suppressSessionExpiry: true });
+        setUser(profileToAuthUser(profile));
+      } catch {
+        clearSession();
+      } finally {
+        setAuthReady(true);
+      }
+    };
+
+    void bootstrap();
+  }, [token, clearSession]);
+
   const refreshProfile = useCallback(async () => {
     if (!token) return;
     const profile = await accountApi.getProfile(token);
-    setUser({
-      id: profile.user.id,
-      email: profile.user.email,
-      name: profile.user.name,
-      phone: profile.user.phone,
-      defaultPlatform: profile.user.defaultPlatform,
-      calendarSchedulingUrl: profile.user.calendarSchedulingUrl,
-    });
+    setUser(profileToAuthUser(profile));
   }, [token]);
 
   useEffect(() => {
@@ -109,23 +141,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     () => ({
       token,
       user,
+      authReady,
       async login(email, password, remember = true) {
         const res = await apiRequest<{ token: string; user: AuthUser }>("/auth/login", "POST", { email, password });
         setRememberMe(remember);
         setToken(res.token);
         try {
           const profile = await accountApi.getProfile(res.token);
-          setUser({
-            id: profile.user.id,
-            email: profile.user.email,
-            name: profile.user.name,
-            phone: profile.user.phone,
-            defaultPlatform: profile.user.defaultPlatform,
-            calendarSchedulingUrl: profile.user.calendarSchedulingUrl,
-          });
+          setUser(profileToAuthUser(profile));
         } catch {
           setUser(res.user);
         }
+        setAuthReady(true);
       },
       async register(name, email, password, calendarSchedulingUrl) {
         const trimmedCalendarSchedulingUrl = calendarSchedulingUrl?.trim();
@@ -139,7 +166,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       logout,
       refreshProfile,
     }),
-    [token, user, refreshProfile, logout]
+    [token, user, authReady, refreshProfile, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

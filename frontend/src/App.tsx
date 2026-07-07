@@ -23,6 +23,7 @@ import Perfil from "./pages/Perfil.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import { AuthProvider } from "@/context/AuthContext";
 import { RequireAuth } from "@/components/RequireAuth";
+import { GuestOnly } from "@/components/GuestOnly";
 import { PushBridge } from "@/mobile/PushBridge";
 import { DelayedQueryLoadingOverlay } from "@/components/DelayedQueryLoadingOverlay";
 
@@ -40,7 +41,7 @@ const App = () => (
           <PhoneFrame>
             <Routes>
               <Route path="/" element={<Index />} />
-              <Route path="/login" element={<Login />} />
+              <Route path="/login" element={<GuestOnly><Login /></GuestOnly>} />
               <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
               <Route path="/clientes" element={<RequireAuth><Clientes /></RequireAuth>} />
               <Route path="/cliente/:id" element={<RequireAuth><ClienteDetalle /></RequireAuth>} />

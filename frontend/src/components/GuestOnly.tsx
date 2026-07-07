@@ -2,14 +2,12 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { AuthBootstrapGate } from "@/components/AuthBootstrapGate";
 
-const Index = () => {
+export function GuestOnly({ children }: { children: JSX.Element }) {
   const { token } = useAuth();
 
   return (
     <AuthBootstrapGate>
-      <Navigate to={token ? "/dashboard" : "/login"} replace />
+      {token ? <Navigate to="/dashboard" replace /> : children}
     </AuthBootstrapGate>
   );
-};
-
-export default Index;
+}

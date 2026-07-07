@@ -1,4 +1,4 @@
-import { apiRequest } from "@/lib/api";
+import { apiRequest, type ApiRequestOptions } from "@/lib/api";
 
 export type AccountUserDto = {
   id: string;
@@ -30,7 +30,8 @@ export type AccountProfileResponse = {
 };
 
 export const accountApi = {
-  getProfile: (token: string) => apiRequest<AccountProfileResponse>("/account/profile", "GET", undefined, token),
+  getProfile: (token: string, options?: ApiRequestOptions) =>
+    apiRequest<AccountProfileResponse>("/account/profile", "GET", undefined, token, options),
   patchProfile: (token: string, body: { user?: Partial<Pick<AccountUserDto, "name" | "phone" | "defaultPlatform" | "calendarSchedulingUrl">>; business?: Partial<BusinessProfileDto> }) =>
     apiRequest<AccountProfileResponse>("/account/profile", "PATCH", body, token),
   deleteAccount: (token: string, body: { confirmText: string }) => apiRequest<void>("/account", "DELETE", body, token),
