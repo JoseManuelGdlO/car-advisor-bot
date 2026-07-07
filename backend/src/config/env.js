@@ -68,4 +68,16 @@ export const env = {
     webhookDebug: must("WC_WEBHOOK_DEBUG", "false") === "true",
     timeoutMs: Number(must("WC_TIMEOUT_MS", "8000")),
   },
+  smtp: {
+    host: must("SMTP_HOST", ""),
+    port: Number(must("SMTP_PORT", "587")),
+    secure: must("SMTP_SECURE", "false") === "true",
+    user: must("SMTP_USER", ""),
+    pass: must("SMTP_PASS", ""),
+    from: must("SMTP_FROM", "AutoBot <noreply@localhost>"),
+  },
+  passwordReset: {
+    codeTtlMinutes: Number(must("PASSWORD_RESET_CODE_TTL_MINUTES", "15")),
+    maxAttempts: Number(must("PASSWORD_RESET_MAX_ATTEMPTS", "5")),
+  },
 };

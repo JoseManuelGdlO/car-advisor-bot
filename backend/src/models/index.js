@@ -19,6 +19,7 @@ import FinancingRequirementModel from "./FinancingRequirement.js";
 import VehicleFinancingPlanModel from "./VehicleFinancingPlan.js";
 import FinancingPlanRequirementModel from "./FinancingPlanRequirement.js";
 import PushDeviceModel from "./PushDevice.js";
+import PasswordResetCodeModel from "./PasswordResetCode.js";
 
 export const User = UserModel(sequelize);
 export const ServiceToken = ServiceTokenModel(sequelize);
@@ -40,6 +41,21 @@ export const FinancingRequirement = FinancingRequirementModel(sequelize);
 export const VehicleFinancingPlan = VehicleFinancingPlanModel(sequelize);
 export const FinancingPlanRequirement = FinancingPlanRequirementModel(sequelize);
 export const PushDevice = PushDeviceModel(sequelize);
+export const PasswordResetCode = PasswordResetCodeModel(sequelize);
+
+User.hasMany(PasswordResetCode, {
+  foreignKey: { name: "userId", field: "user_id", allowNull: false },
+  sourceKey: "id",
+  as: "passwordResetCodes",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+PasswordResetCode.belongsTo(User, {
+  foreignKey: { name: "userId", field: "user_id", allowNull: false },
+  targetKey: "id",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
 
 User.hasMany(ServiceToken, {
   foreignKey: { name: "ownerUserId", field: "owner_user_id", allowNull: false },

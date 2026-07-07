@@ -3,6 +3,7 @@ import { User, ServiceToken } from "../models/index.js";
 import { ApiError } from "../utils/errors.js";
 import { comparePassword, hashPassword, randomToken, sha256, signUserJwt } from "../utils/auth.js";
 import { calendarSchedulingUrlSchema, DEFAULT_CALENDAR_SCHEDULING_URL } from "../utils/calendarUrl.js";
+import { requestPasswordReset, resetPasswordWithCode } from "../services/passwordResetService.js";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -94,6 +95,32 @@ export const listServiceTokens = async (req, res, next) => {
       order: [["createdAt", "DESC"]],
     });
     return res.json(rows);
+  } catch (err) {
+    return next(err);
+  }
+};
+
+export const forgotPassword = async (req, res, next) => {
+  try {
+    const { email } = z.object({ email: z.string().email() }).parse(req.body);
+    const result = await requestPasswordReset(email);
+    return res.json(result);
+  } catch (err) {
+    return next(err);
+  }
+};
+
+export const resetPassword = async (req, res, next) => {
+  try {
+    const body = z
+      .object({
+        email: z.string().email(),
+        code: z.string().length(6).regex(/^\d{6}$/),
+        password: z.string().min(6),
+      })
+      .parse(req.body);
+    const result = await resetPasswordWithCode(body);
+    return res.json(result);
   } catch (err) {
     return next(err);
   }

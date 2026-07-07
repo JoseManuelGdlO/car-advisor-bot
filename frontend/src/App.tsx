@@ -6,6 +6,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { PhoneFrame } from "@/components/PhoneFrame";
 import Index from "./pages/Index.tsx";
 import Login from "./pages/Login.tsx";
+import ForgotPassword from "./pages/ForgotPassword.tsx";
+import ResetPassword from "./pages/ResetPassword.tsx";
 import Dashboard from "./pages/Dashboard.tsx";
 import Clientes from "./pages/Clientes.tsx";
 import ClienteDetalle from "./pages/ClienteDetalle.tsx";
@@ -42,6 +44,8 @@ const App = () => (
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/login" element={<GuestOnly><Login /></GuestOnly>} />
+              <Route path="/forgot-password" element={<GuestOnly><ForgotPassword /></GuestOnly>} />
+              <Route path="/reset-password" element={<GuestOnly><ResetPassword /></GuestOnly>} />
               <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
               <Route path="/clientes" element={<RequireAuth><Clientes /></RequireAuth>} />
               <Route path="/cliente/:id" element={<RequireAuth><ClienteDetalle /></RequireAuth>} />

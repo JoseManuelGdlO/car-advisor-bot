@@ -8,7 +8,7 @@ interface PhoneFrameProps {
   children: ReactNode;
 }
 
-const HIDE_NAV_PREFIXES = ["/login"];
+const HIDE_NAV_PREFIXES = ["/login", "/forgot-password", "/reset-password"];
 
 export const PhoneFrame = ({ children }: PhoneFrameProps) => {
   const { pathname } = useLocation();

@@ -86,6 +86,13 @@ const matchesConversationSearch = (conversation: any, query: string) => {
   );
 };
 
+const GENERIC_CLIENT_NAME = "cliente";
+
+const hasRegisteredClientName = (name?: string) => {
+  const trimmed = String(name || "").trim();
+  return trimmed.length > 0 && trimmed.toLowerCase() !== GENERIC_CLIENT_NAME;
+};
+
 const formatDateTime = (value: string) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
@@ -193,37 +200,49 @@ export default function Conversaciones() {
       </div>
 
       <ul className="divide-y divide-border">
-        {list.map((c) => (
-          <li key={c.id}>
-            <button
-              onClick={() => navigate(`/chat/${c.id}`)}
-              className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/50 transition-colors"
-            >
-              <div className="relative">
-                <Avatar name={c.client.name} color={c.client.avatarColor} />
-                <ChannelIcon channel={c.channel} size={10} className="absolute -bottom-0.5 -right-0.5 ring-2 ring-background" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="font-semibold text-sm truncate">{c.client.name}</p>
-                  <span className={cn("text-[10px] shrink-0", c.unread > 0 ? "text-primary font-bold" : "text-muted-foreground")}>
-                    {formatDateTime(c.lastTime)}
-                  </span>
+        {list.map((c) => {
+          const clientPhone = resolveClientDisplayPhone(c.client);
+          const registeredName = hasRegisteredClientName(c.client?.name) ? String(c.client.name).trim() : null;
+          const primaryLabel = clientPhone || registeredName || String(c.client?.name || "").trim() || "Cliente";
+          const avatarName = registeredName || clientPhone || c.client?.name;
+
+          return (
+            <li key={c.id}>
+              <button
+                onClick={() => navigate(`/chat/${c.id}`)}
+                className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/50 transition-colors"
+              >
+                <div className="relative">
+                  <Avatar name={avatarName} color={c.client.avatarColor} />
+                  <ChannelIcon channel={c.channel} size={10} className="absolute -bottom-0.5 -right-0.5 ring-2 ring-background" />
                 </div>
-                <div className="flex items-center justify-between gap-2 mt-0.5">
-                  <p className={cn("text-xs truncate", c.unread > 0 ? "text-foreground font-medium" : "text-muted-foreground")}>
-                    {c.lastMessage}
-                  </p>
-                  {c.unread > 0 && (
-                    <span className="shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold grid place-items-center">
-                      {c.unread}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-sm truncate">{primaryLabel}</p>
+                      {registeredName && clientPhone ? (
+                        <p className="text-[14px] font-bold text-muted-foreground truncate">{registeredName}</p>
+                      ) : null}
+                    </div>
+                    <span className={cn("text-[10px] shrink-0", c.unread > 0 ? "text-primary font-bold" : "text-muted-foreground")}>
+                      {formatDateTime(c.lastTime)}
                     </span>
-                  )}
+                  </div>
+                  <div className="flex items-center justify-between gap-2 mt-0.5">
+                    <p className={cn("text-xs truncate", c.unread > 0 ? "text-foreground font-medium" : "text-muted-foreground")}>
+                      {c.lastMessage}
+                    </p>
+                    {c.unread > 0 && (
+                      <span className="shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold grid place-items-center">
+                        {c.unread}
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </button>
-          </li>
-        ))}
+              </button>
+            </li>
+          );
+        })}
         {list.length === 0 && (
           <li className="px-4 py-12 text-center text-sm text-muted-foreground">Sin resultados</li>
         )}

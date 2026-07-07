@@ -223,7 +223,11 @@ export default function Login() {
 
           {!isRegisterMode && (
             <div className="text-right">
-              <button type="button" className="text-xs font-semibold text-primary-dark hover:underline">
+              <button
+                type="button"
+                onClick={() => navigate("/forgot-password")}
+                className="text-xs font-semibold text-primary-dark hover:underline"
+              >
                 ¿Olvidaste tu contraseña?
               </button>
             </div>
