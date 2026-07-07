@@ -8,6 +8,20 @@ import { crmApi } from "@/services/crm";
 import type { DashboardKpisDto } from "@/services/crm";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
+function KpiTrend({ value }: { value: number }) {
+  const isPositive = value > 0;
+  const isNegative = value < 0;
+  const colorClass = isPositive ? "text-success" : isNegative ? "text-warning" : "text-muted-foreground";
+  const label = isPositive ? `+${value}%` : `${value}%`;
+
+  return (
+    <div className={`flex items-center gap-1 mt-2 text-xs font-semibold ${colorClass}`}>
+      {isNegative ? <TrendingDown className="w-3 h-3" /> : <TrendingUp className="w-3 h-3" />}
+      {label} vs ayer
+    </div>
+  );
+}
+
 const DEFAULT_KPIS: DashboardKpisDto = {
   activeChats: 0,
   newToday: 0,
@@ -95,10 +109,7 @@ export default function Dashboard() {
             </div>
             <p className="text-2xl font-bold text-foreground">{safeKpis.newLeads}</p>
             <p className="text-xs text-muted-foreground">Leads nuevos</p>
-            <div className="flex items-center gap-1 mt-2 text-success text-xs font-semibold">
-              <TrendingUp className="w-3 h-3" />
-              +{safeKpis.newLeadsChange}% vs ayer
-            </div>
+            <KpiTrend value={safeKpis.newLeadsChange} />
           </div>
 
           <div className="bg-card rounded-2xl p-4 shadow-card border border-border">
@@ -107,10 +118,7 @@ export default function Dashboard() {
             </div>
             <p className="text-2xl font-bold text-foreground">{safeKpis.conversions}</p>
             <p className="text-xs text-muted-foreground">Conversiones</p>
-            <div className="flex items-center gap-1 mt-2 text-success text-xs font-semibold">
-              <TrendingUp className="w-3 h-3" />
-              +{safeKpis.conversionsChange}% vs ayer
-            </div>
+            <KpiTrend value={safeKpis.conversionsChange} />
           </div>
         </div>
 

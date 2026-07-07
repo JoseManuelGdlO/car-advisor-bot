@@ -1,32 +1,52 @@
 import { Op, fn, col, where } from "sequelize";
 import { ClientLead, Conversation } from "../models/index.js";
+import { calcDayOverDayChangePct, utcDayBounds } from "../utils/dashboardKpis.js";
 
 // Scope multi-tenant por propietario autenticado.
 const ownerWhere = (userId) => ({ ownerUserId: userId });
 
+const createdAtBetween = (start, end) => ({
+  createdAt: { [Op.between]: [start, end] },
+});
+
+// Conversiones diarias: updatedAt como proxy de cuándo pasó a sold (sin columna sold_at).
+const soldUpdatedBetween = (start, end) => ({
+  status: "sold",
+  updatedAt: { [Op.between]: [start, end] },
+});
+
 export const getDashboard = async (req, res) => {
-  // Agrega KPIs principales para cards y gráficas del dashboard.
   const userId = req.auth.userId;
   const now = new Date();
-  const todayUtcEnd = new Date(
-    Date.UTC(
-      now.getUTCFullYear(),
-      now.getUTCMonth(),
-      now.getUTCDate(),
-      23,
-      59,
-      59,
-      999
-    )
-  );
+  const todayBounds = utcDayBounds(now, 0);
+  const yesterdayBounds = utcDayBounds(now, -1);
+  const todayUtcEnd = todayBounds.end;
+
   const weekStartUtc = new Date(todayUtcEnd);
   weekStartUtc.setUTCDate(todayUtcEnd.getUTCDate() - 6);
   weekStartUtc.setUTCHours(0, 0, 0, 0);
 
-  const [activeChats, newLeads, conversions, waiting, topRows, weeklyRows] = await Promise.all([
+  const [
+    activeChats,
+    newLeadsToday,
+    newLeadsYesterday,
+    conversionsToday,
+    conversionsYesterday,
+    waiting,
+    topRows,
+    weeklyRows,
+  ] = await Promise.all([
     Conversation.count({ where: ownerWhere(userId) }),
-    ClientLead.count({ where: { ...ownerWhere(userId), status: "lead" } }),
-    ClientLead.count({ where: { ...ownerWhere(userId), status: "sold" } }),
+    ClientLead.count({ where: { ...ownerWhere(userId), ...createdAtBetween(todayBounds.start, todayBounds.end) } }),
+    ClientLead.count({
+      where: { ...ownerWhere(userId), ...createdAtBetween(yesterdayBounds.start, yesterdayBounds.end) },
+    }),
+    ClientLead.count({
+      where: { ...ownerWhere(userId), ...soldUpdatedBetween(todayBounds.start, todayBounds.end) },
+    }),
+    ClientLead.count({
+      where: { ...ownerWhere(userId), ...soldUpdatedBetween(yesterdayBounds.start, yesterdayBounds.end) },
+    }),
     Conversation.count({ where: { ...ownerWhere(userId), unread: { [Op.gt]: 0 } } }),
     ClientLead.findAll({
       where: {
@@ -60,9 +80,7 @@ export const getDashboard = async (req, res) => {
     d.setUTCDate(weekStartUtc.getUTCDate() + i);
     return d;
   });
-  const weekDayMap = new Map(
-    weekDays.map((day) => [day.toISOString().slice(0, 10), 0])
-  );
+  const weekDayMap = new Map(weekDays.map((day) => [day.toISOString().slice(0, 10), 0]));
 
   weeklyRows.forEach((row) => {
     const rawCreatedAt = row.createdAt || row.created_at;
@@ -78,10 +96,10 @@ export const getDashboard = async (req, res) => {
     activeChats,
     newToday: 0,
     waiting,
-    newLeads,
-    newLeadsChange: 0,
-    conversions,
-    conversionsChange: 0,
+    newLeads: newLeadsToday,
+    newLeadsChange: calcDayOverDayChangePct(newLeadsToday, newLeadsYesterday),
+    conversions: conversionsToday,
+    conversionsChange: calcDayOverDayChangePct(conversionsToday, conversionsYesterday),
     weeklyChats,
     topProducts: topRows
       .map((x) => ({
