@@ -331,6 +331,32 @@ export const sendConversationAttachmentMessage = async ({
   });
 };
 
+/** Elimina financing_selection y promotion_selection de notes; conserva customer_info. */
+export const buildNotesWithoutCommercialSelections = (notes) => {
+  const emptyResult = { notes: null, hadFinancing: false, hadPromotion: false };
+  if (!notes) return emptyResult;
+  let parsed;
+  try {
+    parsed = JSON.parse(String(notes));
+  } catch {
+    return emptyResult;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return emptyResult;
+
+  const hadFinancing = Boolean(isNonEmptyObject(parsed.financing_selection));
+  const hadPromotion = Boolean(isNonEmptyObject(parsed.promotion_selection));
+  const nextNotes = { ...parsed };
+  delete nextNotes.financing_selection;
+  delete nextNotes.promotion_selection;
+
+  const keys = Object.keys(nextNotes);
+  return {
+    notes: keys.length > 0 ? JSON.stringify(nextNotes) : null,
+    hadFinancing,
+    hadPromotion,
+  };
+};
+
 const findConversationForExternalUser = async ({ ownerUserId, userId, platform }) => {
   const inboundChannel = normalizeInboundChannel(platform || "web");
   const normalizedUserId = String(userId || "").trim();
@@ -368,6 +394,23 @@ const findConversationForExternalUser = async ({ ownerUserId, userId, platform }
   });
 };
 
+const findLeadForExternalUser = async ({ ownerUserId, userId, platform }) => {
+  const conv = await findConversationForExternalUser({ ownerUserId, userId, platform });
+  if (conv?.clientLeadId) {
+    const lead = await ClientLead.findOne({
+      where: { id: conv.clientLeadId, ownerUserId },
+    });
+    if (lead) return lead;
+  }
+
+  const normalizedUserId = String(userId || "").trim();
+  if (!normalizedUserId) return null;
+
+  return ClientLead.findOne({
+    where: { ownerUserId, phone: normalizedUserId },
+  });
+};
+
 /** Reactiva el bot en CRM tras reset de sesion (revierte handoff de lead_capture). */
 export const releaseBotControlForExternalUser = async ({ ownerUserId, userId, platform }) => {
   if (!ownerUserId) throw new ApiError(500, "owner user is not configured");
@@ -401,4 +444,44 @@ export const releaseBotControlForExternalUser = async ({ ownerUserId, userId, pl
   });
 
   return { released: true, conversationId: conv.id };
+};
+
+/** Limpia vehiculo de interes, financiamiento y promocion asociados al lead CRM. */
+export const clearLeadCommercialAssociationsForExternalUser = async ({ ownerUserId, userId, platform }) => {
+  const defaultDetails = { vehicle: false, financing: false, promotion: false };
+  const emptyResult = { cleared: false, clientLeadId: null, details: defaultDetails };
+
+  if (!ownerUserId) throw new ApiError(500, "owner user is not configured");
+  const inboundChannel = normalizeInboundChannel(platform || "web");
+  const normalizedUserId = String(userId || "").trim();
+  if (!normalizedUserId) return emptyResult;
+
+  const lead = await findLeadForExternalUser({
+    ownerUserId,
+    userId: normalizedUserId,
+    platform: inboundChannel,
+  });
+  if (!lead) return emptyResult;
+
+  const hadVehicle = Boolean(String(lead.interestedIn || "").trim());
+  const { notes: newNotes, hadFinancing, hadPromotion } = buildNotesWithoutCommercialSelections(lead.notes);
+  const hadAnything = hadVehicle || hadFinancing || hadPromotion;
+  if (!hadAnything) {
+    return { cleared: false, clientLeadId: lead.id, details: defaultDetails };
+  }
+
+  await lead.update({
+    interestedIn: "",
+    notes: newNotes,
+  });
+
+  return {
+    cleared: true,
+    clientLeadId: lead.id,
+    details: {
+      vehicle: hadVehicle,
+      financing: hadFinancing,
+      promotion: hadPromotion,
+    },
+  };
 };

@@ -4,12 +4,19 @@ import { normalizeInboundChannel } from "../utils/integrationChannel.js";
 import { env } from "../config/env.js";
 import { ChannelConversationContext, ClientLead, Conversation } from "../models/index.js";
 import { setBotSessionDisabled } from "../services/botEngineClient.js";
-import { releaseBotControlForExternalUser, upsertConversationEvent } from "../services/conversationService.js";
+import { releaseBotControlForExternalUser, clearLeadCommercialAssociationsForExternalUser, upsertConversationEvent } from "../services/conversationService.js";
 import { appLog } from "../utils/appLogger.js";
 import { resolveRequestOwner } from "../utils/resolveRequestOwner.js";
 
 export const botSetControlSchema = z.object({
   isHumanControlled: z.boolean(),
+});
+
+export const botResetConversationSchema = z.object({
+  user_id: z.string().min(1),
+  platform: z.string().optional(),
+  owner_user_id: z.string().uuid().optional(),
+  resetAll: z.boolean().optional(),
 });
 
 // Obtiene URL base del motor de bot sin slash final.
@@ -19,6 +26,7 @@ export const botResetConversation = async (req, res) => {
   // Reinicia la sesión conversacional en el motor del bot para un user_id + canal.
   // 1) normaliza inputs.
   const ownerUserId = resolveRequestOwner(req, { bodyField: "owner_user_id" });
+  const resetAll = Boolean(req.body?.resetAll);
   const normalizedUserId = String(req.body?.user_id || "").trim();
   const resolvedChannel = normalizeInboundChannel(req.body?.platform || env.bot.defaultInboundChannel || "web");
   appLog.info(
@@ -77,6 +85,22 @@ export const botResetConversation = async (req, res) => {
   } catch (err) {
     console.error("[botResetConversation] release bot control failed", err);
   }
+  let leadAssociationsCleared = {
+    cleared: false,
+    clientLeadId: null,
+    details: { vehicle: false, financing: false, promotion: false },
+  };
+  if (resetAll) {
+    try {
+      leadAssociationsCleared = await clearLeadCommercialAssociationsForExternalUser({
+        ownerUserId,
+        userId: normalizedUserId,
+        platform: resolvedChannel,
+      });
+    } catch (err) {
+      console.error("[botResetConversation] clear lead associations failed", err);
+    }
+  }
   appLog.info("botResetConversation", "ok");
   appLog.debug("botResetConversation", {
     status: data && typeof data === "object" ? String(data.status ?? "") : "",
@@ -84,12 +108,22 @@ export const botResetConversation = async (req, res) => {
     user_id: data && typeof data === "object" ? String(data.user_id ?? "") : "",
     bot_control_released: String(botControlReleased.released),
     conversation_id: botControlReleased.conversationId || "",
+    reset_all: String(resetAll),
+    lead_associations_cleared: String(leadAssociationsCleared.cleared),
+    client_lead_id: leadAssociationsCleared.clientLeadId || "",
   });
-  return res.status(200).json({
+  const responseBody = {
     ...(data && typeof data === "object" ? data : {}),
     bot_control_released: botControlReleased.released,
     conversation_id: botControlReleased.conversationId,
-  });
+  };
+  if (resetAll) {
+    responseBody.reset_all = true;
+    responseBody.lead_associations_cleared = leadAssociationsCleared.cleared;
+    responseBody.client_lead_id = leadAssociationsCleared.clientLeadId;
+    responseBody.cleared = leadAssociationsCleared.details;
+  }
+  return res.status(200).json(responseBody);
 };
 
 export const botUpsertConversation = async (req, res) => {
