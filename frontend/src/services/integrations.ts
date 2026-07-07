@@ -32,6 +32,7 @@ export const integrationsApi = {
   ) => apiRequest<IntegrationDto>("/integrations", "POST", body, token),
   patch: (token: string, id: string, body: Partial<Pick<IntegrationDto, "displayName" | "status" | "webhookUrl">>) =>
     apiRequest<IntegrationDto>(`/integrations/${id}`, "PATCH", body, token),
+  remove: (token: string, id: string) => apiRequest<{ ok: boolean }>(`/integrations/${id}`, "DELETE", undefined, token),
   postCredentials: (token: string, id: string, payload: Record<string, unknown>) =>
     apiRequest<{ ok: boolean; hasActiveCredential: boolean }>(`/integrations/${id}/credentials`, "POST", { payload }, token),
   test: (token: string, id: string) => apiRequest<{ ok: boolean; message: string }>(`/integrations/${id}/test`, "POST", {}, token),

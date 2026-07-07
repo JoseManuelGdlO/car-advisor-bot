@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   LogOut,
@@ -15,6 +15,12 @@ import {
   FlaskConical,
   Car,
   AlertTriangle,
+  MoreVertical,
+  Trash2,
+  KeyRound,
+  QrCode,
+  Power,
+  PowerOff,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ScreenHeader } from "@/components/ScreenHeader";
@@ -27,6 +33,25 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { GoogleCalendarLinkHelpDialog } from "@/components/GoogleCalendarLinkHelpDialog";
 import { FieldErrorText, FormErrorAlert } from "@/components/FormErrorAlert";
@@ -112,6 +137,7 @@ export default function Perfil() {
   });
   const [integrationDialogOpen, setIntegrationDialogOpen] = useState(false);
   const [integrationFormKey, setIntegrationFormKey] = useState(0);
+  const [deleteIntegrationId, setDeleteIntegrationId] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [lastQrByIntegrationId, setLastQrByIntegrationId] = useState<Record<string, { url: string; expiresAt: string }>>({});
@@ -231,9 +257,43 @@ export default function Perfil() {
     },
   });
 
-  const testIntegrationMutation = useMutation({
-    mutationFn: (id: string) => integrationsApi.test(token!, id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["integrations"] }),
+  const patchIntegrationMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: IntegrationDto["status"] }) => integrationsApi.patch(token!, id, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["integrations"] });
+      toast.success("Integración actualizada.");
+    },
+    onError: (error) => toast.error(normalizeApiError(error, "No se pudo actualizar la integración.").formError),
+  });
+
+  const deleteIntegrationMutation = useMutation({
+    mutationFn: (id: string) => integrationsApi.remove(token!, id),
+    onSuccess: (_data, id) => {
+      setDeleteIntegrationId(null);
+      setLastQrByIntegrationId((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      setLastQrErrorByIntegrationId((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      setDeviceStatusByIntegrationId((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      if (credOpenFor === id) setCredOpenFor(null);
+      if (qrViewerIntegrationId === id) {
+        setQrViewerOpen(false);
+        setQrViewerIntegrationId(null);
+      }
+      queryClient.invalidateQueries({ queryKey: ["integrations"] });
+      toast.success("Integración eliminada.");
+    },
+    onError: (error) => toast.error(normalizeApiError(error, "No se pudo eliminar la integración.").formError),
   });
 
   const deleteAccountMutation = useMutation({
@@ -320,6 +380,19 @@ export default function Perfil() {
     mutationFn: (params: { integrationId: string; to: string; text: string }) => integrationsApi.sendWhatsAppTest(token!, params),
   });
 
+  const fetchedDeviceStatusRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!token) return;
+    integrations
+      .filter((it) => it.channel === "whatsapp" && it.provider === "whatsapp-connect")
+      .forEach((it) => {
+        if (fetchedDeviceStatusRef.current.has(it.id)) return;
+        fetchedDeviceStatusRef.current.add(it.id);
+        deviceStatusMutation.mutate(it.id);
+      });
+  }, [token, integrations]);
+
   const openQrViewer = (integrationId: string) => {
     setQrViewerIntegrationId(integrationId);
     setQrViewerOpen(true);
@@ -334,6 +407,16 @@ export default function Perfil() {
   const isInstagramMetaCredModal = Boolean(
     activeCredIntegration && activeCredIntegration.channel === "instagram" && activeCredIntegration.provider === "meta"
   );
+
+  const openCredentials = (integrationId: string) => {
+    setCredOpenFor(integrationId);
+    setCredError("");
+    setCredJson("{}");
+    setWcCredForm({ deviceId: "", webhookSecret: "", tenantId: "" });
+    setIgCredForm({ instagramBusinessAccountId: "", pageId: "", pageAccessToken: "" });
+  };
+
+  const deleteIntegrationTarget = deleteIntegrationId ? integrations.find((it) => it.id === deleteIntegrationId) || null : null;
 
   return (
     <>
@@ -535,152 +618,69 @@ export default function Perfil() {
             </Dialog>
           </div>
           <p className="text-xs text-muted-foreground">
-            Para WhatsApp/Facebook/Instagram/Telegram: si creas una integración aquí, el bot solo responderá automáticamente cuando esté <strong>activa</strong> y tenga credenciales guardadas. Cada usuario de la plataforma tiene sus propias integraciones: el usuario A puede conectar su Instagram y el usuario B el suyo, sin mezclar cuentas.
+            Conecta tus canales (WhatsApp, Instagram, etc.). El bot solo responde cuando la integración está <strong>activa</strong> y tiene credenciales guardadas.
           </p>
-          <p className="text-[11px] text-muted-foreground font-mono break-all">
-            Webhook Instagram (Meta, una URL para toda la app): <span className="select-all">{metaInstagramWebhookUrl}</span>
-          </p>
-          <ul className="space-y-2">
-            {integrations.map((it) => (
-              <li key={it.id} className="rounded-xl border border-border p-3 space-y-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="text-sm font-semibold">{channelLabel(it.channel)}</p>
-                    <p className="text-[11px] text-muted-foreground">
-                      {it.provider} · {it.status}
-                      {it.hasActiveCredential ? " · credenciales OK" : " · sin credenciales"}
-                    </p>
-                    {it.lastError ? <p className="text-[11px] text-destructive mt-1">{it.lastError}</p> : null}
-                  </div>
-                  <div className="flex flex-col gap-1 shrink-0">
-                    <Button size="sm" variant="secondary" className="h-8" onClick={() => testIntegrationMutation.mutate(it.id)} disabled={testIntegrationMutation.isPending}>
-                      <FlaskConical className="w-3.5 h-3.5 mr-1" /> Probar
-                    </Button>
-                    {it.channel === "whatsapp" && it.provider === "whatsapp-connect" ? (
-                      <Button size="sm" variant="outline" className="h-8" onClick={() => qrLinkMutation.mutate(it.id)} disabled={qrLoadingIntegrationId === it.id}>
-                        {qrLoadingIntegrationId === it.id ? "Generando QR..." : "Generar QR"}
-                      </Button>
-                    ) : null}
-                    {it.channel === "whatsapp" && it.provider === "whatsapp-connect" ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-8"
-                        onClick={() => deviceStatusMutation.mutate(it.id)}
-                        disabled={deviceStatusLoadingIntegrationId === it.id}
-                      >
-                        {deviceStatusLoadingIntegrationId === it.id ? "Consultando..." : "Estado device"}
-                      </Button>
-                    ) : null}
-                    {it.channel === "whatsapp" && it.provider === "whatsapp-connect" ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-8"
-                        disabled={sendTestMutation.isPending}
-                        onClick={() => {
-                          // Flujo simple de prueba sin crear formulario adicional.
-                          const to = window.prompt("Número destino (con código de país):", "");
-                          if (!to) return;
-                          const text = window.prompt("Mensaje de prueba:", "Hola desde Car Advisor Bot");
-                          if (!text) return;
-                          sendTestMutation.mutate({ integrationId: it.id, to, text });
-                        }}
-                      >
-                        Probar envío
-                      </Button>
-                    ) : null}
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8"
-                      onClick={() => {
-                        setCredOpenFor(it.id);
-                        setCredError("");
-                        setCredJson("{}");
-                        setWcCredForm({
-                          deviceId: "",
-                          webhookSecret: "",
-                          tenantId: "",
-                        });
-                        setIgCredForm({
-                          instagramBusinessAccountId: "",
-                          pageId: "",
-                          pageAccessToken: "",
-                        });
-                      }}
-                    >
-                      Credenciales
-                    </Button>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant={it.status === "active" ? "default" : "outline"}
-                    className="h-8"
-                    onClick={() => integrationsApi.patch(token!, it.id, { status: "active" }).then(() => queryClient.invalidateQueries({ queryKey: ["integrations"] }))}
-                  >
-                    Activar
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-8"
-                    onClick={() => integrationsApi.patch(token!, it.id, { status: "disabled" }).then(() => queryClient.invalidateQueries({ queryKey: ["integrations"] }))}
-                  >
-                    Desactivar
-                  </Button>
-                </div>
-                {it.channel === "instagram" && it.provider === "meta" ? (
-                  <div className="space-y-1 rounded-lg border border-border bg-muted/30 p-2">
-                    <p className="text-[11px] text-muted-foreground">
-                      Tus credenciales (Page ID, token, IG Business ID) son solo de <strong>tu</strong> cuenta de Instagram/Página; otro usuario guardará los suyos en su perfil. En Meta Developer (la app de la plataforma), suscribe el webhook <strong>instagram</strong> a esta URL y el verify token global del servidor (<code className="text-[10px]">META_WEBHOOK_VERIFY_TOKEN</code>).
-                    </p>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 text-[11px]"
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          await navigator.clipboard.writeText(metaInstagramWebhookUrl);
-                        } catch {
-                          /* ignore */
-                        }
-                      }}
-                    >
-                      Copiar URL webhook
-                    </Button>
-                  </div>
-                ) : null}
-                {it.channel === "whatsapp" && it.provider === "whatsapp-connect" ? (
-                  <div className="space-y-1">
-                    {lastQrErrorByIntegrationId[it.id] ? <p className="text-[11px] text-destructive">{lastQrErrorByIntegrationId[it.id]}</p> : null}
-                    {lastQrByIntegrationId[it.id]?.expiresAt ? (
-                      <p className="text-[11px] text-muted-foreground">
-                        {new Date(lastQrByIntegrationId[it.id].expiresAt).getTime() <= Date.now()
-                          ? "QR expirado. Genera uno nuevo."
-                          : `QR vigente hasta ${new Date(lastQrByIntegrationId[it.id].expiresAt).toLocaleString()}`}
-                      </p>
-                    ) : null}
-                    {lastQrByIntegrationId[it.id]?.url ? (
-                      <Button size="sm" variant="ghost" className="h-7 px-1 text-[11px]" onClick={() => openQrViewer(it.id)}>
-                        Ver QR en modal
-                      </Button>
-                    ) : null}
-                    {deviceStatusByIntegrationId[it.id] ? (
-                      <p className="text-[11px] text-muted-foreground">
-                        Device {deviceStatusByIntegrationId[it.id].status} · actualizado {new Date(deviceStatusByIntegrationId[it.id].updatedAt).toLocaleString()}
-                      </p>
-                    ) : null}
-                  </div>
-                ) : null}
-              </li>
-            ))}
-            {integrations.length === 0 ? <p className="text-xs text-muted-foreground">No hay integraciones. Añade al menos una si quieres exigir credenciales por canal.</p> : null}
-          </ul>
+          {integrations.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No hay integraciones. Pulsa <strong>Canal</strong> para añadir una.</p>
+          ) : (
+            <Accordion type="single" collapsible className="space-y-2">
+              {integrations.map((it) => (
+                <IntegrationAccordionItem
+                  key={it.id}
+                  integration={it}
+                  channelTitle={channelLabel(it.channel)}
+                  metaInstagramWebhookUrl={metaInstagramWebhookUrl}
+                  lastQr={lastQrByIntegrationId[it.id]}
+                  lastQrError={lastQrErrorByIntegrationId[it.id]}
+                  deviceStatus={deviceStatusByIntegrationId[it.id]}
+                  qrLoading={qrLoadingIntegrationId === it.id}
+                  deviceStatusLoading={deviceStatusLoadingIntegrationId === it.id}
+                  sendTestPending={sendTestMutation.isPending}
+                  patchPending={patchIntegrationMutation.isPending}
+                  onOpenCredentials={() => openCredentials(it.id)}
+                  onGenerateQr={() => qrLinkMutation.mutate(it.id)}
+                  onViewQr={() => openQrViewer(it.id)}
+                  onSendTest={() => {
+                    const to = window.prompt("Número destino (con código de país):", "");
+                    if (!to) return;
+                    const text = window.prompt("Mensaje de prueba:", "Hola desde Car Advisor Bot");
+                    if (!text) return;
+                    sendTestMutation.mutate({ integrationId: it.id, to, text });
+                  }}
+                  onActivate={() => patchIntegrationMutation.mutate({ id: it.id, status: "active" })}
+                  onDeactivate={() => patchIntegrationMutation.mutate({ id: it.id, status: "disabled" })}
+                  onDelete={() => setDeleteIntegrationId(it.id)}
+                />
+              ))}
+            </Accordion>
+          )}
         </div>
+
+        <AlertDialog open={Boolean(deleteIntegrationId)} onOpenChange={(open) => !open && setDeleteIntegrationId(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Eliminar esta integración?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {deleteIntegrationTarget
+                  ? `Se ocultará ${channelLabel(deleteIntegrationTarget.channel)} (${deleteIntegrationTarget.provider}) y el bot dejará de usarla. Podrás volver a conectar el mismo canal después.`
+                  : "La integración dejará de mostrarse y el bot no la usará. Podrás volver a conectar el mismo canal después."}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleteIntegrationMutation.isPending}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                disabled={!deleteIntegrationId || deleteIntegrationMutation.isPending}
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (deleteIntegrationId) deleteIntegrationMutation.mutate(deleteIntegrationId);
+                }}
+              >
+                {deleteIntegrationMutation.isPending ? "Eliminando..." : "Eliminar"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         <Dialog
           open={Boolean(credOpenFor)}
@@ -976,6 +976,196 @@ export default function Perfil() {
         <p className="text-center text-[10px] text-muted-foreground">AutoBot · Perfil y cuenta</p>
       </div>
     </>
+  );
+}
+
+const integrationStatusLabel: Record<IntegrationDto["status"], string> = {
+  active: "Activa",
+  disabled: "Desactivada",
+  draft: "Borrador",
+  error: "Error",
+};
+
+const integrationStatusVariant = (status: IntegrationDto["status"]) => {
+  if (status === "active") return "default" as const;
+  if (status === "error") return "destructive" as const;
+  return "secondary" as const;
+};
+
+const integrationHeaderTitle = (channelTitle: string, displayName?: string | null) => {
+  const name = displayName?.trim();
+  if (!name) return channelTitle;
+  if (name.localeCompare(channelTitle, undefined, { sensitivity: "accent" }) === 0) return channelTitle;
+  return `${channelTitle} · ${name}`;
+};
+
+function IntegrationAccordionItem({
+  integration,
+  channelTitle,
+  metaInstagramWebhookUrl,
+  lastQr,
+  lastQrError,
+  deviceStatus,
+  qrLoading,
+  deviceStatusLoading,
+  sendTestPending,
+  patchPending,
+  onOpenCredentials,
+  onGenerateQr,
+  onViewQr,
+  onSendTest,
+  onActivate,
+  onDeactivate,
+  onDelete,
+}: {
+  integration: IntegrationDto;
+  channelTitle: string;
+  metaInstagramWebhookUrl: string;
+  lastQr?: { url: string; expiresAt: string };
+  lastQrError?: string;
+  deviceStatus?: { status: "ONLINE" | "OFFLINE" | "UNKNOWN"; updatedAt: string };
+  qrLoading: boolean;
+  deviceStatusLoading: boolean;
+  sendTestPending: boolean;
+  patchPending: boolean;
+  onOpenCredentials: () => void;
+  onGenerateQr: () => void;
+  onViewQr: () => void;
+  onSendTest: () => void;
+  onActivate: () => void;
+  onDeactivate: () => void;
+  onDelete: () => void;
+}) {
+  const isWhatsAppConnect = integration.channel === "whatsapp" && integration.provider === "whatsapp-connect";
+  const isInstagramMeta = integration.channel === "instagram" && integration.provider === "meta";
+  const credentialLabel = integration.hasActiveCredential ? "credenciales OK" : "sin credenciales";
+  const qrExpired = lastQr ? new Date(lastQr.expiresAt).getTime() <= Date.now() : false;
+  const headerTitle = integrationHeaderTitle(channelTitle, integration.displayName);
+
+  return (
+    <AccordionItem value={integration.id} className="rounded-xl border border-border px-3 border-b overflow-hidden">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-0.5">
+        <AccordionTrigger
+          className="min-w-0 py-3 hover:no-underline overflow-hidden justify-start gap-2 [&>svg]:ml-auto [&>svg]:shrink-0"
+          aria-label={`${headerTitle} — ${integrationStatusLabel[integration.status]}`}
+        >
+          <div className="grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 overflow-hidden">
+            <Badge
+              variant={integrationStatusVariant(integration.status)}
+              className="shrink-0 max-w-[5.5rem] truncate text-[10px]"
+              title={integrationStatusLabel[integration.status]}
+            >
+              {integrationStatusLabel[integration.status]}
+            </Badge>
+            <span className="block min-w-0 truncate text-sm font-semibold" title={headerTitle}>
+              {headerTitle}
+            </span>
+          </div>
+        </AccordionTrigger>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 shrink-0"
+              aria-label="Opciones de integración"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MoreVertical className="w-4 h-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-52">
+            <DropdownMenuItem className="gap-2" onSelect={onOpenCredentials}>
+              <KeyRound className="w-4 h-4" />
+              Credenciales
+            </DropdownMenuItem>
+            {isWhatsAppConnect ? (
+              <>
+                <DropdownMenuItem className="gap-2" onSelect={onGenerateQr} disabled={qrLoading}>
+                  <QrCode className="w-4 h-4" />
+                  {qrLoading ? "Generando QR..." : "Generar QR"}
+                </DropdownMenuItem>
+                {lastQr?.url ? (
+                  <DropdownMenuItem className="gap-2" onSelect={onViewQr}>
+                    <QrCode className="w-4 h-4" />
+                    Ver QR
+                  </DropdownMenuItem>
+                ) : null}
+                <DropdownMenuItem className="gap-2" onSelect={onSendTest} disabled={sendTestPending}>
+                  <FlaskConical className="w-4 h-4" />
+                  Probar envío
+                </DropdownMenuItem>
+              </>
+            ) : null}
+            <DropdownMenuSeparator />
+            {integration.status === "active" ? (
+              <DropdownMenuItem className="gap-2" onSelect={onDeactivate} disabled={patchPending}>
+                <PowerOff className="w-4 h-4" />
+                Desactivar
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem className="gap-2" onSelect={onActivate} disabled={patchPending}>
+                <Power className="w-4 h-4" />
+                Activar
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem className="gap-2 text-destructive focus:text-destructive" onSelect={onDelete}>
+              <Trash2 className="w-4 h-4" />
+              Eliminar
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      <AccordionContent className="pb-3">
+        <div className="space-y-2 text-[11px] text-muted-foreground">
+          <div>
+            <p className="text-sm font-semibold text-foreground">{headerTitle}</p>
+            <p>{integration.provider} · {credentialLabel}</p>
+          </div>
+          {integration.lastError ? <p className="text-destructive">{integration.lastError}</p> : null}
+          {isInstagramMeta ? (
+            <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-2">
+              <p>
+                Tus credenciales son solo de tu cuenta de Instagram/Página. En Meta Developer, suscribe el webhook <strong>instagram</strong> a esta URL:
+              </p>
+              <p className="font-mono break-all select-all">{metaInstagramWebhookUrl}</p>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-[11px]"
+                type="button"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(metaInstagramWebhookUrl);
+                    toast.success("URL copiada.");
+                  } catch {
+                    toast.error("No se pudo copiar la URL.");
+                  }
+                }}
+              >
+                Copiar URL webhook
+              </Button>
+            </div>
+          ) : null}
+          {isWhatsAppConnect ? (
+            <div className="space-y-1">
+              {deviceStatusLoading && !deviceStatus ? <p>Consultando estado del device...</p> : null}
+              {lastQrError ? <p className="text-destructive">{lastQrError}</p> : null}
+              {lastQr?.expiresAt ? (
+                <p>{qrExpired ? "QR expirado. Genera uno nuevo desde el menú." : `QR vigente hasta ${new Date(lastQr.expiresAt).toLocaleString()}`}</p>
+              ) : null}
+              {deviceStatus ? (
+                <p>
+                  Device {deviceStatus.status} · actualizado {new Date(deviceStatus.updatedAt).toLocaleString()}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </AccordionContent>
+    </AccordionItem>
   );
 }
 

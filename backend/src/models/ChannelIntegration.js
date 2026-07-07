@@ -26,7 +26,7 @@ export default function ChannelIntegrationModel(sequelize) {
       field: "display_name",
     },
     status: {
-      type: DataTypes.ENUM("draft", "active", "error", "disabled"),
+      type: DataTypes.ENUM("draft", "active", "error", "disabled", "eliminated"),
       allowNull: false,
       defaultValue: "draft",
     },

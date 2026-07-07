@@ -1,16 +1,19 @@
+import { Op } from "sequelize";
 import { z } from "zod";
 import { ChannelCredential, ChannelIntegration } from "../models/index.js";
 import { ApiError } from "../utils/errors.js";
 import { encryptCredentialsPayload, decryptCredentialsPayload } from "../utils/credentialsCrypto.js";
 
 const channelEnum = z.enum(["whatsapp", "facebook", "telegram", "web", "api", "instagram"]);
+const userVisibleStatusEnum = z.enum(["draft", "active", "error", "disabled"]);
+const ELIMINATED_STATUS = "eliminated";
 
 const createSchema = z
   .object({
     channel: channelEnum,
     provider: z.string().min(1).max(60).default("meta"),
     displayName: z.string().max(160).optional().nullable(),
-    status: z.enum(["draft", "active", "error", "disabled"]).optional(),
+    status: userVisibleStatusEnum.optional(),
     webhookUrl: z.string().max(500).optional().nullable(),
   })
   .strict();
@@ -18,7 +21,7 @@ const createSchema = z
 const patchSchema = z
   .object({
     displayName: z.string().max(160).nullable().optional(),
-    status: z.enum(["draft", "active", "error", "disabled"]).optional(),
+    status: userVisibleStatusEnum.optional(),
     webhookUrl: z.string().max(500).nullable().optional(),
   })
   .partial()
@@ -30,10 +33,37 @@ const credentialsSchema = z
   })
   .strict();
 
-// Scope multi-tenant por propietario autenticado.
 const ownerWhere = (userId) => ({ ownerUserId: userId });
 
-// DTO estable para frontend, incluyendo si existe credencial activa.
+const visibleIntegrationsWhere = (userId) => ({
+  ...ownerWhere(userId),
+  status: { [Op.ne]: ELIMINATED_STATUS },
+});
+
+export const resolveCreateIntegrationOutcome = (existing, body) => {
+  if (!existing) return { kind: "create" };
+  if (existing.status === ELIMINATED_STATUS) {
+    return {
+      kind: "reactivate",
+      patch: {
+        status: body.status ?? "draft",
+        displayName: body.displayName !== undefined ? body.displayName : existing.displayName,
+        webhookUrl: body.webhookUrl !== undefined ? body.webhookUrl : existing.webhookUrl,
+        lastError: null,
+      },
+    };
+  }
+  return { kind: "conflict" };
+};
+
+const findOwnedIntegrationOr404 = async (userId, id) => {
+  const row = await ChannelIntegration.findOne({
+    where: { id, ...visibleIntegrationsWhere(userId) },
+  });
+  if (!row) throw new ApiError(404, "Integration not found");
+  return row;
+};
+
 const integrationDto = async (row) => {
   const activeCred = await ChannelCredential.findOne({
     where: { ownerUserId: row.ownerUserId, channelIntegrationId: row.id, isActive: true },
@@ -53,9 +83,8 @@ const integrationDto = async (row) => {
 
 export const listIntegrations = async (req, res, next) => {
   try {
-    // Lista integraciones por canal/proveedor del usuario actual.
     const rows = await ChannelIntegration.findAll({
-      where: ownerWhere(req.auth.userId),
+      where: visibleIntegrationsWhere(req.auth.userId),
       order: [["updatedAt", "DESC"]],
     });
     const out = await Promise.all(rows.map((r) => integrationDto(r)));
@@ -67,24 +96,30 @@ export const listIntegrations = async (req, res, next) => {
 
 export const createIntegration = async (req, res, next) => {
   try {
-    // Crea una integración única por (owner, channel, provider).
     const body = createSchema.parse(req.body);
-    const [row, created] = await ChannelIntegration.findOrCreate({
+    const existing = await ChannelIntegration.findOne({
       where: {
         ownerUserId: req.auth.userId,
         channel: body.channel,
         provider: body.provider,
       },
-      defaults: {
-        ownerUserId: req.auth.userId,
-        channel: body.channel,
-        provider: body.provider,
-        displayName: body.displayName ?? null,
-        status: body.status ?? "draft",
-        webhookUrl: body.webhookUrl ?? null,
-      },
     });
-    if (!created) throw new ApiError(409, "Integration already exists for this channel and provider");
+    const outcome = resolveCreateIntegrationOutcome(existing, body);
+    if (outcome.kind === "conflict") {
+      throw new ApiError(409, "Integration already exists for this channel and provider");
+    }
+    if (outcome.kind === "reactivate") {
+      await existing.update(outcome.patch);
+      return res.status(201).json(await integrationDto(existing));
+    }
+    const row = await ChannelIntegration.create({
+      ownerUserId: req.auth.userId,
+      channel: body.channel,
+      provider: body.provider,
+      displayName: body.displayName ?? null,
+      status: body.status ?? "draft",
+      webhookUrl: body.webhookUrl ?? null,
+    });
     return res.status(201).json(await integrationDto(row));
   } catch (err) {
     return next(err);
@@ -93,11 +128,7 @@ export const createIntegration = async (req, res, next) => {
 
 export const patchIntegration = async (req, res, next) => {
   try {
-    // Ajusta metadata operativa sin tocar credenciales.
-    const row = await ChannelIntegration.findOne({
-      where: { id: req.params.id, ...ownerWhere(req.auth.userId) },
-    });
-    if (!row) throw new ApiError(404, "Integration not found");
+    const row = await findOwnedIntegrationOr404(req.auth.userId, req.params.id);
     const body = patchSchema.parse(req.body || {});
     await row.update({
       ...(body.displayName !== undefined ? { displayName: body.displayName } : {}),
@@ -110,13 +141,19 @@ export const patchIntegration = async (req, res, next) => {
   }
 };
 
+export const deleteIntegration = async (req, res, next) => {
+  try {
+    const row = await findOwnedIntegrationOr404(req.auth.userId, req.params.id);
+    await row.update({ status: ELIMINATED_STATUS });
+    return res.json({ ok: true });
+  } catch (err) {
+    return next(err);
+  }
+};
+
 export const postIntegrationCredentials = async (req, res, next) => {
   try {
-    // Rota credenciales: desactiva previas y guarda nueva versión cifrada.
-    const row = await ChannelIntegration.findOne({
-      where: { id: req.params.id, ...ownerWhere(req.auth.userId) },
-    });
-    if (!row) throw new ApiError(404, "Integration not found");
+    const row = await findOwnedIntegrationOr404(req.auth.userId, req.params.id);
     const { payload } = credentialsSchema.parse(req.body || {});
     const cipherText = encryptCredentialsPayload(payload);
 
@@ -140,11 +177,7 @@ export const postIntegrationCredentials = async (req, res, next) => {
 
 export const postIntegrationTest = async (req, res, next) => {
   try {
-    // Healthcheck de credenciales: prueba decrypt local y actualiza estado.
-    const row = await ChannelIntegration.findOne({
-      where: { id: req.params.id, ...ownerWhere(req.auth.userId) },
-    });
-    if (!row) throw new ApiError(404, "Integration not found");
+    const row = await findOwnedIntegrationOr404(req.auth.userId, req.params.id);
     const cred = await ChannelCredential.findOne({
       where: { ownerUserId: req.auth.userId, channelIntegrationId: row.id, isActive: true },
     });

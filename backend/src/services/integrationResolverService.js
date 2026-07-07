@@ -5,7 +5,7 @@ import { decryptCredentialsPayload } from "../utils/credentialsCrypto.js";
 const WHATSAPP_PROVIDER = "whatsapp-connect";
 
 const assertWhatsAppConnectIntegration = (integration) => {
-  if (!integration) throw new ApiError(404, "Integration not found");
+  if (!integration || integration.status === "eliminated") throw new ApiError(404, "Integration not found");
   if (integration.channel !== "whatsapp") throw new ApiError(400, "Integration channel must be whatsapp");
   if (integration.provider !== WHATSAPP_PROVIDER) throw new ApiError(400, "Integration provider must be whatsapp-connect");
 };
@@ -46,7 +46,7 @@ export const resolveInstagramMetaIntegrationById = async ({ ownerUserId, integra
   const integration = await ChannelIntegration.findOne({
     where: { id: integrationId, ownerUserId },
   });
-  if (!integration) throw new ApiError(404, "Integration not found");
+  if (!integration || integration.status === "eliminated") throw new ApiError(404, "Integration not found");
   if (integration.channel !== "instagram") throw new ApiError(400, "Integration channel must be instagram");
   if (integration.provider !== META_PROVIDER) throw new ApiError(400, "Integration provider must be meta");
   const credentialsPayload = await getActiveCredentialPayload(ownerUserId, integration.id);

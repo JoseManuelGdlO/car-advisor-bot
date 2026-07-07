@@ -3,6 +3,7 @@ import { requireUserAuth } from "../middlewares/auth.js";
 import { deleteAccount, getAccountProfile, patchAccountProfile } from "../controllers/accountController.js";
 import {
   createIntegration,
+  deleteIntegration,
   listIntegrations,
   patchIntegration,
   postIntegrationCredentials,
@@ -18,5 +19,6 @@ accountRoutes.delete("/account", requireUserAuth, deleteAccount);
 accountRoutes.get("/integrations", requireUserAuth, listIntegrations);
 accountRoutes.post("/integrations", requireUserAuth, createIntegration);
 accountRoutes.patch("/integrations/:id", requireUserAuth, patchIntegration);
+accountRoutes.delete("/integrations/:id", requireUserAuth, deleteIntegration);
 accountRoutes.post("/integrations/:id/credentials", requireUserAuth, postIntegrationCredentials);
 accountRoutes.post("/integrations/:id/test", requireUserAuth, postIntegrationTest);
