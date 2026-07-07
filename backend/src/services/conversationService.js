@@ -13,6 +13,7 @@ import { setBotSessionDisabled } from "./botEngineClient.js";
 import { sendPushToOwner } from "./pushService.js";
 import { runWithWcToken } from "./wcAuthCache.js";
 import { wcClient } from "./wcClient.js";
+import { isWhatsappChannelId, resolveDisplayPhone } from "../utils/whatsappIdentity.js";
 
 const hasUsableCustomerInfo = (c) => {
   if (c == null || typeof c !== "object") return false;
@@ -48,9 +49,21 @@ export const resolveLeadUpsertOutcome = (
   return { kind: "use_existing" };
 };
 
+/** Calcula displayPhone para crear/actualizar lead sin sobrescribir con valores vacíos. */
+export const buildLeadDisplayPhoneUpdate = ({ displayPhone, channelUserId, customerTelefono, existingDisplayPhone }) => {
+  const incoming = resolveDisplayPhone({
+    fromPhone: displayPhone,
+    channelId: channelUserId,
+    customerTelefono,
+  });
+  if (!incoming) return {};
+  return { displayPhone: incoming };
+};
+
 export const upsertConversationEvent = async ({
   ownerUserId,
   userId,
+  displayPhone = null,
   platform,
   message,
   from = "client",
@@ -84,14 +97,37 @@ export const upsertConversationEvent = async ({
   const leadPhoneKeys = [normalizedUserId];
   if (contactDigits && contactDigits !== normalizedUserId) leadPhoneKeys.push(contactDigits);
 
-  let lead = await ClientLead.findOne({
-    where: { ownerUserId, phone: { [Op.in]: leadPhoneKeys } },
+  const resolvedDisplayPhone = resolveDisplayPhone({
+    fromPhone: displayPhone,
+    channelId: normalizedUserId,
+    customerTelefono: contactDigits,
   });
+
+  let lead = null;
+  const existingContext = await ChannelConversationContext.findOne({
+    where: {
+      ownerUserId,
+      externalUserId: normalizedUserId,
+      channel: inboundChannel,
+    },
+    order: [["updatedAt", "DESC"]],
+  });
+  if (existingContext?.clientLeadId) {
+    lead = await ClientLead.findOne({
+      where: { id: existingContext.clientLeadId, ownerUserId, ...visibleLeadStatusWhere() },
+    });
+  }
+  if (!lead) {
+    lead = await ClientLead.findOne({
+      where: { ownerUserId, phone: { [Op.in]: leadPhoneKeys }, ...visibleLeadStatusWhere() },
+    });
+  }
   if (!lead) {
     lead = await ClientLead.create({
       ownerUserId,
       name: (customerInfo?.nombre && String(customerInfo.nombre).trim()) || "Cliente",
       phone: normalizedUserId,
+      displayPhone: resolvedDisplayPhone,
       channel: inboundChannel,
       interestedIn: selectedCar || "",
       status: "lead",
@@ -124,7 +160,7 @@ export const upsertConversationEvent = async ({
   let mergedCustomerInfo = hasUsableCustomerInfo(customerInfo) ? { ...prevInfo, ...customerInfo } : { ...prevInfo };
   if (String(lead.phone) !== String(normalizedUserId)) {
     const previousPhone = String(lead.phone);
-    if (previousPhone && !String(mergedCustomerInfo.telefono || "").trim()) {
+    if (previousPhone && !isWhatsappChannelId(previousPhone) && !String(mergedCustomerInfo.telefono || "").trim()) {
       mergedCustomerInfo = { ...mergedCustomerInfo, telefono: previousPhone };
     }
   }
@@ -151,6 +187,7 @@ export const upsertConversationEvent = async ({
     notes: Object.keys(mergedNotes).length ? JSON.stringify(mergedNotes) : lead.notes,
   };
   if (String(lead.phone) !== String(normalizedUserId)) leadFieldUpdates.phone = normalizedUserId;
+  if (resolvedDisplayPhone) leadFieldUpdates.displayPhone = resolvedDisplayPhone;
   if (hasUsableCustomerInfo(customerInfo)) {
     const n = String(customerInfo.nombre || "").trim();
     if (n) leadFieldUpdates.name = n;

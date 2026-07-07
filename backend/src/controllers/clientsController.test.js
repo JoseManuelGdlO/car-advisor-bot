@@ -9,7 +9,7 @@ test("patchClientSchema rechaza status eliminated", () => {
   assert.throws(() =>
     patchClientSchema.parse({
       name: "Ana",
-      phone: "5512345678",
+      displayPhone: "5512345678",
       status: "eliminated",
       interestedIn: "",
     }),
@@ -19,11 +19,12 @@ test("patchClientSchema rechaza status eliminated", () => {
 test("patchClientSchema acepta campos comerciales", () => {
   const payload = patchClientSchema.parse({
     name: "Ana",
-    phone: "5512345678",
+    displayPhone: "5512345678",
     status: "negotiation",
     interestedIn: "SUV 2024",
   });
   assert.equal(payload.status, "negotiation");
+  assert.equal(payload.displayPhone, "5512345678");
   assert.equal(payload.interestedIn, "SUV 2024");
 });
 
@@ -51,6 +52,7 @@ test("resolveCreateClientOutcome reactivates eliminated client", () => {
   assert.equal(outcome.patch.name, "Luis Nuevo");
   assert.equal(outcome.patch.channel, "instagram");
   assert.equal(outcome.patch.interestedIn, "Sedán");
+  assert.equal(outcome.patch.displayPhone, "5511111111");
 });
 
 test("resolveCreateClientOutcome conflicts when client is visible", () => {

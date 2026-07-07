@@ -11,7 +11,7 @@ import { useConversationMessagesQuery, useConversationsQuery } from "@/hooks/use
 import { crmApi } from "@/services/crm";
 import { toast } from "sonner";
 import { normalizeApiError } from "@/lib/formErrors";
-import { buildTelHref } from "@/lib/phone";
+import { buildTelHref, resolveClientDisplayPhone } from "@/lib/phone";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,6 +27,7 @@ type ChatClient = {
   id: string;
   name: string;
   phone?: string;
+  displayPhone?: string | null;
   avatarColor?: string;
   interestedIn?: string;
 };
@@ -95,7 +96,8 @@ export default function ChatDetalle() {
     ]);
   };
 
-  const telHref = buildTelHref(client?.phone);
+  const clientDisplayPhone = resolveClientDisplayPhone(client);
+  const telHref = buildTelHref(clientDisplayPhone);
 
   const handleCall = () => {
     if (!telHref) {
@@ -106,15 +108,15 @@ export default function ChatDetalle() {
   };
 
   const handleCopyPhone = async () => {
-    if (!client.phone?.trim()) {
+    if (!clientDisplayPhone) {
       toast.error("No hay teléfono para copiar.");
       return;
     }
     try {
-      await navigator.clipboard.writeText(client.phone.trim());
+      await navigator.clipboard.writeText(clientDisplayPhone);
       toast.success("Teléfono copiado al portapapeles.");
     } catch {
-      toast.message(client.phone.trim());
+      toast.message(clientDisplayPhone);
     }
   };
 

@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 import { crmApi } from "@/services/crm";
+import { resolveClientDisplayPhone } from "@/lib/phone";
 
 const filters: { key: "all" | ClientStatus; label: string }[] = [
   { key: "all", label: "Todos" },
@@ -98,6 +99,9 @@ export default function Clientes() {
                   <span className="text-[10px] text-muted-foreground shrink-0">{formatDateTime(c.lastMessageAt)}</span>
                 </div>
                 <p className="text-xs text-muted-foreground truncate">{c.interestedIn}</p>
+                {resolveClientDisplayPhone(c) ? (
+                  <p className="text-[10px] text-muted-foreground truncate">{resolveClientDisplayPhone(c)}</p>
+                ) : null}
                 <div className="mt-1.5">
                   <StatusBadge status={c.status} />
                 </div>

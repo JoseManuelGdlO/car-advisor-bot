@@ -6,7 +6,7 @@ import { Avatar } from "@/components/Avatar";
 import { ChannelIcon } from "@/components/ChannelIcon";
 import { Channel } from "@/data/mockData";
 import { cn } from "@/lib/utils";
-import { normalizePhoneDigits } from "@/lib/phone";
+import { normalizePhoneDigits, resolveClientDisplayPhone } from "@/lib/phone";
 import { useConversationsQuery } from "@/hooks/useConversationsQuery";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
@@ -73,7 +73,7 @@ const matchesConversationSearch = (conversation: any, query: string) => {
   if (!needle) return true;
 
   const name = conversation.client?.name?.toLowerCase() ?? "";
-  const phone = conversation.client?.phone ?? "";
+  const phone = resolveClientDisplayPhone(conversation.client);
   const lastMessage = conversation.lastMessage?.toLowerCase() ?? "";
   const queryDigits = normalizePhoneDigits(query);
   const phoneDigits = normalizePhoneDigits(phone);

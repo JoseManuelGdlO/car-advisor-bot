@@ -29,7 +29,7 @@ export const crmApi = {
   updateClient: (
     token: string,
     id: string,
-    payload: { name: string; phone: string; status: ClientDto["status"]; interestedIn?: string | null },
+    payload: { name: string; displayPhone?: string | null; status: ClientDto["status"]; interestedIn?: string | null },
   ) => apiRequest<ClientDto>(`/clients/${id}`, "PATCH", payload, token),
   deleteClient: (token: string, id: string) => apiRequest<{ ok: boolean }>(`/clients/${id}`, "DELETE", undefined, token),
   getConversations: (token: string) => apiRequest<ConversationDto[]>("/conversations", "GET", undefined, token),

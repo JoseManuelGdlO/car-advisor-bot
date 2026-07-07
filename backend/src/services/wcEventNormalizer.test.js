@@ -71,6 +71,60 @@ test("normalizeWcInboundEvent soporta payload de webhookDispatch (normalized/raw
   assert.equal(normalized.unsupportedMediaOnly, false);
 });
 
+test("normalizeWcInboundEvent extrae displayPhone de fromPhone con @lid", () => {
+  const normalized = normalizeWcInboundEvent({
+    payload: {
+      event: "message.inbound",
+      eventId: "evt-lid",
+      from: "60911863783463@lid",
+      normalized: { fromPhone: "6181556489", messageId: "msg-lid", content: { text: "hola" } },
+      deviceId: "dev-1",
+    },
+    integration: { id: "int-1", ownerUserId: "owner-1" },
+    credentials: { deviceId: "dev-1" },
+  });
+
+  assert.equal(normalized.externalUserId, "60911863783463@lid");
+  assert.equal(normalized.displayPhone, "6181556489");
+});
+
+test("normalizeWcInboundEvent extrae displayPhone de JID clásico sin fromPhone", () => {
+  const normalized = normalizeWcInboundEvent({
+    payload: {
+      eventId: "evt-jid",
+      type: "message.inbound",
+      deviceId: "dev-3",
+      normalized: {
+        messageId: "msg-3",
+        from: "5215512345678@s.whatsapp.net",
+        content: { type: "text", text: "hola" },
+      },
+    },
+    integration: { id: "int-3", ownerUserId: "owner-3" },
+    credentials: { deviceId: "dev-3" },
+  });
+
+  assert.equal(normalized.externalUserId, "5215512345678@s.whatsapp.net");
+  assert.equal(normalized.displayPhone, "5215512345678");
+});
+
+test("normalizeWcInboundEvent deja displayPhone null para @lid sin fromPhone", () => {
+  const normalized = normalizeWcInboundEvent({
+    payload: {
+      event: "message.inbound",
+      eventId: "evt-lid-empty",
+      from: "60911863783463@lid",
+      message: { id: "msg-x", text: "hola" },
+      deviceId: "dev-1",
+    },
+    integration: { id: "int-1", ownerUserId: "owner-1" },
+    credentials: { deviceId: "dev-1" },
+  });
+
+  assert.equal(normalized.externalUserId, "60911863783463@lid");
+  assert.equal(normalized.displayPhone, null);
+});
+
 test("normalizeWcInboundEvent marca unsupportedMediaOnly cuando hay media sin texto", () => {
   const normalized = normalizeWcInboundEvent({
     payload: {

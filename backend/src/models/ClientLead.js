@@ -20,6 +20,11 @@ export default function ClientLeadModel(sequelize) {
       type: DataTypes.STRING(40),
       allowNull: false,
     },
+    displayPhone: {
+      type: DataTypes.STRING(40),
+      allowNull: true,
+      field: "display_phone",
+    },
     channel: {
       type: DataTypes.ENUM("whatsapp", "facebook", "telegram", "web", "api", "instagram"),
       allowNull: false,

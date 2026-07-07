@@ -32,7 +32,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useConversationsQuery } from "@/hooks/useConversationsQuery";
 import { crmApi } from "@/services/crm";
 import type { ConversationDto } from "@/services/crm";
-import { buildTelHref } from "@/lib/phone";
+import { buildTelHref, resolveClientDisplayPhone } from "@/lib/phone";
 import { normalizeApiError } from "@/lib/formErrors";
 import { toast } from "sonner";
 
@@ -107,19 +107,24 @@ export default function ClienteDetalle() {
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [formError, setFormError] = useState("");
-  const [form, setForm] = useState({ name: "" });
+  const [form, setForm] = useState({ name: "", displayPhone: "" });
 
   useEffect(() => {
     if (!client) return;
-    setForm({ name: client.name || "" });
+    setForm({
+      name: client.name || "",
+      displayPhone: resolveClientDisplayPhone(client),
+    });
   }, [client]);
+
+  const clientDisplayPhone = resolveClientDisplayPhone(client);
 
   const updateMutation = useMutation({
     mutationFn: () => {
       if (!client) throw new Error("Cliente no disponible");
       return crmApi.updateClient(token!, id!, {
         name: form.name.trim(),
-        phone: client.phone,
+        displayPhone: form.displayPhone.trim() || null,
         status: client.status,
         interestedIn: client.interestedIn?.trim() || null,
       });
@@ -146,7 +151,7 @@ export default function ClienteDetalle() {
     onError: (error: unknown) => toast.error(normalizeApiError(error, "No se pudo eliminar el cliente.").formError),
   });
 
-  const telHref = buildTelHref(client?.phone);
+  const telHref = buildTelHref(clientDisplayPhone);
 
   const handleCall = () => {
     if (!telHref) {
@@ -219,7 +224,7 @@ export default function ClienteDetalle() {
             <ChannelIcon channel={client.channel} size={12} className="absolute -bottom-1 -right-1 ring-2 ring-card" />
           </div>
           <h2 className="mt-3 font-bold text-lg">{client.name}</h2>
-          <p className="text-xs text-muted-foreground">{client.phone}</p>
+          <p className="text-xs text-muted-foreground">{clientDisplayPhone || "Teléfono no disponible"}</p>
           <div className="mt-3">
             <StatusBadge status={client.status} />
           </div>
@@ -348,17 +353,15 @@ export default function ClienteDetalle() {
                 onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))}
               />
             </div>
-            {/* Teléfono deshabilitado temporalmente: evitar inconsistencias con IDs de canal en BD (ej. WhatsApp @lid). */}
-            {/*
             <div>
               <Label className="text-xs">Teléfono</Label>
               <Input
                 className="mt-1"
-                value={form.phone}
-                onChange={(e) => setForm((s) => ({ ...s, phone: e.target.value }))}
+                value={form.displayPhone}
+                onChange={(e) => setForm((s) => ({ ...s, displayPhone: e.target.value }))}
+                placeholder="Ej. 6181556489"
               />
             </div>
-            */}
           </div>
           <DialogFooter>
             <Button onClick={handleSave} disabled={updateMutation.isPending}>

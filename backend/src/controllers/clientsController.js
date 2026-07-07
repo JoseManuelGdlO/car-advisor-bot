@@ -2,6 +2,7 @@ import { Op } from "sequelize";
 import { z } from "zod";
 import { ClientLead } from "../models/index.js";
 import { ApiError } from "../utils/errors.js";
+import { isWhatsappChannelId, normalizeDisplayPhone } from "../utils/whatsappIdentity.js";
 
 const ELIMINATED_STATUS = "eliminated";
 const commercialStatusEnum = z.enum(["lead", "negotiation", "sold", "lost"]);
@@ -10,7 +11,7 @@ const channelEnum = z.enum(["whatsapp", "facebook", "telegram", "web", "api", "i
 export const patchClientSchema = z
   .object({
     name: z.string().min(1).max(120),
-    phone: z.string().min(1).max(40),
+    displayPhone: z.string().max(40).optional().nullable(),
     status: commercialStatusEnum,
     interestedIn: z.string().max(160).optional().nullable(),
   })
@@ -43,6 +44,7 @@ export const resolveCreateClientOutcome = (existing, body) => {
       patch: {
         name: body.name,
         phone: body.phone,
+        displayPhone: normalizeDisplayPhone(body.phone) ?? body.phone,
         channel: body.channel ?? existing.channel ?? "web",
         status: body.status ?? "lead",
         interestedIn: body.interestedIn !== undefined ? body.interestedIn : existing.interestedIn,
@@ -97,6 +99,7 @@ export const createClient = async (req, res, next) => {
       ownerUserId: req.auth.userId,
       name: body.name,
       phone: body.phone,
+      displayPhone: normalizeDisplayPhone(body.phone) ?? body.phone,
       channel: body.channel ?? "web",
       status: body.status ?? "lead",
       interestedIn: body.interestedIn ?? "",
@@ -113,12 +116,19 @@ export const patchClient = async (req, res, next) => {
   try {
     const row = await findOwnedVisibleClientOr404(req.auth.userId, req.params.id);
     const body = patchClientSchema.parse(req.body || {});
-    await row.update({
+    const updates = {
       name: body.name,
-      phone: body.phone,
       status: body.status,
       interestedIn: body.interestedIn ?? "",
-    });
+    };
+    if (body.displayPhone !== undefined) {
+      const normalized = body.displayPhone ? normalizeDisplayPhone(body.displayPhone) : null;
+      updates.displayPhone = normalized;
+      if (!isWhatsappChannelId(row.phone) && normalized) {
+        updates.phone = normalized;
+      }
+    }
+    await row.update(updates);
     return res.json(row);
   } catch (err) {
     return next(err);

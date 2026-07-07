@@ -95,6 +95,7 @@ export const ingestWhatsappConnectEvent = async ({ normalizedEvent, credentials:
     const conversationResult = await upsertConversationEvent({
       ownerUserId: normalizedEvent.ownerUserId,
       userId: normalizedEvent.externalUserId,
+      displayPhone: normalizedEvent.displayPhone,
       platform: "whatsapp",
       message: clientCrmMessage,
       from: "client",

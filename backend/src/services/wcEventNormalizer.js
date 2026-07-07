@@ -1,4 +1,5 @@
 import { ApiError } from "../utils/errors.js";
+import { normalizeDisplayPhone, resolveDisplayPhone } from "../utils/whatsappIdentity.js";
 
 const toIsoOrNow = (value) => {
   const d = value ? new Date(value) : new Date();
@@ -34,6 +35,15 @@ const mediaHasContent = (media) => {
   return Boolean(media);
 };
 
+const readFromPhone = (payload) =>
+  String(
+    payload?.normalized?.fromPhone ||
+      payload?.fromPhone ||
+      payload?.data?.fromPhone ||
+      payload?.message?.fromPhone ||
+      ""
+  ).trim();
+
 export const normalizeWcInboundEvent = ({ payload, integration, credentials }) => {
   // Mapea payload externo de proveedor al contrato interno canónico del backend.
   const eventType = readEventType(payload);
@@ -46,6 +56,9 @@ export const normalizeWcInboundEvent = ({ payload, integration, credentials }) =
   const media = readMedia(payload);
   const unsupportedMediaOnly = !text && mediaHasContent(media);
   const deviceId = readDeviceId(payload) || String(credentials?.deviceId || "").trim();
+  const fromPhoneRaw = readFromPhone(payload);
+  const displayPhone =
+    normalizeDisplayPhone(fromPhoneRaw) || resolveDisplayPhone({ channelId: externalUserId });
 
   if (!eventId) throw new ApiError(400, "Missing provider event id");
   if (!externalUserId) throw new ApiError(400, "Missing external user id");
@@ -57,6 +70,7 @@ export const normalizeWcInboundEvent = ({ payload, integration, credentials }) =
     integrationId: integration.id,
     ownerUserId: integration.ownerUserId,
     externalUserId,
+    displayPhone,
     tenantId: credentials?.tenantId || null,
     deviceId,
     eventId,

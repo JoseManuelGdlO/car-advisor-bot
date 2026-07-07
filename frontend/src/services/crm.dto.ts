@@ -92,6 +92,7 @@ export type ClientDto = {
   id: string;
   name: string;
   phone: string;
+  displayPhone?: string | null;
   channel: Channel;
   status: ClientStatus;
   interestedIn: string;
@@ -121,6 +122,7 @@ export type ConversationDto = {
     id: string;
     name: string;
     phone?: string;
+    displayPhone?: string | null;
     avatarColor?: string;
     interestedIn?: string;
   };
