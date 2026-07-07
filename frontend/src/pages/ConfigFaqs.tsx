@@ -124,7 +124,7 @@ export default function ConfigFaqs() {
                 <Plus className="w-4 h-4" /> Nueva
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md">
+            <DialogContent className="max-w-md overflow-x-hidden">
               <DialogHeader>
                 <DialogTitle>Nueva pregunta frecuente</DialogTitle>
                 <DialogDescription>Agrega una pregunta y su respuesta para el bot.</DialogDescription>
@@ -146,15 +146,17 @@ export default function ConfigFaqs() {
         {faqs.map((f) => (
           <li
             key={f.id}
-            className="bg-card rounded-2xl p-4 shadow-card border border-border"
+            className="overflow-hidden bg-card rounded-2xl p-4 shadow-card border border-border"
           >
             <div className="flex items-start gap-3">
               <div className="w-9 h-9 rounded-xl bg-info/10 text-info grid place-items-center shrink-0">
                 <HelpCircle className="w-5 h-5" />
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm text-foreground">{f.question}</p>
-                <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">{f.answer}</p>
+              <div className="min-w-0 flex-1 overflow-hidden">
+                <p className="break-words text-sm font-semibold text-foreground">{f.question}</p>
+                <p className="mt-1.5 break-words text-xs leading-relaxed text-muted-foreground [overflow-wrap:anywhere]">
+                  {f.answer}
+                </p>
               </div>
             </div>
             <div className="flex items-center justify-end gap-1 mt-2 -mr-1">
@@ -184,7 +186,7 @@ export default function ConfigFaqs() {
           if (!next) setEditError("");
         }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md overflow-x-hidden">
           <DialogHeader>
             <DialogTitle>Editar FAQ</DialogTitle>
             <DialogDescription>Actualiza pregunta y respuesta.</DialogDescription>
@@ -207,13 +209,13 @@ export default function ConfigFaqs() {
           if (!next) setDeleteError("");
         }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md overflow-x-hidden">
           <DialogHeader>
             <DialogTitle>Eliminar FAQ</DialogTitle>
             <DialogDescription>Esta acción no se puede deshacer.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
-            <p className="text-xs text-muted-foreground">{deletingFaq?.question}</p>
+            <p className="break-words text-xs text-muted-foreground [overflow-wrap:anywhere]">{deletingFaq?.question}</p>
             <div className="flex gap-2">
               <Button variant="outline" className="w-full" onClick={() => setDeleteOpen(false)} disabled={saving}>
                 Cancelar

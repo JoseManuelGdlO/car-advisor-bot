@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Plus, Tag, Calendar, Pencil } from "lucide-react";
+import { Plus, Tag, Calendar, Pencil, Trash2 } from "lucide-react";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,36 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
+import { FormErrorAlert } from "@/components/FormErrorAlert";
+import { normalizeApiError } from "@/lib/formErrors";
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+const toDateInputValue = (value?: string) => {
+  const trimmed = value?.trim();
+  if (!trimmed) return "";
+  if (ISO_DATE_RE.test(trimmed)) return trimmed;
+  const parsed = new Date(trimmed);
+  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+  return "";
+};
+
+const formatValidUntilLabel = (value?: string) => {
+  const trimmed = value?.trim();
+  if (!trimmed) return "Sin fecha";
+  const iso = toDateInputValue(trimmed);
+  if (iso) {
+    return new Date(`${iso}T12:00:00`).toLocaleDateString("es-MX", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  }
+  return trimmed;
+};
+
+const DATE_INPUT_CLASS =
+  "h-8 w-[10.5rem] max-w-full border-0 bg-transparent p-0 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-70";
 
 export default function ConfigPromos() {
   const [searchParams] = useSearchParams();
@@ -22,6 +52,9 @@ export default function ConfigPromos() {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletingPromo, setDeletingPromo] = useState<any | null>(null);
+  const [deleteError, setDeleteError] = useState("");
   const [form, setForm] = useState({
     title: "",
     description: "",
@@ -85,11 +118,38 @@ export default function ConfigPromos() {
     setForm({
       title: promo.title || "",
       description: promo.description || "",
-      validUntil: promo.validUntil || "",
+      validUntil: toDateInputValue(promo.validUntil),
       appliesTo: promo.appliesTo || "",
       vehicleIds: Array.isArray(promo.vehicleIds) ? promo.vehicleIds : [],
     });
     setOpen(true);
+  };
+
+  const openDeletePromotion = (promo: any) => {
+    setDeletingPromo(promo);
+    setDeleteOpen(true);
+  };
+
+  const onDeletePromotion = async () => {
+    if (!token || !deletingPromo) return;
+    setSaving(true);
+    setDeleteError("");
+    try {
+      await crmApi.deletePromotion(token, deletingPromo.id);
+      await queryClient.invalidateQueries({ queryKey: ["promotions"] });
+      setItems((arr) => arr.filter((p) => p.id !== deletingPromo.id));
+      setDeleteOpen(false);
+      setDeletingPromo(null);
+      if (editingId === deletingPromo.id) {
+        setOpen(false);
+        setEditingId(null);
+        setForm({ title: "", description: "", validUntil: "", appliesTo: "", vehicleIds: [] });
+      }
+    } catch (err) {
+      setDeleteError(normalizeApiError(err, "No se pudo eliminar la promoción.").formError);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -124,11 +184,21 @@ export default function ConfigPromos() {
                   value={form.description}
                   onChange={(e) => setForm((s) => ({ ...s, description: e.target.value }))}
                 />
-                <Input
-                  placeholder="Válida hasta (ej. 30 abril)"
-                  value={form.validUntil}
-                  onChange={(e) => setForm((s) => ({ ...s, validUntil: e.target.value }))}
-                />
+                <div className="flex items-center justify-between gap-3">
+                  <label className="shrink-0 pl-3 text-sm font-semibold text-muted-foreground" htmlFor="promo-valid-until">
+                    Válida hasta:
+                  </label>
+                  <div className="inline-flex h-10 w-fit max-w-full shrink-0 items-center gap-2 rounded-md border border-input bg-background px-3 ring-offset-background has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2">
+                    <Calendar className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                    <Input
+                      id="promo-valid-until"
+                      type="date"
+                      className={DATE_INPUT_CLASS}
+                      value={form.validUntil}
+                      onChange={(e) => setForm((s) => ({ ...s, validUntil: e.target.value }))}
+                    />
+                  </div>
+                </div>
                 <Input
                   placeholder="Aplica a (ej. SUVs 2022+)"
                   value={form.appliesTo}
@@ -208,7 +278,7 @@ export default function ConfigPromos() {
                   <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{p.description}</p>
                   <div className="flex items-center gap-3 mt-2 text-[11px] text-muted-foreground">
                     <span className="flex items-center gap-1">
-                      <Calendar className="w-3 h-3" /> Hasta {p.validUntil}
+                      <Calendar className="w-3 h-3" /> Hasta {formatValidUntilLabel(p.validUntil)}
                     </span>
                   </div>
                   <p className="text-[11px] text-primary-dark font-semibold mt-1.5">{p.appliesTo}</p>
@@ -217,18 +287,55 @@ export default function ConfigPromos() {
                   ) : null}
                 </div>
               </div>
-              <div className="flex justify-end mt-2">
+              <div className="mt-2 flex items-center justify-end gap-1">
                 <button
-                  className="text-xs font-semibold text-muted-foreground hover:text-foreground flex items-center gap-1 px-2 py-1"
+                  className="flex items-center gap-1 px-2 py-1 text-xs font-semibold text-muted-foreground hover:text-foreground"
                   onClick={() => startEditPromotion(p)}
                 >
-                  <Pencil className="w-3 h-3" /> Editar
+                  <Pencil className="h-3 w-3" /> Editar
+                </button>
+                <button
+                  className="p-2 text-destructive hover:text-destructive/80"
+                  aria-label="Eliminar promoción"
+                  onClick={() => openDeletePromotion(p)}
+                >
+                  <Trash2 className="h-4 w-4" />
                 </button>
               </div>
             </div>
           </li>
         ))}
       </ul>
+
+      <Dialog
+        open={deleteOpen}
+        onOpenChange={(next) => {
+          setDeleteOpen(next);
+          if (!next) setDeleteError("");
+        }}
+      >
+        <DialogContent className="max-w-md overflow-x-hidden">
+          <DialogHeader>
+            <DialogTitle>Eliminar promoción</DialogTitle>
+            <DialogDescription>Esta acción no se puede deshacer.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="break-words text-sm font-semibold text-foreground">{deletingPromo?.title}</p>
+            {deletingPromo?.description ? (
+              <p className="break-words text-xs text-muted-foreground [overflow-wrap:anywhere]">{deletingPromo.description}</p>
+            ) : null}
+            <div className="flex gap-2">
+              <Button variant="outline" className="w-full" onClick={() => setDeleteOpen(false)} disabled={saving}>
+                Cancelar
+              </Button>
+              <Button variant="destructive" className="w-full" disabled={saving} onClick={onDeletePromotion}>
+                {saving ? "Eliminando..." : "Si, estoy seguro"}
+              </Button>
+            </div>
+            <FormErrorAlert title="No se pudo eliminar la promoción" message={deleteError} />
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

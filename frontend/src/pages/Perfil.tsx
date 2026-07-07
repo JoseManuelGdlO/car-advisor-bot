@@ -472,6 +472,7 @@ export default function Perfil() {
               aria-invalid={Boolean(profileFieldErrors.phone)}
             />
             <FieldErrorText error={profileFieldErrors.phone} />
+            {/* Canal por defecto (deshabilitado) porque de momento solo hay un canal disponible: WhatsApp.
             <Label className="text-xs">Canal por defecto</Label>
             <select
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
@@ -486,6 +487,7 @@ export default function Perfil() {
               <option value="api">API</option>
               <option value="instagram">Instagram</option>
             </select>
+            */}
             <div className="flex items-center justify-between gap-2 pt-1">
               <Label className="text-xs">Link de calendario de Google</Label>
               <GoogleCalendarLinkHelpDialog />

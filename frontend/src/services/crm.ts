@@ -109,6 +109,7 @@ export const crmApi = {
     payload: { title: string; description: string; validUntil?: string; appliesTo?: string; active?: boolean; vehicleIds?: string[] }
   ) => apiRequest(`/promotions/${id}`, "PATCH", payload, token),
   togglePromotion: (token: string, id: string) => apiRequest(`/promotions/${id}/toggle`, "POST", {}, token),
+  deletePromotion: (token: string, id: string) => apiRequest(`/promotions/${id}`, "DELETE", undefined, token),
   getFinancingPlans: (token: string) => apiRequest("/financing-plans", "GET", undefined, token),
   createFinancingPlan: (token: string, payload: Partial<FinancingPlanDto>) =>
     apiRequest("/financing-plans", "POST", payload, token),

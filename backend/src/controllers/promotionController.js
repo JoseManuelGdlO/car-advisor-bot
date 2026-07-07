@@ -129,3 +129,10 @@ export const togglePromotion = async (req, res, next) => {
   await row.update({ active: !row.active });
   return res.json(row);
 };
+
+export const deletePromotion = async (req, res, next) => {
+  const row = await Promotion.findOne({ where: { id: req.params.id, ...ownerWhere(req.auth.userId) } });
+  if (!row) return next(new ApiError(404, "Promotion not found"));
+  await row.destroy();
+  return res.status(204).send();
+};
