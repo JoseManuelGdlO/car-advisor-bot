@@ -16,6 +16,10 @@ test("normalizeWeeklySchedule rejects overlaps", () => {
   );
 });
 
+test("validateTimezone canonicalizes case-insensitive timezone ids", () => {
+  assert.equal(validateTimezone("america/monterrey"), "America/Monterrey");
+});
+
 test("validateTimezone rejects invalid timezone", () => {
   assert.throws(() => validateTimezone("Invalid/Timezone"), ApiError);
 });

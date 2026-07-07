@@ -74,12 +74,18 @@ export const validateTimezone = (timezone) => {
   if (typeof timezone !== "string" || !timezone.trim()) {
     throw new ApiError(400, "Invalid timezone");
   }
+  const trimmed = timezone.trim();
+  let canonical = trimmed;
+  if (typeof Intl.supportedValuesOf === "function") {
+    const match = Intl.supportedValuesOf("timeZone").find((tz) => tz.toLowerCase() === trimmed.toLowerCase());
+    if (match) canonical = match;
+  }
   try {
-    Intl.DateTimeFormat("en-US", { timeZone: timezone });
+    Intl.DateTimeFormat("en-US", { timeZone: canonical });
   } catch {
     throw new ApiError(400, "Invalid timezone");
   }
-  return timezone;
+  return canonical;
 };
 
 export const normalizeBotSettingsPayload = (payload) => {
@@ -127,7 +133,7 @@ export const normalizeBotSettingsPayload = (payload) => {
 
 export const toBotSettingsDto = (row) => ({
   isEnabled: Boolean(row?.isEnabled ?? true),
-  timezone: row?.timezone || "America/Bogota",
+  timezone: validateTimezone(row?.timezone || "America/Bogota"),
   weeklySchedule: normalizeWeeklySchedule(row?.weeklySchedule),
   tone: BOT_TONES.includes(row?.tone) ? row.tone : "cercano",
   emojiStyle: BOT_EMOJI_STYLES.includes(row?.emojiStyle) ? row.emojiStyle : "pocos",
