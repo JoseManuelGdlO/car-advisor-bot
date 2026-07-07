@@ -26,7 +26,7 @@ export default function ClientLeadModel(sequelize) {
       defaultValue: "web",
     },
     status: {
-      type: DataTypes.ENUM("lead", "negotiation", "sold", "lost"),
+      type: DataTypes.ENUM("lead", "negotiation", "sold", "lost", "eliminated"),
       allowNull: false,
       defaultValue: "lead",
     },

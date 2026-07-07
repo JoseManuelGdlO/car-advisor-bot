@@ -1,15 +1,40 @@
-import { Link, useParams } from "react-router-dom";
-import { Phone, MessageCircle, Car, FileText, Landmark, Tag } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { Phone, MessageCircle, Car, FileText, Landmark, Tag, Pencil, Trash2 } from "lucide-react";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { Avatar } from "@/components/Avatar";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ChannelIcon } from "@/components/ChannelIcon";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { FormErrorAlert } from "@/components/FormErrorAlert";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useAuth } from "@/context/AuthContext";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useConversationsQuery } from "@/hooks/useConversationsQuery";
 import { crmApi } from "@/services/crm";
 import type { ConversationDto } from "@/services/crm";
+import { buildTelHref } from "@/lib/phone";
+import { normalizeApiError } from "@/lib/formErrors";
+import { toast } from "sonner";
 
 type SellerNotesJson = {
   customer_info?: {
@@ -61,8 +86,14 @@ function buildPromotionHref(promotionId?: string) {
 
 export default function ClienteDetalle() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { token } = useAuth();
-  const { data: client } = useQuery({ queryKey: ["client", id], queryFn: () => crmApi.getClient(token!, id!), enabled: Boolean(token && id) });
+  const queryClient = useQueryClient();
+  const { data: client } = useQuery({
+    queryKey: ["client", id],
+    queryFn: () => crmApi.getClient(token!, id!),
+    enabled: Boolean(token && id),
+  });
   const { data: conversations } = useConversationsQuery();
   const conv = (conversations || []).find((c: ConversationDto) => c.clientLeadId === id || c.clientId === id);
   const convMessages = Array.isArray(conv?.messages) ? conv.messages : [];
@@ -72,6 +103,75 @@ export default function ClienteDetalle() {
   const promotionSelection = parsedNotes?.promotion_selection;
   const interestedVehicleName = financingSelection?.vehicle_name || promotionSelection?.vehicle_name || client?.interestedIn;
   const interestedVehicleId = financingSelection?.vehicle_id || promotionSelection?.vehicle_id;
+
+  const [editOpen, setEditOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [formError, setFormError] = useState("");
+  const [form, setForm] = useState({ name: "" });
+
+  useEffect(() => {
+    if (!client) return;
+    setForm({ name: client.name || "" });
+  }, [client]);
+
+  const updateMutation = useMutation({
+    mutationFn: () => {
+      if (!client) throw new Error("Cliente no disponible");
+      return crmApi.updateClient(token!, id!, {
+        name: form.name.trim(),
+        phone: client.phone,
+        status: client.status,
+        interestedIn: client.interestedIn?.trim() || null,
+      });
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["client", id] }),
+        queryClient.invalidateQueries({ queryKey: ["clients"] }),
+      ]);
+      setEditOpen(false);
+      setFormError("");
+      toast.success("Cliente actualizado.");
+    },
+    onError: (error: unknown) => setFormError(normalizeApiError(error, "No se pudo actualizar el cliente.").formError),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => crmApi.deleteClient(token!, id!),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["clients"] });
+      toast.success("Cliente eliminado.");
+      navigate("/clientes");
+    },
+    onError: (error: unknown) => toast.error(normalizeApiError(error, "No se pudo eliminar el cliente.").formError),
+  });
+
+  const telHref = buildTelHref(client?.phone);
+
+  const handleCall = () => {
+    if (!telHref) {
+      toast.error("No hay un número de teléfono válido para llamar.");
+      return;
+    }
+    window.location.href = telHref;
+  };
+
+  const handleChat = () => {
+    if (!conv?.id) {
+      toast.error("No hay conversación activa con este cliente.");
+      return;
+    }
+    navigate(`/chat/${conv.id}`);
+  };
+
+  const handleSave = () => {
+    if (!form.name.trim()) {
+      setFormError("El nombre es obligatorio.");
+      return;
+    }
+    setFormError("");
+    updateMutation.mutate();
+  };
 
   if (!client) {
     return (
@@ -84,7 +184,33 @@ export default function ClienteDetalle() {
 
   return (
     <>
-      <ScreenHeader title="Detalle del cliente" back />
+      <ScreenHeader
+        title="Detalle del cliente"
+        back
+        action={
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                setFormError("");
+                setEditOpen(true);
+              }}
+              className="w-9 h-9 grid place-items-center rounded-full hover:bg-muted touch-manipulation"
+              aria-label="Editar cliente"
+            >
+              <Pencil className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setDeleteOpen(true)}
+              className="w-9 h-9 grid place-items-center rounded-full hover:bg-destructive/10 text-destructive touch-manipulation"
+              aria-label="Eliminar cliente"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        }
+      />
 
       <div className="px-4 py-5 space-y-4">
         <div className="bg-card rounded-2xl p-5 shadow-card border border-border flex flex-col items-center text-center">
@@ -99,10 +225,10 @@ export default function ClienteDetalle() {
           </div>
 
           <div className="grid grid-cols-2 gap-2 w-full mt-4">
-            <Button variant="outline" className="h-10 rounded-xl gap-2">
+            <Button variant="outline" className="h-10 rounded-xl gap-2" onClick={handleCall}>
               <Phone className="w-4 h-4" /> Llamar
             </Button>
-            <Button className="h-10 rounded-xl gap-2 shadow-green">
+            <Button className="h-10 rounded-xl gap-2 shadow-green" onClick={handleChat}>
               <MessageCircle className="w-4 h-4" /> Chat
             </Button>
           </div>
@@ -115,10 +241,12 @@ export default function ClienteDetalle() {
               <Car className="w-6 h-6" />
             </div>
             <div>
-              <p className="font-semibold text-sm">{interestedVehicleName}</p>
-              <Link to={buildVehicleHref(interestedVehicleId)} className="text-xs text-primary underline underline-offset-2">
-                Ver ficha del auto
-              </Link>
+              <p className="font-semibold text-sm">{interestedVehicleName || "Sin auto de interés"}</p>
+              {interestedVehicleId ? (
+                <Link to={buildVehicleHref(interestedVehicleId)} className="text-xs text-primary underline underline-offset-2">
+                  Ver ficha del auto
+                </Link>
+              ) : null}
             </div>
           </div>
         </div>
@@ -203,6 +331,67 @@ export default function ClienteDetalle() {
           </div>
         )}
       </div>
+
+      <Dialog open={editOpen} onOpenChange={(open) => !updateMutation.isPending && setEditOpen(open)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar cliente</DialogTitle>
+            <DialogDescription>Actualiza los datos principales del contacto.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <FormErrorAlert message={formError} />
+            <div>
+              <Label className="text-xs">Nombre</Label>
+              <Input
+                className="mt-1"
+                value={form.name}
+                onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))}
+              />
+            </div>
+            {/* Teléfono deshabilitado temporalmente: evitar inconsistencias con IDs de canal en BD (ej. WhatsApp @lid). */}
+            {/*
+            <div>
+              <Label className="text-xs">Teléfono</Label>
+              <Input
+                className="mt-1"
+                value={form.phone}
+                onChange={(e) => setForm((s) => ({ ...s, phone: e.target.value }))}
+              />
+            </div>
+            */}
+          </div>
+          <DialogFooter>
+            <Button onClick={handleSave} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? "Guardando..." : "Guardar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={deleteOpen} onOpenChange={(open) => !deleteMutation.isPending && setDeleteOpen(open)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar este cliente?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se ocultará <span className="font-semibold">{client.name}</span> de tu lista de clientes. Las conversaciones
+              históricas se conservan y el contacto podrá reactivarse si vuelve a escribir.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteMutation.isPending}
+              onClick={(e) => {
+                e.preventDefault();
+                deleteMutation.mutate();
+              }}
+            >
+              {deleteMutation.isPending ? "Eliminando..." : "Eliminar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

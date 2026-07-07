@@ -26,6 +26,12 @@ export const crmApi = {
   getKpis: (token: string) => apiRequest<DashboardKpisDto>("/dashboard/kpis", "GET", undefined, token),
   getClients: (token: string) => apiRequest<ClientDto[]>("/clients", "GET", undefined, token),
   getClient: (token: string, id: string) => apiRequest<ClientDto>(`/clients/${id}`, "GET", undefined, token),
+  updateClient: (
+    token: string,
+    id: string,
+    payload: { name: string; phone: string; status: ClientDto["status"]; interestedIn?: string | null },
+  ) => apiRequest<ClientDto>(`/clients/${id}`, "PATCH", payload, token),
+  deleteClient: (token: string, id: string) => apiRequest<{ ok: boolean }>(`/clients/${id}`, "DELETE", undefined, token),
   getConversations: (token: string) => apiRequest<ConversationDto[]>("/conversations", "GET", undefined, token),
   getConversationMessages: (token: string, id: string) =>
     apiRequest<ConversationMessageDto[]>(`/conversations/${id}/messages`, "GET", undefined, token),

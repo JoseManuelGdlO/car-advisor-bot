@@ -42,6 +42,7 @@ export default function Clientes() {
 
   const filtered = useMemo(() => {
     return clients.filter((c) => {
+      if (c.status === "eliminated") return false;
       const matchF = filter === "all" || c.status === filter;
       const matchQ = !q || c.name.toLowerCase().includes(q.toLowerCase()) || c.interestedIn.toLowerCase().includes(q.toLowerCase());
       return matchF && matchQ;

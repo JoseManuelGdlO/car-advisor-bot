@@ -5,6 +5,11 @@ import { calcDayOverDayChangePct, utcDayBounds } from "../utils/dashboardKpis.js
 // Scope multi-tenant por propietario autenticado.
 const ownerWhere = (userId) => ({ ownerUserId: userId });
 
+const visibleLeadsWhere = (userId) => ({
+  ...ownerWhere(userId),
+  status: { [Op.ne]: "eliminated" },
+});
+
 const createdAtBetween = (start, end) => ({
   createdAt: { [Op.between]: [start, end] },
 });
@@ -37,20 +42,22 @@ export const getDashboard = async (req, res) => {
     weeklyRows,
   ] = await Promise.all([
     Conversation.count({ where: ownerWhere(userId) }),
-    ClientLead.count({ where: { ...ownerWhere(userId), ...createdAtBetween(todayBounds.start, todayBounds.end) } }),
     ClientLead.count({
-      where: { ...ownerWhere(userId), ...createdAtBetween(yesterdayBounds.start, yesterdayBounds.end) },
+      where: { ...visibleLeadsWhere(userId), ...createdAtBetween(todayBounds.start, todayBounds.end) },
     }),
     ClientLead.count({
-      where: { ...ownerWhere(userId), ...soldUpdatedBetween(todayBounds.start, todayBounds.end) },
+      where: { ...visibleLeadsWhere(userId), ...createdAtBetween(yesterdayBounds.start, yesterdayBounds.end) },
     }),
     ClientLead.count({
-      where: { ...ownerWhere(userId), ...soldUpdatedBetween(yesterdayBounds.start, yesterdayBounds.end) },
+      where: { ...visibleLeadsWhere(userId), ...soldUpdatedBetween(todayBounds.start, todayBounds.end) },
+    }),
+    ClientLead.count({
+      where: { ...visibleLeadsWhere(userId), ...soldUpdatedBetween(yesterdayBounds.start, yesterdayBounds.end) },
     }),
     Conversation.count({ where: { ...ownerWhere(userId), unread: { [Op.gt]: 0 } } }),
     ClientLead.findAll({
       where: {
-        ...ownerWhere(userId),
+        ...visibleLeadsWhere(userId),
         [Op.and]: [
           { interestedIn: { [Op.not]: null } },
           { interestedIn: { [Op.ne]: "" } },

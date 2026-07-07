@@ -11,6 +11,7 @@ import { useConversationMessagesQuery, useConversationsQuery } from "@/hooks/use
 import { crmApi } from "@/services/crm";
 import { toast } from "sonner";
 import { normalizeApiError } from "@/lib/formErrors";
+import { buildTelHref } from "@/lib/phone";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -70,15 +71,6 @@ function parseAttachmentText(text: string): ParsedAttachmentText | null {
 function normalizeConversationChannel(value: string): Channel {
   if (value === "whatsapp" || value === "instagram" || value === "facebook") return value;
   return "facebook";
-}
-
-function buildTelHref(phone: string | undefined): string | null {
-  if (!phone?.trim()) return null;
-  const compact = phone.replace(/\s/g, "");
-  const digits = compact.replace(/\D/g, "");
-  if (digits.length < 7) return null;
-  const intl = compact.startsWith("+") ? `+${digits}` : digits;
-  return `tel:${intl}`;
 }
 
 export default function ChatDetalle() {
@@ -231,7 +223,7 @@ export default function ChatDetalle() {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full min-w-0 overflow-hidden">
       <input ref={fileInputRef} type="file" className="hidden" accept="image/*,.pdf,.doc,.docx" onChange={handleFileChange} />
 
       {/* WhatsApp-style header */}
@@ -244,13 +236,20 @@ export default function ChatDetalle() {
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <div className="relative shrink-0">
+        <button
+          type="button"
+          onClick={() => navigate(`/cliente/${client.id}`)}
+          className="relative shrink-0 rounded-full hover:bg-white/15 touch-manipulation"
+          aria-label="Ver ficha del cliente"
+        >
           <Avatar name={client.name} color={client.avatarColor} size="sm" />
           <ChannelIcon channel={normalizeConversationChannel(conv.channel)} size={9} className="absolute -bottom-0.5 -right-0.5 ring-2 ring-primary-dark" />
-        </div>
+        </button>
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-sm truncate">{client.name}</p>
-          <p className="text-[11px] text-primary-foreground/80 truncate">Interesado en {client.interestedIn}</p>
+          {client.interestedIn?.trim() ? (
+            <p className="text-[11px] text-primary-foreground/80 truncate">Interesado en {client.interestedIn.trim()}</p>
+          ) : null}
         </div>
         <button
           type="button"
@@ -284,13 +283,6 @@ export default function ChatDetalle() {
               <Copy className="w-4 h-4" />
               Copiar teléfono
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              className="gap-2 text-muted-foreground"
-              onSelect={() => toast.info(`Canal: ${conv.channel}. El detalle del canal se administra en Configuración.`)}
-            >
-              Información del canal
-            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </header>
@@ -312,16 +304,16 @@ export default function ChatDetalle() {
       </div>
 
       {/* Messages */}
-      <div ref={messagesContainerRef} onScroll={handleMessagesScroll} className="flex-1 overflow-y-auto bg-chat-pattern px-3 py-4 space-y-2">
+      <div ref={messagesContainerRef} onScroll={handleMessagesScroll} className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden bg-chat-pattern px-3 py-4 space-y-2">
         {((messages || []) as ChatMessageRow[]).map((m) => {
           const mine = m.from !== "client";
           const isBot = m.from === "bot";
           const attachment = parseAttachmentText(m.text);
           return (
-            <div key={m.id} className={cn("flex", mine ? "justify-end" : "justify-start")}>
+            <div key={m.id} className={cn("flex min-w-0", mine ? "justify-end" : "justify-start")}>
               <div
                 className={cn(
-                  "max-w-[78%] px-3 py-2 rounded-2xl shadow-soft text-sm",
+                  "max-w-[78%] min-w-0 px-3 py-2 rounded-2xl shadow-soft text-sm overflow-hidden",
                   mine
                     ? isBot
                       ? "bg-chat-bot text-foreground rounded-br-md"
@@ -339,7 +331,7 @@ export default function ChatDetalle() {
                 )}
                 {attachment ? (
                   <div className="space-y-2">
-                    {attachment.caption ? <p className="leading-relaxed whitespace-pre-wrap">{attachment.caption}</p> : null}
+                    {attachment.caption ? <p className="leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{attachment.caption}</p> : null}
                     <a href={attachment.imageUrl} target="_blank" rel="noreferrer" className="block">
                       <img
                         src={attachment.imageUrl}
@@ -350,7 +342,7 @@ export default function ChatDetalle() {
                     </a>
                   </div>
                 ) : (
-                  <p className="leading-relaxed whitespace-pre-wrap">{m.text}</p>
+                  <p className="leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{m.text}</p>
                 )}
                 <p className="text-[10px] text-muted-foreground text-right mt-1">{m.time}</p>
               </div>

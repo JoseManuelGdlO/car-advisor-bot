@@ -21,6 +21,33 @@ const hasUsableCustomerInfo = (c) => {
 
 const isNonEmptyObject = (o) => o && typeof o === "object" && Object.keys(o).length > 0;
 
+export const ELIMINATED_LEAD_STATUS = "eliminated";
+
+const visibleLeadStatusWhere = () => ({ status: { [Op.ne]: ELIMINATED_LEAD_STATUS } });
+
+/** Decide si crear, reactivar o reutilizar un lead al recibir evento conversacional. */
+export const resolveLeadUpsertOutcome = (
+  existing,
+  { inboundChannel, customerInfo, isInboundClientMessage, normalizedMessage },
+) => {
+  if (!existing) return { kind: "create" };
+  if (existing.status === ELIMINATED_LEAD_STATUS) {
+    const nameFromInfo = customerInfo?.nombre && String(customerInfo.nombre).trim();
+    return {
+      kind: "reactivate",
+      patch: {
+        status: "lead",
+        channel: inboundChannel,
+        ...(nameFromInfo ? { name: nameFromInfo } : {}),
+        ...(isInboundClientMessage
+          ? { lastMessage: normalizedMessage, lastMessageAt: new Date() }
+          : {}),
+      },
+    };
+  }
+  return { kind: "use_existing" };
+};
+
 export const upsertConversationEvent = async ({
   ownerUserId,
   userId,
@@ -71,6 +98,17 @@ export const upsertConversationEvent = async ({
       lastMessage: isInboundClientMessage ? normalizedMessage : "",
       lastMessageAt: isInboundClientMessage ? new Date() : null,
     });
+  } else {
+    const leadOutcome = resolveLeadUpsertOutcome(lead, {
+      inboundChannel,
+      customerInfo,
+      isInboundClientMessage,
+      normalizedMessage,
+    });
+    if (leadOutcome.kind === "reactivate") {
+      await lead.update(leadOutcome.patch);
+      await lead.reload();
+    }
   }
 
   let currentNotes;
@@ -398,7 +436,7 @@ const findLeadForExternalUser = async ({ ownerUserId, userId, platform }) => {
   const conv = await findConversationForExternalUser({ ownerUserId, userId, platform });
   if (conv?.clientLeadId) {
     const lead = await ClientLead.findOne({
-      where: { id: conv.clientLeadId, ownerUserId },
+      where: { id: conv.clientLeadId, ownerUserId, ...visibleLeadStatusWhere() },
     });
     if (lead) return lead;
   }
@@ -407,7 +445,7 @@ const findLeadForExternalUser = async ({ ownerUserId, userId, platform }) => {
   if (!normalizedUserId) return null;
 
   return ClientLead.findOne({
-    where: { ownerUserId, phone: normalizedUserId },
+    where: { ownerUserId, phone: normalizedUserId, ...visibleLeadStatusWhere() },
   });
 };
 
