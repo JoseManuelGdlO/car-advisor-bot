@@ -701,7 +701,7 @@ export default function Perfil() {
                     ? "Credenciales Instagram (Meta)"
                     : "Credenciales (JSON)"}
               </DialogTitle>
-              <DialogDescription>Se guardan cifradas en el servidor. No se vuelven a mostrar.</DialogDescription>
+              <DialogDescription>Se guardan cifradas en el servidor y no se vuelven a mostrar.</DialogDescription>
             </DialogHeader>
             {isWhatsAppConnectCredModal ? (
               <div className="space-y-2">
@@ -724,7 +724,7 @@ export default function Perfil() {
                   />
                 </div>
                 <div>
-                  <Label className="text-xs">Tenant ID (opcional)</Label>
+                  <Label className="text-xs">Tenant ID</Label>
                   <Input
                     className="mt-1"
                     value={wcCredForm.tenantId}
@@ -732,7 +732,6 @@ export default function Perfil() {
                     placeholder="tenant_123"
                   />
                 </div>
-                <p className="text-[11px] text-muted-foreground">El Service JWT se configura en backend (`WC_SERVICE_JWT`), no en este formulario.</p>
               </div>
             ) : isInstagramMetaCredModal ? (
               <div className="space-y-2">
