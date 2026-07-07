@@ -1,6 +1,21 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef, type FormEvent, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ArrowDown, ArrowUp, Car, Check, FileText, Pencil, Plus, Search, Tag, Trash2 } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  Car,
+  Check,
+  FileText,
+  Gauge,
+  ImagePlus,
+  Landmark,
+  Pencil,
+  Plus,
+  Search,
+  Tag,
+  Trash2,
+  X,
+} from "lucide-react";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -20,15 +35,72 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { FormErrorAlert } from "@/components/FormErrorAlert";
 import { normalizeApiError } from "@/lib/formErrors";
 
-const filters: { key: "all" | CarStatus; label: string }[] = [
+type ProductFilter = "all" | CarStatus | "noFinancing" | "noPromos";
+
+const filters: { key: ProductFilter; label: string }[] = [
   { key: "all", label: "Todos" },
   { key: "available", label: "Disponibles" },
   { key: "reserved", label: "Apartados" },
   { key: "sold", label: "Vendidos" },
+  { key: "noFinancing", label: "Sin financiamiento" },
+  { key: "noPromos", label: "Sin promos" },
 ];
+
+const linkedPromoCountForVehicle = (vehicleId: string, promotions: PromotionDto[]) =>
+  promotions.filter(
+    (p) => Array.isArray(p.vehicleIds) && p.vehicleIds.some((id) => String(id) === String(vehicleId)),
+  ).length;
+
+const statusLabels: Record<CarStatus, string> = {
+  available: "Disponible",
+  reserved: "Apartado",
+  sold: "Vendido",
+};
+
+type VehicleFormState = {
+  brand: string;
+  model: string;
+  year: string;
+  price: string;
+  km: string;
+  transmission: string;
+  engine: string;
+  color: string;
+  status: CarStatus;
+  description: string;
+  image: string;
+  outboundPriority: string;
+};
+
+type MetadataRow = { id: string; key: string; value: string };
+
+const emptyForm: VehicleFormState = {
+  brand: "",
+  model: "",
+  year: "",
+  price: "",
+  km: "0",
+  transmission: "",
+  engine: "",
+  color: "",
+  status: "available",
+  description: "",
+  image: "🚗",
+  outboundPriority: "0",
+};
 
 const formatPrice = (n: number) =>
   new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 0 }).format(Math.round(n));
@@ -44,7 +116,6 @@ const formatPriceInput = (raw: string) => {
 };
 
 const sanitizePriceDigits = (raw: string) => raw.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1");
-
 const parsePriceInt = (raw: string) => Math.round(Number(raw));
 const PDF_MAX_BYTES = 8 * 1024 * 1024;
 
@@ -54,56 +125,133 @@ const validateTechnicalSheet = (file: File): string | null => {
   if (file.size > PDF_MAX_BYTES) return "El PDF no puede superar 8 MB.";
   return null;
 };
+
 const mediaBase = (import.meta.env.VITE_API_BASE_URL || "http://localhost:4000/api").replace(/\/api\/?$/, "");
 const toMediaUrl = (value: string) => (value.startsWith("http") ? value : `${mediaBase}${value}`);
 const vehicleEmojis = ["🚗", "🚙", "🚘", "🚕", "🚖", "🚐", "🚚", "🚛", "🛻", "🚜", "🏎️", "🚓", "🚑", "🚒", "🚌"];
 
-const parseMetadataInput = (raw: string): Record<string, string | number | boolean> => {
-  const text = raw.trim();
-  if (!text) return {};
+const parseMetadataValue = (raw: string): string | number | boolean => {
+  const trimmed = raw.trim();
+  const lower = trimmed.toLowerCase();
+  if (["true", "si", "sí", "yes"].includes(lower)) return true;
+  if (["false", "no"].includes(lower)) return false;
+  const numberValue = Number(trimmed);
+  return Number.isNaN(numberValue) ? trimmed : numberValue;
+};
 
-  // Compatibilidad con usuarios avanzados que prefieren JSON.
-  if (text.startsWith("{")) {
-    try {
-      const parsed = JSON.parse(text);
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        return parsed as Record<string, string | number | boolean>;
-      }
-    } catch {
-      return {};
-    }
-    return {};
-  }
+const metadataToRows = (metadata?: Record<string, unknown> | null): MetadataRow[] => {
+  if (!metadata || typeof metadata !== "object") return [];
+  return Object.entries(metadata).map(([key, value]) => ({
+    id: crypto.randomUUID(),
+    key,
+    value: String(value ?? ""),
+  }));
+};
 
+const rowsToMetadata = (rows: MetadataRow[]): Record<string, string | number | boolean> => {
   const result: Record<string, string | number | boolean> = {};
-  const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
-  for (const line of lines) {
-    const separatorIndex = line.search(/[:=]/);
-    if (separatorIndex <= 0) continue;
-    const key = line.slice(0, separatorIndex).trim();
-    const rawValue = line.slice(separatorIndex + 1).trim();
-    if (!key || !rawValue) continue;
-
-    const lowerValue = rawValue.toLowerCase();
-    if (["true", "si", "sí", "yes"].includes(lowerValue)) {
-      result[key] = true;
-      continue;
-    }
-    if (["false", "no"].includes(lowerValue)) {
-      result[key] = false;
-      continue;
-    }
-    const numberValue = Number(rawValue);
-    result[key] = Number.isNaN(numberValue) ? rawValue : numberValue;
+  for (const row of rows) {
+    const key = row.key.trim();
+    const value = row.value.trim();
+    if (!key || !value) continue;
+    result[key] = parseMetadataValue(value);
   }
   return result;
 };
+
+function FormSection({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
+  return (
+    <section className="space-y-3">
+      <div>
+        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+        {description ? <p className="text-xs text-muted-foreground mt-0.5">{description}</p> : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function VehicleCardImage({ car }: { car: VehicleDto }) {
+  const [broken, setBroken] = useState(false);
+  const src = car.imageUrls?.[0] ? toMediaUrl(car.imageUrls[0]) : "";
+
+  if (!src || broken) {
+    return (
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-gradient-soft">
+        <span className="text-4xl leading-none select-none" aria-hidden>
+          {car.image || "🚗"}
+        </span>
+        <div className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wide">
+          <Car className="w-3.5 h-3.5" aria-hidden />
+          Sin foto
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={`${car.brand} ${car.model}`}
+      className="absolute inset-0 h-full w-full object-cover"
+      onError={() => setBroken(true)}
+    />
+  );
+}
+
+function FilePickerZone({
+  label,
+  hint,
+  accept,
+  multiple,
+  icon: Icon,
+  onFiles,
+}: {
+  label: string;
+  hint: string;
+  accept: string;
+  multiple?: boolean;
+  icon: typeof ImagePlus;
+  onFiles: (files: File[]) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <div className="space-y-1.5">
+      <Label>{label}</Label>
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        className="w-full flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-muted/20 px-4 py-5 text-center transition-colors hover:border-primary/40 hover:bg-muted/40"
+      >
+        <Icon className="w-7 h-7 text-muted-foreground/60" />
+        <span className="text-sm font-medium text-foreground">Elegir archivos</span>
+        <span className="text-[11px] text-muted-foreground">{hint}</span>
+      </button>
+      <input
+        ref={inputRef}
+        type="file"
+        className="sr-only"
+        accept={accept}
+        multiple={multiple}
+        onChange={(e) => {
+          onFiles(Array.from(e.target.files || []));
+          e.target.value = "";
+        }}
+      />
+    </div>
+  );
+}
 
 export default function ConfigProductos() {
   const [searchParams] = useSearchParams();
   const { token } = useAuth();
   const queryClient = useQueryClient();
-  const { data } = useQuery({ queryKey: ["vehicles"], queryFn: () => crmApi.getVehicles(token!), enabled: Boolean(token) });
+  const { data, isLoading } = useQuery({
+    queryKey: ["vehicles"],
+    queryFn: () => crmApi.getVehicles(token!),
+    enabled: Boolean(token),
+  });
   const { data: plansData = [] } = useQuery({
     queryKey: ["financing-plans"],
     queryFn: () => crmApi.getFinancingPlans(token!),
@@ -117,9 +265,9 @@ export default function ConfigProductos() {
   const cars = (data || []) as VehicleDto[];
   const plans = plansData as FinancingPlanDto[];
   const promotions = promotionsData as PromotionDto[];
-  const [filter, setFilter] = useState<"all" | CarStatus>("all");
+  const [filter, setFilter] = useState<ProductFilter>("all");
   const [q, setQ] = useState("");
-  const [updating, setUpdating] = useState<string>("");
+  const [updating, setUpdating] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [vehicleFormError, setVehicleFormError] = useState("");
@@ -130,30 +278,40 @@ export default function ConfigProductos() {
   const [technicalSheetUrl, setTechnicalSheetUrl] = useState("");
   const [technicalSheetPreviewUrl, setTechnicalSheetPreviewUrl] = useState("");
   const [priceFocused, setPriceFocused] = useState(false);
-  const [form, setForm] = useState({
-    brand: "",
-    model: "",
-    year: "",
-    price: "",
-    km: "0",
-    transmission: "",
-    engine: "",
-    color: "",
-    status: "available" as CarStatus,
-    description: "",
-    image: "🚗",
-    metadataText: "",
-    outboundPriority: "0",
-  });
+  const [metadataRows, setMetadataRows] = useState<MetadataRow[]>([]);
+  const [form, setForm] = useState<VehicleFormState>(emptyForm);
   const focusedVehicleId = searchParams.get("vehicleId");
+
+  const filterCounts = useMemo(() => {
+    const counts: Record<ProductFilter, number> = {
+      all: cars.length,
+      available: 0,
+      reserved: 0,
+      sold: 0,
+      noFinancing: 0,
+      noPromos: 0,
+    };
+    for (const car of cars) {
+      if (car.status in counts) counts[car.status as CarStatus] += 1;
+      if (!car.financingPlans?.length) counts.noFinancing += 1;
+      if (linkedPromoCountForVehicle(car.id, promotions) === 0) counts.noPromos += 1;
+    }
+    return counts;
+  }, [cars, promotions]);
 
   const list = useMemo(() => {
     return cars.filter((c) => {
-      const okF = filter === "all" || c.status === filter;
+      let okF = true;
+      if (filter === "noFinancing") okF = !c.financingPlans?.length;
+      else if (filter === "noPromos") okF = linkedPromoCountForVehicle(c.id, promotions) === 0;
+      else if (filter !== "all") okF = c.status === filter;
       const okQ = !q || `${c.brand} ${c.model}`.toLowerCase().includes(q.toLowerCase());
       return okF && okQ;
     });
-  }, [cars, filter, q]);
+  }, [cars, filter, q, promotions]);
+
+  const isFormValid =
+    Boolean(form.brand && form.model && form.year && form.price && form.transmission && form.engine && form.color);
 
   useEffect(() => {
     if (!focusedVehicleId) return;
@@ -161,6 +319,8 @@ export default function ConfigProductos() {
     if (!element) return;
     element.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [focusedVehicleId, list.length]);
+
+  const [selectedFilePreviews, setSelectedFilePreviews] = useState<string[]>([]);
 
   useEffect(() => {
     if (selectedTechnicalSheet) {
@@ -170,6 +330,24 @@ export default function ConfigProductos() {
     }
     setTechnicalSheetPreviewUrl(technicalSheetUrl ? toMediaUrl(technicalSheetUrl) : "");
   }, [selectedTechnicalSheet, technicalSheetUrl]);
+
+  useEffect(() => {
+    const previews = selectedFiles.map((file) => URL.createObjectURL(file));
+    setSelectedFilePreviews(previews);
+    return () => previews.forEach((url) => URL.revokeObjectURL(url));
+  }, [selectedFiles]);
+
+  const resetVehicleForm = () => {
+    setEditingId(null);
+    setSelectedFiles([]);
+    setImageUrls([]);
+    setSelectedTechnicalSheet(null);
+    setTechnicalSheetUrl("");
+    setPriceFocused(false);
+    setMetadataRows([]);
+    setForm(emptyForm);
+    setVehicleFormError("");
+  };
 
   const togglePlanForVehicle = async (vehicleId: string, planId: string, selected: boolean) => {
     if (!token) return;
@@ -214,6 +392,7 @@ export default function ConfigProductos() {
     setSelectedTechnicalSheet(null);
     setTechnicalSheetUrl(car.technicalSheetUrl || "");
     setPriceFocused(false);
+    setMetadataRows(metadataToRows(car.metadata as Record<string, unknown> | undefined));
     setForm({
       brand: car.brand || "",
       model: car.model || "",
@@ -226,15 +405,15 @@ export default function ConfigProductos() {
       status: car.status || "available",
       description: car.description || "",
       image: car.image || "🚗",
-      metadataText: car.metadata ? JSON.stringify(car.metadata, null, 2) : "",
       outboundPriority: String(car.outboundPriority ?? 0),
     });
+    setVehicleFormError("");
     setCreateOpen(true);
   };
 
-  const saveVehicle = async () => {
-    if (!token) return;
-    if (!form.brand || !form.model || !form.year || !form.price || !form.transmission || !form.engine || !form.color) return;
+  const saveVehicle = async (event?: FormEvent) => {
+    event?.preventDefault();
+    if (!token || !isFormValid) return;
     setCreating(true);
     setVehicleFormError("");
     try {
@@ -264,7 +443,7 @@ export default function ConfigProductos() {
         image: form.image.trim() || "🚗",
         imageUrls: [...imageUrls, ...uploaded],
         technicalSheetUrl: finalTechnicalSheetUrl,
-        metadata: parseMetadataInput(form.metadataText),
+        metadata: rowsToMetadata(metadataRows),
         outboundPriority: Number(form.outboundPriority || "0"),
       };
       if (editingId) {
@@ -274,27 +453,7 @@ export default function ConfigProductos() {
       }
       await queryClient.invalidateQueries({ queryKey: ["vehicles"] });
       setCreateOpen(false);
-      setEditingId(null);
-      setSelectedFiles([]);
-      setImageUrls([]);
-      setSelectedTechnicalSheet(null);
-      setTechnicalSheetUrl("");
-      setPriceFocused(false);
-      setForm({
-        brand: "",
-        model: "",
-        year: "",
-        price: "",
-        km: "0",
-        transmission: "",
-        engine: "",
-        color: "",
-        status: "available",
-        description: "",
-        image: "🚗",
-        metadataText: "",
-        outboundPriority: "0",
-      });
+      resetVehicleForm();
     } catch (err) {
       setVehicleFormError(normalizeApiError(err, "No se pudo guardar el vehículo.").formError);
     } finally {
@@ -316,6 +475,22 @@ export default function ConfigProductos() {
     setImageUrls((current) => current.filter((_, i) => i !== index));
   };
 
+  const removeSelectedFile = (index: number) => {
+    setSelectedFiles((current) => current.filter((_, i) => i !== index));
+  };
+
+  const addMetadataRow = () => {
+    setMetadataRows((rows) => [...rows, { id: crypto.randomUUID(), key: "", value: "" }]);
+  };
+
+  const updateMetadataRow = (id: string, field: "key" | "value", next: string) => {
+    setMetadataRows((rows) => rows.map((row) => (row.id === id ? { ...row, [field]: next } : row)));
+  };
+
+  const removeMetadataRow = (id: string) => {
+    setMetadataRows((rows) => rows.filter((row) => row.id !== id));
+  };
+
   return (
     <>
       <ScreenHeader
@@ -334,276 +509,338 @@ export default function ConfigProductos() {
               <Button
                 size="sm"
                 className="rounded-full h-9 px-3 shadow-green"
-                onClick={() => {
-                  setEditingId(null);
-                  setSelectedFiles([]);
-                  setImageUrls([]);
-                  setSelectedTechnicalSheet(null);
-                  setTechnicalSheetUrl("");
-                  setPriceFocused(false);
-                  setForm({
-                    brand: "",
-                    model: "",
-                    year: "",
-                    price: "",
-                    km: "0",
-                    transmission: "",
-                    engine: "",
-                    color: "",
-                    status: "available",
-                    description: "",
-                    image: "🚗",
-                    metadataText: "",
-                    outboundPriority: "0",
-                  });
-                }}
+                onClick={resetVehicleForm}
               >
                 <Plus className="w-4 h-4" /> Auto
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto pr-8">
-              <DialogHeader>
+            <DialogContent className="max-w-md p-0 gap-0 max-h-[92vh] flex flex-col overflow-hidden">
+              <DialogHeader className="px-5 pt-5 pb-4 border-b shrink-0 text-left">
                 <DialogTitle>{editingId ? "Editar auto" : "Nuevo auto"}</DialogTitle>
                 <DialogDescription>
-                  {editingId ? "Actualiza los datos del vehículo." : "Completa los datos para agregar el vehículo al catálogo."}
+                  {editingId
+                    ? "Actualiza los datos del vehículo en tu catálogo."
+                    : "Completa la información para publicar el vehículo."}
                 </DialogDescription>
               </DialogHeader>
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-2">
-                  <label className="space-y-1">
-                    <span className="text-xs font-semibold text-muted-foreground">Marca</span>
-                    <Input placeholder="Ej. Volkswagen" value={form.brand} onChange={(e) => setForm((s) => ({ ...s, brand: e.target.value }))} />
-                  </label>
-                  <label className="space-y-1">
-                    <span className="text-xs font-semibold text-muted-foreground">Modelo</span>
-                    <Input placeholder="Ej. Tiguan Trendline" value={form.model} onChange={(e) => setForm((s) => ({ ...s, model: e.target.value }))} />
-                  </label>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <label className="space-y-1">
-                    <span className="text-xs font-semibold text-muted-foreground">Año</span>
-                    <Input
-                      type="number"
-                      placeholder="Ej. 2022"
-                      value={form.year}
-                      onChange={(e) => setForm((s) => ({ ...s, year: e.target.value }))}
-                    />
-                  </label>
-                  <label className="space-y-1">
-                    <span className="text-xs font-semibold text-muted-foreground">Precio</span>
-                    <Input
-                      type="text"
-                      inputMode="decimal"
-                      placeholder="Ej. 629900"
-                      value={priceFocused ? form.price : formatPriceInput(form.price)}
-                      onFocus={() => setPriceFocused(true)}
-                      onBlur={() => setPriceFocused(false)}
-                      onChange={(e) => setForm((s) => ({ ...s, price: sanitizePriceDigits(e.target.value) }))}
-                    />
-                  </label>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <label className="space-y-1">
-                    <span className="text-xs font-semibold text-muted-foreground">Kilometraje</span>
-                    <Input
-                      type="number"
-                      placeholder="Ej. 22000"
-                      value={form.km}
-                      onChange={(e) => setForm((s) => ({ ...s, km: e.target.value }))}
-                    />
-                  </label>
-                  <label className="space-y-1">
-                    <span className="text-xs font-semibold text-muted-foreground">Color</span>
-                    <Input placeholder="Ej. Gris" value={form.color} onChange={(e) => setForm((s) => ({ ...s, color: e.target.value }))} />
-                  </label>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <label className="space-y-1">
-                    <span className="text-xs font-semibold text-muted-foreground">Transmisión</span>
-                    <Input
-                      placeholder="Ej. DSG"
-                      value={form.transmission}
-                      onChange={(e) => setForm((s) => ({ ...s, transmission: e.target.value }))}
-                    />
-                  </label>
-                  <label className="space-y-1">
-                    <span className="text-xs font-semibold text-muted-foreground">Motor</span>
-                    <Input placeholder="Ej. 1.4L Turbo" value={form.engine} onChange={(e) => setForm((s) => ({ ...s, engine: e.target.value }))} />
-                  </label>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <label className="space-y-1">
-                    <span className="text-xs font-semibold text-muted-foreground">Emoji del vehículo</span>
-                    <select
-                      value={form.image}
-                      onChange={(e) => setForm((s) => ({ ...s, image: e.target.value }))}
-                      className="h-10 rounded-md border border-input bg-background px-3 text-sm w-full"
-                    >
-                      {!vehicleEmojis.includes(form.image) ? (
-                        <option value={form.image}>{form.image || "🚗"}</option>
-                      ) : null}
-                      {vehicleEmojis.map((emoji) => (
-                        <option key={emoji} value={emoji}>
-                          {emoji}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="space-y-1">
-                    <span className="text-xs font-semibold text-muted-foreground">Prioridad de envío</span>
-                    <Input
-                      type="number"
-                      placeholder="Ej. 10"
-                      value={form.outboundPriority}
-                      onChange={(e) => setForm((s) => ({ ...s, outboundPriority: e.target.value }))}
-                    />
-                  </label>
-                </div>
-                <label className="space-y-1 block">
-                  <span className="text-xs font-semibold text-muted-foreground">Estatus</span>
-                  <select
-                    value={form.status}
-                    onChange={(e) => setForm((s) => ({ ...s, status: e.target.value as CarStatus }))}
-                    className="h-10 rounded-md border border-input bg-background px-3 text-sm w-full"
-                  >
-                    <option value="available">Disponible</option>
-                    <option value="reserved">Apartado</option>
-                    <option value="sold">Vendido</option>
-                  </select>
-                </label>
-                <label className="space-y-1 block">
-                  <span className="text-xs font-semibold text-muted-foreground">Imágenes</span>
-                  <Input
-                    type="file"
-                    multiple
-                    accept="image/*"
-                    onChange={(e) => setSelectedFiles(Array.from(e.target.files || []))}
-                  />
-                </label>
-                <p className="text-xs text-muted-foreground">
-                  {selectedFiles.length ? `${selectedFiles.length} imagen(es) seleccionadas para subir al servidor/autobot` : "Sin imágenes seleccionadas"}
-                </p>
-                {imageUrls.length ? (
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold text-muted-foreground">Imágenes actuales (ordena prioridad)</p>
-                    {imageUrls.map((url, index) => (
-                      <div key={`${url}-${index}`} className="flex items-center gap-2 border border-border rounded-lg p-2">
-                        <img src={toMediaUrl(url)} alt={`Imagen ${index + 1}`} className="w-12 h-12 rounded object-cover" />
-                        <p className="text-[11px] text-muted-foreground flex-1 truncate">{url.split("/").pop()}</p>
-                        <Button type="button" size="icon" variant="outline" className="h-7 w-7" onClick={() => moveImage(index, "up")}>
-                          <ArrowUp className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button type="button" size="icon" variant="outline" className="h-7 w-7" onClick={() => moveImage(index, "down")}>
-                          <ArrowDown className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button type="button" size="icon" variant="destructive" className="h-7 w-7" onClick={() => removeImage(index)}>
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-                <label className="space-y-1 block">
-                  <span className="text-xs font-semibold text-muted-foreground">Ficha técnica (PDF)</span>
-                  <Input
-                    type="file"
-                    accept="application/pdf,.pdf"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0] || null;
-                      if (!file) {
-                        setSelectedTechnicalSheet(null);
-                        return;
-                      }
-                      const pdfError = validateTechnicalSheet(file);
-                      if (pdfError) {
-                        setVehicleFormError(pdfError);
-                        e.target.value = "";
-                        setSelectedTechnicalSheet(null);
-                        return;
-                      }
-                      setVehicleFormError("");
-                      setSelectedTechnicalSheet(file);
-                    }}
-                  />
-                </label>
-                <p className="text-xs text-muted-foreground">
-                  {selectedTechnicalSheet
-                    ? `${selectedTechnicalSheet.name} seleccionado para subir (máx. 8 MB)`
-                    : technicalSheetUrl
-                      ? "Ficha técnica actual en el servidor"
-                      : "Sin ficha técnica (máx. 8 MB)"}
-                </p>
-                {technicalSheetUrl || selectedTechnicalSheet ? (
-                  <div className="flex items-center gap-2 border border-border rounded-lg p-2">
-                    <div className="relative w-12 h-12 shrink-0 rounded border border-border bg-muted overflow-hidden flex items-center justify-center">
-                      {technicalSheetPreviewUrl ? (
-                        <embed
-                          src={technicalSheetPreviewUrl}
-                          type="application/pdf"
-                          className="w-full h-full pointer-events-none"
+
+              <form onSubmit={saveVehicle} className="flex flex-col flex-1 min-h-0">
+                <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+                  <FormSection title="Identificación" description="Marca, modelo y precio de lista.">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="brand">Marca *</Label>
+                        <Input
+                          id="brand"
+                          placeholder="Volkswagen"
+                          value={form.brand}
+                          onChange={(e) => setForm((s) => ({ ...s, brand: e.target.value }))}
                         />
-                      ) : (
-                        <FileText className="w-5 h-5 text-muted-foreground" />
-                      )}
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="model">Modelo *</Label>
+                        <Input
+                          id="model"
+                          placeholder="Tiguan"
+                          value={form.model}
+                          onChange={(e) => setForm((s) => ({ ...s, model: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="year">Año *</Label>
+                        <Input
+                          id="year"
+                          type="number"
+                          placeholder="2024"
+                          value={form.year}
+                          onChange={(e) => setForm((s) => ({ ...s, year: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="price">Precio *</Label>
+                        <Input
+                          id="price"
+                          type="text"
+                          inputMode="decimal"
+                          placeholder="629900"
+                          value={priceFocused ? form.price : formatPriceInput(form.price)}
+                          onFocus={() => setPriceFocused(true)}
+                          onBlur={() => setPriceFocused(false)}
+                          onChange={(e) => setForm((s) => ({ ...s, price: sanitizePriceDigits(e.target.value) }))}
+                        />
+                      </div>
                     </div>
-                    {technicalSheetUrl ? (
-                      <a
-                        href={toMediaUrl(technicalSheetUrl)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-[11px] text-primary truncate flex-1"
+                  </FormSection>
+
+                  <Separator />
+
+                  <FormSection title="Especificaciones" description="Detalles técnicos visibles para el cliente.">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="km">Kilometraje</Label>
+                        <Input
+                          id="km"
+                          type="number"
+                          placeholder="0"
+                          value={form.km}
+                          onChange={(e) => setForm((s) => ({ ...s, km: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="color">Color *</Label>
+                        <Input
+                          id="color"
+                          placeholder="Gris"
+                          value={form.color}
+                          onChange={(e) => setForm((s) => ({ ...s, color: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="transmission">Transmisión *</Label>
+                        <Input
+                          id="transmission"
+                          placeholder="Automática"
+                          value={form.transmission}
+                          onChange={(e) => setForm((s) => ({ ...s, transmission: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="engine">Motor *</Label>
+                        <Input
+                          id="engine"
+                          placeholder="1.4L Turbo"
+                          value={form.engine}
+                          onChange={(e) => setForm((s) => ({ ...s, engine: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label>Emoji</Label>
+                        <Select value={form.image} onValueChange={(value) => setForm((s) => ({ ...s, image: value }))}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Elegir emoji" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {!vehicleEmojis.includes(form.image) ? (
+                              <SelectItem value={form.image}>{form.image || "🚗"}</SelectItem>
+                            ) : null}
+                            {vehicleEmojis.map((emoji) => (
+                              <SelectItem key={emoji} value={emoji}>
+                                {emoji}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="priority">Prioridad de envío</Label>
+                        <Input
+                          id="priority"
+                          type="number"
+                          min={0}
+                          placeholder="0"
+                          value={form.outboundPriority}
+                          onChange={(e) => setForm((s) => ({ ...s, outboundPriority: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Estatus</Label>
+                      <Select
+                        value={form.status}
+                        onValueChange={(value) => setForm((s) => ({ ...s, status: value as CarStatus }))}
                       >
-                        {technicalSheetUrl.split("/").pop()}
-                      </a>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(Object.keys(statusLabels) as CarStatus[]).map((status) => (
+                            <SelectItem key={status} value={status}>
+                              {statusLabels[status]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </FormSection>
+
+                  <Separator />
+
+                  <FormSection title="Medios" description="Imágenes y ficha técnica del vehículo.">
+                    <FilePickerZone
+                      label="Imágenes"
+                      hint="JPG, PNG o WebP · varias permitidas"
+                      accept="image/*"
+                      multiple
+                      icon={ImagePlus}
+                      onFiles={(files) => setSelectedFiles((current) => [...current, ...files])}
+                    />
+
+                    {selectedFiles.length > 0 ? (
+                      <div className="grid grid-cols-3 gap-2">
+                        {selectedFiles.map((file, index) => (
+                          <div key={`${file.name}-${index}`} className="relative aspect-square rounded-lg overflow-hidden border border-border bg-muted">
+                            <img
+                              src={selectedFilePreviews[index]}
+                              alt={file.name}
+                              className="h-full w-full object-cover"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removeSelectedFile(index)}
+                              className="absolute top-1 right-1 rounded-full bg-background/90 p-0.5 shadow-sm hover:bg-background"
+                              aria-label={`Quitar ${file.name}`}
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    {imageUrls.length > 0 ? (
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-muted-foreground">Imágenes actuales · la primera es la portada</p>
+                        {imageUrls.map((url, index) => (
+                          <div key={`${url}-${index}`} className="flex items-center gap-2 rounded-lg border border-border p-2 bg-card">
+                            <div className="relative shrink-0">
+                              <img src={toMediaUrl(url)} alt={`Imagen ${index + 1}`} className="w-14 h-14 rounded-md object-cover" />
+                              {index === 0 ? (
+                                <span className="absolute -top-1 -left-1 rounded bg-primary px-1 text-[9px] font-bold text-primary-foreground">
+                                  PORTADA
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className="text-[11px] text-muted-foreground flex-1 truncate">{url.split("/").pop()}</p>
+                            <div className="flex gap-0.5 shrink-0">
+                              <Button type="button" size="icon" variant="outline" className="h-7 w-7" disabled={index === 0} onClick={() => moveImage(index, "up")}>
+                                <ArrowUp className="w-3.5 h-3.5" />
+                              </Button>
+                              <Button type="button" size="icon" variant="outline" className="h-7 w-7" disabled={index === imageUrls.length - 1} onClick={() => moveImage(index, "down")}>
+                                <ArrowDown className="w-3.5 h-3.5" />
+                              </Button>
+                              <Button type="button" size="icon" variant="destructive" className="h-7 w-7" onClick={() => removeImage(index)}>
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    {technicalSheetUrl || selectedTechnicalSheet ? (
+                      <div className="space-y-1.5">
+                        <Label>Ficha técnica (PDF)</Label>
+                        <div className="flex items-center gap-2 rounded-lg border border-border p-2.5 bg-card">
+                          <div className="relative w-12 h-12 shrink-0 rounded-md border border-border bg-muted overflow-hidden flex items-center justify-center">
+                            {technicalSheetPreviewUrl ? (
+                              <embed src={technicalSheetPreviewUrl} type="application/pdf" className="w-full h-full pointer-events-none" />
+                            ) : (
+                              <FileText className="w-5 h-5 text-muted-foreground" />
+                            )}
+                          </div>
+                          {technicalSheetUrl ? (
+                            <a href={toMediaUrl(technicalSheetUrl)} target="_blank" rel="noreferrer" className="text-xs text-primary truncate flex-1 hover:underline">
+                              {technicalSheetUrl.split("/").pop()}
+                            </a>
+                          ) : (
+                            <p className="text-xs text-muted-foreground flex-1 truncate">{selectedTechnicalSheet?.name}</p>
+                          )}
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 text-destructive hover:text-destructive"
+                            onClick={() => {
+                              setTechnicalSheetUrl("");
+                              setSelectedTechnicalSheet(null);
+                            }}
+                            aria-label="Eliminar ficha técnica"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">Elimina la ficha actual para subir otra.</p>
+                      </div>
                     ) : (
-                      <p className="text-[11px] text-muted-foreground flex-1 truncate">{selectedTechnicalSheet?.name}</p>
+                      <FilePickerZone
+                        label="Ficha técnica (PDF)"
+                        hint="Máximo 8 MB · una por vehículo"
+                        accept="application/pdf,.pdf"
+                        icon={FileText}
+                        onFiles={(files) => {
+                          const file = files[0];
+                          if (!file) return;
+                          const pdfError = validateTechnicalSheet(file);
+                          if (pdfError) {
+                            setVehicleFormError(pdfError);
+                            setSelectedTechnicalSheet(null);
+                            return;
+                          }
+                          setVehicleFormError("");
+                          setSelectedTechnicalSheet(file);
+                        }}
+                      />
                     )}
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="destructive"
-                      className="h-7 w-7"
-                      onClick={() => {
-                        setTechnicalSheetUrl("");
-                        setSelectedTechnicalSheet(null);
-                      }}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
-                ) : null}
-                <label className="space-y-1 block">
-                  <span className="text-xs font-semibold text-muted-foreground">Datos adicionales (opcional)</span>
-                  <Textarea
-                    placeholder={`Ejemplos:
-Dueño: Agencia
-Versión: Highline`}
-                    value={form.metadataText}
-                    onChange={(e) => setForm((s) => ({ ...s, metadataText: e.target.value }))}
-                  />
-                  <p className="text-[11px] text-muted-foreground">
-                    Escribe un dato por renglón usando "Clave: valor". Si prefieres, también puedes pegar JSON.
-                  </p>
-                </label>
-                <label className="space-y-1 block">
-                  <span className="text-xs font-semibold text-muted-foreground">Descripción (opcional)</span>
-                  <Textarea
-                    placeholder="Agrega detalles del vehículo"
-                    value={form.description}
-                    onChange={(e) => setForm((s) => ({ ...s, description: e.target.value }))}
-                  />
-                </label>
-                <Button
-                  onClick={saveVehicle}
-                  className="w-full"
-                  disabled={
-                    creating || !form.brand || !form.model || !form.year || !form.price || !form.transmission || !form.engine || !form.color
-                  }
-                >
-                  {creating ? "Guardando..." : editingId ? "Guardar cambios" : "Crear nuevo auto"}
-                </Button>
-                <FormErrorAlert title="No se pudo guardar el vehículo" message={vehicleFormError} />
-              </div>
+                  </FormSection>
+
+                  <Separator />
+
+                  <FormSection title="Información adicional" description="Opcional · visible para el asesor y el bot.">
+                    <div className="space-y-2">
+                      {metadataRows.length === 0 ? (
+                        <p className="text-xs text-muted-foreground rounded-lg border border-dashed border-border px-3 py-4 text-center">
+                          Sin datos extra. Agrega características como combustible, puertas o versión.
+                        </p>
+                      ) : (
+                        metadataRows.map((row) => (
+                          <div key={row.id} className="flex gap-2 items-start">
+                            <Input
+                              placeholder="Puertas"
+                              value={row.key}
+                              onChange={(e) => updateMetadataRow(row.id, "key", e.target.value)}
+                              className="flex-1"
+                            />
+                            <Input
+                              placeholder="Cinco"
+                              value={row.value}
+                              onChange={(e) => updateMetadataRow(row.id, "value", e.target.value)}
+                              className="flex-1"
+                            />
+                            <Button type="button" size="icon" variant="ghost" className="shrink-0 h-10 w-10" onClick={() => removeMetadataRow(row.id)}>
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        ))
+                      )}
+                      <Button type="button" variant="outline" size="sm" className="w-full" onClick={addMetadataRow}>
+                        <Plus className="w-4 h-4 mr-1" /> Agregar dato
+                      </Button>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="description">Descripción</Label>
+                      <Textarea
+                        id="description"
+                        placeholder="Resumen comercial del vehículo"
+                        rows={3}
+                        value={form.description}
+                        onChange={(e) => setForm((s) => ({ ...s, description: e.target.value }))}
+                      />
+                    </div>
+                  </FormSection>
+                </div>
+
+                <div className="shrink-0 border-t bg-muted/20 px-5 py-4 space-y-2">
+                  <Button type="submit" className="w-full" disabled={creating || !isFormValid}>
+                    {creating ? "Guardando…" : editingId ? "Guardar cambios" : "Crear auto"}
+                  </Button>
+                  {!isFormValid ? (
+                    <p className="text-[11px] text-center text-muted-foreground">Completa los campos marcados con *</p>
+                  ) : null}
+                  <FormErrorAlert title="No se pudo guardar el vehículo" message={vehicleFormError} />
+                </div>
+              </form>
             </DialogContent>
           </Dialog>
         }
@@ -611,192 +848,268 @@ Versión: Highline`}
 
       <div className="px-4 py-3 space-y-3 sticky top-[65px] bg-background/95 backdrop-blur z-10 border-b border-border">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Buscar marca o modelo…"
-            className="w-full h-11 pl-10 pr-4 rounded-xl bg-muted text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            className="w-full h-11 pl-10 pr-10 rounded-xl bg-muted text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           />
+          {q ? (
+            <button
+              type="button"
+              onClick={() => setQ("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-muted-foreground hover:text-foreground hover:bg-background/80"
+              aria-label="Limpiar búsqueda"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          ) : null}
         </div>
-        <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4">
+        <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4 pb-0.5">
           {filters.map((f) => (
             <button
               key={f.key}
+              type="button"
               onClick={() => setFilter(f.key)}
               className={cn(
-                "px-3.5 h-8 rounded-full text-xs font-semibold whitespace-nowrap transition-colors border",
+                "inline-flex items-center gap-1.5 px-3.5 h-8 rounded-full text-xs font-semibold whitespace-nowrap transition-colors border",
                 filter === f.key
                   ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-card text-muted-foreground border-border"
+                  : "bg-card text-muted-foreground border-border hover:text-foreground"
               )}
             >
               {f.label}
+              <span
+                className={cn(
+                  "tabular-nums rounded-full px-1.5 py-px text-[10px] font-bold",
+                  filter === f.key ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-muted-foreground"
+                )}
+              >
+                {filterCounts[f.key]}
+              </span>
             </button>
           ))}
         </div>
       </div>
 
-      <div className="px-4 py-4 grid grid-cols-2 gap-3">
-        {list.map((c) => {
-          const linkedPromoCount = promotions.filter(
-            (p) => Array.isArray(p.vehicleIds) && p.vehicleIds.some((id) => String(id) === String(c.id))
-          ).length;
-          return (
-            <div
-              id={`vehicle-${c.id}`}
-              key={c.id}
-              className={cn(
-                "group bg-card rounded-2xl shadow-card border border-border overflow-hidden transition-shadow duration-200 hover:shadow-elevated",
-                focusedVehicleId === c.id ? "ring-2 ring-primary/60" : ""
-              )}
-            >
-              <div className="relative aspect-[4/3] bg-muted/80 overflow-hidden rounded-t-2xl">
-                {c.imageUrls?.[0] ? (
-                  <img
-                    src={toMediaUrl(c.imageUrls[0])}
-                    alt={`${c.brand} ${c.model}`}
-                    className="absolute inset-0 h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-gradient-soft">
-                    <span className="text-4xl leading-none select-none" aria-hidden>
-                      {c.image || "🚗"}
-                    </span>
-                    <Car className="w-5 h-5 text-muted-foreground/50" aria-hidden />
-                  </div>
-                )}
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-black/25 to-transparent" />
-                <div className="absolute bottom-2 right-2 pointer-events-none">
-                  <StatusBadge status={c.status} />
-                </div>
-              </div>
+      {isLoading ? (
+        <div className="px-4 py-4 grid grid-cols-2 gap-3">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="rounded-2xl border border-border overflow-hidden">
+              <Skeleton className="aspect-[4/3] w-full rounded-none" />
               <div className="p-3 space-y-2">
-                <div className="space-y-0.5">
-                  <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wide leading-none">{c.brand}</p>
-                  <p className="font-bold text-sm leading-snug line-clamp-2">{c.model}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {c.year} · {c.km.toLocaleString("es-MX")} km
-                  </p>
-                </div>
-                <p className="font-extrabold text-primary-dark text-base tabular-nums tracking-tight">{formatPrice(c.price)}</p>
-                <div className="space-y-1 text-[11px] text-muted-foreground leading-snug">
-                  <p>Prioridad envío: {c.outboundPriority ?? 0}</p>
-                  {c.financingPlans?.length ? (
-                    <p>
-                      {c.financingPlans[0].showRate
-                        ? `Financiamiento desde ${Number(c.financingPlans[0].rate).toFixed(2)}%`
-                        : "Financiamiento disponible"}
-                    </p>
-                  ) : (
-                    <p>Sin plan asignado</p>
-                  )}
-                  <p>
-                    {linkedPromoCount === 0
-                      ? "Sin promos vinculadas"
-                      : linkedPromoCount === 1
-                        ? "1 promo vinculada"
-                        : `${linkedPromoCount} promos vinculadas`}
-                  </p>
-                </div>
-                <div className="border-t border-border/60 pt-2.5 mt-1 grid grid-cols-2 gap-1.5">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-8 px-1.5 rounded-lg text-[11px] leading-tight"
-                    onClick={() => startEditVehicle(c)}
-                  >
-                    <Pencil className="w-3.5 h-3.5 mr-0.5 shrink-0" /> Editar
-                  </Button>
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-8 px-1.5 rounded-lg text-[11px] leading-tight"
-                        title="Asignar promoción"
-                      >
-                        <Tag className="w-3.5 h-3.5 mr-0.5 shrink-0" />
-                        <span className="line-clamp-2 text-left">Promoción</span>
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-md">
-                      <DialogHeader>
-                        <DialogTitle>Asignar promociones</DialogTitle>
-                        <DialogDescription>
-                          {c.brand} {c.model} {c.year}
-                        </DialogDescription>
-                      </DialogHeader>
-                      <div className="space-y-2 max-h-[320px] overflow-auto">
-                        {promotions.length === 0 ? (
-                          <p className="text-xs text-muted-foreground py-2">No hay promociones en el catálogo. Créalas en Vehículos → Promociones.</p>
-                        ) : (
-                          promotions.map((promo) => {
-                            const ids = Array.isArray(promo.vehicleIds) ? promo.vehicleIds.map(String) : [];
-                            const selected = ids.includes(String(c.id));
-                            const key = `pr:${c.id}:${promo.id}`;
-                            return (
-                              <label key={promo.id} className="flex items-start gap-2 rounded-lg border border-border p-2">
-                                <Checkbox
-                                  checked={selected}
-                                  disabled={updating === key}
-                                  onCheckedChange={() => togglePromotionForVehicle(c.id, promo, selected)}
-                                />
-                                <span className="text-xs min-w-0">
-                                  <span className="font-semibold block">{promo.title}</span>
-                                  {promo.active ? null : (
-                                    <span className="text-[10px] text-muted-foreground">(inactiva)</span>
-                                  )}
-                                </span>
-                                {updating === key ? <Check className="w-3.5 h-3.5 ml-auto shrink-0 text-success" /> : null}
-                              </label>
-                            );
-                          })
-                        )}
-                      </div>
-                    </DialogContent>
-                  </Dialog>
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Button size="sm" variant="outline" className="h-8 px-2 rounded-lg text-[11px] col-span-2 w-full">
-                        Asignar financiamiento
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-md">
-                      <DialogHeader>
-                        <DialogTitle>Asignar planes</DialogTitle>
-                        <DialogDescription>
-                          {c.brand} {c.model} {c.year}
-                        </DialogDescription>
-                      </DialogHeader>
-                      <div className="space-y-2 max-h-[320px] overflow-auto">
-                        {plans.map((plan) => {
-                          const selected = Boolean(c.financingPlans?.some((x) => x.id === plan.id));
-                          const key = `fp:${c.id}:${plan.id}`;
-                          return (
-                            <label key={plan.id} className="flex items-start gap-2 rounded-lg border border-border p-2">
-                              <Checkbox
-                                checked={selected}
-                                disabled={updating === key}
-                                onCheckedChange={() => togglePlanForVehicle(c.id, plan.id, selected)}
-                              />
-                              <span className="text-xs">
-                                <span className="font-semibold">{plan.name}</span> · {plan.lender} ·{" "}
-                                {plan.showRate ? `${Number(plan.rate).toFixed(2)}%` : "Tasa oculta"}
-                              </span>
-                              {updating === key ? <Check className="w-3.5 h-3.5 ml-auto text-success" /> : null}
-                            </label>
-                          );
-                        })}
-                      </div>
-                    </DialogContent>
-                  </Dialog>
-                </div>
+                <Skeleton className="h-3 w-14" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-5 w-24" />
               </div>
             </div>
-          );
-        })}
-      </div>
+          ))}
+        </div>
+      ) : list.length === 0 ? (
+        <div className="px-4 py-16 text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
+            <Car className="w-7 h-7 text-muted-foreground/50" />
+          </div>
+          <p className="font-semibold text-sm">Sin vehículos</p>
+          <p className="text-xs text-muted-foreground mt-1 max-w-[240px] mx-auto">
+            {q || filter !== "all"
+              ? "No hay resultados con ese filtro. Prueba otra búsqueda."
+              : "Agrega tu primer auto con el botón de arriba."}
+          </p>
+        </div>
+      ) : (
+        <div className="px-4 py-4 grid grid-cols-2 gap-3 pb-6">
+          {list.map((c) => {
+            const linkedPromoCount = linkedPromoCountForVehicle(c.id, promotions);
+            const hasFinancing = Boolean(c.financingPlans?.length);
+            const financingLabel = hasFinancing
+              ? c.financingPlans![0].showRate
+                ? `${Number(c.financingPlans![0].rate).toFixed(1)}%`
+                : "Sí"
+              : null;
+
+            return (
+              <article
+                id={`vehicle-${c.id}`}
+                key={c.id}
+                className={cn(
+                  "group flex flex-col bg-card rounded-2xl shadow-card border border-border overflow-hidden transition-shadow duration-200 hover:shadow-elevated",
+                  focusedVehicleId === c.id ? "ring-2 ring-primary/60" : ""
+                )}
+              >
+                <div className="relative aspect-[4/3] bg-muted/80 overflow-hidden">
+                  <VehicleCardImage car={c} />
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-black/30 to-transparent" />
+                  <div className="absolute bottom-2 right-2 pointer-events-none">
+                    <StatusBadge status={c.status} />
+                  </div>
+                </div>
+
+                <div className="flex flex-1 flex-col p-3">
+                  <div className="space-y-0.5 min-h-[3.25rem]">
+                    <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wide leading-none truncate">
+                      {c.brand}
+                    </p>
+                    <p className="font-bold text-sm leading-snug line-clamp-2">{c.model}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {c.year} · {c.km.toLocaleString("es-MX")} km
+                    </p>
+                  </div>
+
+                  <p className="font-extrabold text-primary-dark text-base tabular-nums tracking-tight mt-2">
+                    {formatPrice(c.price)}
+                  </p>
+
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {(c.outboundPriority ?? 0) > 0 ? (
+                      <span className="inline-flex items-center gap-0.5 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                        <Gauge className="w-3 h-3 shrink-0" />
+                        P{c.outboundPriority}
+                      </span>
+                    ) : null}
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-medium",
+                        hasFinancing ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"
+                      )}
+                    >
+                      <Landmark className="w-3 h-3 shrink-0" />
+                      {hasFinancing ? financingLabel : "Sin plan"}
+                    </span>
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-medium",
+                        linkedPromoCount > 0 ? "bg-warning/10 text-warning" : "bg-muted text-muted-foreground"
+                      )}
+                    >
+                      <Tag className="w-3 h-3 shrink-0" />
+                      {linkedPromoCount > 0 ? linkedPromoCount : "0"}
+                    </span>
+                  </div>
+
+                  <div className="mt-auto pt-2.5 space-y-1.5">
+                    <Button size="sm" variant="secondary" className="h-8 w-full rounded-lg text-xs" onClick={() => startEditVehicle(c)}>
+                      <Pencil className="w-3.5 h-3.5 mr-1" /> Editar
+                    </Button>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button size="sm" variant="outline" className="h-8 rounded-lg text-[11px] px-2">
+                            <Tag className="w-3.5 h-3.5 mr-1 shrink-0" />
+                            Promos
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-md">
+                          <DialogHeader>
+                            <DialogTitle>Promociones</DialogTitle>
+                            <DialogDescription>
+                              {c.brand} {c.model} · {c.year}
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="space-y-2 max-h-[320px] overflow-auto pr-1">
+                            {promotions.length === 0 ? (
+                              <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center">
+                                <Tag className="w-8 h-8 mx-auto text-muted-foreground/40 mb-2" />
+                                <p className="text-sm font-medium">Sin promociones</p>
+                                <p className="text-xs text-muted-foreground mt-1">Créalas en Vehículos → Promociones.</p>
+                              </div>
+                            ) : (
+                              promotions.map((promo) => {
+                                const ids = Array.isArray(promo.vehicleIds) ? promo.vehicleIds.map(String) : [];
+                                const selected = ids.includes(String(c.id));
+                                const key = `pr:${c.id}:${promo.id}`;
+                                return (
+                                  <label
+                                    key={promo.id}
+                                    className={cn(
+                                      "flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors",
+                                      selected ? "border-primary/40 bg-primary/5" : "border-border hover:bg-muted/40"
+                                    )}
+                                  >
+                                    <Checkbox
+                                      checked={selected}
+                                      disabled={updating === key}
+                                      onCheckedChange={() => togglePromotionForVehicle(c.id, promo, selected)}
+                                      className="mt-0.5"
+                                    />
+                                    <span className="text-sm min-w-0 flex-1">
+                                      <span className="font-semibold block leading-snug">{promo.title}</span>
+                                      {!promo.active ? (
+                                        <span className="text-[10px] text-muted-foreground">Inactiva</span>
+                                      ) : null}
+                                    </span>
+                                    {updating === key ? <Check className="w-4 h-4 shrink-0 text-success" /> : null}
+                                  </label>
+                                );
+                              })
+                            )}
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button size="sm" variant="outline" className="h-8 rounded-lg text-[11px] px-2">
+                            <Landmark className="w-3.5 h-3.5 mr-1 shrink-0" />
+                            Planes
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-md">
+                          <DialogHeader>
+                            <DialogTitle>Planes de financiamiento</DialogTitle>
+                            <DialogDescription>
+                              {c.brand} {c.model} · {c.year}
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="space-y-2 max-h-[320px] overflow-auto pr-1">
+                            {plans.length === 0 ? (
+                              <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center">
+                                <Landmark className="w-8 h-8 mx-auto text-muted-foreground/40 mb-2" />
+                                <p className="text-sm font-medium">Sin planes</p>
+                                <p className="text-xs text-muted-foreground mt-1">Configúralos en Vehículos → Financiamiento.</p>
+                              </div>
+                            ) : (
+                              plans.map((plan) => {
+                                const selected = Boolean(c.financingPlans?.some((x) => x.id === plan.id));
+                                const key = `fp:${c.id}:${plan.id}`;
+                                return (
+                                  <label
+                                    key={plan.id}
+                                    className={cn(
+                                      "flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors",
+                                      selected ? "border-primary/40 bg-primary/5" : "border-border hover:bg-muted/40"
+                                    )}
+                                  >
+                                    <Checkbox
+                                      checked={selected}
+                                      disabled={updating === key}
+                                      onCheckedChange={() => togglePlanForVehicle(c.id, plan.id, selected)}
+                                      className="mt-0.5"
+                                    />
+                                    <span className="text-sm min-w-0 flex-1">
+                                      <span className="font-semibold block leading-snug">{plan.name}</span>
+                                      <span className="text-xs text-muted-foreground">
+                                        {plan.lender} · {plan.showRate ? `${Number(plan.rate).toFixed(2)}%` : "Tasa oculta"}
+                                      </span>
+                                    </span>
+                                    {updating === key ? <Check className="w-4 h-4 shrink-0 text-success" /> : null}
+                                  </label>
+                                );
+                              })
+                            )}
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
     </>
   );
 }
