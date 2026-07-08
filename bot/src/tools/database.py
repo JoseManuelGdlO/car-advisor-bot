@@ -29,6 +29,21 @@ DEFAULT_BOT_SETTINGS = {
     "calendarSchedulingUrl": DEFAULT_CALENDAR_SCHEDULING_URL,
 }
 
+DEFAULT_BUSINESS_PROFILE: dict[str, str | None] = {
+    "tradeName": None,
+    "businessPhone": None,
+    "businessEmail": None,
+    "website": None,
+    "addressLine": None,
+    "city": None,
+    "state": None,
+    "country": None,
+    "description": None,
+    "logoUrl": None,
+}
+
+_BUSINESS_PROFILE_KEYS = tuple(DEFAULT_BUSINESS_PROFILE.keys())
+
 
 def _normalize_uuid(value: Any) -> str | None:
     """Convierte UUID devuelto por MySQL (str/bytes/...) a string estandar."""
@@ -95,7 +110,7 @@ def _clean_setting(value: Any, default: str) -> str:
     return text
 
 
-_bot_settings_cache: dict[str, tuple[dict[str, str], float]] = {}
+_bot_tenant_cache: dict[str, tuple[dict[str, Any], float]] = {}
 
 
 def _bot_settings_cache_ttl_seconds() -> float:
@@ -111,39 +126,67 @@ def _bot_settings_cache_ttl_seconds() -> float:
 def clear_bot_settings_cache(owner_id: str | None = None) -> None:
     """Vacía la caché de settings (tests o forzar lectura fresca)."""
 
-    global _bot_settings_cache
+    global _bot_tenant_cache
     if owner_id:
-        _bot_settings_cache.pop(str(owner_id).strip(), None)
+        _bot_tenant_cache.pop(str(owner_id).strip(), None)
     else:
-        _bot_settings_cache = {}
+        _bot_tenant_cache = {}
 
 
-def get_bot_settings() -> dict[str, str]:
-    """Obtiene bot settings desde backend con fallback seguro y caché en memoria (TTL)."""
+def _normalize_business_profile_payload(payload: Any) -> dict[str, str | None]:
+    """Normaliza businessProfile del backend con claves estables."""
 
-    global _bot_settings_cache
+    if not isinstance(payload, dict):
+        return dict(DEFAULT_BUSINESS_PROFILE)
+    normalized: dict[str, str | None] = {}
+    for key in _BUSINESS_PROFILE_KEYS:
+        raw = payload.get(key)
+        if raw is None:
+            normalized[key] = None
+            continue
+        text = str(raw).strip()
+        normalized[key] = text or None
+    return normalized
+
+
+def _fetch_bot_tenant_config() -> dict[str, Any]:
+    """Obtiene settings + businessProfile del backend con caché en memoria (TTL)."""
+
+    global _bot_tenant_cache
     owner_key = _owner_from_context() or "__default__"
     ttl = _bot_settings_cache_ttl_seconds()
-    if ttl > 0 and owner_key in _bot_settings_cache:
-        cached, cached_at = _bot_settings_cache[owner_key]
+    if ttl > 0 and owner_key in _bot_tenant_cache:
+        cached, cached_at = _bot_tenant_cache[owner_key]
         if time.monotonic() - cached_at < ttl:
-            return dict(cached)
+            return {
+                "settings": dict(cached["settings"]),
+                "businessProfile": dict(cached["businessProfile"]),
+            }
 
     url = _backend_api_url("/bot/settings")
     headers = _backend_headers()
     if not url or "Authorization" not in headers:
-        return dict(DEFAULT_BOT_SETTINGS)
+        return {
+            "settings": dict(DEFAULT_BOT_SETTINGS),
+            "businessProfile": dict(DEFAULT_BUSINESS_PROFILE),
+        }
 
     params = _owner_query_params()
     try:
         response = requests.get(url, headers=headers, params=params or None, timeout=6)
         if response.status_code != 200:
             logger.warning("Bot settings fetch failed status=%s", response.status_code)
-            return dict(DEFAULT_BOT_SETTINGS)
+            return {
+                "settings": dict(DEFAULT_BOT_SETTINGS),
+                "businessProfile": dict(DEFAULT_BUSINESS_PROFILE),
+            }
         payload = response.json()
         if not isinstance(payload, dict):
-            return dict(DEFAULT_BOT_SETTINGS)
-        resolved = {
+            return {
+                "settings": dict(DEFAULT_BOT_SETTINGS),
+                "businessProfile": dict(DEFAULT_BUSINESS_PROFILE),
+            }
+        resolved_settings = {
             "tone": _clean_setting(payload.get("tone"), DEFAULT_BOT_SETTINGS["tone"]),
             "emojiStyle": _clean_setting(payload.get("emojiStyle"), DEFAULT_BOT_SETTINGS["emojiStyle"]),
             "salesProactivity": _clean_setting(
@@ -159,13 +202,36 @@ def get_bot_settings() -> dict[str, str]:
                 DEFAULT_BOT_SETTINGS["calendarSchedulingUrl"],
             ),
         }
+        resolved_profile = _normalize_business_profile_payload(payload.get("businessProfile"))
     except Exception:
         logger.exception("Bot settings fetch failed unexpectedly")
-        return dict(DEFAULT_BOT_SETTINGS)
+        return {
+            "settings": dict(DEFAULT_BOT_SETTINGS),
+            "businessProfile": dict(DEFAULT_BUSINESS_PROFILE),
+        }
 
+    resolved = {
+        "settings": resolved_settings,
+        "businessProfile": resolved_profile,
+    }
     if ttl > 0:
-        _bot_settings_cache[owner_key] = (resolved, time.monotonic())
-    return dict(resolved)
+        _bot_tenant_cache[owner_key] = (resolved, time.monotonic())
+    return {
+        "settings": dict(resolved_settings),
+        "businessProfile": dict(resolved_profile),
+    }
+
+
+def get_business_profile() -> dict[str, str | None]:
+    """Perfil comercial del tenant (desde /bot/settings, con caché)."""
+
+    return dict(_fetch_bot_tenant_config()["businessProfile"])
+
+
+def get_bot_settings() -> dict[str, str]:
+    """Obtiene bot settings desde backend con fallback seguro y caché en memoria (TTL)."""
+
+    return dict(_fetch_bot_tenant_config()["settings"])
 
 
 def push_event_to_backend(payload: dict[str, Any]) -> None:

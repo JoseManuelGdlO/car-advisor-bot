@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { BusinessProfile, User } from "../models/index.js";
 import { ApiError } from "../utils/errors.js";
+import { toBusinessProfileDto } from "../utils/businessProfile.js";
 import { calendarSchedulingUrlSchema } from "../utils/calendarUrl.js";
 
 const businessPatchSchema = z
@@ -29,25 +30,6 @@ const userPatchSchema = z
   })
   .strict();
 
-// Presentación del perfil comercial para frontend (evita exponer columnas internas).
-const toBusinessDto = (row) => {
-  if (!row) return null;
-  return {
-    tradeName: row.tradeName,
-    legalName: row.legalName,
-    taxId: row.taxId,
-    businessPhone: row.businessPhone,
-    businessEmail: row.businessEmail,
-    website: row.website,
-    addressLine: row.addressLine,
-    city: row.city,
-    state: row.state,
-    country: row.country,
-    description: row.description,
-    logoUrl: row.logoUrl,
-  };
-};
-
 export const getAccountProfile = async (req, res, next) => {
   try {
     // Obtiene perfil de usuario + business profile (creándolo si no existe).
@@ -66,7 +48,7 @@ export const getAccountProfile = async (req, res, next) => {
         defaultPlatform: user.defaultPlatform,
         calendarSchedulingUrl: user.calendarSchedulingUrl,
       },
-      business: toBusinessDto(business),
+      business: toBusinessProfileDto(business),
     });
   } catch (err) {
     return next(err);
@@ -126,7 +108,7 @@ export const patchAccountProfile = async (req, res, next) => {
         defaultPlatform: user.defaultPlatform,
         calendarSchedulingUrl: user.calendarSchedulingUrl,
       },
-      business: toBusinessDto(business),
+      business: toBusinessProfileDto(business),
     });
   } catch (err) {
     return next(err);

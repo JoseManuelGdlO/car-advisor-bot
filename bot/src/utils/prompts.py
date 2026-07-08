@@ -77,6 +77,50 @@ def build_settings_block(settings: dict[str, Any] | None) -> str:
     return "\n".join(parts)
 
 
+# Excluye razon social y NIT: datos fiscales internos, no para conversacion con clientes.
+_BUSINESS_PROFILE_FIELD_LABELS: tuple[tuple[str, str], ...] = (
+    ("tradeName", "nombre_comercial"),
+    ("businessPhone", "telefono_negocio"),
+    ("businessEmail", "email_negocio"),
+    ("website", "sitio_web"),
+    ("addressLine", "direccion"),
+    ("city", "ciudad"),
+    ("state", "estado_departamento"),
+    ("country", "pais"),
+    ("description", "descripcion_negocio"),
+    ("logoUrl", "url_logo"),
+)
+
+
+def build_business_profile_block(business_profile: dict[str, Any] | None) -> str:
+    """Formatea el perfil comercial del tenant como bloque verificable para DATOS_VERIFICADOS."""
+
+    profile = business_profile or {}
+    lines: list[str] = []
+    for key, label in _BUSINESS_PROFILE_FIELD_LABELS:
+        value = str(profile.get(key, "") or "").strip()
+        if value:
+            lines.append(f"- {label}: {value}")
+    if not lines:
+        return ""
+    return "PERFIL_NEGOCIO_VERIFICADO:\n" + "\n".join(lines)
+
+
+def append_business_profile_to_verified_block(
+    facts: str,
+    business_profile: dict[str, Any] | None,
+) -> str:
+    """Anexa PERFIL_NEGOCIO_VERIFICADO al bloque DATOS_VERIFICADOS sin alterar el contenido previo."""
+
+    block = build_business_profile_block(business_profile)
+    if not block:
+        return str(facts or "").strip()
+    base = str(facts or "").strip()
+    if not base:
+        return block
+    return f"{base}\n\n{block}"
+
+
 def build_system_prompt(bot_settings: dict[str, Any] | None, fallback_response: str | None = None) -> str:
     """Construye prompt de sistema para respuestas al usuario."""
 
@@ -98,7 +142,8 @@ def build_other_response_prompt(
         f"{system_prompt}\n\n"
         "RESPUESTA_CONVERSACIONAL_OTRO:\n"
         "Eres CarAdvisor. Responde de forma natural y contextual al ultimo mensaje del usuario.\n"
-        "A continuacion aparece DATOS_VERIFICADOS: solo configuracion/estilo del bot y mensaje del usuario. "
+        "A continuacion aparece DATOS_VERIFICADOS: configuracion/estilo del bot, perfil del negocio (si existe) "
+        "y mensaje del usuario. "
         "No inventes inventario, precios, promociones, planes de financiamiento ni disponibilidad de vehiculos.\n"
         "Reglas:\n"
         "- Solo saluda si el usuario esta saludando explicitamente o si el mensaje parece de inicio de conversacion o es primer mensaje del usuario.\n"
@@ -221,7 +266,9 @@ _VERIFIED_MODE_INSTRUCTIONS: dict[str, str] = {
     ),
     "faq_insufficient": (
         "TAREA: Indicar que no hay suficiente informacion en la base FAQ para responder con precision.\n"
-        "Usa solo DATOS_VERIFICADOS. Ofrece ayuda general (catalogo, planes, contacto) sin inventar datos del negocio.\n"
+        "Revisa PERFIL_NEGOCIO_VERIFICADO si existe en DATOS_VERIFICADOS; si contiene el dato, respondelo.\n"
+        "Si no hay evidencia en FAQ ni en PERFIL_NEGOCIO_VERIFICADO, ofrece ayuda general (catalogo, planes, contacto) "
+        "sin inventar datos del negocio.\n"
         "Breve. Espanol (Mexico)."
     ),
     "faq_resume_transition": (
@@ -239,8 +286,10 @@ _VERIFIED_MODE_INSTRUCTIONS: dict[str, str] = {
         "Maximo 1-2 oraciones. Debe terminar en pregunta. Espanol (Mexico). Sin prefijos."
     ),
     "faq_turn": (
-        "TAREA: Responder la duda del usuario usando EXCLUSIVAMENTE el texto en BASE_FAQ_DESDE_BD dentro de DATOS_VERIFICADOS.\n"
-        "No inventes horarios, direcciones, politicas ni datos que no aparezcan en BASE_FAQ_DESDE_BD.\n"
+        "TAREA: Responder la duda del usuario usando BASE_FAQ_DESDE_BD y, si aplica, PERFIL_NEGOCIO_VERIFICADO "
+        "dentro de DATOS_VERIFICADOS.\n"
+        "Prioriza BASE_FAQ_DESDE_BD; si no contiene la respuesta, usa solo datos en PERFIL_NEGOCIO_VERIFICADO.\n"
+        "No inventes horarios, direcciones, politicas ni datos que no aparezcan en esos bloques.\n"
         "Si faq_respuesta_compacta es true, limita la parte de la respuesta FAQ a un solo parrafo corto (idea principal).\n"
         "Despues de la respuesta FAQ, si transicion_literal no es '(ninguna)', integra esa pregunta de transicion "
         "de forma natural (conectores y mayusculas; conserva el sentido de la pregunta).\n"
@@ -973,7 +1022,9 @@ def build_faq_response_prompt(
     return (
         f"{system_prompt}\n\n"
         "RESPUESTA_FAQ:\n"
-        "Responde de forma natural y conversacional usando EXCLUSIVAMENTE la BASE_FAQ provista.\n"
+        "Responde de forma natural y conversacional usando EXCLUSIVAMENTE la BASE_FAQ provista "
+        "y, si existe, el bloque PERFIL_NEGOCIO_VERIFICADO en CONTEXTO.\n"
+        "Prioriza BASE_FAQ; si no contiene la respuesta, usa solo PERFIL_NEGOCIO_VERIFICADO.\n"
         "No copies textualmente: reformula la informacion para que suene cercana y clara.\n"
         "Si la BASE_FAQ no contiene informacion suficiente, dilo amablemente y ofrece una alternativa de ayuda.\n"
         "Si el contenido disponible sugiere un siguiente paso (por ejemplo, revisar modelos o planes), "

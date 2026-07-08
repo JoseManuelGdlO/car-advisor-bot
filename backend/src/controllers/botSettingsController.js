@@ -1,14 +1,20 @@
-import { User } from "../models/index.js";
+import { BusinessProfile, User } from "../models/index.js";
 import { normalizeBotSettingsPayload, toBotSettingsDto } from "../utils/botSettings.js";
+import { toBusinessProfileBotDto } from "../utils/businessProfile.js";
 import { getOrCreateBotSettings } from "../services/botSettingsService.js";
 import { resolveRequestOwner } from "../utils/resolveRequestOwner.js";
 import { DEFAULT_CALENDAR_SCHEDULING_URL } from "../utils/calendarUrl.js";
 
 const buildBotSettingsResponse = async (row, ownerUserId) => {
   const user = await User.findByPk(ownerUserId, { attributes: ["calendarSchedulingUrl"] });
+  const [business] = await BusinessProfile.findOrCreate({
+    where: { ownerUserId },
+    defaults: { ownerUserId },
+  });
   return {
     ...toBotSettingsDto(row),
     calendarSchedulingUrl: user?.calendarSchedulingUrl || DEFAULT_CALENDAR_SCHEDULING_URL,
+    businessProfile: toBusinessProfileBotDto(business),
   };
 };
 

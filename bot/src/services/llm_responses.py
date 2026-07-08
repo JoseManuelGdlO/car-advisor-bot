@@ -11,8 +11,9 @@ from typing import Any
 from langchain_openai import ChatOpenAI
 
 from src.state import clientState
-from src.tools.database import get_bot_settings
+from src.tools.database import get_bot_settings, get_business_profile
 from src.utils.prompts import (
+    append_business_profile_to_verified_block,
     build_answer_first_faq_prompt,
     build_answer_first_financing_prompt,
     build_answer_first_inventory_prompt,
@@ -143,6 +144,7 @@ def generate_verified_user_message(
     )
     if not facts:
         return fb
+    facts = append_business_profile_to_verified_block(facts, get_business_profile())
     model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
     try:
         settings = get_bot_settings()
@@ -507,6 +509,7 @@ def generate_other_response(user_message: str) -> str:
         settings = get_bot_settings()
         llm = ChatOpenAI(model=model_name, temperature=0.5)
         verified = build_settings_block(settings) or "CONFIGURACION_NEGOCIO: (sin campos extra)"
+        verified = append_business_profile_to_verified_block(verified, get_business_profile())
         prompt = build_other_response_prompt(user_message, settings, verified_settings_block=verified)
         content = llm.invoke(prompt).content
         normalized = str(content).strip()
@@ -1828,6 +1831,8 @@ def generate_grounded_answer(
     if not context:
         return safe_fallback
     mode_key = str(mode or "").strip().lower()
+    if mode_key == "faq":
+        context = append_business_profile_to_verified_block(context, get_business_profile())
     try:
         settings = get_bot_settings()
         llm = ChatOpenAI(model=model_name, temperature=0.35)
