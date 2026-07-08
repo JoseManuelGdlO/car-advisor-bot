@@ -1,5 +1,6 @@
 import { apiRequest, apiRequestFormData } from "@/lib/api";
 import type {
+  BlacklistEntryDto,
   BotSettingsDto,
   ClientDto,
   ConversationDto,
@@ -9,6 +10,7 @@ import type {
   FinancingRequirementDto,
 } from "./crm.dto";
 export type {
+  BlacklistEntryDto,
   BotScheduleRangeDto,
   BotSettingsDto,
   BotWeeklyScheduleDto,
@@ -47,6 +49,10 @@ export const crmApi = {
     apiRequest(`/conversations/${id}/control`, "PATCH", payload, token),
   getBotSettings: (token: string) => apiRequest<BotSettingsDto>("/bot/settings", "GET", undefined, token),
   updateBotSettings: (token: string, payload: Partial<BotSettingsDto>) => apiRequest<BotSettingsDto>("/bot/settings", "PATCH", payload, token),
+  getBlacklist: (token: string) => apiRequest<BlacklistEntryDto[]>("/blacklist", "GET", undefined, token),
+  addBlacklistPhone: (token: string, payload: { phone: string }) =>
+    apiRequest<BlacklistEntryDto>("/blacklist", "POST", payload, token),
+  removeBlacklistPhone: (token: string, id: string) => apiRequest(`/blacklist/${id}`, "DELETE", undefined, token),
   getVehicles: (token: string) => apiRequest("/vehicles", "GET", undefined, token),
   createVehicle: (
     token: string,

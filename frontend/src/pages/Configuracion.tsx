@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
-import { HelpCircle, ChevronRight, Bot, Zap, Clock3 } from "lucide-react";
+import { HelpCircle, ChevronRight, Bot, Zap, Clock3, Ban } from "lucide-react";
+import { BotBlacklistDialog } from "@/components/BotBlacklistDialog";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { useAuth } from "@/context/AuthContext";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -38,6 +39,11 @@ export default function Configuracion() {
   const { token } = useAuth();
   const queryClient = useQueryClient();
   const { data: faqs = [] } = useQuery({ queryKey: ["faqs"], queryFn: () => crmApi.getFaqs(token!), enabled: Boolean(token) });
+  const { data: blacklist = [] } = useQuery({
+    queryKey: ["phone-blacklist"],
+    queryFn: () => crmApi.getBlacklist(token!),
+    enabled: Boolean(token),
+  });
   const { data: botSettings } = useQuery({ queryKey: ["bot-settings"], queryFn: () => crmApi.getBotSettings(token!), enabled: Boolean(token) });
   const botEnabled = botSettings?.isEnabled ?? true;
   const toggleBotMutation = useMutation({
@@ -101,6 +107,25 @@ export default function Configuracion() {
               <ChevronRight className="w-5 h-5 text-muted-foreground shrink-0" />
             </button>
           ))}
+
+          <BotBlacklistDialog>
+            <button
+              type="button"
+              className="w-full bg-card rounded-2xl p-4 shadow-card border border-border flex items-center gap-3 text-left hover:bg-muted/40 transition-colors"
+            >
+              <div className="w-12 h-12 rounded-2xl grid place-items-center bg-destructive/10 text-destructive">
+                <Ban className="w-6 h-6" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-sm">Lista negra</p>
+                <p className="text-xs text-muted-foreground">Teléfonos de WhatsApp bloqueados</p>
+                <p className="text-[11px] text-primary-dark font-semibold mt-0.5">
+                  {blacklist.length === 1 ? "1 número bloqueado" : `${blacklist.length} números bloqueados`}
+                </p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-muted-foreground shrink-0" />
+            </button>
+          </BotBlacklistDialog>
         </div>
 
         {/* AI tip */}

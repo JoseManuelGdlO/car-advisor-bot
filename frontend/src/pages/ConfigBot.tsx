@@ -7,8 +7,9 @@ import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Clock3, Plus, Save, Trash2 } from "lucide-react";
+import { Ban, Clock3, Plus, Save, Trash2 } from "lucide-react";
 import { FormErrorAlert } from "@/components/FormErrorAlert";
+import { BotBlacklistDialog } from "@/components/BotBlacklistDialog";
 import { hasInvalidRanges } from "@/lib/botSchedule";
 import { normalizeApiError } from "@/lib/formErrors";
 import { resolveTimezoneOptions, normalizeTimezoneValue, DEFAULT_BOT_TIMEZONE } from "@/lib/timezones";
@@ -124,7 +125,19 @@ export default function ConfigBot() {
 
   return (
     <>
-      <ScreenHeader title="Horario del bot" subtitle="Control global y rangos de atención" back />
+      <ScreenHeader
+        title="Horario del bot"
+        subtitle="Control global y rangos de atención"
+        back
+        action={
+          <BotBlacklistDialog>
+            <Button size="sm" variant="outline" className="rounded-full h-9 px-3">
+              <Ban className="w-4 h-4 mr-1" />
+              Lista negra
+            </Button>
+          </BotBlacklistDialog>
+        }
+      />
 
       <div className="px-4 py-4 space-y-4">
         <div className="bg-card rounded-2xl p-4 shadow-card border border-border space-y-3">

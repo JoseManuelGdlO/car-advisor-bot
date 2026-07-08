@@ -76,6 +76,12 @@ export type BotSettingsDto = {
   calendarSchedulingUrl: string;
 };
 
+export type BlacklistEntryDto = {
+  id: string;
+  phone: string;
+  createdAt: string;
+};
+
 export type DashboardKpisDto = {
   activeChats: number;
   newToday: number;

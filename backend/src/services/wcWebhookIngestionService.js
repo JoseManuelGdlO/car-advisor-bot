@@ -5,6 +5,7 @@ import {
 import { ApiError } from "../utils/errors.js";
 import { upsertConversationEvent } from "./conversationService.js";
 import { runBotChat } from "./botEngineClient.js";
+import { isPhoneBlacklisted } from "./phoneBlacklistService.js";
 import { runWithWcToken } from "./wcAuthCache.js";
 import { wcClient } from "./wcClient.js";
 import { logWcWebhook, logWcWebhookDebug } from "../utils/wcWebhookLog.js";
@@ -42,6 +43,9 @@ const markReceipt = async (receipt, status, errorMessage) => {
     error: errorMessage ? String(errorMessage).slice(0, 500) : null,
   });
 };
+
+export const shouldIgnoreBlacklistedWhatsappEvent = ({ ownerUserId, displayPhone }) =>
+  isPhoneBlacklisted({ ownerUserId, displayPhone });
 
 export const ingestWhatsappConnectEvent = async ({ normalizedEvent, credentials: _credentials }) => {
   // Ejecuta pipeline completo inbound: dedupe, persistencia, bot y outbound.
@@ -82,6 +86,15 @@ export const ingestWhatsappConnectEvent = async ({ normalizedEvent, credentials:
   if (!incomingMessage && !unsupportedMediaOnly) {
     await markReceipt(receipt, "ignored");
     return { ok: true, ignored: true };
+  }
+
+  if (await shouldIgnoreBlacklistedWhatsappEvent({
+    ownerUserId: normalizedEvent.ownerUserId,
+    displayPhone: normalizedEvent.displayPhone,
+  })) {
+    logWcWebhookDebug(`Telefono en blacklist: ${normalizedEvent.displayPhone} ignorado`);
+    await markReceipt(receipt, "ignored");
+    return { ok: true, blocked: true };
   }
 
   const clientCrmMessage = unsupportedMediaOnly ? UNSUPPORTED_INBOUND_CRM_CLIENT_MESSAGE : incomingMessage;

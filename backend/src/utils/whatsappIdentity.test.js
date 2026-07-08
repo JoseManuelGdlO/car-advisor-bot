@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   extractDisplayPhoneFromChannelId,
   isWhatsappChannelId,
+  normalizeBlacklistPhone,
   normalizeDisplayPhone,
   resolveDisplayPhone,
 } from "./whatsappIdentity.js";
@@ -24,6 +25,19 @@ test("normalizeDisplayPhone rechaza IDs de canal", () => {
   assert.equal(normalizeDisplayPhone("6181556489"), "6181556489");
   assert.equal(normalizeDisplayPhone("+52 618 155 6489"), "+526181556489");
   assert.equal(normalizeDisplayPhone("123"), null);
+});
+
+test("normalizeBlacklistPhone agrega 521 a números de 10 dígitos", () => {
+  assert.equal(normalizeBlacklistPhone("6181556489"), "5216181556489");
+  assert.equal(normalizeBlacklistPhone("5216181556489"), "5216181556489");
+});
+
+test("normalizeBlacklistPhone rechaza más de 13 dígitos", () => {
+  assert.equal(normalizeBlacklistPhone("52161815564891"), null);
+});
+
+test("normalizeBlacklistPhone convierte +52 de 12 dígitos a 521", () => {
+  assert.equal(normalizeBlacklistPhone("+526181556489"), "5216181556489");
 });
 
 test("resolveDisplayPhone prioriza fromPhone", () => {

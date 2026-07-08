@@ -20,6 +20,7 @@ import VehicleFinancingPlanModel from "./VehicleFinancingPlan.js";
 import FinancingPlanRequirementModel from "./FinancingPlanRequirement.js";
 import PushDeviceModel from "./PushDevice.js";
 import PasswordResetCodeModel from "./PasswordResetCode.js";
+import BlackListEntryModel from "./BlackListEntry.js";
 
 export const User = UserModel(sequelize);
 export const ServiceToken = ServiceTokenModel(sequelize);
@@ -42,6 +43,7 @@ export const VehicleFinancingPlan = VehicleFinancingPlanModel(sequelize);
 export const FinancingPlanRequirement = FinancingPlanRequirementModel(sequelize);
 export const PushDevice = PushDeviceModel(sequelize);
 export const PasswordResetCode = PasswordResetCodeModel(sequelize);
+export const BlackListEntry = BlackListEntryModel(sequelize);
 
 User.hasMany(PasswordResetCode, {
   foreignKey: { name: "userId", field: "user_id", allowNull: false },
@@ -64,6 +66,20 @@ User.hasMany(ServiceToken, {
   onUpdate: "CASCADE",
 });
 ServiceToken.belongsTo(User, {
+  foreignKey: { name: "ownerUserId", field: "owner_user_id", allowNull: false },
+  targetKey: "id",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+
+User.hasMany(BlackListEntry, {
+  foreignKey: { name: "ownerUserId", field: "owner_user_id", allowNull: false },
+  sourceKey: "id",
+  as: "blackListEntries",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+BlackListEntry.belongsTo(User, {
   foreignKey: { name: "ownerUserId", field: "owner_user_id", allowNull: false },
   targetKey: "id",
   onDelete: "CASCADE",
