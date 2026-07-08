@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { ApiError } from "./errors.js";
-import { isWithinBotSchedule, normalizeWeeklySchedule, validateTimezone } from "./botSettings.js";
+import { isWithinBotSchedule, normalizeBotSettingsPayload, normalizeWeeklySchedule, validateTimezone } from "./botSettings.js";
 
 test("normalizeWeeklySchedule rejects overlaps", () => {
   assert.throws(
@@ -62,4 +62,24 @@ test("isWithinBotSchedule returns false outside configured range", () => {
     new Date("2026-04-20T18:00:00.000Z")
   );
   assert.equal(enabled, false);
+});
+
+test("normalizeBotSettingsPayload rejects botName longer than 40 chars", () => {
+  assert.throws(
+    () => normalizeBotSettingsPayload({ botName: "a".repeat(41) }),
+    ApiError
+  );
+});
+
+test("normalizeBotSettingsPayload accepts empty botName and message fields", () => {
+  const result = normalizeBotSettingsPayload({
+    botName: "",
+    welcomeMessage: "",
+    faqFallbackMessage: "",
+  });
+  assert.deepEqual(result, {
+    botName: "",
+    welcomeMessage: "",
+    faqFallbackMessage: "",
+  });
 });

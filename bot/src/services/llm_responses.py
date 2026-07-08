@@ -13,6 +13,7 @@ from langchain_openai import ChatOpenAI
 from src.state import clientState
 from src.tools.database import get_bot_settings, get_business_profile
 from src.utils.prompts import (
+    append_bot_message_templates_to_verified_block,
     append_business_profile_to_verified_block,
     build_answer_first_faq_prompt,
     build_answer_first_financing_prompt,
@@ -41,6 +42,7 @@ from src.utils.prompts import (
     build_settings_block,
     build_verified_user_message_prompt,
 )
+from src.utils.signals import is_simple_greeting
 
 from src.utils.app_logging import get_app_logger
 
@@ -496,6 +498,28 @@ def _coerce_to_bool(value: Any) -> bool:
     return False
 
 
+def _optional_setting_text(settings: dict[str, Any], key: str) -> str | None:
+    """Lee un setting opcional del tenant sin fallback."""
+
+    raw = settings.get(key)
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    return text or None
+
+
+def _faq_insufficient_facts_block(
+    settings: dict[str, Any],
+    *,
+    situation: str,
+    tone_base: str,
+) -> str:
+    """Bloque DATOS_VERIFICADOS para FAQ sin match, con plantillas opcionales."""
+
+    base = f"situacion: {situation}\nmensaje_base_literal_para_tono: {tone_base}\n"
+    return append_bot_message_templates_to_verified_block(base, settings)
+
+
 def generate_other_response(user_message: str) -> str:
     """Genera respuesta para intent `other` anclada a configuracion del bot (DATOS_VERIFICADOS)."""
 
@@ -507,6 +531,9 @@ def generate_other_response(user_message: str) -> str:
     )
     try:
         settings = get_bot_settings()
+        welcome = _optional_setting_text(settings, "welcomeMessage")
+        if welcome and is_simple_greeting(user_message):
+            return welcome
         llm = ChatOpenAI(model=model_name, temperature=0.5)
         verified = build_settings_block(settings) or "CONFIGURACION_NEGOCIO: (sin campos extra)"
         verified = append_business_profile_to_verified_block(verified, get_business_profile())
@@ -1531,18 +1558,23 @@ def generate_faq_response(user_question: str, faq_candidates: list[str]) -> str:
 
     normalized_question = str(user_question or "").strip()
     context = "\n\n".join(str(item).strip() for item in faq_candidates if str(item).strip())
+    settings = get_bot_settings()
+    faq_fallback = _optional_setting_text(settings, "faqFallbackMessage")
     fallback_base = (
         "No encontre informacion suficiente para responder eso con precision. "
         "Si quieres, te ayudo a revisar modelos, planes o a coordinar seguimiento para resolverlo."
     )
+    if not context and faq_fallback:
+        return faq_fallback
     fallback = generate_verified_user_message(
         mode="faq_insufficient",
-        verified_facts_block=(
-            "situacion: sin fragmentos FAQ en base de datos para la pregunta del usuario\n"
-            f"mensaje_base_literal_para_tono: {fallback_base}\n"
+        verified_facts_block=_faq_insufficient_facts_block(
+            settings,
+            situation="sin fragmentos FAQ en base de datos para la pregunta del usuario",
+            tone_base=fallback_base,
         ),
         user_message=normalized_question,
-        fallback=fallback_base,
+        fallback=faq_fallback or fallback_base,
         temperature=0.35,
     )
     if not normalized_question:
@@ -1772,14 +1804,17 @@ def generate_faq_user_turn(
         "No encontre informacion suficiente para responder eso con precision. "
         "Si quieres, te ayudo a revisar modelos, planes o a coordinar seguimiento para resolverlo."
     )
+    settings = get_bot_settings()
+    faq_fallback = _optional_setting_text(settings, "faqFallbackMessage")
     grounded_fallback = generate_verified_user_message(
         mode="faq_insufficient",
-        verified_facts_block=(
-            "situacion: generate_grounded_answer_fallo_o_vacio\n"
-            f"mensaje_base_literal_para_tono: {fallback_base}\n"
+        verified_facts_block=_faq_insufficient_facts_block(
+            settings,
+            situation="generate_grounded_answer_fallo_o_vacio",
+            tone_base=fallback_base,
         ),
         user_message=normalized_question,
-        fallback=fallback_base,
+        fallback=faq_fallback or fallback_base,
         temperature=0.35,
     )
     body = generate_grounded_answer(

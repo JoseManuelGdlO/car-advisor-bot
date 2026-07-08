@@ -73,6 +73,9 @@ export type BotSettingsDto = {
   emojiStyle: "nunca" | "pocos" | "frecuentes";
   salesProactivity: "bajo" | "medio" | "alto";
   customInstructions: string;
+  botName: string;
+  welcomeMessage: string;
+  faqFallbackMessage: string;
   calendarSchedulingUrl: string;
 };
 

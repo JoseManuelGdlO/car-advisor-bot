@@ -1,22 +1,32 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { MessageCircleHeart, Save } from "lucide-react";
+import { AlertCircle, Bot, MessageCircleHeart, MessageSquare, Save } from "lucide-react";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { useAuth } from "@/context/AuthContext";
 import { crmApi, type BotSettingsDto } from "@/services/crm";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { FormErrorAlert } from "@/components/FormErrorAlert";
 import { normalizeApiError } from "@/lib/formErrors";
 
-type BehaviorForm = Pick<BotSettingsDto, "tone" | "emojiStyle" | "salesProactivity" | "customInstructions">;
+type BehaviorForm = Pick<
+  BotSettingsDto,
+  "tone" | "emojiStyle" | "salesProactivity" | "customInstructions" | "botName" | "welcomeMessage" | "faqFallbackMessage"
+>;
 
 const DEFAULT_FORM: BehaviorForm = {
   tone: "cercano",
   emojiStyle: "pocos",
   salesProactivity: "medio",
   customInstructions: "",
+  botName: "",
+  welcomeMessage: "",
+  faqFallbackMessage: "",
 };
+
+const BOT_NAME_MAX = 40;
+const MESSAGE_MAX = 2000;
 
 export default function ConfigComportamientoBot() {
   const { token } = useAuth();
@@ -37,6 +47,9 @@ export default function ConfigComportamientoBot() {
       emojiStyle: data.emojiStyle,
       salesProactivity: data.salesProactivity,
       customInstructions: data.customInstructions || "",
+      botName: data.botName || "",
+      welcomeMessage: data.welcomeMessage || "",
+      faqFallbackMessage: data.faqFallbackMessage || "",
     });
   }, [data]);
 
@@ -47,6 +60,9 @@ export default function ConfigComportamientoBot() {
         emojiStyle: form.emojiStyle,
         salesProactivity: form.salesProactivity,
         customInstructions: form.customInstructions,
+        botName: form.botName,
+        welcomeMessage: form.welcomeMessage,
+        faqFallbackMessage: form.faqFallbackMessage,
       }),
     onSuccess: () => {
       setError(null);
@@ -64,7 +80,10 @@ export default function ConfigComportamientoBot() {
       data.tone !== form.tone ||
       data.emojiStyle !== form.emojiStyle ||
       data.salesProactivity !== form.salesProactivity ||
-      data.customInstructions !== form.customInstructions
+      data.customInstructions !== form.customInstructions ||
+      data.botName !== form.botName ||
+      data.welcomeMessage !== form.welcomeMessage ||
+      data.faqFallbackMessage !== form.faqFallbackMessage
     );
   }, [data, form]);
 
@@ -73,6 +92,74 @@ export default function ConfigComportamientoBot() {
       <ScreenHeader title="Comportamiento del bot" subtitle="Define su forma de responder y vender" back />
 
       <div className="px-4 py-4 space-y-4">
+        <div className="bg-card rounded-2xl p-4 shadow-card border border-border space-y-3">
+          <div className="flex items-center gap-2">
+            <Bot className="w-5 h-5 text-primary" />
+            <div>
+              <p className="text-sm font-semibold">Identidad del Bot</p>
+              <p className="text-xs text-muted-foreground">Define el nombre de tu asistente virtual</p>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-muted-foreground" htmlFor="bot-name">
+              Nombre del Bot
+            </label>
+            <Input
+              id="bot-name"
+              maxLength={BOT_NAME_MAX}
+              placeholder="Ej: AutoBot"
+              value={form.botName}
+              onChange={(e) => setForm((prev) => ({ ...prev, botName: e.target.value }))}
+            />
+            <p className="text-[11px] text-muted-foreground">Nombre con el que se presenta el asistente al usuario.</p>
+          </div>
+        </div>
+
+        <div className="bg-card rounded-2xl p-4 shadow-card border border-border space-y-3">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="w-5 h-5 text-primary" />
+            <div>
+              <p className="text-sm font-semibold">Mensajes predefinidos</p>
+              <p className="text-xs text-muted-foreground">Configura los mensajes automáticos del bot</p>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-muted-foreground" htmlFor="welcome-message">
+              Mensaje de bienvenida
+            </label>
+            <Textarea
+              id="welcome-message"
+              rows={3}
+              maxLength={MESSAGE_MAX}
+              placeholder="¡Hola! ¿En qué puedo ayudarte?"
+              value={form.welcomeMessage}
+              onChange={(e) => setForm((prev) => ({ ...prev, welcomeMessage: e.target.value }))}
+            />
+            <p className="text-[11px] text-muted-foreground text-right">{form.welcomeMessage.length}/{MESSAGE_MAX}</p>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1" htmlFor="faq-fallback">
+              <AlertCircle className="w-3.5 h-3.5" />
+              Mensaje cuando no entiende
+            </label>
+            <Textarea
+              id="faq-fallback"
+              rows={3}
+              maxLength={MESSAGE_MAX}
+              placeholder="Lo siento, no tengo información sobre esa consulta..."
+              value={form.faqFallbackMessage}
+              onChange={(e) => setForm((prev) => ({ ...prev, faqFallbackMessage: e.target.value }))}
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Se muestra cuando el bot no encuentra respuesta en las FAQs.
+            </p>
+            <p className="text-[11px] text-muted-foreground text-right">{form.faqFallbackMessage.length}/{MESSAGE_MAX}</p>
+          </div>
+        </div>
+
         <div className="bg-card rounded-2xl p-4 shadow-card border border-border space-y-3">
           <div className="flex items-center gap-2">
             <MessageCircleHeart className="w-5 h-5 text-primary" />

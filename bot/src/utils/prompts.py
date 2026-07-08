@@ -57,6 +57,15 @@ def _sales_instruction(sales_proactivity: str) -> str:
     return mapping.get(value, mapping["medio"])
 
 
+def _optional_text(value: Any) -> str | None:
+    """Normaliza texto opcional de settings; vacio o None -> None."""
+
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 def build_settings_block(settings: dict[str, Any] | None) -> str:
     """Convierte settings generales en instrucciones de estilo consistentes."""
 
@@ -72,9 +81,43 @@ def build_settings_block(settings: dict[str, Any] | None) -> str:
         f"- No puedes agendar citas, solo puedes responder preguntas y ofrecer informacion.",
         f"- Tus respuestan deben ser naturales y humanas, no robotizadas."
     ]
+    bot_name = _optional_text(cfg.get("botName"))
+    if bot_name:
+        parts.append(f"- Te presentas al usuario como: {bot_name}")
     if custom_instructions:
         parts.append(f"- Instrucciones personalizadas del negocio: {custom_instructions}")
     return "\n".join(parts)
+
+
+def build_bot_message_templates_block(settings: dict[str, Any] | None) -> str:
+    """Bloque verificable con mensajes predefinidos del tenant (solo si estan configurados)."""
+
+    cfg = settings or {}
+    lines: list[str] = []
+    welcome = _optional_text(cfg.get("welcomeMessage"))
+    faq_fallback = _optional_text(cfg.get("faqFallbackMessage"))
+    if welcome:
+        lines.append(f"- mensaje_bienvenida_literal: {welcome}")
+    if faq_fallback:
+        lines.append(f"- mensaje_fallback_faq_literal: {faq_fallback}")
+    if not lines:
+        return ""
+    return "MENSAJES_PREDEFINIDOS_VERIFICADOS:\n" + "\n".join(lines)
+
+
+def append_bot_message_templates_to_verified_block(
+    facts: str,
+    settings: dict[str, Any] | None,
+) -> str:
+    """Anexa MENSAJES_PREDEFINIDOS_VERIFICADOS al bloque DATOS_VERIFICADOS si aplica."""
+
+    block = build_bot_message_templates_block(settings)
+    if not block:
+        return str(facts or "").strip()
+    base = str(facts or "").strip()
+    if not base:
+        return block
+    return f"{base}\n\n{block}"
 
 
 # Excluye razon social y NIT: datos fiscales internos, no para conversacion con clientes.
@@ -138,14 +181,22 @@ def build_other_response_prompt(
 
     system_prompt = build_system_prompt(bot_settings)
     facts = str(verified_settings_block or "").strip() or "(sin configuracion adicional del negocio en este bloque)"
+    facts = append_bot_message_templates_to_verified_block(facts, bot_settings)
+    welcome_rule = ""
+    if _optional_text((bot_settings or {}).get("welcomeMessage")):
+        welcome_rule = (
+            "- Si MENSAJES_PREDEFINIDOS_VERIFICADOS incluye mensaje_bienvenida_literal y el usuario saluda "
+            "o inicia conversacion, responde con ese texto (literal o variante minima sin cambiar el sentido).\n"
+        )
     return (
         f"{system_prompt}\n\n"
         "RESPUESTA_CONVERSACIONAL_OTRO:\n"
         "Eres CarAdvisor. Responde de forma natural y contextual al ultimo mensaje del usuario.\n"
-        "A continuacion aparece DATOS_VERIFICADOS: configuracion/estilo del bot, perfil del negocio (si existe) "
-        "y mensaje del usuario. "
+        "A continuacion aparece DATOS_VERIFICADOS: configuracion/estilo del bot, perfil del negocio (si existe), "
+        "mensajes predefinidos (si existen) y mensaje del usuario. "
         "No inventes inventario, precios, promociones, planes de financiamiento ni disponibilidad de vehiculos.\n"
         "Reglas:\n"
+        f"{welcome_rule}"
         "- Solo saluda si el usuario esta saludando explicitamente o si el mensaje parece de inicio de conversacion o es primer mensaje del usuario.\n"
         "- Si el usuario agradece (por ejemplo: gracias, muchas gracias), responde agradeciendo de vuelta "
         "(por ejemplo: con gusto/de nada) y NO vuelvas a saludar.\n"
@@ -266,6 +317,8 @@ _VERIFIED_MODE_INSTRUCTIONS: dict[str, str] = {
     ),
     "faq_insufficient": (
         "TAREA: Indicar que no hay suficiente informacion en la base FAQ para responder con precision.\n"
+        "Si MENSAJES_PREDEFINIDOS_VERIFICADOS incluye mensaje_fallback_faq_literal, usalo como respuesta "
+        "(literal o variante minima sin cambiar el sentido); tiene prioridad sobre redaccion libre.\n"
         "Revisa PERFIL_NEGOCIO_VERIFICADO si existe en DATOS_VERIFICADOS; si contiene el dato, respondelo.\n"
         "Si no hay evidencia en FAQ ni en PERFIL_NEGOCIO_VERIFICADO, ofrece ayuda general (catalogo, planes, contacto) "
         "sin inventar datos del negocio.\n"
@@ -1025,6 +1078,8 @@ def build_faq_response_prompt(
         "Responde de forma natural y conversacional usando EXCLUSIVAMENTE la BASE_FAQ provista "
         "y, si existe, el bloque PERFIL_NEGOCIO_VERIFICADO en CONTEXTO.\n"
         "Prioriza BASE_FAQ; si no contiene la respuesta, usa solo PERFIL_NEGOCIO_VERIFICADO.\n"
+        "Si no hay informacion suficiente y existe mensaje_fallback_faq_literal en MENSAJES_PREDEFINIDOS_VERIFICADOS "
+        "(dentro de CONTEXTO), usalo como respuesta.\n"
         "No copies textualmente: reformula la informacion para que suene cercana y clara.\n"
         "Si la BASE_FAQ no contiene informacion suficiente, dilo amablemente y ofrece una alternativa de ayuda.\n"
         "Si el contenido disponible sugiere un siguiente paso (por ejemplo, revisar modelos o planes), "

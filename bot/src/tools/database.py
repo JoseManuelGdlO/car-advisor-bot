@@ -110,6 +110,19 @@ def _clean_setting(value: Any, default: str) -> str:
     return text
 
 
+def _optional_setting(value: Any) -> str | None:
+    """Normaliza setting opcional sin fallback a texto por defecto."""
+
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.lower() in {"none", "null", "undefined"}:
+        return None
+    return text
+
+
 _bot_tenant_cache: dict[str, tuple[dict[str, Any], float]] = {}
 
 
@@ -201,6 +214,9 @@ def _fetch_bot_tenant_config() -> dict[str, Any]:
                 payload.get("calendarSchedulingUrl"),
                 DEFAULT_BOT_SETTINGS["calendarSchedulingUrl"],
             ),
+            "botName": _optional_setting(payload.get("botName")),
+            "welcomeMessage": _optional_setting(payload.get("welcomeMessage")),
+            "faqFallbackMessage": _optional_setting(payload.get("faqFallbackMessage")),
         }
         resolved_profile = _normalize_business_profile_payload(payload.get("businessProfile"))
     except Exception:

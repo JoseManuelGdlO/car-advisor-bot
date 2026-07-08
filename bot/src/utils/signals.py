@@ -194,6 +194,17 @@ ROUTER_SIMPLE_GREETINGS_NORMALIZED: frozenset[str] = frozenset(
     }
 )
 
+
+def is_simple_greeting(text: str) -> bool:
+    """True cuando el mensaje es un saludo corto reconocido por el router."""
+
+    from src.tools.vehicles import normalize_user_text
+
+    normalized = normalize_user_text(text)
+    if not normalized:
+        return False
+    return normalized in ROUTER_SIMPLE_GREETINGS_NORMALIZED
+
 FINANCING_PLANES_COMBO_SUFFIXES: frozenset[str] = frozenset(
     ("financ", "credito", "mensual", "enganche", "tasa", "interes")
 )

@@ -4,6 +4,8 @@ export const SCHEDULE_DAYS = ["monday", "tuesday", "wednesday", "thursday", "fri
 export const BOT_TONES = ["formal", "cercano", "vendedor", "tecnico"];
 export const BOT_EMOJI_STYLES = ["nunca", "pocos", "frecuentes"];
 export const BOT_SALES_PROACTIVITY = ["bajo", "medio", "alto"];
+export const BOT_MESSAGE_MAX_LENGTH = 2000;
+export const BOT_NAME_MAX_LENGTH = 40;
 
 const DAY_INDEX_BY_NAME = {
   monday: 1,
@@ -128,6 +130,36 @@ export const normalizeBotSettingsPayload = (payload) => {
     }
     next.customInstructions = normalizedInstructions;
   }
+  if (payload.botName !== undefined) {
+    if (typeof payload.botName !== "string") {
+      throw new ApiError(400, "botName must be a string");
+    }
+    const normalizedBotName = payload.botName.trim();
+    if (normalizedBotName.length > BOT_NAME_MAX_LENGTH) {
+      throw new ApiError(400, `botName max length is ${BOT_NAME_MAX_LENGTH}`);
+    }
+    next.botName = normalizedBotName;
+  }
+  if (payload.welcomeMessage !== undefined) {
+    if (typeof payload.welcomeMessage !== "string") {
+      throw new ApiError(400, "welcomeMessage must be a string");
+    }
+    const normalizedWelcome = payload.welcomeMessage.trim();
+    if (normalizedWelcome.length > BOT_MESSAGE_MAX_LENGTH) {
+      throw new ApiError(400, `welcomeMessage max length is ${BOT_MESSAGE_MAX_LENGTH}`);
+    }
+    next.welcomeMessage = normalizedWelcome;
+  }
+  if (payload.faqFallbackMessage !== undefined) {
+    if (typeof payload.faqFallbackMessage !== "string") {
+      throw new ApiError(400, "faqFallbackMessage must be a string");
+    }
+    const normalizedFaqFallback = payload.faqFallbackMessage.trim();
+    if (normalizedFaqFallback.length > BOT_MESSAGE_MAX_LENGTH) {
+      throw new ApiError(400, `faqFallbackMessage max length is ${BOT_MESSAGE_MAX_LENGTH}`);
+    }
+    next.faqFallbackMessage = normalizedFaqFallback;
+  }
   return next;
 };
 
@@ -139,6 +171,9 @@ export const toBotSettingsDto = (row) => ({
   emojiStyle: BOT_EMOJI_STYLES.includes(row?.emojiStyle) ? row.emojiStyle : "pocos",
   salesProactivity: BOT_SALES_PROACTIVITY.includes(row?.salesProactivity) ? row.salesProactivity : "medio",
   customInstructions: typeof row?.customInstructions === "string" ? row.customInstructions : "",
+  botName: typeof row?.botName === "string" ? row.botName : "",
+  welcomeMessage: typeof row?.welcomeMessage === "string" ? row.welcomeMessage : "",
+  faqFallbackMessage: typeof row?.faqFallbackMessage === "string" ? row.faqFallbackMessage : "",
 });
 
 const getNowParts = (timezone, date = new Date()) => {

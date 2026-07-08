@@ -53,5 +53,20 @@ export default function BotSettingModel(sequelize) {
       defaultValue: "",
       field: "custom_instructions",
     },
+    botName: {
+      type: DataTypes.STRING(40),
+      allowNull: true,
+      field: "bot_name",
+    },
+    welcomeMessage: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      field: "welcome_message",
+    },
+    faqFallbackMessage: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      field: "faq_fallback_message",
+    },
   });
 }
