@@ -996,9 +996,11 @@ export default function ConfigProductos() {
                     <div className="grid grid-cols-2 gap-1.5">
                       <Dialog>
                         <DialogTrigger asChild>
-                          <Button size="sm" variant="outline" className="h-8 rounded-lg text-[11px] px-2">
-                            <Tag className="w-3.5 h-3.5 mr-1 shrink-0" />
-                            Promos
+                          <Button size="sm" variant="outline" className="h-8 w-full rounded-lg text-[11px] px-2">
+                            <span className="inline-flex items-center gap-1">
+                              <Tag className="w-3.5 h-3.5 shrink-0" />
+                              Promos
+                            </span>
                           </Button>
                         </DialogTrigger>
                         <DialogContent className="max-w-md">
@@ -1051,9 +1053,11 @@ export default function ConfigProductos() {
 
                       <Dialog>
                         <DialogTrigger asChild>
-                          <Button size="sm" variant="outline" className="h-8 rounded-lg text-[11px] px-2">
-                            <Landmark className="w-3.5 h-3.5 mr-1 shrink-0" />
-                            Planes
+                          <Button size="sm" variant="outline" className="h-8 w-full rounded-lg text-[11px] px-2">
+                            <span className="inline-flex items-center gap-1">
+                              <Landmark className="w-3.5 h-3.5 shrink-0" />
+                              Planes
+                            </span>
                           </Button>
                         </DialogTrigger>
                         <DialogContent className="max-w-md">

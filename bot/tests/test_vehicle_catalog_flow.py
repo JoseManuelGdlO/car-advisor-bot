@@ -12,35 +12,50 @@ from tests.test_helpers import GraphTestCase, initial_state, with_user_message
 
 
 class VehicleCatalogFlowTests(GraphTestCase):
-    def test_unavailable_model_question_answer_first_with_router_variants(self) -> None:
-        """Mismo contrato answer-first si el router devuelve FAQ o VEHICLE_CATALOG."""
+    def test_unavailable_model_question_answer_first_when_router_vehicle_catalog(self) -> None:
+        """Pregunta híbrida sobre modelo: answer-first en car_selection si el clasificador elige catálogo."""
         vehicles = [
             {"id": "veh-1", "brand": "Nissan", "model": "Versa", "year": 2011, "status": "available"},
             {"id": "veh-2", "brand": "Dodge", "model": "Ram", "year": 2015, "status": "available"},
         ]
-        for router_intent in ("FAQ", "VEHICLE_CATALOG"):
-            with self.subTest(router_intent=router_intent):
+        state = with_user_message(initial_state(), "el mazda 3 sirve para ciudad o carretera?")
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.router.classify_router_intent", return_value="VEHICLE_CATALOG"),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch(
+                "src.nodes.car_selection.generate_verified_user_message",
+                side_effect=lambda **kw: (
+                    "No tengo ficha tecnica suficiente para confirmarlo con precision.\n\n"
+                    + str(kw.get("fallback", ""))
+                ),
+            ),
+        ):
+            updated = self.graph.invoke(state)
 
-                def verified(**kw: object) -> str:
-                    base = "No tengo ficha tecnica suficiente para confirmarlo con precision."
-                    extra = " Ese modelo no esta disponible.\n\n" if router_intent == "FAQ" else "\n\n"
-                    return base + extra + str(kw.get("fallback", ""))
+        self.assertEqual(updated.get("current_node"), "car_selection")
+        answer = str(updated["messages"][-1]["content"])
+        self.assertIn("No tengo ficha tecnica suficiente", answer)
+        self.assertIn("Nissan", answer)
+        self.assertIn("Dodge", answer)
 
-                state = with_user_message(initial_state(), "el mazda 3 sirve para ciudad o carretera?")
-                with (
-                    # Sin FAQ interruptiva: el flujo sigue hacia router → car_selection.
-                    patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
-                    patch("src.nodes.router.classify_router_intent", return_value=router_intent),
-                    patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
-                    patch("src.nodes.car_selection.generate_verified_user_message", side_effect=verified),
-                ):
-                    updated = self.graph.invoke(state)
+    def test_unavailable_model_question_routes_to_faq_when_router_faq(self) -> None:
+        """Si el clasificador elige FAQ, la pregunta va al nodo faq (sin answer-first de catálogo)."""
+        state = with_user_message(initial_state(), "el mazda 3 sirve para ciudad o carretera?")
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.router.classify_router_intent", return_value="FAQ"),
+            patch("src.nodes.faq.fetch_faq_candidates", return_value=["No manejamos Mazda en inventario."]),
+            patch(
+                "src.nodes.faq.generate_faq_user_turn",
+                return_value="No manejamos Mazda en inventario.",
+            ),
+        ):
+            updated = self.graph.invoke(state)
 
-                self.assertEqual(updated.get("current_node"), "car_selection")
-                answer = str(updated["messages"][-1]["content"])
-                self.assertIn("No tengo ficha tecnica suficiente", answer)
-                self.assertIn("Nissan", answer)
-                self.assertIn("Dodge", answer)
+        self.assertEqual(updated.get("current_node"), "router")
+        self.assertEqual(updated.get("intent"), "other")
+        self.assertIn("Mazda", updated["messages"][-1]["content"])
 
     def test_promotions_request_from_start_routes_to_promotions(self) -> None:
         state = with_user_message(initial_state(), "hola tienes promociones disponibles?")

@@ -48,7 +48,7 @@ Las variables de entorno se fusionan al importar el paquete `tests` (ver `tests/
 
 **Rol:** integración — flujo de catálogo y primer contacto con promociones.
 
-**Cubre:** respuestas “answer-first” con variantes de intent del router; solicitud de promociones desde el inicio; detalle de vehículo con/sin imágenes; multiturno saludo → modelos → selección → datos; filtros por rango de precio; cambio a “otros vehículos” durante confirmación de compra; smoke mínimo “¿qué carros tienes?”.
+**Cubre:** answer-first en catálogo cuando el clasificador devuelve `VEHICLE_CATALOG`; enrutamiento a `faq` cuando devuelve `FAQ`; solicitud de promociones desde el inicio; detalle de vehículo con/sin imágenes; multiturno saludo → modelos → selección → datos; filtros por rango de precio; cambio a “otros vehículos” durante confirmación de compra; smoke mínimo “¿qué carros tienes?”.
 
 **Clases:** `VehicleCatalogFlowTests`, `CarSelectionSmokeTests`.
 
@@ -74,7 +74,7 @@ Las variables de entorno se fusionan al importar el paquete `tests` (ver `tests/
 
 **Rol:** integración — FAQ y reanudación.
 
-**Cubre:** mensaje de ubicación → `faq`; interrupción FAQ y retorno a `lead_capture` en el siguiente turno; FAQ no interruptiva que deja `intent` en `other`.
+**Cubre:** mensaje de ubicación → `faq`; interrupción FAQ y retorno a `lead_capture` en el siguiente turno; FAQ no interruptiva que deja `intent` en `other`; seguimiento post-FAQ según etiqueta del clasificador LLM (`VEHICLE_CATALOG` → catálogo, `FAQ` → nodo faq).
 
 ---
 
@@ -98,7 +98,7 @@ Las variables de entorno se fusionan al importar el paquete `tests` (ver `tests/
 
 **Rol:** unitario — función `router` sin ejecutar el grafo completo.
 
-**Cubre:** `UNKNOWN` + heurística de ubicación → `faq`; `FAQ` del LLM sobrescrito por heurística de financiamiento; saneo de `intent` previo `faq` a `other` antes de llamar al clasificador.
+**Cubre:** `UNKNOWN` del clasificador → `other` con `generate_other_response`; enrutamiento directo por etiqueta LLM (`FAQ`, `VEHICLE_CATALOG`); saneo de `intent` previo `faq` a `other` antes de llamar al clasificador.
 
 ---
 
@@ -106,7 +106,7 @@ Las variables de entorno se fusionan al importar el paquete `tests` (ver `tests/
 
 **Rol:** integración — contratos de respuesta y prioridad de intención.
 
-**Cubre:** financiamiento responde primero y lista planes; pregunta híbrida (ubicación + Versa) prioriza vehículo → `car_selection` aunque el clasificador devuelva `FAQ`.
+**Cubre:** financiamiento responde primero y lista planes; pregunta híbrida (ubicación + Versa) sigue la etiqueta del clasificador LLM (`VEHICLE_CATALOG` → `car_selection`).
 
 ---
 

@@ -106,7 +106,8 @@ class FaqFlowTests(GraphTestCase):
         self.assertEqual(updated.get("current_node"), "router")
         self.assertIn("Falsa 123", updated["messages"][-1]["content"])
 
-    def test_followup_after_faq_routes_to_catalog_not_faq(self) -> None:
+    def test_followup_after_faq_routes_per_llm_classifier(self) -> None:
+        """Tras FAQ standalone, el siguiente turno sigue la etiqueta del clasificador LLM."""
         state = initial_state()
         state = with_user_message(state, "donde estan ubicados?")
         with (
@@ -117,21 +118,34 @@ class FaqFlowTests(GraphTestCase):
         ):
             after_location = self.graph.invoke(state)
 
-        state2 = with_user_message(after_location, "de cuales manejas?")
         vehicles = [
             {"id": "veh-1", "brand": "Toyota", "model": "Corolla", "year": 2020, "status": "available"},
         ]
+        state_catalog = with_user_message(after_location, "de cuales manejas?")
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
-            patch("src.nodes.router.classify_router_intent", return_value="FAQ"),
+            patch("src.nodes.router.classify_router_intent", return_value="VEHICLE_CATALOG"),
             patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
             patch(
                 "src.nodes.car_selection.generate_vehicle_candidates_selection_message",
                 return_value="Toyota Corolla 2020",
             ),
         ):
-            updated = self.graph.invoke(state2)
+            catalog_turn = self.graph.invoke(state_catalog)
 
-        self.assertEqual(updated.get("current_node"), "car_selection")
-        self.assertIn("Toyota", updated["messages"][-1]["content"])
+        self.assertEqual(catalog_turn.get("current_node"), "car_selection")
+        self.assertIn("Toyota", catalog_turn["messages"][-1]["content"])
+
+        state_faq = with_user_message(after_location, "de cuales manejas?")
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.router.classify_router_intent", return_value="FAQ"),
+            patch("src.nodes.faq.fetch_faq_candidates", return_value=["Tenemos varias marcas."]),
+            patch("src.nodes.faq.generate_faq_user_turn", return_value="Tenemos varias marcas."),
+        ):
+            faq_turn = self.graph.invoke(state_faq)
+
+        self.assertEqual(faq_turn.get("current_node"), "router")
+        self.assertEqual(faq_turn.get("intent"), "other")
+        self.assertIn("varias marcas", faq_turn["messages"][-1]["content"])
 
