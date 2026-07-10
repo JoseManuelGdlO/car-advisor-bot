@@ -11,6 +11,12 @@ from src.services.llm_responses import (
     generate_faq_user_turn,
 )
 from src.utils.signals import BUSINESS_HOURS_FAQ_SUBSTR
+from src.utils.financing_advisor_notify import maybe_escalate_financing_detail
+from src.utils.financing_credit_faq import (
+    CREDIT_FAQ_ADVISOR_CLOSE,
+    is_credit_requirements_faq_interrupt,
+    mark_financing_credit_followup_pending,
+)
 from src.utils.state_helpers import (
     append_assistant_message,
     latest_human_ai_pair,
@@ -56,17 +62,26 @@ def faq(state: clientState) -> clientState:
 
     state["current_node"] = "faq"
     question = latest_user_message(state)
+
+    escalated = maybe_escalate_financing_detail(state, trigger="faq_node_entry", user_message=question)
+    if escalated is not None:
+        return escalated
+
     candidates = fetch_faq_candidates(question)
 
     if state.get("is_faq_interrupt"):
         resume_to_step = str(state.get("resume_to_step", "car_selection"))
         _last_user, last_ai = latest_human_ai_pair(state)
-        transition = generate_faq_resume_transition(
-            user_message=question,
-            last_bot_message=last_ai or str(state.get("last_bot_message", "")),
-            resume_to_step=resume_to_step,
-            state=state,
-        )
+        if is_credit_requirements_faq_interrupt(state):
+            transition = CREDIT_FAQ_ADVISOR_CLOSE
+            mark_financing_credit_followup_pending(state)
+        else:
+            transition = generate_faq_resume_transition(
+                user_message=question,
+                last_bot_message=last_ai or str(state.get("last_bot_message", "")),
+                resume_to_step=resume_to_step,
+                state=state,
+            )
         _close_literal, close_topic = resolve_faq_follow_up(question, candidates)
         message = generate_faq_user_turn(
             user_question=question,

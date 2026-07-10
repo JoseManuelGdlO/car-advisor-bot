@@ -428,6 +428,9 @@ def upsert_inbound_user_message(
         client_name = str(data.get("clientName") or "").strip()
         if client_name:
             result["client_name"] = client_name
+        client_display_phone = str(data.get("clientDisplayPhone") or "").strip()
+        if client_display_phone:
+            result["client_display_phone"] = client_display_phone
         customer_info = data.get("customerInfo")
         if isinstance(customer_info, dict) and customer_info:
             result["customer_info"] = customer_info

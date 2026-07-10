@@ -46,6 +46,11 @@ class clientState(TypedDict, total=False):
       (claves: other_query str, peer_resolved_id str opcional).
     - human_advisor_requested: True si el usuario pidio hablar con un asesor humano (CRM/UI).
     - human_advisor_push_sent: True tras intentar notificar al owner una vez por sesion (evita spam).
+    - financing_detail_push_sent: True tras notificar dudas detalladas de financiamiento al asesor.
+    - display_phone: telefono legible del cliente (displayPhone CRM) para notificaciones.
+    - last_faq_interrupt_topic: tema de la ultima FAQ interruptiva (p. ej. credit_requirements).
+    - financing_interrupt_snapshot: banderas comerciales de financing suspendidas durante FAQ de credito.
+    - financing_credit_followup_pending: True tras FAQ de credito que ofrecio contacto con asesor.
     - suppress_commercial_node_once: el siguiente paso por el nodo comercial actual no genera respuesta nueva
       (tras ack de asesor humano desde intent_checker).
     - conversation_id: UUID de conversacion CRM para handoff y persistencia.
@@ -100,6 +105,11 @@ class clientState(TypedDict, total=False):
     vehicle_comparison_ctx: dict[str, Any]
     human_advisor_requested: bool
     human_advisor_push_sent: bool
+    financing_detail_push_sent: bool
+    display_phone: str
+    last_faq_interrupt_topic: str
+    financing_interrupt_snapshot: dict[str, bool]
+    financing_credit_followup_pending: bool
     suppress_commercial_node_once: bool
     conversation_id: str
     bot_disabled: bool

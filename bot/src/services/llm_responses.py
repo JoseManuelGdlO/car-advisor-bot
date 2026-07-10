@@ -41,6 +41,7 @@ from src.utils.prompts import (
     build_extract_customer_name_prompt,
     build_onboarding_first_message_classifier_prompt,
     build_financing_step_flags_prompt,
+    build_financing_detail_escalation_prompt,
     build_lead_capture_navigation_classifier_prompt,
     build_settings_block,
     build_verified_user_message_prompt,
@@ -1686,6 +1687,45 @@ def classify_financing_step_flags(
         )
         return out
     return out
+
+
+def classify_financing_detail_escalation(
+    *,
+    current_node: str,
+    previous_bot_message: str,
+    user_message: str,
+    selected_vehicle_name: str = "",
+    selected_plan_name: str = "",
+    numbered_plan_lines: str = "",
+) -> bool:
+    """True si la pregunta de credito/financiamiento requiere asesor humano."""
+
+    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
+    try:
+        settings = get_bot_settings()
+        llm = ChatOpenAI(model=model_name, temperature=0)
+        prompt = build_financing_detail_escalation_prompt(
+            current_node=current_node,
+            previous_bot_message=previous_bot_message,
+            user_message=user_message,
+            selected_vehicle_name=selected_vehicle_name,
+            selected_plan_name=selected_plan_name,
+            numbered_plan_lines=numbered_plan_lines,
+            bot_settings=settings,
+        )
+        parsed = _parse_json_object_from_llm(str(llm.invoke(prompt).content or ""))
+        if not parsed:
+            return False
+        return _coerce_to_bool(parsed.get("requiere_asesor_financiamiento"))
+    except Exception as exc:
+        _log_llm_invoke_failure(
+            "classify_financing_detail_escalation",
+            exc,
+            model_name=model_name,
+            prompt_kind="financing_detail_escalation_classifier",
+            temperature=0.0,
+        )
+        return False
 
 
 def _format_faq_catalog_for_selection(faq_entries: list[dict[str, str]]) -> str:

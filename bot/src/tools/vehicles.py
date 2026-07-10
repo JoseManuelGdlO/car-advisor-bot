@@ -654,6 +654,7 @@ def notify_advisor(
     push_title: str | None = None,
     push_body: str | None = None,
     notification_kind: str = "lead_interest",
+    conversation_id: str | None = None,
 ) -> bool:
     """Envia push al owner via backend API `/bot/push-notify`.
 
@@ -694,6 +695,9 @@ def notify_advisor(
             "promotion_selection": json.dumps(normalized_promotion, ensure_ascii=True, separators=(",", ":")),
         },
     }
+    normalized_conversation_id = str(conversation_id or "").strip()
+    if normalized_conversation_id:
+        payload["data"]["conversationId"] = normalized_conversation_id
     headers = {
         **_vehicles_api_headers(),
         "Content-Type": "application/json",

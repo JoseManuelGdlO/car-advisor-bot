@@ -247,6 +247,7 @@ export const upsertConversationEvent = async ({
     conversationId: conv.id,
     clientId: lead.id,
     clientName: lead.name || "",
+    clientDisplayPhone: lead.displayPhone || "",
     customerInfo: mergedCustomerInfo,
     shouldAutoReply: shouldAutoReply && !isHumanControlled,
     botSuppressed: !shouldAutoReply || isHumanControlled,

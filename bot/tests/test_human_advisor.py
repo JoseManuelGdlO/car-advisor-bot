@@ -61,8 +61,8 @@ class TestHandleHumanAdvisorRequest(unittest.TestCase):
         self.assertEqual(ev.call_args[0][0].get("message"), "human_advisor_requested")
         mock_post.assert_called_once()
         payload = mock_post.call_args[1]["json"]
-        self.assertEqual(payload.get("title"), "Solicitud de asesor humano")
-        self.assertIn("solicito hablar con un asesor", (payload.get("body") or "").lower())
+        self.assertEqual(payload.get("title"), "Cliente necesita ayuda")
+        self.assertEqual(payload.get("body"), "5512345678 necesita ayuda para resolver dudas")
         self.assertEqual(payload.get("data", {}).get("notification_kind"), "human_advisor")
         msgs = out.get("messages") or []
         self.assertTrue(msgs and msgs[-1].get("role") == "assistant")

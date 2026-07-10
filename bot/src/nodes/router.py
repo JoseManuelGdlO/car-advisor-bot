@@ -7,6 +7,7 @@ from src.state import clientState
 from src.services.llm_responses import classify_router_intent, generate_other_response
 from src.tools.vehicles import normalize_user_text
 from src.utils.human_advisor_notify import handle_human_advisor_request
+from src.utils.financing_advisor_notify import maybe_escalate_financing_detail
 from src.utils.signals import is_greeting_only_message
 from src.utils.app_logging import get_app_logger, log_flow_trace
 from src.utils.state_helpers import (
@@ -138,6 +139,10 @@ def router(state: clientState) -> clientState:
 
     if llm_intent in _VALID_ROUTER_LABELS:
         _debug_router("resolved_intent", resolved=llm_intent, reason="llm_classifier")
+        if llm_intent == "FINANCING":
+            escalated = maybe_escalate_financing_detail(state, trigger="router_financing_intent")
+            if escalated is not None:
+                return escalated
         return _apply_router_resolution(state, llm_intent, reason="llm_classifier")
 
     state["intent"] = "other"

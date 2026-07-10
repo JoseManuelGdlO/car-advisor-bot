@@ -79,7 +79,8 @@ def build_settings_block(settings: dict[str, Any] | None) -> str:
         f"- Solo saluda si el usuario esta saludando explicitamente o si el mensaje parece de inicio de conversacion.",
         f"- No sugieras agendar citas; indica que el equipo dara seguimiento cuando corresponda.",
         f"- No puedes agendar citas, solo puedes responder preguntas y ofrecer informacion.",
-        f"- Tus respuestan deben ser naturales y humanas, no robotizadas."
+        f"- Tus respuestan deben ser naturales y humanas, no robotizadas.",
+        f"- Tus respuestas deben ser breves y directas, no largas y detalladas."
     ]
     bot_name = _optional_text(cfg.get("botName"))
     if bot_name:
@@ -725,11 +726,22 @@ def build_router_intent_classifier_prompt(
         "Clasifica la intencion principal del usuario en una sola etiqueta.\n"
         "Etiquetas validas:\n"
         "- VEHICLE_CATALOG: pide ver, buscar o comparar carros/modelos/marcas, o menciona un modelo especifico.\n"
-        "- FINANCING: pregunta por planes de financiamiento, credito, tasas, enganche, mensualidades o plazos.\n"
+        "- FINANCING: pide ver, listar, comparar o elegir planes de financiamiento del catalogo; "
+        "pregunta tasa, enganche, mensualidad o plazo de un plan concreto o disponible.\n"
         "- PROMOTIONS: pregunta por promociones, ofertas, descuentos o bonos para un vehiculo o en general.\n"
         "- HUMAN_ADVISOR: quiere hablar con un asesor humano, persona real, ejecutivo o que lo comuniquen con alguien del equipo.\n"
-        "- FAQ: pregunta informacion general del negocio (ubicacion, horarios, garantias) sin pedir hablar con un humano.\n"
+        "- FAQ: pregunta informacion general del negocio (ubicacion, horarios, garantias, papeles para comprar, "
+        "metodos de pago en caja, politicas del lote) sin pedir hablar con un humano.\n"
         "- OTHER: saludo, agradecimiento o mensaje fuera del alcance.\n"
+        "Regla importante buró/credito vs financiamiento:\n"
+        "- FAQ cuando pregunta POLITICA o REQUISITO del negocio sobre buró/historial crediticio, "
+        "sin pedir planes ni tasas: 'revisan buro de credito?', 'consultan buro?', "
+        "'necesitan buro crediticio?', 'que pasa si tengo mal buro?' como requisito general.\n"
+        "- FINANCING cuando pide planes, opciones de credito, tasas, enganche, mensualidades o plazos "
+        "del catalogo: 'que planes de financiamiento tienen?', 'cuales son las tasas?', "
+        "'cuanto es el enganche?', 'a cuantos meses puedo financiar?'.\n"
+        "- Si solo menciona credito/buro pero la intencion es saber si el negocio lo revisa como requisito, usa FAQ.\n"
+        "- Si menciona credito pero pide cotizar, elegir plan o conocer condiciones publicadas, usa FINANCING.\n"
         "Responde SOLO con una etiqueta exacta: VEHICLE_CATALOG, FINANCING, PROMOTIONS, HUMAN_ADVISOR, FAQ, OTHER.\n\n"
         f"Intent previo: {previous}\n"
         f"Mensaje del usuario: {message}\n"
@@ -1061,12 +1073,95 @@ def build_financing_step_flags_prompt(
         '(ej. "me interesa el plan pero quiero mas informacion del vehiculo"), usa ask_plan_vehicle_info=true '
         "y select_plan=false.\n"
         "- No marques ask_other_vehicles=true si el usuario solo dice 'carro' dentro de 'quiero comprar el carro' "
-        "sin pedir ver catalogo u otros modelos.\n\n"
+        "sin pedir ver catalogo u otros modelos.\n"
+        "- select_plan=false si mensaje_previo_bot NO muestra lista numerada de planes "
+        '(sin renglones "1.", "2.", ni "Planes disponibles" con opciones concretas).\n'
+        "- select_plan=false si mensaje_previo_bot fue respuesta FAQ de requisitos/credito/documentos "
+        "o ofrecio contacto con asesor para dudas de credito, aunque awaiting_plan_selection sea true.\n"
+        "- Respuestas cortas afirmativas solas ('si', 'claro', 'ok') tras FAQ de credito o oferta de asesor "
+        "NO son seleccion de plan; deja select_plan=false.\n\n"
         f"awaiting_plan_selection: {str(awaiting_plan_selection).lower()}\n"
         f"awaiting_vehicle_selection: {str(awaiting_vehicle_selection).lower()}\n"
         f"has_selected_vehicle: {str(has_selected_vehicle).lower()}\n"
         f"has_selected_promotion: {str(has_selected_promotion).lower()}\n"
         f"vehiculo_actual: {vehicle}\n"
+        f"mensaje_previo_bot: {previous}\n"
+        f"mensaje_usuario: {current}\n"
+        "Lista numerada reciente de planes (si aplica):\n"
+        f"{numbered}\n"
+    )
+
+
+def build_financing_detail_escalation_prompt(
+    *,
+    current_node: str,
+    previous_bot_message: str,
+    user_message: str,
+    selected_vehicle_name: str,
+    selected_plan_name: str,
+    numbered_plan_lines: str,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Clasifica si una pregunta de credito/financiamiento requiere asesor humano."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    node = current_node.strip() or "(sin nodo)"
+    previous = previous_bot_message.strip() or "(sin mensaje previo)"
+    current = user_message.strip() or "(mensaje vacio)"
+    vehicle = selected_vehicle_name.strip() or "(sin vehiculo seleccionado)"
+    plan = selected_plan_name.strip() or "(sin plan seleccionado)"
+    numbered = numbered_plan_lines.strip() or "(sin lista numerada reciente)"
+    return (
+        f"{system_prompt}\n\n"
+        "CLASIFICADOR_ESCALACION_FINANCIAMIENTO_DETALLADO:\n"
+        "Evalua si el mensaje del usuario requiere que un ASESOR HUMANO resuelva dudas de "
+        "credito o financiamiento que el bot NO puede contestar con datos publicados del catalogo "
+        "ni con FAQs generales del negocio.\n"
+        "Responde SOLO con JSON de una linea:\n"
+        '{ "requiere_asesor_financiamiento": <bool> }\n'
+        "requiere_asesor_financiamiento=true cuando:\n"
+        "- Pregunta aprobacion o viabilidad PERSONALIZADA (ej. 'me aprueban si tengo mal buro?', "
+        "'puedo financiar con comprobante informal?', 'califico con mi ingreso?').\n"
+        "- Pide excepciones, negociacion o condiciones especiales no listadas (menor enganche, "
+        "refinanciar, penalizaciones en SU caso, plazos custom).\n"
+        "- Solicita informacion MAS DETALLADA sobre credito/planes que va mas alla de listar, "
+        "comparar o leer datos publicados (tasa/enganche/plazo del catalogo).\n"
+        "- Pregunta DETALLES del proceso o criterios de revision del buro de credito "
+        "(ej. 'que detalles revisan del buro?', 'que puntos evaluan?', 'como revisan mi historial?').\n"
+        "- Profundiza en buró/credito tras una respuesta FAQ generica del bot "
+        "(mas informacion, explicame el proceso, que revisan exactamente).\n"
+        "- Acepta o pide continuar cuando el bot ofrecio explicar el proceso de buró/credito "
+        "(ej. 'si por favor', 'si', 'adelante', 'cuentame mas' tras esa oferta).\n"
+        "- Acepta o pide continuar cuando el bot respondio FAQ de requisitos/documentos para credito "
+        "y ofrecio mas detalle o contacto con asesor "
+        '(ej. "si", "claro", "adelante" tras "¿te gustaria que un asesor te contacte?" '
+        'o "¿quieres mas detalle sobre requisitos de credito?").\n'
+        "- Pregunta como funciona el proceso de aprobacion paso a paso para SU situacion.\n"
+        "requiere_asesor_financiamiento=false cuando:\n"
+        "- Quiere ver, listar, comparar o ELEGIR planes de financiamiento del catalogo.\n"
+        "- Pregunta enganche, tasa, plazo o mensualidad de un plan PUBLICADO en el catalogo.\n"
+        "- Pregunta FAQ de negocio BASICA y general sobre buro: solo si revisan o no, "
+        "sin pedir detalles del proceso ni profundizar (ej. 'revisan buro de credito?').\n"
+        "- Otras FAQs de negocio simples: papeles para comprar, politicas del lote, "
+        "metodos de pago en caja, atrasos como politica general (no su caso personal).\n"
+        "- Responde al turno del bot con seleccion comercial EXPLICITa: numero de lista, nombre de plan "
+        "o referencia directa a un plan mostrado (NO basta un 'si'/'claro' aislado).\n"
+        "- Responde 'si'/'claro'/'ok' SOLO cuando mensaje_previo_bot pidio elegir plan de lista numerada "
+        "reciente (con renglones 1., 2., etc.) y el usuario confirma uno de esos planes.\n"
+        "- Pide ver otros autos, promociones o detalles del vehiculo sin duda personalizada de credito.\n"
+        "Prioridad en empate:\n"
+        "- Si mensaje_usuario pide ver, listar o conocer planes/opciones del catalogo "
+        "(ej. 'planes de financiamiento', 'que planes tienen', 'opciones de credito', 'cuales son las tasas') "
+        "→ usa false aunque mensaje_previo_bot no tenga lista numerada.\n"
+        "- Si mensaje_usuario es afirmacion corta ('si', 'claro', 'ok', 'adelante') y mensaje_previo_bot "
+        "habla de requisitos de credito, documentos, buró o ofrece asesor → usa true.\n"
+        "- Si mensaje_previo_bot NO tiene lista numerada de planes y el usuario no nombra plan → usa true "
+        "solo cuando la intencion es profundizar en credito personalizado; no trates 'si' como elegir plan.\n"
+        "En duda, usa false si pide informacion publicada del catalogo; usa true solo si es duda personalizada "
+        "o seguimiento tras oferta de asesor/buro.\n\n"
+        f"nodo_actual: {node}\n"
+        f"vehiculo_actual: {vehicle}\n"
+        f"plan_actual: {plan}\n"
         f"mensaje_previo_bot: {previous}\n"
         f"mensaje_usuario: {current}\n"
         "Lista numerada reciente de planes (si aplica):\n"

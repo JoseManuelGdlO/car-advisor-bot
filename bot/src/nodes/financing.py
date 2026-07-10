@@ -528,6 +528,7 @@ def financing(state: clientState) -> clientState:
         state["suppress_commercial_node_once"] = False
         _debug("suppress_commercial_node_once", action="skip_node_execution")
         return state
+
     user_text = latest_user_message(state)
     selected_vehicle_id = str(state.get("selected_vehicle_id", "")).strip()
     selected_car = str(state.get("selected_car", "")).strip()

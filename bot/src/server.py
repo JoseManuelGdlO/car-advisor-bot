@@ -209,6 +209,11 @@ def _build_initial_state() -> dict[str, Any]:
         "owner_user_id": "",
         "human_advisor_requested": False,
         "human_advisor_push_sent": False,
+        "financing_detail_push_sent": False,
+        "display_phone": "",
+        "last_faq_interrupt_topic": "",
+        "financing_interrupt_snapshot": {},
+        "financing_credit_followup_pending": False,
         "suppress_commercial_node_once": False,
         "conversation_id": "",
         "bot_disabled": False,
@@ -273,18 +278,22 @@ def _hydrate_customer_info_from_crm(state: dict[str, Any], crm: dict[str, Any] |
     info = dict(state.get("customer_info") or {})
     if _is_real_customer_name(str(info.get("nombre", ""))):
         state["customer_info"] = info
-        return
-    crm_info = crm.get("customer_info")
-    if isinstance(crm_info, dict):
-        nombre = str(crm_info.get("nombre", "")).strip()
-        if _is_real_customer_name(nombre):
-            info["nombre"] = nombre
-            state["customer_info"] = info
-            return
-    client_name = str(crm.get("client_name", "")).strip()
-    if _is_real_customer_name(client_name):
-        info["nombre"] = client_name
-        state["customer_info"] = info
+    else:
+        crm_info = crm.get("customer_info")
+        if isinstance(crm_info, dict):
+            nombre = str(crm_info.get("nombre", "")).strip()
+            if _is_real_customer_name(nombre):
+                info["nombre"] = nombre
+                state["customer_info"] = info
+        else:
+            client_name = str(crm.get("client_name", "")).strip()
+            if _is_real_customer_name(client_name):
+                info["nombre"] = client_name
+                state["customer_info"] = info
+
+    display_phone = str(crm.get("client_display_phone", "")).strip()
+    if display_phone:
+        state["display_phone"] = display_phone
 
 
 def _customer_info_for_backend(state: dict[str, Any]) -> dict[str, Any] | None:

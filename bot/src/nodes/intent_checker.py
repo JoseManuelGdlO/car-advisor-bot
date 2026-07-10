@@ -15,6 +15,16 @@ from src.utils.human_advisor_notify import (
     handle_human_advisor_request,
     human_advisor_heuristic_match,
 )
+from src.utils.financing_advisor_notify import (
+    handle_financing_detail_escalation,
+    maybe_escalate_financing_detail,
+)
+from src.utils.financing_credit_faq import (
+    clear_financing_credit_followup,
+    is_credit_requirements_faq_question,
+    is_short_affirmative_reply,
+    suspend_financing_commercial_state,
+)
 from src.utils.app_logging import get_app_logger
 from src.utils.signals import (
     TEST_DRIVE_VISIT_SIGNALS,
@@ -111,6 +121,41 @@ def _financing_flow_allows_commercial_followup(state: clientState, last_ai: str,
     return any(financing_flags.get(key) for key in _FINANCING_COMMERCIAL_FLAG_KEYS)
 
 
+_FINANCING_ESCALATION_NODES = frozenset(
+    {"car_selection", "financing", "promotions", "lead_capture", "customer_onboarding"}
+)
+
+
+def _try_financing_detail_escalation_from_checker(
+    state: clientState,
+    *,
+    current_node: str,
+    last_user: str,
+    last_ai: str,
+    trigger_suffix: str,
+) -> clientState | None:
+    """Evalua escalacion por financiamiento detallado; devuelve estado escalado o None."""
+
+    if current_node not in _FINANCING_ESCALATION_NODES:
+        return None
+    escalated = maybe_escalate_financing_detail(
+        state,
+        trigger=f"intent_checker_{trigger_suffix}",
+        user_message=last_user,
+        previous_bot_message=last_ai,
+    )
+    if escalated is None:
+        return None
+    saved_node = current_node
+    msgs_before = len(state.get("messages", []))
+    state = escalated
+    state["current_node"] = saved_node
+    state["is_faq_interrupt"] = False
+    if saved_node in _FINANCING_ESCALATION_NODES and len(state.get("messages", [])) > msgs_before:
+        state["suppress_commercial_node_once"] = True
+    return state
+
+
 def intent_checker(state: clientState) -> clientState:
     """Evalua ultimo par Human/AI para decidir continuidad o interrupcion FAQ (clasificador LLM con flags)."""
 
@@ -203,11 +248,41 @@ def intent_checker(state: clientState) -> clientState:
             state["suppress_commercial_node_once"] = True
         return state
 
+    if (
+        current_node in _FINANCING_ESCALATION_NODES
+        and not flags.get("interrumpir_por_faq")
+    ):
+        escalated = _try_financing_detail_escalation_from_checker(
+            state,
+            current_node=current_node,
+            last_user=last_user,
+            last_ai=last_ai,
+            trigger_suffix=current_node,
+        )
+        if escalated is not None:
+            return escalated
+
+    if state.get("financing_credit_followup_pending") and is_short_affirmative_reply(last_user):
+        saved_node = current_node
+        msgs_before = len(state.get("messages", []))
+        state = handle_financing_detail_escalation(
+            state,
+            advisor_trigger="intent_checker_credit_faq_affirmative",
+        )
+        state["current_node"] = saved_node
+        state["is_faq_interrupt"] = False
+        clear_financing_credit_followup(state)
+        if saved_node in _FINANCING_ESCALATION_NODES and len(state.get("messages", [])) > msgs_before:
+            state["suppress_commercial_node_once"] = True
+        return state
+
     if _financing_flow_allows_commercial_followup(state, last_ai, last_user):
         state["is_faq_interrupt"] = False
         return state
 
     if flags.get("interrumpir_por_faq"):
+        if current_node == "financing" and is_credit_requirements_faq_question(last_user):
+            suspend_financing_commercial_state(state)
         state["is_faq_interrupt"] = True
         state["resume_to_step"] = current_node or "car_selection"
         state["current_node"] = "faq"

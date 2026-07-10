@@ -10,6 +10,7 @@ from src.tools.database import push_event_to_backend
 from src.tools.vehicles import normalize_user_text, notify_advisor
 from src.utils.app_logging import get_app_logger
 from src.utils.bot_control import deactivate_bot
+from src.utils.financing_advisor_notify import build_advisor_help_push_copy
 from src.utils.signals import HUMAN_ADVISOR_HEURISTIC_SUBSTR
 from src.utils.state_helpers import append_assistant_message, latest_user_message
 
@@ -79,30 +80,6 @@ def _user_handoff_ack(
     )
 
 
-def _human_advisor_push_copy(
-    *,
-    customer_name: str,
-    customer_phone: str,
-    selected_car: str,
-    platform: str,
-    current_node: str,
-) -> tuple[str, str]:
-    title = "Solicitud de asesor humano"
-    parts = [
-        "El usuario solicito hablar con un asesor.",
-        f"Plataforma: {platform or 'N/D'}.",
-        f"Nodo: {current_node or 'N/D'}.",
-    ]
-    if customer_name:
-        parts.append(f"Cliente: {customer_name}.")
-    if customer_phone:
-        parts.append(f"Telefono: {customer_phone}.")
-    if selected_car:
-        parts.append(f"Vehiculo de interes: {selected_car}.")
-    body = " ".join(parts)
-    return title, body
-
-
 def handle_human_advisor_request(
     state: clientState,
     *,
@@ -130,16 +107,9 @@ def handle_human_advisor_request(
     selected_car = str(state.get("selected_car", "")).strip()
     owner_user_id = str(state.get("owner_user_id", "")).strip()
     customer_info = _clean_customer_info(state.get("customer_info"))
-    customer_name = customer_info.get("nombre", "")
     customer_phone = customer_info.get("telefono", "")
 
-    push_title, push_body = _human_advisor_push_copy(
-        customer_name=customer_name,
-        customer_phone=customer_phone,
-        selected_car=selected_car,
-        platform=platform,
-        current_node=current_node,
-    )
+    push_title, push_body = build_advisor_help_push_copy(state)
 
     _app.info(
         "[human_advisor] notify_start trigger=%s node=%s platform=%s owner_user_id_set=%s",
