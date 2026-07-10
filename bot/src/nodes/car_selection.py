@@ -48,6 +48,7 @@ from src.utils.formatters import (
     format_two_vehicle_comparison_grounding,
     format_vehicle_name,
     format_vehicle_detail,
+    sort_vehicles_by_outbound_priority,
 )
 from src.utils.signals import (
     FEATURE_SIGNALS,
@@ -177,7 +178,7 @@ def _respond_pending_selection_clarification(
 ) -> clientState:
     """Re-pregunta cuando el usuario alude a varios candidatos pendientes a la vez."""
 
-    state["last_vehicle_candidates"] = ambiguous_matches[:8]
+    state["last_vehicle_candidates"] = _top_vehicle_candidates(ambiguous_matches)
     options = format_candidate_options(ambiguous_matches)
     user_text = latest_user_message(state)
     message = (
@@ -678,6 +679,24 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
     return _append_assistant_blocks(state, blocks)
 
 
+def _top_vehicle_candidates(
+    candidates: list[dict[str, Any]],
+    *,
+    limit: int = 16,
+    available_only: bool = False,
+) -> list[dict[str, Any]]:
+    """Devuelve candidatos ordenados por prioridad de envío (máx. `limit`)."""
+
+    valid = [item for item in candidates if isinstance(item, dict)]
+    if available_only:
+        valid = [
+            item
+            for item in valid
+            if str(item.get("status", "")).strip().lower() == "available"
+        ]
+    return sort_vehicles_by_outbound_priority(valid)[:limit]
+
+
 def _respond_available_list(
     state: clientState,
     vehicles: list[dict[str, Any]],
@@ -686,11 +705,8 @@ def _respond_available_list(
 ) -> clientState:
     """Muestra inventario disponible y limpia contexto de selección previa."""
     state["awaiting_purchase_confirmation"] = False
-    state["last_vehicle_candidates"] = [
-        item
-        for item in vehicles
-        if isinstance(item, dict) and str(item.get("status", "")).strip().lower() == "available"
-    ][:8]
+    sorted_vehicles = sort_vehicles_by_outbound_priority(vehicles)
+    state["last_vehicle_candidates"] = _top_vehicle_candidates(sorted_vehicles, available_only=True)
     state["selected_vehicle_id"] = ""
     state["selected_car"] = ""
     state["vehicle_comparison_ctx"] = {}
@@ -702,7 +718,7 @@ def _respond_available_list(
         available_vehicles=available_count,
         pending_candidates=len(state["last_vehicle_candidates"]),
     )
-    available_list = format_available_vehicles_grouped(vehicles)
+    available_list = format_available_vehicles_grouped(sorted_vehicles)
     user_q = latest_user_message(state)
     verified = "\n".join(
         [
@@ -764,7 +780,7 @@ def _respond_with_filtered_search(
     """Ejecuta búsqueda filtrada y responde casos: 0/1/múltiples resultados."""
 
     try:
-        filtered = search_vehicles(filters)
+        filtered = sort_vehicles_by_outbound_priority(search_vehicles(filters))
         _debug(f"{source}_search_results", count=len(filtered), filters=filters)
     except Exception:
         _debug(f"{source}_search_error", filters=filters)
@@ -822,7 +838,7 @@ def _respond_with_filtered_search(
                 ),
                 temperature=0.35,
             )
-    state["last_vehicle_candidates"] = filtered[:8]
+    state["last_vehicle_candidates"] = _top_vehicle_candidates(filtered)
     _debug(f"{source}_pending_candidates_saved", count=len(state["last_vehicle_candidates"]))
     return append_assistant_message(state, message)
 
@@ -870,7 +886,7 @@ def _prioritized_vehicle_matches(candidates: list[dict[str, Any]]) -> list[dict[
         for item in candidates
         if isinstance(item, dict) and str(item.get("status", "")).strip().lower() == "available"
     ]
-    return available or [item for item in candidates if isinstance(item, dict)]
+    return sort_vehicles_by_outbound_priority(available or [item for item in candidates if isinstance(item, dict)])
 
 
 def _matches_for_vehicle_query(query: str, vehicles: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -931,7 +947,7 @@ def _comparison_prompt_first_ambiguous(
 ) -> clientState:
     """Pide aclarar el primer vehículo cuando hay múltiples coincidencias."""
 
-    state["last_vehicle_candidates"] = matches[:8]
+    state["last_vehicle_candidates"] = _top_vehicle_candidates(matches)
     state["vehicle_comparison_ctx"] = {"other_query": str(other_query or "").strip()}
     options = format_candidate_options(matches)
     body = (
@@ -949,7 +965,7 @@ def _comparison_prompt_second_ambiguous(
 ) -> clientState:
     """Pide aclarar el segundo vehículo cuando hay múltiples coincidencias."""
 
-    state["last_vehicle_candidates"] = matches[:8]
+    state["last_vehicle_candidates"] = _top_vehicle_candidates(matches)
     state["vehicle_comparison_ctx"] = {"peer_resolved_id": str(peer_id).strip()}
     options = format_candidate_options(matches)
     body = (

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
 from decimal import Decimal, InvalidOperation
 from typing import Any, Callable
 
@@ -80,6 +79,29 @@ def format_vehicle_name(item: dict[str, Any]) -> str:
     return f"{brand} {model}{suffix}".strip()
 
 
+def _outbound_priority_value(item: dict[str, Any]) -> int:
+    """Lee prioridad de envío; 0 significa sin prioridad explícita."""
+
+    try:
+        return int(item.get("outboundPriority", 0) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def sort_vehicles_by_outbound_priority(vehicles: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Ordena vehículos por prioridad de envío ASC (1 primero); sin prioridad al final."""
+
+    valid = [item for item in vehicles if isinstance(item, dict)]
+
+    def sort_key(item: dict[str, Any]) -> tuple[int, int, str]:
+        priority = _outbound_priority_value(item)
+        if priority <= 0:
+            return (1, 0, format_vehicle_name(item).lower())
+        return (0, priority, format_vehicle_name(item).lower())
+
+    return sorted(valid, key=sort_key)
+
+
 def format_candidate_options(candidates: list[dict[str, Any]], limit: int = 8) -> str:
     """Construye una lista numerada breve para que el usuario elija una opción."""
 
@@ -103,27 +125,35 @@ def format_images_bulleted_list(images: list[str], resolve_url_fn: Callable[[str
 def format_available_vehicles_grouped(vehicles: list[dict[str, Any]]) -> str:
     """Agrupa disponibles por marca y modelo; agrega año cuando hay repetidos."""
 
-    available = [item for item in vehicles if str(item.get("status", "")).strip().lower() == "available"]
+    available = [
+        item
+        for item in sort_vehicles_by_outbound_priority(vehicles)
+        if str(item.get("status", "")).strip().lower() == "available"
+    ]
     if not available:
         return "No tengo vehiculos disponibles en este momento. Si quieres, puedo ayudarte a buscar por otra caracteristica."
 
-    grouped: dict[str, dict[str, list[int]]] = defaultdict(lambda: defaultdict(list))
+    brands: dict[str, dict[str, list[int]]] = {}
     for item in available:
         brand = _title_or_default(item.get("brand"), fallback="")
         model = _title_or_default(item.get("model"), fallback="")
         if not brand or not model:
             continue
+        if brand not in brands:
+            brands[brand] = {}
+        if model not in brands[brand]:
+            brands[brand][model] = []
         year = item.get("year")
         if isinstance(year, int):
-            grouped[brand][model].append(year)
+            brands[brand][model].append(year)
 
     lines: list[str] = []
-    for brand in sorted(grouped):
+    for brand, models_map in brands.items():
         models_lines: list[str] = []
-        for model in sorted(grouped[brand]):
-            years = sorted(set(grouped[brand][model]))
-            if len(years) > 1:
-                years_text = ", ".join(str(year) for year in years)
+        for model, years in models_map.items():
+            unique_years = sorted(set(years))
+            if len(unique_years) > 1:
+                years_text = ", ".join(str(year) for year in unique_years)
                 models_lines.append(f"{model} ({years_text})")
             else:
                 models_lines.append(model)
@@ -140,16 +170,15 @@ def format_filtered_vehicles(vehicles: list[dict[str, Any]], platform: str = "we
     if not vehicles:
         return "No encontre vehiculos que coincidan con esas caracteristicas. Si quieres, probamos con otra combinacion."
 
-    vehicle_label = _bold_label("Modelos", platform)
     lines = [f"Tenemos estos modelos con las caracteristicas que estas buscando 😊🚗", ""]
-    for item in vehicles:
+    for item in sort_vehicles_by_outbound_priority(vehicles):
         brand = _title_or_default(item.get("brand"))
         model = _title_or_default(item.get("model"))
         year = item.get("year")
         one_line = f"{brand} {model}".strip()
-        if isinstance(year, int):
+        if isinstance(year, int) and str(year) not in model:
             one_line = f"{one_line} {year}".strip()
-        lines.append(f"🚗 {vehicle_label}: {_bold_label(one_line, platform)}")
+        lines.append(f"🚗 {one_line}")
     return "\n".join(lines).strip()
 
 

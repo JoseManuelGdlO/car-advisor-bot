@@ -16,7 +16,7 @@ export const listVehicles = async (req, res) =>
     await Vehicle.findAll({
       where: ownerWhere(resolveOwnerFromRequest(req)),
       include: [{ model: FinancingPlan, as: "financingPlans", through: { attributes: ["customRate"] } }],
-      order: [["outboundPriority", "DESC"], ["updatedAt", "DESC"]],
+      order: [["outboundPriority", "ASC"], ["updatedAt", "DESC"]],
     })
   );
 
@@ -66,7 +66,7 @@ export const getVehiclesByFilters = async (req, res) => {
   const rows = await Vehicle.findAll({
     where,
     include: [{ model: FinancingPlan, as: "financingPlans", through: { attributes: ["customRate"] } }],
-    order: [["outboundPriority", "DESC"], ["updatedAt", "DESC"]],
+    order: [["outboundPriority", "ASC"], ["updatedAt", "DESC"]],
   });
 
   return res.json(rows);

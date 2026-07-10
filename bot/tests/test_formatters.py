@@ -5,6 +5,7 @@ from __future__ import annotations
 import unittest
 
 from src.utils.formatters import (
+    format_available_vehicles_grouped,
     format_candidate_options,
     format_financing_plan_comparison,
     format_images_bulleted_list,
@@ -12,10 +13,30 @@ from src.utils.formatters import (
     format_two_vehicle_comparison_grounding,
     format_vehicle_detail,
     format_vehicle_name,
+    sort_vehicles_by_outbound_priority,
 )
 
 
 class CarSelectionFormattersTests(unittest.TestCase):
+    def test_sort_vehicles_by_outbound_priority_orders_asc_with_zero_last(self) -> None:
+        vehicles = [
+            {"brand": "Suzuki", "model": "Dzire", "outboundPriority": 2, "status": "available"},
+            {"brand": "Suzuki", "model": "Swift", "outboundPriority": 1, "status": "available"},
+            {"brand": "Suzuki", "model": "Jimny", "outboundPriority": 0, "status": "available"},
+            {"brand": "Suzuki", "model": "Fronx", "outboundPriority": 3, "status": "available"},
+        ]
+        ordered = sort_vehicles_by_outbound_priority(vehicles)
+        self.assertEqual([item["model"] for item in ordered], ["Swift", "Dzire", "Fronx", "Jimny"])
+
+    def test_format_available_vehicles_grouped_respects_outbound_priority(self) -> None:
+        vehicles = [
+            {"brand": "suzuki", "model": "dzire", "year": 2026, "status": "available", "outboundPriority": 2},
+            {"brand": "suzuki", "model": "swift", "year": 2026, "status": "available", "outboundPriority": 1},
+            {"brand": "suzuki", "model": "fronx", "year": 2026, "status": "available", "outboundPriority": 3},
+        ]
+        output = format_available_vehicles_grouped(vehicles)
+        self.assertIn("Swift, Dzire, Fronx", output)
+
     def test_format_vehicle_name_includes_year_when_available(self) -> None:
         self.assertEqual(format_vehicle_name({"brand": "Nissan", "model": "Versa", "year": 2011}), "Nissan Versa 2011")
         self.assertEqual(format_vehicle_name({"brand": "Nissan", "model": "Versa"}), "Nissan Versa")
