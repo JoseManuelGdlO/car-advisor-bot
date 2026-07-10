@@ -331,6 +331,50 @@ class CustomerOnboardingTests(GraphTestCase):
         self.assertEqual(len(assistant_messages), 1)
         self.assertIn("Javier", assistant_messages[0])
 
+    def test_returning_customer_greeting_only_gets_welcome_back(self) -> None:
+        state = with_user_message(initial_state(), "Hola, buenas tardes")
+        state["customer_info"] = {"nombre": "Vanessa Castrellón"}
+        state["onboarding_greeting_done"] = True
+        state["messages"] = [
+            {"role": "user", "content": "Hola, buenas tardes", "type": "HumanMessage"},
+        ]
+
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.router.generate_other_response") as other_mock,
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertTrue(updated.get("onboarding_turn_complete"))
+        other_mock.assert_not_called()
+        assistant_messages = [m["content"] for m in updated["messages"] if m.get("role") == "assistant"]
+        self.assertEqual(len(assistant_messages), 1)
+        self.assertIn("Vanessa Castrellón", assistant_messages[0])
+        self.assertIn("¿En qué te ayudo?", assistant_messages[0])
+
+    def test_returning_customer_commercial_message_still_routes(self) -> None:
+        state = with_user_message(initial_state(), "hola quiero ver SUVs")
+        state["customer_info"] = {"nombre": "Vanessa Castrellón"}
+        state["onboarding_greeting_done"] = True
+        state["messages"] = [
+            {"role": "user", "content": "hola quiero ver SUVs", "type": "HumanMessage"},
+        ]
+
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.router.classify_router_intent", return_value="VEHICLE_CATALOG"),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=[]),
+            patch(
+                "src.nodes.car_selection.generate_verified_user_message",
+                side_effect=lambda **kw: kw.get("fallback", ""),
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertEqual(updated.get("current_node"), "car_selection")
+        assistant_messages = [m["content"] for m in updated["messages"] if m.get("role") == "assistant"]
+        self.assertFalse(any("Hola de nuevo" in text for text in assistant_messages))
+
     def test_subsequent_turn_skips_onboarding_greeting(self) -> None:
         state = with_user_message(initial_state(), "que carros tienes")
         state["customer_info"] = {"nombre": "Luis"}

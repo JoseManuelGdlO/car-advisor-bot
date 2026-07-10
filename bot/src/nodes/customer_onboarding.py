@@ -13,6 +13,7 @@ from src.services.llm_responses import (
 from src.state import clientState
 from src.tools.database import sync_customer_info_to_backend
 from src.utils.app_logging import get_app_logger, log_flow_trace
+from src.utils.signals import is_greeting_only_message
 from src.utils.state_helpers import append_assistant_message, latest_user_message
 
 _log = get_app_logger("customer_onboarding")
@@ -152,6 +153,14 @@ def customer_onboarding(state: clientState) -> clientState:
         return _proceed_without_name(state, reason=reason)
 
     if customer_name and state.get("onboarding_greeting_done"):
+        if is_greeting_only_message(user_text):
+            state["current_node"] = "customer_onboarding"
+            state["onboarding_turn_complete"] = True
+            _debug("returning_customer_greeting_only", customer_name=customer_name)
+            return append_assistant_message(
+                state,
+                f"¡Hola de nuevo, {customer_name}! ¿En qué te ayudo?",
+            )
         if saved_node not in {"", "start"}:
             state["current_node"] = saved_node
         return state
