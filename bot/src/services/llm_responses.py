@@ -11,7 +11,7 @@ from typing import Any
 from langchain_openai import ChatOpenAI
 
 from src.state import clientState
-from src.tools.database import get_bot_settings, get_business_profile
+from src.tools.database import faq_entry_to_candidate, get_bot_settings, get_business_profile
 from src.utils.prompts import (
     append_bot_message_templates_to_verified_block,
     append_business_profile_to_verified_block,
@@ -33,16 +33,19 @@ from src.utils.prompts import (
     build_vehicle_comparison_conversation_prompt,
     build_vehicle_detail_conversation_prompt,
     build_faq_response_prompt,
+    build_faq_selection_prompt,
     build_vehicle_comparison_extract_prompt,
     build_vehicle_pending_selection_extract_prompt,
     build_vehicle_step_flags_prompt,
     build_promotions_step_flags_prompt,
+    build_extract_customer_name_prompt,
+    build_onboarding_first_message_classifier_prompt,
     build_financing_step_flags_prompt,
     build_lead_capture_navigation_classifier_prompt,
     build_settings_block,
     build_verified_user_message_prompt,
 )
-from src.utils.signals import is_simple_greeting
+from src.utils.signals import is_greeting_only_message, is_simple_greeting
 
 from src.utils.app_logging import get_app_logger
 
@@ -498,6 +501,26 @@ def _coerce_to_bool(value: Any) -> bool:
     return False
 
 
+_NAME_REQUEST_FROM_WELCOME_PATTERNS: tuple[str, ...] = (
+    r",?\s*¿?\s*con qui[eé]n tengo el gusto\??",
+    r",?\s*¿?\s*c[oó]mo te llamas\??",
+    r",?\s*¿?\s*cu[aá]l es tu nombre\??",
+    r",?\s*¿?\s*a nombre de qui[eé]n\??",
+    r",?\s*para poder atenderte mejor\??",
+)
+
+
+def strip_name_request_from_welcome_message(text: str) -> str:
+    """Quita frases que piden el nombre del cliente de un mensaje de bienvenida."""
+
+    cleaned = str(text or "").strip()
+    if not cleaned:
+        return ""
+    for pattern in _NAME_REQUEST_FROM_WELCOME_PATTERNS:
+        cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE)
+    return cleaned.rstrip(" ,;").strip()
+
+
 def _optional_setting_text(settings: dict[str, Any], key: str) -> str | None:
     """Lee un setting opcional del tenant sin fallback."""
 
@@ -520,7 +543,143 @@ def _faq_insufficient_facts_block(
     return append_bot_message_templates_to_verified_block(base, settings)
 
 
-def generate_other_response(user_message: str) -> str:
+def generate_welcome_and_name_request(*, user_message: str = "") -> str:
+    """Genera bienvenida inicial pidiendo el nombre, anclada a welcomeMessage."""
+
+    settings = get_bot_settings()
+    welcome = _optional_setting_text(settings, "welcomeMessage")
+    bot_name = _optional_setting_text(settings, "botName") or "CarAdvisor"
+    fallback = (
+        f"Hola, soy {bot_name}. Me da gusto ayudarte. "
+        "¿Cómo te llamas para poder atenderte mejor?"
+    )
+    if welcome:
+        fallback = f"{welcome} ¿Cómo te llamas?"
+    verified = build_settings_block(settings) or "CONFIGURACION_NEGOCIO: (sin campos extra)"
+    verified = append_bot_message_templates_to_verified_block(verified, settings)
+    verified = append_business_profile_to_verified_block(verified, get_business_profile())
+    return generate_verified_user_message(
+        mode="welcome_and_name_request",
+        verified_facts_block=verified,
+        user_message=user_message,
+        fallback=fallback,
+        temperature=0.45,
+    )
+
+
+def generate_welcome_with_known_name(customer_name: str, *, user_message: str = "") -> str:
+    """Genera bienvenida personalizada con el nombre del cliente."""
+
+    name = str(customer_name or "").strip()
+    settings = get_bot_settings()
+    welcome_raw = _optional_setting_text(settings, "welcomeMessage")
+    welcome = strip_name_request_from_welcome_message(welcome_raw) if welcome_raw else None
+    bot_name = _optional_setting_text(settings, "botName") or "CarAdvisor"
+    fallback = f"Hola {name}, " + (welcome or f"soy {bot_name} y estoy aqui para ayudarte con vehiculos.")
+    verified = build_settings_block(settings) or "CONFIGURACION_NEGOCIO: (sin campos extra)"
+    if welcome:
+        verified = (
+            f"{verified}\n\nMENSAJES_PREDEFINIDOS_VERIFICADOS:\n"
+            f"- mensaje_bienvenida_literal: {welcome}\n"
+            "- nota: el nombre del cliente ya es conocido; NO vuelvas a pedir el nombre."
+        )
+    else:
+        verified = append_bot_message_templates_to_verified_block(verified, settings)
+    verified = append_business_profile_to_verified_block(verified, get_business_profile())
+    verified = f"nombre_cliente: {name}\n{verified}"
+    return generate_verified_user_message(
+        mode="welcome_with_known_name",
+        verified_facts_block=verified,
+        user_message=user_message,
+        fallback=fallback,
+        temperature=0.45,
+    )
+
+
+def _heuristic_customer_name(user_message: str) -> str | None:
+    """Fallback minimo si el LLM no esta disponible."""
+
+    raw = str(user_message or "").strip()
+    if not raw:
+        return None
+    lowered = raw.lower()
+    skip_prefixes = ("me llamo", "soy", "mi nombre es", "me dicen")
+    for prefix in skip_prefixes:
+        if lowered.startswith(prefix):
+            raw = raw[len(prefix) :].strip(" :,-.")
+            break
+    words = [w for w in raw.split() if w.isalpha()]
+    if not words or len(words) > 4:
+        return None
+    if len("".join(words)) < 2:
+        return None
+    return " ".join(word[:1].upper() + word[1:].lower() for word in words if word)
+
+
+def classify_onboarding_first_message(user_message: str) -> dict[str, bool]:
+    """Clasifica si el primer mensaje del usuario trae intencion comercial o es solo cortesia."""
+
+    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
+    out: dict[str, bool] = {"tiene_intencion_comercial": False}
+    try:
+        settings = get_bot_settings()
+        llm = ChatOpenAI(model=model_name, temperature=0)
+        prompt = build_onboarding_first_message_classifier_prompt(user_message, settings)
+        parsed = _parse_json_object_from_llm(str(llm.invoke(prompt).content or ""))
+        if isinstance(parsed, dict):
+            out["tiene_intencion_comercial"] = _coerce_to_bool(parsed.get("tiene_intencion_comercial"))
+            return out
+    except Exception as exc:
+        _log_llm_invoke_failure(
+            "classify_onboarding_first_message",
+            exc,
+            model_name=model_name,
+            prompt_kind="onboarding_first_message_classifier",
+            temperature=0.0,
+        )
+    out["tiene_intencion_comercial"] = not is_greeting_only_message(user_message)
+    return out
+
+
+def extract_customer_name(previous_bot_message: str, user_message: str) -> dict[str, Any]:
+    """Extrae nombre del usuario via LLM; heuristica solo como fallback."""
+
+    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
+    out: dict[str, Any] = {"nombre": None, "is_refusal": False}
+    try:
+        settings = get_bot_settings()
+        llm = ChatOpenAI(model=model_name, temperature=0)
+        prompt = build_extract_customer_name_prompt(previous_bot_message, user_message, settings)
+        parsed = _parse_json_object_from_llm(str(llm.invoke(prompt).content or ""))
+        if isinstance(parsed, dict):
+            nombre = parsed.get("nombre")
+            if nombre is not None and str(nombre).strip().lower() not in ("null", "none", ""):
+                cleaned = str(nombre).strip()
+                if 2 <= len(cleaned) <= 80:
+                    out["nombre"] = cleaned
+            out["is_refusal"] = bool(parsed.get("is_refusal"))
+            if out["nombre"]:
+                return out
+    except Exception as exc:
+        _log_llm_invoke_failure(
+            "extract_customer_name",
+            exc,
+            model_name=model_name,
+            prompt_kind="extract_customer_name",
+            temperature=0,
+        )
+    heuristic = _heuristic_customer_name(user_message)
+    if heuristic:
+        out["nombre"] = heuristic
+    return out
+
+
+def generate_other_response(
+    user_message: str,
+    *,
+    customer_name: str = "",
+    onboarding_greeting_done: bool = False,
+) -> str:
     """Genera respuesta para intent `other` anclada a configuracion del bot (DATOS_VERIFICADOS)."""
 
     model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
@@ -532,7 +691,13 @@ def generate_other_response(user_message: str) -> str:
     try:
         settings = get_bot_settings()
         welcome = _optional_setting_text(settings, "welcomeMessage")
-        if welcome and is_simple_greeting(user_message):
+        has_known_name = bool(str(customer_name or "").strip())
+        if (
+            welcome
+            and is_simple_greeting(user_message)
+            and not has_known_name
+            and not onboarding_greeting_done
+        ):
             return welcome
         llm = ChatOpenAI(model=model_name, temperature=0.5)
         verified = build_settings_block(settings) or "CONFIGURACION_NEGOCIO: (sin campos extra)"
@@ -1450,14 +1615,21 @@ def classify_financing_step_flags(
     has_selected_vehicle: bool = False,
     has_selected_promotion: bool = False,
     awaiting_plan_selection: bool = False,
+    awaiting_vehicle_selection: bool = False,
+    numbered_plan_lines: str = "",
 ) -> dict[str, bool]:
-    """Clasifica flags de navegacion dentro del paso de seleccion de plan en financing."""
+    """Clasifica flags de navegacion por turno dentro del nodo financing."""
 
     model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
     out = {
+        "ask_promotions": False,
+        "ask_other_vehicles": False,
+        "ask_financing_with_vehicle": False,
+        "wants_compare_two_plans": False,
+        "select_plan": False,
+        "ask_plan_vehicle_info": False,
         "reject_financing_keep_purchase": False,
         "ask_explicit_plan": True,
-        "wants_compare_two_plans": False,
     }
     try:
         settings = get_bot_settings()
@@ -1469,6 +1641,8 @@ def classify_financing_step_flags(
             has_selected_vehicle=has_selected_vehicle,
             has_selected_promotion=has_selected_promotion,
             awaiting_plan_selection=awaiting_plan_selection,
+            awaiting_vehicle_selection=awaiting_vehicle_selection,
+            numbered_plan_lines=numbered_plan_lines,
             bot_settings=settings,
         )
         parsed = _parse_json_object_from_llm(str(llm.invoke(prompt).content or ""))
@@ -1486,6 +1660,95 @@ def classify_financing_step_flags(
         )
         return out
     return out
+
+
+def _format_faq_catalog_for_selection(faq_entries: list[dict[str, str]]) -> str:
+    """Numeracion 1-based para que el clasificador devuelva indices estables."""
+
+    blocks: list[str] = []
+    for index, entry in enumerate(faq_entries, start=1):
+        question = str(entry.get("question", "")).strip() or "(sin pregunta)"
+        answer = str(entry.get("answer", "")).strip() or "(sin respuesta)"
+        blocks.append(f"FAQ #{index}\nP: {question}\nR: {answer}")
+    return "\n\n".join(blocks)
+
+
+def _parse_faq_selection_indices(parsed: dict[str, Any], *, catalog_size: int) -> list[int]:
+    """Valida indices 1-based devueltos por el clasificador."""
+
+    if _coerce_to_bool(parsed.get("sin_match")):
+        return []
+    raw = parsed.get("indices")
+    if raw is None:
+        raw = parsed.get("indices_seleccionados")
+    if not isinstance(raw, list):
+        return []
+    valid: list[int] = []
+    seen: set[int] = set()
+    for item in raw:
+        try:
+            idx = int(item)
+        except (TypeError, ValueError):
+            continue
+        if idx < 1 or idx > catalog_size or idx in seen:
+            continue
+        seen.add(idx)
+        valid.append(idx)
+    return valid
+
+
+def select_faq_candidates_with_llm(
+    user_question: str,
+    faq_entries: list[dict[str, str]],
+    *,
+    max_candidates: int = 12,
+) -> list[str]:
+    """Elige FAQs relevantes del catalogo completo usando clasificador LLM."""
+
+    question = str(user_question or "").strip()
+    entries = [entry for entry in faq_entries if isinstance(entry, dict)]
+    if not question or not entries:
+        return []
+
+    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
+    catalog = _format_faq_catalog_for_selection(entries)
+    max_n = max(1, min(int(max_candidates), len(entries)))
+    try:
+        settings = get_bot_settings()
+        llm = ChatOpenAI(model=model_name, temperature=0)
+        prompt = build_faq_selection_prompt(
+            question,
+            catalog,
+            max_candidates=max_n,
+            bot_settings=settings,
+        )
+        content = llm.invoke(prompt).content
+        parsed = _parse_json_object_from_llm(str(content or ""))
+        if not parsed:
+            _app.info(
+                "[llm] select_faq_candidates_with_llm parse_failed question=%r catalog_size=%d",
+                question,
+                len(entries),
+            )
+            return []
+        indices = _parse_faq_selection_indices(parsed, catalog_size=len(entries))[:max_n]
+        selected = [faq_entry_to_candidate(entries[i - 1]) for i in indices]
+        _app.info(
+            "[llm] select_faq_candidates_with_llm question=%r indices=%s count=%d",
+            question,
+            indices,
+            len(selected),
+        )
+        return selected
+    except Exception as exc:
+        _log_llm_invoke_failure(
+            "select_faq_candidates_with_llm",
+            exc,
+            model_name=model_name,
+            prompt_kind="faq_selection_classifier",
+            temperature=0.0,
+        )
+        return []
 
 
 def classify_faq_interrupt_flags(
@@ -1790,6 +2053,7 @@ def generate_faq_user_turn(
     faq_candidates: list[str],
     transition_literal: str = "",
     close_literal: str = "",
+    faq_close_topic: str = "general",
     compact_faq_body: bool = False,
 ) -> str:
     """Un solo mensaje al usuario: respuesta FAQ anclada a BD + transicion/cierre literales del flujo."""
@@ -1800,6 +2064,7 @@ def generate_faq_user_turn(
         return generate_faq_response(normalized_question, faq_candidates)
     trans = str(transition_literal or "").strip()
     close = str(close_literal or "").strip()
+    close_topic = str(faq_close_topic or "general").strip().lower() or "general"
     fallback_base = (
         "No encontre informacion suficiente para responder eso con precision. "
         "Si quieres, te ayudo a revisar modelos, planes o a coordinar seguimiento para resolverlo."
@@ -1822,6 +2087,7 @@ def generate_faq_user_turn(
         context_blocks=context,
         mode="faq",
         fallback=grounded_fallback,
+        faq_close_topic=close_topic,
     )
     fb_parts = [body]
     if trans:
@@ -1835,6 +2101,7 @@ def generate_faq_user_turn(
             context,
             "",
             f"faq_respuesta_compacta: {str(bool(compact_faq_body)).lower()}",
+            f"tema_faq_cierre: {close_topic}",
             f"transicion_literal: {trans or '(ninguna)'}",
             f"cierre_literal: {close or '(ninguno)'}",
         ]
@@ -1854,6 +2121,7 @@ def generate_grounded_answer(
     context_blocks: str,
     mode: str,
     fallback: str,
+    faq_close_topic: str = "general",
 ) -> str:
     """Genera respuesta semántica verídica con patrón answer-first por dominio."""
 
@@ -1878,7 +2146,12 @@ def generate_grounded_answer(
         elif mode_key == "promotion":
             prompt = build_answer_first_promotion_prompt(question, context, settings)
         elif mode_key == "faq":
-            prompt = build_answer_first_faq_prompt(question, context, settings)
+            prompt = build_answer_first_faq_prompt(
+                question,
+                context,
+                settings,
+                faq_close_topic=faq_close_topic,
+            )
         else:
             prompt = build_faq_response_prompt(question, context, settings)
         content = llm.invoke(prompt).content

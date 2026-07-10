@@ -1,7 +1,10 @@
 """Nodo FAQ con soporte de candidatos desde base de datos."""
 
+from __future__ import annotations
+
 from src.state import clientState
 from src.tools.database import fetch_faq_candidates
+from src.tools.vehicles import normalize_user_text
 
 from src.services.llm_responses import (
     generate_faq_resume_transition,
@@ -12,6 +15,51 @@ from src.utils.state_helpers import (
     latest_human_ai_pair,
     latest_user_message,
 )
+
+_FAQ_DEFAULT_CLOSE = "¿Hay algo más en lo que pueda ayudarte?"
+_FAQ_HOURS_CLOSE = "¿Te gustaría agendar una cita?"
+
+_FAQ_HOURS_QUESTION_TERMS = (
+    "horario",
+    "horarios",
+    "a que hora",
+    "que hora",
+    "hora abren",
+    "hora cierran",
+    "cuando abren",
+    "cuando cierran",
+    "dias de atencion",
+    "horas de atencion",
+    "hora de atencion",
+)
+
+_FAQ_HOURS_CONTEXT_TERMS = (
+    "horario",
+    "horarios",
+    "hora de atencion",
+    "horas de atencion",
+    "lunes a viernes",
+    "abrimos",
+    "cerramos",
+)
+
+
+def is_faq_hours_topic(user_question: str, faq_candidates: list[str]) -> bool:
+    """Detecta si la FAQ trata sobre horarios de atencion del negocio."""
+
+    normalized_question = normalize_user_text(user_question)
+    if normalized_question and any(term in normalized_question for term in _FAQ_HOURS_QUESTION_TERMS):
+        return True
+    context_blob = normalize_user_text("\n".join(str(item) for item in faq_candidates if str(item).strip()))
+    return bool(context_blob) and any(term in context_blob for term in _FAQ_HOURS_CONTEXT_TERMS)
+
+
+def resolve_faq_follow_up(user_question: str, faq_candidates: list[str]) -> tuple[str, str]:
+    """Devuelve (cierre_literal, tema_cierre) para el turno FAQ standalone."""
+
+    if is_faq_hours_topic(user_question, faq_candidates):
+        return _FAQ_HOURS_CLOSE, "horarios"
+    return _FAQ_DEFAULT_CLOSE, "general"
 
 
 def faq(state: clientState) -> clientState:
@@ -30,11 +78,13 @@ def faq(state: clientState) -> clientState:
             resume_to_step=resume_to_step,
             state=state,
         )
+        _close_literal, close_topic = resolve_faq_follow_up(question, candidates)
         message = generate_faq_user_turn(
             user_question=question,
             faq_candidates=candidates,
             transition_literal=transition,
             close_literal="",
+            faq_close_topic=close_topic,
             compact_faq_body=True,
         )
         state["is_faq_interrupt"] = False
@@ -50,11 +100,13 @@ def faq(state: clientState) -> clientState:
         else:
             state["intent"] = "other"
     else:
+        close_literal, close_topic = resolve_faq_follow_up(question, candidates)
         message = generate_faq_user_turn(
             user_question=question,
             faq_candidates=candidates,
             transition_literal="",
-            close_literal="¿Hay algo más en lo que pueda ayudarte?",
+            close_literal=close_literal,
+            faq_close_topic=close_topic,
             compact_faq_body=False,
         )
         state["intent"] = "other"

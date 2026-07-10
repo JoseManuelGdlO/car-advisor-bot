@@ -243,18 +243,59 @@ class TestIntentCheckerHumanAdvisor(unittest.TestCase):
         self.assertNotEqual(out.get("current_node"), "lead_capture")
         self.assertNotEqual(out.get("intent"), "lead_capture")
 
+    def test_financing_buro_question_routes_to_faq_without_commercial_heuristic(self) -> None:
+        state = initial_state()
+        state["current_node"] = "financing"
+        state["awaiting_financing_plan_selection"] = True
+        state["selected_vehicle_id"] = "veh-dzire"
+        state["selected_car"] = "Suzuki DZIRE BOOSTERGREEN 2026 2026"
+        state["messages"] = [
+            {
+                "role": "assistant",
+                "content": "Si te interesa uno en particular, dime el nombre o numero del plan.",
+                "type": "AIMessage",
+            },
+            {"role": "user", "content": "revisan buro de credito", "type": "HumanMessage"},
+        ]
+        flags = {
+            "interrumpir_por_faq": True,
+            "quiere_asesor_humano": False,
+            "tema_vehiculo_inventario": False,
+            "tema_financiamiento_credi": False,
+            "es_respuesta_o_seguimiento_al_ultimo_bot": False,
+        }
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value=flags),
+            patch(
+                "src.nodes.intent_checker.classify_financing_step_flags",
+                return_value={
+                    "ask_promotions": False,
+                    "ask_other_vehicles": False,
+                    "ask_financing_with_vehicle": False,
+                    "wants_compare_two_plans": False,
+                    "select_plan": False,
+                    "ask_plan_vehicle_info": False,
+                    "reject_financing_keep_purchase": False,
+                    "ask_explicit_plan": True,
+                },
+            ),
+        ):
+            out = intent_checker(dict(state))
+        self.assertTrue(out.get("is_faq_interrupt"))
+        self.assertEqual(out.get("current_node"), "faq")
+        self.assertEqual(out.get("resume_to_step"), "financing")
+
 
 class TestRouterHumanAdvisor(unittest.TestCase):
-    def test_heuristic_short_circuits_before_financing(self) -> None:
+    def test_llm_human_advisor_via_classifier(self) -> None:
         state = with_user_message(initial_state(), "Quiero hablar con un asesor")
         state["owner_user_id"] = ""
         with (
-            patch("src.nodes.router.classify_router_intent") as mock_cls,
+            patch("src.nodes.router.classify_router_intent", return_value="HUMAN_ADVISOR"),
             patch("src.utils.human_advisor_notify.push_event_to_backend"),
             patch("src.utils.human_advisor_notify.deactivate_bot", side_effect=lambda s, **_: s),
         ):
             out = router(dict(state))
-        mock_cls.assert_not_called()
         self.assertEqual(out.get("intent"), "human_advisor")
         self.assertEqual(out.get("current_node"), "router")
         self.assertTrue(out.get("human_advisor_push_sent"))

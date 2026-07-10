@@ -6,26 +6,40 @@ from src.state import clientState
 
 
 def latest_user_message(state: clientState) -> str:
-    """Obtiene el ultimo mensaje de usuario del historial."""
+    """Obtiene el mensaje de usuario relevante (reanuda intencion pendiente si aplica)."""
 
+    resume = str(state.get("onboarding_resume_user_message", "")).strip()
+    if resume:
+        return resume
     for message in reversed(state.get("messages", [])):
         if message.get("role") == "user":
             return str(message.get("content", "")).strip()
     return ""
 
 
+def effective_user_message(state: clientState) -> str:
+    """Alias de latest_user_message para lectura explicita en enrutamiento."""
+
+    return latest_user_message(state)
+
+
+def clear_onboarding_resume(state: clientState) -> None:
+    """Limpia mensajes pendientes de reanudacion tras onboarding."""
+
+    state["onboarding_resume_user_message"] = ""
+    state["pending_onboarding_user_message"] = ""
+
+
 def latest_human_ai_pair(state: clientState) -> tuple[str, str]:
     """Obtiene el ultimo par relevante (Human -> AI) del historial operativo."""
 
-    last_user = ""
+    last_user = latest_user_message(state)
     last_ai = ""
     for message in reversed(state.get("messages", [])):
         role = message.get("role")
         if role == "assistant" and not last_ai:
             last_ai = str(message.get("content", "")).strip()
-        elif role == "user" and not last_user:
-            last_user = str(message.get("content", "")).strip()
-        if last_user and last_ai:
+        if last_ai:
             break
     return last_user, last_ai
 

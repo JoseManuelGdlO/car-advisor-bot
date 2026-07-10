@@ -43,10 +43,10 @@ class AnswerFirstContractTests(GraphTestCase):
             or "financiamiento" in answer.lower()
         )
 
-    def test_router_prioritizes_vehicle_on_hybrid_question(self) -> None:
+    def test_router_hybrid_question_follows_llm_classifier(self) -> None:
         state = initial_state()
-        state = with_user_message(state, "donde estan ubicados y tienes versa?")
-        with patch("src.nodes.router.classify_router_intent", return_value="FAQ"):
+        state = with_user_message(state, "donde es la ubicacion y que carros tienes?")
+        with patch("src.nodes.router.classify_router_intent", return_value="VEHICLE_CATALOG"):
             updated = self.graph.invoke(state)
         self.assertEqual(updated.get("current_node"), "car_selection")
         self.assertEqual(updated.get("intent"), "vehicle_catalog")

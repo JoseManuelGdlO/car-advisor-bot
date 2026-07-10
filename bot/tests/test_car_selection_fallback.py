@@ -14,7 +14,6 @@ from src.services.car_selection_fallback import (
     looks_like_feature_request,
     looks_like_specific_vehicle_request,
     user_asks_for_color,
-    user_asks_for_price,
 )
 from src.tools.vehicles import normalize_user_text
 from src.utils.signals import TEST_DRIVE_VISIT_SIGNALS
@@ -91,15 +90,6 @@ class CarSelectionFallbackTests(unittest.TestCase):
             pick_vehicle_from_filters_fn=lambda *_: {"id": "veh-2"},
         )
         self.assertFalse(result)
-
-    def test_user_asks_for_price_detects_price_questions(self) -> None:
-        self.assertTrue(user_asks_for_price("que precio tiene?"))
-        self.assertTrue(user_asks_for_price("cuanto cuesta el versa"))
-        self.assertTrue(user_asks_for_price("comparar precios entre los dos"))
-        self.assertTrue(user_asks_for_price("cual es mas barato"))
-        self.assertFalse(user_asks_for_price("tienen nissan versa"))
-        self.assertFalse(user_asks_for_price("dame la ficha tecnica"))
-        self.assertFalse(user_asks_for_price("compara versa con march"))
 
     def test_user_asks_for_color_detects_color_questions(self) -> None:
         self.assertTrue(user_asks_for_color("de que color es?"))

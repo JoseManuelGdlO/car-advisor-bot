@@ -5,16 +5,19 @@ const CHAT_OWNERS = [
     label: "Catálogo A (demo local)",
   },
   {
-    id: "3edd469d-e67c-4157-b0a0-5d0a21f16c6e",
-    label: "Catálogo B",
+    id: "bab219f0-9e32-4416-a4f5-a9790bbc1499",
+    label: "Suzuki",
   },
   {
-    id: "5398a90e-2a65-4dcb-a14c-daa47ec20143",
-    label: "Catálogo C",
+    id: "748dab00-e01e-4f82-a658-848cf630197e",
+    label: "Delsy",
   },
 ];
 
+// Incrementa cuando cambien ids o labels en CHAT_OWNERS para invalidar selección en caché.
+const CHAT_OWNERS_REVISION = "2026-07-09-suzuki-delsy";
 const OWNER_STORAGE_KEY = "chat_owner_user_id";
+const OWNER_REVISION_STORAGE_KEY = "chat_owner_revision";
 
 class ChatInterface {
   // python3 -m http.server 8090
@@ -95,13 +98,18 @@ class ChatInterface {
       this.ownerSelect.appendChild(option);
     }
 
-    const stored = localStorage.getItem(OWNER_STORAGE_KEY);
-    const validStored = CHAT_OWNERS.some((o) => o.id === stored);
-    if (validStored && stored) {
-      this.ownerSelect.value = stored;
+    const storedRevision = localStorage.getItem(OWNER_REVISION_STORAGE_KEY);
+    const storedOwnerId = localStorage.getItem(OWNER_STORAGE_KEY);
+    const revisionMatches = storedRevision === CHAT_OWNERS_REVISION;
+    const validStored =
+      revisionMatches && CHAT_OWNERS.some((owner) => owner.id === storedOwnerId);
+    if (validStored && storedOwnerId) {
+      this.ownerSelect.value = storedOwnerId;
     } else if (CHAT_OWNERS.length) {
       this.ownerSelect.value = CHAT_OWNERS[0].id;
+      localStorage.removeItem(OWNER_STORAGE_KEY);
     }
+    localStorage.setItem(OWNER_REVISION_STORAGE_KEY, CHAT_OWNERS_REVISION);
 
     this.previousOwnerId = this.getOwnerUserId();
     this.updateOwnerDisplay();
@@ -133,6 +141,7 @@ class ChatInterface {
     const ownerId = this.getOwnerUserId();
     if (ownerId) {
       localStorage.setItem(OWNER_STORAGE_KEY, ownerId);
+      localStorage.setItem(OWNER_REVISION_STORAGE_KEY, CHAT_OWNERS_REVISION);
     }
     this.updateOwnerDisplay();
   }
@@ -215,8 +224,8 @@ class ChatInterface {
     this.messagesContainer.innerHTML = `
       <div class="welcome-message">
         <div class="avatar-large">🚘</div>
-        <h2>Bienvenido a Car Advisor Bot</h2>
-        <p>Cuéntame qué tipo de auto buscas y te ayudaré con recomendaciones.</p>
+        <h2>Car Advisor Bot</h2>
+        <p>Escribe un mensaje para comenzar la conversación.</p>
       </div>
     `;
   }

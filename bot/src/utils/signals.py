@@ -187,7 +187,9 @@ ROUTER_SIMPLE_GREETINGS_NORMALIZED: frozenset[str] = frozenset(
         "buenas",
         "buenos dias",
         "buen dia",
+        "buena tarde",
         "buenas tardes",
+        "buena noche",
         "buenas noches",
         "hey",
         "holi",
@@ -204,6 +206,43 @@ def is_simple_greeting(text: str) -> bool:
     if not normalized:
         return False
     return normalized in ROUTER_SIMPLE_GREETINGS_NORMALIZED
+
+
+_GREETING_STRIP_TOKENS: tuple[str, ...] = (
+    "buenos dias",
+    "buenas tardes",
+    "buenas noches",
+    "buena tarde",
+    "buena noche",
+    "buen dia",
+    "que tal",
+    "buenas",
+    "hola",
+    "hey",
+    "holi",
+)
+
+
+def _strip_greeting_tokens(normalized: str) -> str:
+    """Quita tokens de saludo (frases largas primero) y devuelve el resto normalizado."""
+
+    remainder = normalized
+    for token in _GREETING_STRIP_TOKENS:
+        remainder = remainder.replace(token, " ")
+    return " ".join(remainder.split()).strip()
+
+
+def is_greeting_only_message(text: str) -> bool:
+    """True cuando el mensaje es solo saludo, incluyendo compuestos como 'hola buenas tardes'."""
+
+    from src.tools.vehicles import normalize_user_text
+
+    normalized = normalize_user_text(text)
+    if not normalized:
+        return False
+    if normalized in ROUTER_SIMPLE_GREETINGS_NORMALIZED:
+        return True
+    return len(_strip_greeting_tokens(normalized)) < 4
 
 FINANCING_PLANES_COMBO_SUFFIXES: frozenset[str] = frozenset(
     ("financ", "credito", "mensual", "enganche", "tasa", "interes")

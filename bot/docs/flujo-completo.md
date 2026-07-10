@@ -1,0 +1,606 @@
+# Mapa completo del flujo conversacional del bot
+
+Documento de referencia detallado sobre cómo viaja un mensaje desde `POST /chat` hasta la respuesta, qué funciones intervienen en cada nodo y en qué orden se aplican heurísticas, LLM y consultas a base de datos.
+
+Para una vista de arquitectura general ver [architecture.md](architecture.md). Para el autómata de estados simplificado ver [state-automata.md](state-automata.md).
+
+---
+
+## Leyenda de patrones
+
+| Símbolo | Significado |
+|---------|-------------|
+| **H** | Heurística determinista: señales de texto, regex, lectura de banderas de estado |
+| **L** | Llamada LLM: clasificador JSON o generador de texto |
+| **DB** | Consulta a MySQL o API del backend CRM/catálogo |
+
+| Patrón compuesto | Significado |
+|------------------|-------------|
+| **H → L** | Heurística primero; si no resuelve, se llama al LLM |
+| **L + H** | LLM primero; heurística corrige, fusiona o hace fallback |
+| **H \| L** | Cualquiera de los dos puede disparar la acción (OR lógico) |
+| **H gate → L** | Heurística decide si vale la pena invocar el LLM |
+
+---
+
+## 1. Entrada HTTP y precondiciones
+
+Archivo: [`bot/src/server.py`](../src/server.py)
+
+Antes de invocar el grafo, el servidor valida sesión, permisos CRM y banderas de control.
+
+```mermaid
+flowchart TD
+    postChat["POST /chat"] --> loadSession["fetch_active_bot_session (DB)"]
+    loadSession --> hydrate["_hydrate_customer_info_from_crm"]
+    hydrate --> botDisabled{bot_disabled?}
+    botDisabled -->|si| persistOnly["persistir inbound + respuesta vacia"]
+    botDisabled -->|no| crmIn["upsert_inbound_user_message (DB)"]
+    crmIn --> autoReply{should_auto_reply false?}
+    autoReply -->|si| suppressed["respuesta suprimida"]
+    autoReply -->|no| appendUser["messages.append user"]
+    appendUser --> invoke["graph.invoke state"]
+    invoke --> clearResume["clear_onboarding_resume"]
+    clearResume --> persistOut["push_assistant + upsert_bot_session_state DB"]
+    persistOut --> reply["ChatResponse reply + current_node"]
+```
+
+| Paso | Función | Tipo | Notas |
+|------|---------|------|-------|
+| Carga sesión | `fetch_active_bot_session` | DB | Deserializa `state_payload` de `bot_sessions` |
+| Hidratación nombre | `_hydrate_customer_info_from_crm` | H | Completa `customer_info.nombre` desde CRM |
+| Silencio total | `bot_disabled` | H | No invoca grafo ni LLM |
+| Handoff CRM | `should_auto_reply is False` | H | Persiste inbound, no responde |
+| Turno activo | `graph.invoke` | — | Ejecuta nodos en cadena según transiciones |
+| Limpieza | `clear_onboarding_resume` | H | Borra `onboarding_resume_user_message` tras el turno |
+| Salida | `_collect_tail_ai_messages` | H | Une mensajes assistant con `<<BOT_MSG_BREAK>>` |
+
+---
+
+## 2. Grafo LangGraph completo
+
+Archivo: [`bot/src/graph.py`](../src/graph.py)
+
+Cada `invoke` recorre **uno o más nodos** en el mismo turno hasta llegar a `END`. El orden de entrada es siempre:
+
+```
+START → customer_onboarding → intent_checker → (router | faq | nodo activo) → …
+```
+
+```mermaid
+flowchart TD
+    start([START]) --> onboarding[customer_onboarding]
+    onboarding -->|onboarding_turn_complete| endTurn([END])
+    onboarding -->|continuar| intentChecker[intent_checker]
+    intentChecker -->|is_faq_interrupt| faq[faq]
+    intentChecker -->|reanudar nodo activo| domainResume["car_selection / financing / promotions / lead_capture"]
+    intentChecker -->|sin interrupcion| router[router]
+    router --> domain["car_selection / financing / promotions / lead_capture / faq"]
+    router -->|intent other sin nodo| endOther([END])
+    car_selection -->|transiciones| nextCS["lead_capture / financing / promotions / END"]
+    financing -->|transiciones| nextFin["car_selection / lead_capture / promotions / END"]
+    promotions -->|transiciones| nextProm["car_selection / financing / lead_capture / END"]
+    lead_capture -->|enlace agenda enviado| endLead([END])
+    faq --> endFaq([END])
+```
+
+### Funciones de enrutamiento condicional (`_route_*`)
+
+| Función | Nodo origen | Lee en estado | Destinos posibles |
+|---------|-------------|---------------|-------------------|
+| `_route_after_customer_onboarding` | `customer_onboarding` | `onboarding_turn_complete` | `intent_checker`, `END` |
+| `_route_after_intent_checker` | `intent_checker` | `current_node`, `is_faq_interrupt` | `faq`, `router`, `lead_capture`, `car_selection`, `financing`, `promotions` |
+| `_route_from_router` | `router` | `current_node` | `car_selection`, `lead_capture`, `faq`, `financing`, `promotions`, `END` |
+| `_route_after_car_selection` | `car_selection` | `current_node` | `lead_capture`, `financing`, `promotions`, `END` |
+| `_route_after_financing` | `financing` | `current_node` | `car_selection`, `lead_capture`, `promotions`, `END` |
+| `_route_after_promotions` | `promotions` | `current_node` | `car_selection`, `financing`, `lead_capture`, `END` |
+| `_route_after_lead_capture` | `lead_capture` | `current_node` | `promotions`, `financing`, `car_selection`, `END` |
+
+**Nota importante:** cuando un nodo de dominio cambia `current_node` a otro nodo **sin generar respuesta** (solo redirección), el grafo continúa en el mismo `invoke` y ejecuta el nodo destino en cadena.
+
+---
+
+## 3. Detalle por nodo
+
+### 3.1 `customer_onboarding`
+
+Archivo: [`bot/src/nodes/customer_onboarding.py`](../src/nodes/customer_onboarding.py)
+
+**Propósito:** bienvenida inicial y captura del nombre del cliente antes del flujo comercial.
+
+**Patrón dominante:** **H → L** (estado y turno primero; LLM para extraer nombre y redactar bienvenida).
+
+```mermaid
+flowchart TD
+    entry[customer_onboarding] --> awaiting{awaiting_customer_name?}
+    awaiting -->|si| extractName["extract_customer_name L"]
+    extractName -->|nombre ok| syncDB["sync_customer_info_to_backend DB"]
+    syncDB --> resume["_resume_pending_flow H"]
+    extractName -->|rechazo| ackRefuse["mensaje fijo H"]
+    extractName -->|no nombre| reask["mensaje fijo H"]
+    awaiting -->|no| knownName{nombre conocido + greeting_done?}
+    knownName -->|si| passthrough["restaurar current_node H"]
+    knownName -->|no| firstTurn{primer turno usuario?}
+    firstTurn -->|nombre CRM| welcomeKnown["generate_welcome_with_known_name L"]
+    firstTurn -->|sin nombre| savePending["_has_flow_intent_beyond_greeting H"]
+    savePending --> welcomeAsk["generate_welcome_and_name_request L"]
+    welcomeKnown --> greetingOnly{saludo solo H?}
+    greetingOnly -->|si| endTurn[onboarding_turn_complete END]
+    greetingOnly -->|no| continueFlow[continua a intent_checker]
+    welcomeAsk --> endTurn
+    resume -->|pending message| continueFlow
+    resume -->|sin pending| endTurn
+    passthrough --> continueFlow
+```
+
+| Paso | Función | Tipo | Descripción |
+|------|---------|------|-------------|
+| 1 | `_customer_name_from_state` | H | Nombre ya en `customer_info` o CRM |
+| 2 | `_is_first_user_turn` | H | `user_count == 1` y sin mensajes assistant |
+| 3 | `extract_customer_name` | L | Si `awaiting_customer_name`: extrae nombre o detecta rechazo |
+| 4 | `_has_flow_intent_beyond_greeting` | H | Usa `_extended_router_heuristic` + longitud mínima |
+| 5 | `generate_welcome_with_known_name` / `generate_welcome_and_name_request` | L | Texto de bienvenida personalizado |
+| Salida | `onboarding_turn_complete` | H | `True` → turno termina en END; `False` → pasa a `intent_checker` |
+
+**Casos clave:**
+
+- Nombre conocido + solo saludo → genera bienvenida y **termina el turno** (`END`).
+- Sin nombre en primer turno → pide nombre, guarda intención comercial en `pending_onboarding_user_message` si aplica, **termina turno**.
+- Tras capturar nombre con mensaje pendiente → pone texto en `onboarding_resume_user_message`; `latest_user_message` lo usa en el mismo `invoke` para los nodos siguientes.
+
+---
+
+### 3.2 `intent_checker`
+
+Archivo: [`bot/src/nodes/intent_checker.py`](../src/nodes/intent_checker.py)
+
+**Propósito:** detectar si el mensaje **interrumpe** un flujo comercial activo (FAQ, asesor humano, cita) antes de que el router reclasifique.
+
+**Patrón dominante:** **L con overrides H** (clasificadores LLM primero; heurísticas corrigen casos conocidos).
+
+```mermaid
+flowchart TD
+    entry[intent_checker] --> earlyExit{nodo en router/faq/start o sin last_ai?}
+    earlyExit -->|si| noInterrupt[is_faq_interrupt false]
+    earlyExit -->|no| purchaseConfirm{car_selection + awaiting_purchase_confirmation?}
+    purchaseConfirm -->|si| vehicleFlags["classify_vehicle_step_flags L"]
+    vehicleFlags -->|flags comerciales| noInterrupt
+    purchaseConfirm -->|no| faqFlags["classify_faq_interrupt_flags L"]
+    faqFlags --> promoOverride{promotions + detalle vehiculo H?}
+    promoOverride -->|si| noInterrupt
+    promoOverride -->|no| scheduling{test drive + vehiculo H?}
+    scheduling -->|si| leadCapture[current_node lead_capture]
+    scheduling -->|no| humanAdvisor{quiere_asesor L OR heuristic H?}
+    humanAdvisor -->|si| handleAdvisor["handle_human_advisor_request DB+L"]
+    humanAdvisor -->|no| commercialNav{_looks_like_commercial_navigation H?}
+    commercialNav -->|si| noInterrupt
+    commercialNav -->|no| faqDecision{interrumpir_por_faq L?}
+    faqDecision -->|si| faqInterrupt["is_faq_interrupt true, current_node faq"]
+    faqDecision -->|no| noInterrupt
+```
+
+| Paso | Función | Tipo | Efecto |
+|------|---------|------|--------|
+| Early exit | nodo en `""`, `start`, `router`, `faq` o sin `last_ai` | H | No evalúa interrupción |
+| Confirmación compra | `classify_vehicle_step_flags` | L | Si hay flags comerciales, no marca FAQ |
+| FAQ interrupt | `classify_faq_interrupt_flags` | L | Flags: `interrumpir_por_faq`, `quiere_asesor_humano` |
+| Promo + detalle | `_is_vehicle_detail_request` | H | Override: no FAQ en flujo promociones |
+| Cita con vehículo | `is_test_drive_or_visit_request` | H | Redirige a `lead_capture` |
+| Asesor humano | `flags.quiere_asesor_humano` \| `human_advisor_heuristic_match` | L \| H | Push CRM + ack; puede activar `suppress_commercial_node_once` |
+| Navegación comercial | `_looks_like_commercial_navigation_request` | H | Bloquea desvío a FAQ |
+| Decisión FAQ | `flags.interrumpir_por_faq` | L | Guarda `resume_to_step`, activa `skip_car_prompt` / `skip_lead_prompt` |
+
+---
+
+### 3.3 `router`
+
+Archivo: [`bot/src/nodes/router.py`](../src/nodes/router.py)
+
+**Propósito:** clasificar intención principal y asignar `current_node` + `intent`.
+
+**Patrón dominante:** **H en cascada → L + H reconcile** (muchas señales duras antes del clasificador híbrido).
+
+```mermaid
+flowchart TD
+    entry[router] --> h1{human_advisor_heuristic_match H}
+    h1 -->|match| advisor["handle_human_advisor_request"]
+    h1 -->|no| h2{financing / promotions H}
+    h2 -->|match| domainEarly["financing / promotions"]
+    h2 -->|no| h3{faq_like AND vehicle_like H}
+    h3 -->|ambos| carSel[car_selection]
+    h3 -->|solo faq| faqNode[faq]
+    h3 -->|no| h4{awaiting_purchase OR pending_candidates H}
+    h4 -->|si| carSel
+    h4 -->|no| h5{intent previo vehicle/financing/promotions H}
+    h5 -->|si| contextNode[mantiene nodo comercial]
+    h5 -->|no| h6{vehicle_like H}
+    h6 -->|si| carSel
+    h6 -->|no| h7{post_onboarding greeting only H}
+    h7 -->|si| otherEarly[intent other END]
+    h7 -->|no| h8{texto vacio o saludo simple H}
+    h8 -->|si| otherLLM["generate_other_response L"]
+    h8 -->|no| hybrid["extended_router_heuristic H + classify_router_intent L + reconcile L+H"]
+    hybrid -->|etiqueta valida| apply["_apply_router_resolution"]
+    hybrid -->|LLM invalido + heuristic| hFallback[heuristic fallback H]
+    hybrid -->|sin match| otherLLM
+```
+
+#### Fase 1 — Heurísticas duras (sin LLM de clasificación)
+
+| Orden | Condición | Destino |
+|-------|-----------|---------|
+| 1 | `human_advisor_heuristic_match` | Asesor humano (ack + evento) |
+| 2 | `_is_financing_request` | `financing` |
+| 3 | `_is_promotions_request` | `promotions` |
+| 4 | `faq_like` + `vehicle_like` | `car_selection` (prioridad vehículo) |
+| 5 | `faq_like` solo | `faq` |
+| 6 | `awaiting_purchase_confirmation` o `last_vehicle_candidates` | `car_selection` |
+| 7 | `intent` previo `vehicle_catalog` / `financing` / `promotions` | Mantiene nodo (salvo saludo simple) |
+| 8 | `vehicle_like` | `car_selection` |
+| 9 | Saludo post-onboarding | `intent=other`, END con respuesta |
+
+#### Fase 2 — Híbrido LLM + heurística
+
+| Paso | Función | Tipo |
+|------|---------|------|
+| 1 | `_extended_router_heuristic` | H |
+| 2 | `classify_router_intent` | L |
+| 3 | `_reconcile_llm_and_heuristic` | L+H | Corrige FAQ→FINANCING/PROMOTIONS/VEHICLE/HUMAN cuando la heurística es más específica |
+| 4 | Fallback si LLM inválido | H | Usa solo heurística extendida |
+| 5 | Sin match | `generate_other_response` | L |
+
+Etiquetas válidas del clasificador: `VEHICLE_CATALOG`, `FAQ`, `FINANCING`, `PROMOTIONS`, `HUMAN_ADVISOR`.
+
+---
+
+### 3.4 `faq`
+
+Archivo: [`bot/src/nodes/faq.py`](../src/nodes/faq.py)
+
+**Propósito:** responder preguntas del negocio usando candidatos FAQ de BD.
+
+**Patrón dominante:** **DB + H → L** (contexto verificado primero; LLM redacta respuesta).
+
+| Paso | Función | Tipo | Cuándo |
+|------|---------|------|--------|
+| 1 | `resolve_faq_candidates` | DB+H | `fetch_faq_candidates`; si tema ubicación → `fetch_location_faq_candidates` |
+| 2 | `resolve_faq_follow_up` | H | Elige cierre según horarios/ubicación/general |
+| 3 | `generate_faq_resume_transition` | L | Solo si `is_faq_interrupt` |
+| 4 | `generate_faq_user_turn` | L | Cuerpo de respuesta + cierre |
+
+**Modo interruptivo** (`is_faq_interrupt=True`):
+
+- Genera transición de reanudación hacia `resume_to_step`.
+- Restaura `current_node` al nodo guardado (`car_selection`, `financing`, etc.).
+- Limpia `skip_car_prompt` / `skip_lead_prompt`.
+- El grafo termina en `END` de `faq`; el **siguiente turno** retoma el flujo comercial.
+
+**Modo standalone** (entrada directa desde router):
+
+- `current_node` vuelve a `router` tras responder.
+- `intent` queda en `other`.
+
+---
+
+### 3.5 `car_selection`
+
+Archivo: [`bot/src/nodes/car_selection.py`](../src/nodes/car_selection.py)
+
+**Propósito:** explorar catálogo, filtrar, seleccionar vehículo, mostrar detalle, imágenes, comparar y confirmar compra.
+
+**Patrón dominante:** **H por rama** con **L en pasos de confirmación y selección ambigua**.
+
+#### Entrada y guardas
+
+| Guarda | Tipo | Efecto |
+|--------|------|--------|
+| `suppress_commercial_node_once` | H | Salta ejecución (post-ack asesor) |
+| `skip_car_prompt` | H | Salta ejecución (turno FAQ interrumpido) |
+| `fetch_vehicles` | DB | Carga catálogo completo |
+
+#### Sub-flujo A: confirmación de compra (`awaiting_purchase_confirmation`)
+
+```mermaid
+flowchart TD
+    confirm[awaiting_purchase_confirmation] --> flags["classify_vehicle_step_flags L"]
+    flags -->|wants_compare| compareLLM["classify_vehicle_comparison_payload L"]
+    flags -->|ask_promotions| promNode[promotions]
+    flags -->|confirm_purchase OR test_drive H| leadNode[lead_capture]
+    flags -->|ask_financing OR financing H| finNode[financing]
+    flags -->|ask_images OR first_images H| firstImg[imagenes primer lote DB]
+    flags -->|ask_more_images| moreImg[imagenes siguiente lote DB]
+    flags -->|specs request H| inventoryQA["generate_selected_vehicle_qa_response L"]
+    flags -->|wants_other_vehicles| otherList[listado]
+    flags -->|reject_purchase| availableList[listado]
+    flags -->|sin match claro| purchaseIntent["classify_purchase_confirmation_intent L"]
+    purchaseIntent -->|SI| leadNode
+    purchaseIntent -->|NO| availableList
+    purchaseIntent -->|VER_MAS_IMAGENES| moreImg
+    purchaseIntent -->|PREGUNTA_MODELO / VER_MODELO| detailFlow[detalle vehiculo]
+    purchaseIntent -->|desconocido| repregunta["generate_vehicle_purchase_question L"]
+```
+
+#### Sub-flujo B: selección de candidatos pendientes (`last_vehicle_candidates`)
+
+| Orden | Función | Tipo |
+|-------|---------|------|
+| 1 | `canonicalize_with_typo_support` (nombre) | H |
+| 2 | Regex índice explícito (`opción 2`, solo dígito) | H |
+| 3 | `extract_vehicle_pending_selection_payload` | L (fallback) |
+| 4 | `_respond_pending_selection_clarification` | L | Si hay ambigüedad |
+
+#### Sub-flujo C: comparación de vehículos
+
+| Orden | Función | Tipo |
+|-------|---------|------|
+| 1 | `_should_invoke_vehicle_comparison_llm` | H gate |
+| 2 | `classify_vehicle_comparison_payload` | L |
+| 3 | `generate_vehicle_comparison_conversation` | L |
+
+#### Sub-flujo D: búsqueda y listado general
+
+| Orden | Función | Tipo |
+|-------|---------|------|
+| 1 | `is_general_request` | H | → listado agrupado |
+| 2 | `is_financing_request` / `is_promotions_request` | H | → redirige sin respuesta |
+| 3 | `detect_vehicle_filters` | H | → búsqueda filtrada |
+| 4 | `looks_like_specific_vehicle_request` | H | → listado con aviso de no disponible |
+| 5 | `_respond_available_list` / `_respond_with_filtered_search` | H+L | Formatters + `generate_verified_user_message` |
+
+#### Transiciones de grafo (sin mensaje en el nodo)
+
+| Destino | Disparadores |
+|---------|--------------|
+| `lead_capture` | `confirm_purchase`, test drive, `decision == SI` |
+| `financing` | `ask_financing`, señales de crédito |
+| `promotions` | `ask_promotions`, señales de ofertas |
+
+---
+
+### 3.6 `financing`
+
+Archivo: [`bot/src/nodes/financing.py`](../src/nodes/financing.py)
+
+**Propósito:** listar planes, seleccionar plan, elegir vehículo dentro del plan y avanzar a compra.
+
+**Patrón dominante:** **L primero** (`classify_financing_step_flags` al inicio de cada turno).
+
+```mermaid
+flowchart TD
+    entry[financing] --> flags["classify_financing_step_flags L"]
+    flags -->|ask_promotions| promNode[promotions]
+    flags -->|ask_other_vehicles| carNode[car_selection]
+    flags --> awaitingVehicle{awaiting_financing_vehicle_selection?}
+    awaitingVehicle -->|si| pickVehicle["_pick_vehicle_for_plan H"]
+    pickVehicle -->|ok| leadNode[lead_capture]
+    awaitingVehicle -->|no| awaitingPlan{awaiting_financing_plan_selection?}
+    awaitingPlan -->|si| comparePlans["classify_financing_plan_comparison_payload L"]
+    comparePlans --> selectPlan["extract_financing_plan_selection_payload L + _pick_plan_from_state H"]
+    selectPlan --> planVehicles[listar vehiculos del plan DB]
+    awaitingPlan -->|no| listPlans["fetch_financing_plans DB + format + L"]
+```
+
+#### Sub-estados
+
+| Banderas | Flujo principal | H/L |
+|----------|-----------------|-----|
+| `awaiting_financing_plan_selection` | Comparar planes → seleccionar plan → vehículos del plan | L → L → H fallback → DB |
+| `awaiting_financing_vehicle_selection` | Elegir vehículo por nombre/número | H → `lead_capture` |
+| Sin banderas | Listar planes generales o por vehículo seleccionado | DB → L |
+
+#### Selección de plan (detalle H/L)
+
+| Orden | Función | Tipo |
+|-------|---------|------|
+| 1 | `step_flags.select_plan` | L |
+| 2 | `extract_financing_plan_selection_payload` | L |
+| 3 | `classify_financing_plan_selection_intent` (plan único) | L |
+| 4 | `_pick_plan_from_state` | H (fallback) |
+
+---
+
+### 3.7 `promotions`
+
+Archivo: [`bot/src/nodes/promotions.py`](../src/nodes/promotions.py)
+
+**Propósito:** listar promociones, aplicar explícitamente, elegir vehículo aplicable y confirmar interés.
+
+**Patrón dominante:** **L primero** (`classify_promotions_step_flags` al inicio).
+
+```mermaid
+flowchart TD
+    entry[promotions] --> navFlags["classify_promotions_step_flags L"]
+    navFlags -->|wants_compare| comparePromo["classify_promotion_comparison_payload L"]
+    navFlags -->|ask_financing| finNode[financing]
+    navFlags -->|ask_other_vehicles| carNode[car_selection]
+    navFlags --> interestConfirm{awaiting_promotion_vehicle_interest_confirmation?}
+    interestConfirm -->|si/no H+L| leadOrList[lead_capture o nueva lista]
+    interestConfirm -->|no| vehicleSelect{awaiting_promotion_vehicle_selection?}
+    vehicleSelect -->|si| pickVeh["_pick_vehicle_candidate H"]
+    vehicleSelect -->|no| promoSelect{awaiting_promotion_selection?}
+    promoSelect -->|si| pickPromo["H + extract_promotion_selection_payload L"]
+    pickPromo --> applyCheck["apply_promotion: flags L + _looks_like_explicit_apply H + classify_promotion_selection_intent L"]
+    promoSelect -->|no| listPromo["fetch_promotions DB + generate_promotion_listing_user_message L"]
+```
+
+#### Confirmación de aplicar promoción
+
+Orden documentado en código:
+
+1. Señal LLM `apply_promotion` (flags)
+2. Heurística local `_looks_like_explicit_apply`
+3. Clasificador auxiliar `classify_promotion_selection_intent` (promoción única)
+
+#### Sub-estados
+
+| Banderas | Acción |
+|----------|--------|
+| `awaiting_promotion_selection` | Elegir promo de lista numerada |
+| `awaiting_promotion_apply_confirmation` | Resumen + pedir confirmación explícita |
+| `awaiting_promotion_vehicle_selection` | Elegir vehículo aplicable |
+| `awaiting_promotion_vehicle_interest_confirmation` | Sí/No con señales H + flags L |
+
+---
+
+### 3.8 `lead_capture`
+
+Archivo: [`bot/src/nodes/lead_capture.py`](../src/nodes/lead_capture.py)
+
+**Propósito:** compartir enlace de agenda, notificar al asesor y desactivar el bot.
+
+**Patrón dominante:** **L para navegación y mensaje**; **DB/API sin LLM** para notificación.
+
+| Paso | Función | Tipo | Efecto |
+|------|---------|------|--------|
+| 1 | `suppress_commercial_node_once` | H | Salta si ack de asesor reciente |
+| 2 | `lead_capture_done` | H | Mensaje de ya completado |
+| 3 | Sin `selected_car` | H+L | Pide elegir vehículo primero |
+| 4 | `classify_lead_capture_navigation` | L | Override a promotions/financing/car_selection |
+| 5 | `generate_lead_capture_scheduling_message` | L | Texto con enlace calendario |
+| 6 | `notify_advisor` + `push_event_to_backend` | DB/API | Notifica owner |
+| 7 | `deactivate_bot` | H | `bot_disabled=True` |
+
+Tras éxito: `lead_capture_done=True`, turnos futuros no invocan el grafo.
+
+---
+
+### 3.9 Escalación a asesor humano
+
+Archivo: [`bot/src/utils/human_advisor_notify.py`](../src/utils/human_advisor_notify.py)
+
+| Punto de entrada | Disparador | Tipo |
+|------------------|------------|------|
+| `router` (temprano) | `human_advisor_heuristic_match` | H |
+| `router` (resolución) | etiqueta `HUMAN_ADVISOR` del híbrido | L+H |
+| `intent_checker` | `quiere_asesor_humano` \| heurística | L \| H |
+
+`handle_human_advisor_request`:
+
+1. Idempotente por `human_advisor_push_sent`
+2. `push_event_to_backend` (DB)
+3. `notify_advisor` (API)
+4. Mensaje ack al usuario (texto fijo, sin LLM)
+5. Opcionalmente `deactivate_bot`
+
+Si se invoca desde `intent_checker` durante un flujo comercial y agrega mensaje nuevo → activa `suppress_commercial_node_once` para que el nodo comercial no duplique respuesta en el mismo `invoke`.
+
+---
+
+## 4. Flujos transversales
+
+### 4.1 FAQ interruptiva (multi-turno)
+
+```mermaid
+sequenceDiagram
+    participant U as Usuario
+    participant IC as intent_checker
+    participant F as faq
+    participant N as nodo_activo
+
+    Note over N: Ej. car_selection con awaiting_purchase_confirmation
+    U->>IC: pregunta FAQ durante flujo
+    IC->>IC: classify_faq_interrupt_flags L
+    IC->>F: is_faq_interrupt true, resume_to_step guardado
+    F->>F: generate_faq_resume_transition L + generate_faq_user_turn L
+    F->>U: respuesta FAQ + transicion
+    Note over N: Siguiente turno
+    U->>IC: continua flujo
+    IC->>N: reanuda nodo guardado sin FAQ
+```
+
+### 4.2 Onboarding con intención comercial
+
+```mermaid
+sequenceDiagram
+    participant U as Usuario
+    participant O as customer_onboarding
+    participant IC as intent_checker
+    participant R as router
+
+    U->>O: "Hola, quiero ver SUVs"
+    O->>O: pending_onboarding_user_message guardado H
+    O->>U: bienvenida + pedir nombre L
+    U->>O: "Carlos"
+    O->>O: extract_customer_name L
+    O->>O: onboarding_resume_user_message = mensaje original
+    O->>IC: continua mismo invoke
+    IC->>R: procesa "quiero ver SUVs"
+    R->>R: clasifica → car_selection
+```
+
+### 4.3 Handoff y bot desactivado
+
+| Evento | Banderas resultantes | Efecto en turnos siguientes |
+|--------|---------------------|------------------------------|
+| `lead_capture` completado | `lead_capture_done`, `bot_disabled` | `/chat` persiste inbound, `reply=""` |
+| Asesor humano (con deactivate) | `human_advisor_requested`, `bot_disabled` | Igual |
+| CRM `should_auto_reply=false` | — | Respuesta suprimida sin desactivar sesión bot |
+
+---
+
+## 5. Matriz resumen H/L por nodo
+
+| Nodo | ¿Quién va primero? | Clasificación | Generación de texto | Datos |
+|------|-------------------|---------------|---------------------|-------|
+| `server` | H | — | — | DB |
+| `customer_onboarding` | H → L | — | L (bienvenida, nombre) | DB sync nombre |
+| `intent_checker` | H (early exit) → L | L | L (ack asesor, fijo) | DB evento asesor |
+| `router` | H en cascada → L+H | L + reconcile H | L (`other`) | — |
+| `faq` | DB + H | — | L | DB FAQ |
+| `car_selection` | H por rama; L en confirmación | L (flags, compra, comparación, pending) | L (detalle, QA, listados) | DB catálogo/imágenes |
+| `financing` | L (flags) → H fallback | L | L | DB planes |
+| `promotions` | L (flags) → H auxiliar | L | L | DB promociones |
+| `lead_capture` | H (guardas) → L | L (navegación) | L (agenda) | DB/API notify |
+| `human_advisor` | H \| L | — | H (ack fijo) | DB/API |
+
+---
+
+## 6. Banderas de estado más relevantes
+
+Archivo: [`bot/src/state.py`](../src/state.py)
+
+| Bandera | Controla |
+|---------|----------|
+| `current_node` | Enrutamiento del grafo y `_route_*` |
+| `intent` | Contexto para router y reanudación |
+| `onboarding_turn_complete` | Si el turno termina tras onboarding |
+| `awaiting_customer_name` | Captura de nombre en curso |
+| `onboarding_resume_user_message` | Reprocesar primer mensaje tras nombre |
+| `is_faq_interrupt` | Modo FAQ interruptiva |
+| `resume_to_step` | Nodo a restaurar tras FAQ |
+| `skip_car_prompt` / `skip_lead_prompt` | Saltar nodo en turno interrumpido |
+| `suppress_commercial_node_once` | Saltar nodo comercial tras ack asesor |
+| `awaiting_purchase_confirmation` | Sub-flujo de cierre en car_selection |
+| `last_vehicle_candidates` | Lista pendiente de desambiguar |
+| `awaiting_financing_plan_selection` | Esperando elección de plan |
+| `awaiting_financing_vehicle_selection` | Esperando vehículo dentro del plan |
+| `awaiting_promotion_selection` | Esperando elección de promoción |
+| `awaiting_promotion_apply_confirmation` | Esperando confirmación de aplicar |
+| `lead_capture_done` / `bot_disabled` | Handoff completado |
+
+---
+
+## 7. Referencias cruzadas
+
+| Archivo | Contenido |
+|---------|-----------|
+| [`bot/src/graph.py`](../src/graph.py) | Wiring del StateGraph y funciones `_route_*` |
+| [`bot/src/state.py`](../src/state.py) | Contrato `clientState` |
+| [`bot/src/server.py`](../src/server.py) | Ciclo HTTP `/chat` |
+| [`bot/src/services/llm_responses.py`](../src/services/llm_responses.py) | Inventario de funciones L (clasificadores y generadores) |
+| [`bot/src/utils/signals.py`](../src/utils/signals.py) | Constantes de señales heurísticas |
+| [`bot/src/services/car_selection_fallback.py`](../src/services/car_selection_fallback.py) | Helpers H reutilizados en nodos comerciales |
+| [`bot/src/utils/state_helpers.py`](../src/utils/state_helpers.py) | `latest_user_message`, `is_faq_intent`, append mensajes |
+
+### Funciones LLM por categoría
+
+| Categoría | Funciones en `llm_responses.py` |
+|-----------|--------------------------------|
+| Router / onboarding | `classify_router_intent`, `generate_other_response`, `extract_customer_name`, `generate_welcome_*` |
+| Interrupciones | `classify_faq_interrupt_flags`, `classify_vehicle_step_flags` |
+| FAQ | `generate_faq_user_turn`, `generate_faq_resume_transition` |
+| Vehículos | `classify_vehicle_comparison_payload`, `classify_purchase_confirmation_intent`, `extract_vehicle_pending_selection_payload`, `generate_vehicle_*` |
+| Financiamiento | `classify_financing_step_flags`, `classify_financing_plan_comparison_payload`, `extract_financing_plan_selection_payload`, `classify_financing_plan_selection_intent` |
+| Promociones | `classify_promotions_step_flags`, `classify_promotion_comparison_payload`, `extract_promotion_selection_payload`, `classify_promotion_selection_intent` |
+| Lead | `classify_lead_capture_navigation`, `generate_lead_capture_scheduling_message` |
+| Genérico | `generate_verified_user_message` (usado en múltiples nodos) |

@@ -67,24 +67,14 @@ class TestFormatTwoVehicleComparisonGrounding(unittest.TestCase):
             "description": "",
         }
 
-    def test_web_has_both_sections_without_price_or_color_by_default(self) -> None:
+    def test_web_has_both_sections_with_price_and_without_color_by_default(self) -> None:
         out = format_two_vehicle_comparison_grounding(self.v1, self.v2, platform="web")
         self.assertIn("VEHICULO_A (", out)
         self.assertIn("VEHICULO_B (", out)
-        self.assertNotIn("**Precio**", out)
-        self.assertNotIn("$350,000.00", out)
-        self.assertNotIn("**Color**", out)
-
-    def test_web_includes_prices_when_requested(self) -> None:
-        out = format_two_vehicle_comparison_grounding(
-            self.v1,
-            self.v2,
-            platform="web",
-            include_price=True,
-        )
         self.assertIn("**Precio**", out)
         self.assertIn("$350,000.00", out)
         self.assertIn("$280,000.50", out)
+        self.assertNotIn("**Color**", out)
 
     def test_web_includes_colors_when_requested(self) -> None:
         out = format_two_vehicle_comparison_grounding(
@@ -103,7 +93,7 @@ class TestFormatTwoVehicleComparisonGrounding(unittest.TestCase):
 
 
 class TestFormatVehicleDetail(unittest.TestCase):
-    def test_omits_price_and_color_by_default(self) -> None:
+    def test_omits_color_by_default_and_includes_price(self) -> None:
         vehicle = {
             "brand": "Nissan",
             "model": "Versa",
@@ -116,27 +106,11 @@ class TestFormatVehicleDetail(unittest.TestCase):
             "description": "Unidad impecable",
         }
         out = format_vehicle_detail(vehicle, platform="web")
-        self.assertNotIn("**Precio**", out)
-        self.assertNotIn("$350,000.00", out)
+        self.assertIn("**Precio**", out)
+        self.assertIn("$350,000.00", out)
         self.assertNotIn("**Color**", out)
         self.assertNotIn("Rojo", out)
         self.assertIn("**Marca**", out)
-
-    def test_includes_price_when_requested(self) -> None:
-        vehicle = {
-            "brand": "Nissan",
-            "model": "Versa",
-            "year": 2011,
-            "price": "350000",
-            "km": 45000,
-            "transmission": "automatica",
-            "engine": "1.6",
-            "color": "rojo",
-            "description": "Unidad impecable",
-        }
-        out = format_vehicle_detail(vehicle, platform="web", include_price=True)
-        self.assertIn("**Precio**", out)
-        self.assertIn("$350,000.00", out)
 
     def test_includes_color_when_requested(self) -> None:
         vehicle = {

@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from src.graph import build_graph
 from src.context.tenant_context import reset_owner_user_id, set_owner_user_id
+from src.utils.state_helpers import clear_onboarding_resume
 from src.tools.database import (
     delete_bot_session,
     fetch_active_bot_session,
@@ -211,6 +212,11 @@ def _build_initial_state() -> dict[str, Any]:
         "suppress_commercial_node_once": False,
         "conversation_id": "",
         "bot_disabled": False,
+        "awaiting_customer_name": False,
+        "onboarding_greeting_done": False,
+        "onboarding_turn_complete": False,
+        "pending_onboarding_user_message": "",
+        "onboarding_resume_user_message": "",
     }
 
 
@@ -249,6 +255,46 @@ def _resolve_chat_owner(payload: ChatRequest, state: dict[str, Any]) -> str:
     if from_state:
         return from_state
     return str(os.getenv("BOT_CRM_OWNER_USER_ID", "")).strip()
+
+
+_GENERIC_CLIENT_NAMES = frozenset({"cliente", "client", ""})
+
+
+def _is_real_customer_name(name: str) -> bool:
+    cleaned = str(name or "").strip()
+    return len(cleaned) >= 2 and cleaned.lower() not in _GENERIC_CLIENT_NAMES
+
+
+def _hydrate_customer_info_from_crm(state: dict[str, Any], crm: dict[str, Any] | None) -> None:
+    """Completa customer_info.nombre desde el lead CRM si la sesion no lo trae."""
+
+    if not crm:
+        return
+    info = dict(state.get("customer_info") or {})
+    if _is_real_customer_name(str(info.get("nombre", ""))):
+        state["customer_info"] = info
+        return
+    crm_info = crm.get("customer_info")
+    if isinstance(crm_info, dict):
+        nombre = str(crm_info.get("nombre", "")).strip()
+        if _is_real_customer_name(nombre):
+            info["nombre"] = nombre
+            state["customer_info"] = info
+            return
+    client_name = str(crm.get("client_name", "")).strip()
+    if _is_real_customer_name(client_name):
+        info["nombre"] = client_name
+        state["customer_info"] = info
+
+
+def _customer_info_for_backend(state: dict[str, Any]) -> dict[str, Any] | None:
+    info = state.get("customer_info")
+    if not isinstance(info, dict):
+        return None
+    nombre = str(info.get("nombre", "")).strip()
+    if not _is_real_customer_name(nombre):
+        return None
+    return {"nombre": nombre}
 
 
 @app.post("/chat", response_model=ChatResponse)
@@ -314,6 +360,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
             crm_owner = str(crm.get("owner_user_id", "")).strip()
             if crm_owner:
                 resolved_owner = crm_owner
+        _hydrate_customer_info_from_crm(state, crm)
         if resolved_owner:
             state["owner_user_id"] = resolved_owner
             owner_token = set_owner_user_id(resolved_owner)
@@ -336,17 +383,20 @@ def chat(payload: ChatRequest) -> ChatResponse:
         previous_len = len(state["messages"])
 
         updated_state = graph.invoke(state)
+        clear_onboarding_resume(updated_state)
         updated_messages = list(updated_state.get("messages", []))
 
         # Capa 2: persistir mensajes assistant en backend (fuente de verdad).
         if payload.persist_to_backend:
             try:
+                customer_info_payload = _customer_info_for_backend(updated_state)
                 for message in updated_messages[previous_len:]:
                     if message.get("role") == "assistant":
                         push_assistant_message_to_backend(
                             payload.user_id,
                             str(message.get("content", "")),
                             platform=payload.platform,
+                            customer_info=customer_info_payload,
                         )
             except Exception:
                 logger.exception("No se pudo persistir mensaje assistant en backend")

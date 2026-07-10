@@ -4,6 +4,17 @@ from unittest.mock import patch
 
 from tests.test_helpers import GraphTestCase, initial_state, with_user_message
 
+_FINANCING_STEP_FLAGS_DEFAULT = {
+    "ask_promotions": False,
+    "ask_other_vehicles": False,
+    "ask_financing_with_vehicle": False,
+    "wants_compare_two_plans": False,
+    "select_plan": False,
+    "ask_plan_vehicle_info": False,
+    "reject_financing_keep_purchase": False,
+    "ask_explicit_plan": True,
+}
+
 
 class FinancingFlowTests(GraphTestCase):
     def test_financing_rejects_plans_but_keeps_purchase_routes_to_lead_capture(self) -> None:
@@ -42,7 +53,11 @@ class FinancingFlowTests(GraphTestCase):
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
             patch(
                 "src.nodes.financing.classify_financing_step_flags",
-                return_value={"reject_financing_keep_purchase": True, "ask_explicit_plan": False},
+                return_value={
+                    **_FINANCING_STEP_FLAGS_DEFAULT,
+                    "reject_financing_keep_purchase": True,
+                    "ask_explicit_plan": False,
+                },
             ),
             patch(
                 "src.nodes.financing.generate_verified_user_message",
@@ -87,12 +102,88 @@ class FinancingFlowTests(GraphTestCase):
         ]
 
         state = with_user_message(state, "no mejor solo muestrame los modelos disponibles por favor")
-        with patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}):
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch(
+                "src.nodes.financing.classify_financing_step_flags",
+                return_value={**_FINANCING_STEP_FLAGS_DEFAULT, "ask_other_vehicles": True, "ask_explicit_plan": False},
+            ),
+        ):
             updated = self.graph.invoke(state)
 
         self.assertEqual(updated.get("current_node"), "car_selection")
         self.assertEqual(updated.get("intent"), "vehicle_catalog")
         self.assertFalse(updated.get("awaiting_financing_plan_selection"))
+
+    def test_financing_plan_vehicle_info_routes_to_car_selection_detail(self) -> None:
+        jimny_vehicle = {
+            "id": "veh-jimny",
+            "brand": "Suzuki",
+            "model": "JIMNY 5-DOOR 2026",
+            "year": 2026,
+            "status": "available",
+        }
+        plan = {
+            "id": "plan-suzuki",
+            "name": "Oferta comercial Suzuki",
+            "lender": "Santander",
+            "active": True,
+            "vehicles": [jimny_vehicle],
+        }
+        state = initial_state()
+        state["current_node"] = "financing"
+        state["intent"] = "financing"
+        state["awaiting_financing_plan_selection"] = True
+        state["selected_vehicle_id"] = "veh-jimny"
+        state["selected_car"] = "Suzuki JIMNY 5-DOOR 2026 2026"
+        state["financing_plan_candidates"] = [plan]
+        state["messages"] = [
+            {
+                "role": "assistant",
+                "content": "Te interesa este plan? No olvides en preguntarme cualquier duda.",
+                "type": "AIMessage",
+            }
+        ]
+
+        state = with_user_message(state, "si me interesa el plan pero quiero mas informacion del vehiculo")
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch(
+                "src.nodes.financing.classify_financing_step_flags",
+                return_value={
+                    **_FINANCING_STEP_FLAGS_DEFAULT,
+                    "ask_plan_vehicle_info": True,
+                    "ask_explicit_plan": False,
+                },
+            ),
+            patch("src.nodes.financing.classify_financing_plan_selection_intent", return_value="ASK_EXPLICIT_PLAN"),
+            patch("src.nodes.financing.extract_financing_plan_selection_payload", return_value={}),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=[jimny_vehicle]),
+            patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=jimny_vehicle),
+            patch(
+                "src.nodes.car_selection.generate_vehicle_detail_conversation",
+                return_value="Aqui tienes la informacion completa del Suzuki Jimny.",
+            ),
+            patch(
+                "src.nodes.car_selection.generate_verified_user_message",
+                side_effect=lambda **kw: kw["fallback"],
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertEqual(updated.get("current_node"), "car_selection")
+        self.assertTrue(updated.get("awaiting_purchase_confirmation"))
+        self.assertFalse(updated.get("show_selected_vehicle_detail_once"))
+        self.assertTrue(updated.get("awaiting_financing_plan_selection"))
+        assistant_texts = [
+            str(m.get("content", ""))
+            for m in updated.get("messages", [])
+            if m.get("role") == "assistant"
+        ]
+        self.assertTrue(
+            any("informacion completa del Suzuki Jimny" in t for t in assistant_texts),
+            msg="car_selection debe generar el detalle conversacional del vehiculo",
+        )
 
     def test_financing_requests_promotions_routes_to_promotions_not_faq(self) -> None:
         state = initial_state()
@@ -109,12 +200,151 @@ class FinancingFlowTests(GraphTestCase):
         ]
 
         state = with_user_message(state, "mejor cuentame si tienes promociones")
-        with patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": True}):
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": True}),
+            patch(
+                "src.nodes.intent_checker.classify_financing_step_flags",
+                return_value={**_FINANCING_STEP_FLAGS_DEFAULT, "ask_promotions": True, "ask_explicit_plan": False},
+            ),
+            patch(
+                "src.nodes.financing.classify_financing_step_flags",
+                return_value={**_FINANCING_STEP_FLAGS_DEFAULT, "ask_promotions": True, "ask_explicit_plan": False},
+            ),
+        ):
             updated = self.graph.invoke(state)
 
         self.assertEqual(updated.get("current_node"), "promotions")
         self.assertEqual(updated.get("intent"), "promotions")
         self.assertFalse(updated.get("is_faq_interrupt"))
+
+    def test_financing_plan_selection_faq_buro_routes_to_faq(self) -> None:
+        state = initial_state()
+        state["current_node"] = "financing"
+        state["intent"] = "financing"
+        state["awaiting_financing_plan_selection"] = True
+        state["selected_vehicle_id"] = "veh-dzire"
+        state["selected_car"] = "Suzuki DZIRE BOOSTERGREEN 2026 2026"
+        state["financing_plan_candidates"] = [
+            {"id": "plan-1", "name": "Oferta comercial Suzuki", "lender": "Banco", "active": True, "vehicles": []}
+        ]
+        state["messages"] = [
+            {
+                "role": "assistant",
+                "content": "Si te interesa uno en particular, dime el nombre o numero del plan.",
+                "type": "AIMessage",
+            }
+        ]
+
+        state = with_user_message(state, "revisan buro de credito")
+        with (
+            patch(
+                "src.nodes.intent_checker.classify_faq_interrupt_flags",
+                return_value={"interrumpir_por_faq": True},
+            ),
+            patch(
+                "src.nodes.intent_checker.classify_financing_step_flags",
+                return_value=_FINANCING_STEP_FLAGS_DEFAULT,
+            ),
+            patch(
+                "src.nodes.financing.classify_financing_step_flags",
+                return_value=_FINANCING_STEP_FLAGS_DEFAULT,
+            ),
+            patch("src.nodes.faq.fetch_faq_candidates", return_value=["P: Buró?\nR: Sí revisamos."]),
+            patch("src.nodes.faq.generate_faq_resume_transition", return_value="¿Seguimos con el plan?"),
+            patch("src.nodes.faq.generate_faq_user_turn", return_value="Sí revisamos buró de crédito."),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertEqual(updated.get("current_node"), "financing")
+        self.assertFalse(updated.get("is_faq_interrupt"))
+        self.assertIn("revisamos", updated["messages"][-1]["content"].lower())
+
+    def test_financing_plan_vehicle_photos_send_images_via_llm(self) -> None:
+        dzire_vehicle = {
+            "id": "veh-dzire",
+            "brand": "Suzuki",
+            "model": "DZIRE BOOSTERGREEN 2026",
+            "year": 2026,
+            "status": "available",
+        }
+        plan = {
+            "id": "plan-suzuki",
+            "name": "Oferta comercial Suzuki",
+            "lender": "Santander",
+            "active": True,
+            "vehicles": [dzire_vehicle],
+        }
+        state = initial_state()
+        state["current_node"] = "financing"
+        state["intent"] = "financing"
+        state["awaiting_financing_plan_selection"] = True
+        state["selected_vehicle_id"] = "veh-dzire"
+        state["selected_car"] = "Suzuki DZIRE BOOSTERGREEN 2026 2026"
+        state["financing_plan_candidates"] = [plan]
+        state["messages"] = [
+            {
+                "role": "assistant",
+                "content": "Si te interesa uno en particular, dime el nombre o numero del plan.",
+                "type": "AIMessage",
+            }
+        ]
+
+        vehicle_step_flags = {
+            "ask_promotions": False,
+            "ask_financing": False,
+            "ask_images": True,
+            "ask_more_images": False,
+            "wants_compare_two_vehicles": False,
+            "wants_other_vehicles": False,
+            "confirm_purchase": False,
+            "reject_purchase": False,
+        }
+        state = with_user_message(state, "me puedes enviar fotos del dzire")
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch(
+                "src.nodes.intent_checker.classify_financing_step_flags",
+                return_value={
+                    **_FINANCING_STEP_FLAGS_DEFAULT,
+                    "ask_plan_vehicle_info": True,
+                    "ask_explicit_plan": False,
+                },
+            ),
+            patch(
+                "src.nodes.financing.classify_financing_step_flags",
+                return_value={
+                    **_FINANCING_STEP_FLAGS_DEFAULT,
+                    "ask_plan_vehicle_info": True,
+                    "ask_explicit_plan": False,
+                },
+            ),
+            patch("src.nodes.financing.classify_financing_plan_selection_intent", return_value="ASK_EXPLICIT_PLAN"),
+            patch("src.nodes.financing.extract_financing_plan_selection_payload", return_value={}),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=[dzire_vehicle]),
+            patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=dzire_vehicle),
+            patch("src.nodes.car_selection.classify_vehicle_step_flags", return_value=vehicle_step_flags),
+            patch(
+                "src.nodes.car_selection.generate_vehicle_detail_conversation",
+                return_value="Aqui tienes la informacion completa del Suzuki Dzire.",
+            ),
+            patch(
+                "src.nodes.car_selection.generate_verified_user_message",
+                side_effect=lambda **kw: kw["fallback"],
+            ),
+            patch(
+                "src.utils.vehicle_images.fetch_vehicle_images",
+                return_value={"images": ["/img/dzire-1.jpg"], "nextCursor": 1, "hasMore": False, "mode": "top"},
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertEqual(updated.get("vehicle_images_last_batch"), ["/img/dzire-1.jpg"])
+        assistant_texts = [
+            str(m.get("content", ""))
+            for m in updated.get("messages", [])
+            if m.get("role") == "assistant"
+        ]
+        self.assertTrue(any("/img/dzire-1.jpg" in t for t in assistant_texts))
 
     def test_financing_plan_selection_via_llm_extract_advances_flow(self) -> None:
         jimny_plan = {
@@ -171,9 +401,9 @@ class FinancingFlowTests(GraphTestCase):
             patch(
                 "src.nodes.financing.classify_financing_step_flags",
                 return_value={
-                    "reject_financing_keep_purchase": False,
+                    **_FINANCING_STEP_FLAGS_DEFAULT,
+                    "select_plan": True,
                     "ask_explicit_plan": False,
-                    "wants_compare_two_plans": False,
                 },
             ),
             patch(
@@ -237,6 +467,10 @@ class FinancingFlowTests(GraphTestCase):
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
             patch("src.nodes.financing.resolve_single_vehicle_from_text", side_effect=resolve_vehicle_hint),
             patch("src.nodes.financing.fetch_financing_plans_by_vehicle", return_value=[plan_a, plan_b]),
+            patch(
+                "src.nodes.financing.classify_financing_step_flags",
+                return_value=_FINANCING_STEP_FLAGS_DEFAULT,
+            ),
             patch(
                 "src.nodes.financing.generate_verified_user_message",
                 side_effect=lambda **kw: kw["fallback"],
@@ -351,6 +585,10 @@ class FinancingFlowTests(GraphTestCase):
             ),
             patch("src.nodes.financing.resolve_single_vehicle_from_text", side_effect=resolve_vehicle_hint),
             patch("src.nodes.financing.fetch_financing_plans_by_vehicle", return_value=[shilo_plan, plan_test]),
+            patch(
+                "src.nodes.financing.classify_financing_step_flags",
+                return_value=_FINANCING_STEP_FLAGS_DEFAULT,
+            ),
             patch(
                 "src.nodes.financing.generate_verified_user_message",
                 side_effect=lambda **kw: kw["fallback"],

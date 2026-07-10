@@ -10,6 +10,7 @@ from src.state import clientState
 
 from src.services.llm_responses import (
     _coerce_to_bool,
+    classify_financing_step_flags,
     classify_purchase_confirmation_intent,
     classify_vehicle_comparison_payload,
     classify_vehicle_step_flags,
@@ -23,16 +24,13 @@ from src.services.llm_responses import (
 )
 from src.services.car_selection_fallback import (
     is_financing_request,
-    is_first_images_request,
     is_general_request,
-    is_more_images_request,
     is_promotions_request,
     is_selected_vehicle_specs_request,
     is_test_drive_or_visit_request,
     looks_like_feature_request,
     looks_like_specific_vehicle_request,
     user_asks_for_color,
-    user_asks_for_price,
 )
 from src.tools.vehicles import (
     canonicalize_with_typo_support,
@@ -54,9 +52,7 @@ from src.utils.formatters import (
 from src.utils.signals import (
     FEATURE_SIGNALS,
     FINANCING_SIGNALS,
-    FIRST_IMAGES_SIGNALS,
     GENERAL_SIGNALS,
-    MORE_IMAGES_SIGNALS,
     NO_MORE_IMAGES_MESSAGE,
     PROMOTIONS_SIGNALS,
     TEST_DRIVE_VISIT_SIGNALS,
@@ -83,8 +79,6 @@ def _normalize_signal_set(values: set[str]) -> set[str]:
 
 _GENERAL_SIGNALS_NORMALIZED = _normalize_signal_set(GENERAL_SIGNALS)
 _FEATURE_SIGNALS_NORMALIZED = _normalize_signal_set(FEATURE_SIGNALS)
-_MORE_IMAGES_SIGNALS_NORMALIZED = _normalize_signal_set(MORE_IMAGES_SIGNALS)
-_FIRST_IMAGES_SIGNALS_NORMALIZED = _normalize_signal_set(FIRST_IMAGES_SIGNALS)
 _FINANCING_SIGNALS_NORMALIZED = _normalize_signal_set(FINANCING_SIGNALS)
 _PROMOTIONS_SIGNALS_NORMALIZED = _normalize_signal_set(PROMOTIONS_SIGNALS)
 _TEST_DRIVE_VISIT_SIGNALS_NORMALIZED = _normalize_signal_set(TEST_DRIVE_VISIT_SIGNALS)
@@ -94,6 +88,21 @@ def _debug(event: str, **payload: Any) -> None:
     """Trazas del flujo; payload completo solo con LOG_LEVEL=debug."""
 
     log_flow_trace(_log, "car_selection", event, **payload)
+
+
+def _llm_vehicle_image_flags(
+    *,
+    user_text: str,
+    previous_bot_message: str,
+    selected_car_name: str,
+) -> dict[str, bool]:
+    """Detecta pedidos de imagenes via clasificador LLM del paso de vehiculo."""
+
+    vehicle_flags = classify_vehicle_step_flags(previous_bot_message, user_text, selected_car_name)
+    return {
+        "ask_images": _coerce_to_bool(vehicle_flags.get("ask_images")),
+        "ask_more_images": _coerce_to_bool(vehicle_flags.get("ask_more_images")),
+    }
 
 
 PendingSelectionResult = dict[str, Any] | list[dict[str, Any]] | None
@@ -451,7 +460,6 @@ def _respond_selected_vehicle_inventory_qa(state: clientState, user_text: str) -
     grounded = format_vehicle_detail(
         detail,
         platform=platform,
-        include_price=user_asks_for_price(user_text),
         include_color=user_asks_for_color(user_text),
     )
     name = selected_label or format_vehicle_name(detail)
@@ -618,7 +626,6 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
     grounded_vehicle_facts = format_vehicle_detail(
         detail,
         platform=platform,
-        include_price=user_asks_for_price(user_text),
         include_color=user_asks_for_color(user_text),
     )
     detail_narrative = generate_vehicle_detail_conversation(state["selected_car"], grounded_vehicle_facts)
@@ -634,13 +641,39 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
     if sheet_msg:
         blocks.append(sheet_msg)
     blocks.append(purchase_question)
-    if is_first_images_request(
-        user_text,
-        _FIRST_IMAGES_SIGNALS_NORMALIZED,
-        more_images_signals_normalized=_MORE_IMAGES_SIGNALS_NORMALIZED,
-    ):
+    previous_bot_message = str(state.get("last_bot_message", "")).strip()
+    selected_car_name = str(state.get("selected_car", "")).strip()
+    image_flags = _llm_vehicle_image_flags(
+        user_text=user_text,
+        previous_bot_message=previous_bot_message,
+        selected_car_name=selected_car_name,
+    )
+    if state.get("awaiting_financing_plan_selection"):
+        financing_flags = classify_financing_step_flags(
+            previous_bot_message=previous_bot_message,
+            user_message=user_text,
+            selected_vehicle_name=selected_car_name,
+            has_selected_vehicle=bool(str(state.get("selected_vehicle_id", "")).strip()),
+            has_selected_promotion=bool(str(state.get("selected_promotion_id", "")).strip()),
+            awaiting_plan_selection=True,
+            awaiting_vehicle_selection=bool(state.get("awaiting_financing_vehicle_selection")),
+            numbered_plan_lines="",
+        )
+        if financing_flags.get("ask_plan_vehicle_info"):
+            _debug(
+                "vehicle_detail_financing_plan_info",
+                ask_images=image_flags.get("ask_images"),
+                ask_more_images=image_flags.get("ask_more_images"),
+            )
+    if image_flags.get("ask_images"):
         _debug("vehicle_detail_same_turn_first_images", vehicle_id=vehicle_id)
         _append_assistant_blocks(state, blocks)
+        return _respond_with_first_images(state)
+    if image_flags.get("ask_more_images"):
+        _debug("vehicle_detail_same_turn_more_images", vehicle_id=vehicle_id)
+        _append_assistant_blocks(state, blocks)
+        if state.get("vehicle_images_last_batch"):
+            return _respond_with_more_images(state)
         return _respond_with_first_images(state)
     return _append_assistant_blocks(state, blocks)
 
@@ -878,7 +911,6 @@ def _respond_with_vehicle_comparison(
         detail_a,
         detail_b,
         platform=platform,
-        include_price=user_asks_for_price(user_q),
         include_color=user_asks_for_color(user_q),
     )
     narrative = generate_vehicle_comparison_conversation(
@@ -1183,11 +1215,7 @@ def car_selection(state: clientState) -> clientState:
             state["current_node"] = "financing"
             _debug("route_change", next_node="financing", reason="financing_request")
             return state
-        if step_flags.get("ask_images") or is_first_images_request(
-            user_text,
-            _FIRST_IMAGES_SIGNALS_NORMALIZED,
-            more_images_signals_normalized=_MORE_IMAGES_SIGNALS_NORMALIZED,
-        ):
+        if step_flags.get("ask_images"):
             return _respond_with_first_images(state)
         if step_flags.get("ask_more_images"):
             return _respond_with_more_images(state)
@@ -1209,15 +1237,11 @@ def car_selection(state: clientState) -> clientState:
             decision=decision,
             selected_car=state.get("selected_car", ""),
         )
-        if decision == "VER_MAS_IMAGENES" or is_more_images_request(user_text, _MORE_IMAGES_SIGNALS_NORMALIZED):
+        if decision == "VER_MAS_IMAGENES" or step_flags.get("ask_more_images"):
             if state.get("vehicle_images_last_batch"):
                 return _respond_with_more_images(state)
             return _respond_with_first_images(state)
-        if is_first_images_request(
-            user_text,
-            _FIRST_IMAGES_SIGNALS_NORMALIZED,
-            more_images_signals_normalized=_MORE_IMAGES_SIGNALS_NORMALIZED,
-        ):
+        if step_flags.get("ask_images"):
             return _respond_with_first_images(state)
         if decision == "PREGUNTA_MODELO":
             other = _pick_vehicle_from_filters(user_text, vehicles)

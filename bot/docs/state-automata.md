@@ -1,9 +1,12 @@
 # Autómata de estados del bot
 
-Este documento define el diagrama de estados del flujo conversacional actual.
+> Mapa completo con funciones internas y orden heurística/LLM por nodo: [flujo-completo.md](flujo-completo.md).
+
+Este documento define el diagrama de estados del flujo conversacional actual. El grafo arranca en `customer_onboarding` (no en `intent_checker`).
 
 ## Estados
 
+- `customer_onboarding`: bienvenida inicial y captura del nombre del cliente.
 - `intent_checker`: detecta si la entrada interrumpe un flujo activo con FAQ.
 - `router`: clasifica la intencion principal y decide nodo destino.
 - `car_selection`: explora catalogo, filtra, compara dos vehiculos (sin cambiar `selected_vehicle_id` hasta nueva eleccion) y permite avanzar a compra.
@@ -25,7 +28,9 @@ Este documento define el diagrama de estados del flujo conversacional actual.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> intent_checker
+    [*] --> customer_onboarding
+    customer_onboarding --> intent_checker: onboarding_complete
+    customer_onboarding --> [*]: welcome_or_name_request
 
     intent_checker --> faq: user_interrupts_with_faq
     intent_checker --> router: continue_flow

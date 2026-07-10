@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import unittest
 
+from src.services.llm_responses import strip_name_request_from_welcome_message
 from src.utils.prompts import (
     append_bot_message_templates_to_verified_block,
     build_bot_message_templates_block,
@@ -49,6 +50,13 @@ class BotMessageSettingsTests(unittest.TestCase):
         merged = append_bot_message_templates_to_verified_block("situacion: sin faq\n", settings)
         self.assertIn("situacion: sin faq", merged)
         self.assertIn("mensaje_fallback_faq_literal: Consulta con un asesor humano.", merged)
+
+    def test_strip_name_request_from_welcome_message(self) -> None:
+        raw = "Hola buen día, en qué te puedo ayudar, con quién tengo el gusto?"
+        self.assertEqual(
+            strip_name_request_from_welcome_message(raw),
+            "Hola buen día, en qué te puedo ayudar",
+        )
 
 
 if __name__ == "__main__":

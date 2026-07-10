@@ -5,6 +5,7 @@ from __future__ import annotations
 from langgraph.graph import END, START, StateGraph
 
 from src.nodes.car_selection import car_selection
+from src.nodes.customer_onboarding import customer_onboarding
 from src.nodes.faq import faq
 from src.nodes.financing import financing
 from src.nodes.intent_checker import intent_checker
@@ -152,10 +153,21 @@ def _route_after_lead_capture(state: clientState) -> str:
     return "end"
 
 
+def _route_after_customer_onboarding(state: clientState) -> str:
+    """Termina el turno si onboarding genero respuesta; si no, continua el flujo."""
+
+    if state.get("onboarding_turn_complete"):
+        _log_transition("customer_onboarding", "end", "bienvenida o captura de nombre")
+        return "end"
+    _log_transition("customer_onboarding", "intent_checker")
+    return "intent_checker"
+
+
 def build_graph():
     """Construye y compila el grafo principal del bot."""
 
     graph = StateGraph(clientState)
+    graph.add_node("customer_onboarding", customer_onboarding)
     graph.add_node("router", router)
     graph.add_node("intent_checker", intent_checker)
     graph.add_node("car_selection", car_selection)
@@ -164,7 +176,15 @@ def build_graph():
     graph.add_node("financing", financing)
     graph.add_node("promotions", promotions)
 
-    graph.add_edge(START, "intent_checker")
+    graph.add_edge(START, "customer_onboarding")
+    graph.add_conditional_edges(
+        "customer_onboarding",
+        _route_after_customer_onboarding,
+        {
+            "intent_checker": "intent_checker",
+            "end": END,
+        },
+    )
     graph.add_conditional_edges(
         "intent_checker",
         _route_after_intent_checker,

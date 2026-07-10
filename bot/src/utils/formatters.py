@@ -38,6 +38,14 @@ def _format_int(value: Any, suffix: str = "") -> str:
     return f"{parsed:,}"
 
 
+def _is_zero_km(value: Any) -> bool:
+    """True cuando el kilometraje registrado es exactamente cero (unidad nueva)."""
+    try:
+        return int(value) == 0
+    except (TypeError, ValueError):
+        return False
+
+
 def _status_label(status: Any) -> str:
     """Helper de apoyo para status label."""
     normalized = str(status or "").strip().lower()
@@ -149,7 +157,6 @@ def format_vehicle_detail(
     vehicle: dict[str, Any],
     platform: str = "web",
     *,
-    include_price: bool = False,
     include_color: bool = False,
 ) -> str:
     """Construye detalle del vehiculo en lista vertical corta."""
@@ -163,12 +170,15 @@ def format_vehicle_detail(
         f"{_bold_label('Marca', platform)}: {brand}",
         f"{_bold_label('Modelo', platform)}: {model}",
         f"{_bold_label('Año', platform)}: {year if isinstance(year, int) else 'N/D'}",
+        f"{_bold_label('Precio', platform)}: {_format_currency(vehicle.get('price'))}",
     ]
-    if include_price:
-        lines.append(f"{_bold_label('Precio', platform)}: {_format_currency(vehicle.get('price'))}")
+    km_value = vehicle.get("km")
+    if _is_zero_km(km_value):
+        lines.append(f"{_bold_label('Estado', platform)}: Nuevo")
+    else:
+        lines.append(f"{_bold_label('Kilometraje', platform)}: {_format_int(km_value, 'km')}")
     lines.extend(
         [
-            f"{_bold_label('Kilometraje', platform)}: {_format_int(vehicle.get('km'), 'km')}",
             f"{_bold_label('Transmisión', platform)}: {_title_or_default(vehicle.get('transmission'))}",
             f"{_bold_label('Motor', platform)}: {_title_or_default(vehicle.get('engine'))}",
         ]
@@ -184,7 +194,6 @@ def format_two_vehicle_comparison_grounding(
     vehicle_b: dict[str, Any],
     platform: str = "web",
     *,
-    include_price: bool = False,
     include_color: bool = False,
 ) -> str:
     """Une dos fichas `format_vehicle_detail` para anclar narrativa de comparacion al LLM."""
@@ -196,13 +205,11 @@ def format_two_vehicle_comparison_grounding(
     block_a = format_vehicle_detail(
         vehicle_a,
         platform=platform,
-        include_price=include_price,
         include_color=include_color,
     )
     block_b = format_vehicle_detail(
         vehicle_b,
         platform=platform,
-        include_price=include_price,
         include_color=include_color,
     )
     return (

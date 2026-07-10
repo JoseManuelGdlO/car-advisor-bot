@@ -20,7 +20,7 @@ def initial_state() -> dict:
         "intent": "",
         "selected_car": "",
         "selected_vehicle_id": "",
-        "customer_info": {},
+        "customer_info": {"nombre": "Cliente Prueba"},
         "last_vehicle_candidates": [],
         "last_bot_message": "",
         "skip_car_prompt": False,
@@ -61,6 +61,11 @@ def initial_state() -> dict:
         "suppress_commercial_node_once": False,
         "conversation_id": "",
         "bot_disabled": False,
+        "awaiting_customer_name": False,
+        "onboarding_greeting_done": True,
+        "onboarding_turn_complete": False,
+        "pending_onboarding_user_message": "",
+        "onboarding_resume_user_message": "",
     }
 
 

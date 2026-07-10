@@ -50,6 +50,11 @@ class clientState(TypedDict, total=False):
       (tras ack de asesor humano desde intent_checker).
     - conversation_id: UUID de conversacion CRM para handoff y persistencia.
     - bot_disabled: True tras notificar handoff; el servidor no invoca el grafo en turnos siguientes.
+    - awaiting_customer_name: True mientras esperamos que el usuario comparta su nombre.
+    - onboarding_greeting_done: True tras enviar la bienvenida inicial (con o sin nombre conocido).
+    - onboarding_turn_complete: True cuando el nodo onboarding genero respuesta y debe terminar el turno.
+    - pending_onboarding_user_message: primer mensaje del usuario con intencion comercial mientras faltaba el nombre.
+    - onboarding_resume_user_message: mensaje del usuario a procesar tras capturar el nombre.
     """
 
     messages: list[dict[str, Any]]
@@ -98,3 +103,8 @@ class clientState(TypedDict, total=False):
     suppress_commercial_node_once: bool
     conversation_id: str
     bot_disabled: bool
+    awaiting_customer_name: bool
+    onboarding_greeting_done: bool
+    onboarding_turn_complete: bool
+    pending_onboarding_user_message: str
+    onboarding_resume_user_message: str

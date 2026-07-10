@@ -250,14 +250,19 @@ def get_bot_settings() -> dict[str, str]:
     return dict(_fetch_bot_tenant_config()["settings"])
 
 
-def push_event_to_backend(payload: dict[str, Any]) -> None:
+def push_event_to_backend(payload: dict[str, Any], *, owner_user_id: str | None = None) -> None:
     """Envia eventos del bot al backend Node cuando existe configuracion."""
     url = _backend_api_url("/bot/conversation-events")
     headers = _backend_headers()
     if not url or "Authorization" not in headers:
         return
     try:
-        requests.post(url, json=_with_owner_body(payload), headers=headers, timeout=5)
+        requests.post(
+            url,
+            json=_with_owner_body(payload, explicit=owner_user_id),
+            headers=headers,
+            timeout=5,
+        )
     except Exception:
         return
 
@@ -420,6 +425,12 @@ def upsert_inbound_user_message(
             result["lead_id"] = lead
         raw_should = data.get("shouldAutoReply")
         result["should_auto_reply"] = True if not isinstance(raw_should, bool) else raw_should
+        client_name = str(data.get("clientName") or "").strip()
+        if client_name:
+            result["client_name"] = client_name
+        customer_info = data.get("customerInfo")
+        if isinstance(customer_info, dict) and customer_info:
+            result["customer_info"] = customer_info
         return result
     except requests.Timeout:
         logger.exception("Backend inbound upsert timeout")
@@ -472,10 +483,46 @@ def set_conversation_human_controlled(
         return False
 
 
+def sync_customer_info_to_backend(
+    phone: str,
+    customer_info: dict[str, Any],
+    *,
+    platform: str = "web",
+    owner_user_id: str | None = None,
+) -> None:
+    """Sincroniza datos de contacto del cliente con el CRM."""
+
+    normalized_phone = str(phone).strip()
+    if not normalized_phone or not isinstance(customer_info, dict):
+        return
+    usable = {
+        key: str(value).strip()
+        for key, value in customer_info.items()
+        if value is not None and str(value).strip()
+    }
+    if not usable:
+        return
+    default_platform = str(os.getenv("BOT_DEFAULT_INBOUND_CHANNEL", "web")).strip().lower() or "web"
+    normalized_platform = str(platform or default_platform).strip().lower() or default_platform
+    push_event_to_backend(
+        {
+            "user_id": normalized_phone,
+            "platform": normalized_platform,
+            "message": "Nombre registrado",
+            "from": "system",
+            "selected_car": "",
+            "customer_info": usable,
+        },
+        owner_user_id=owner_user_id,
+    )
+
+
 def push_assistant_message_to_backend(
     phone: str,
     content: str,
     platform: str = "web",
+    *,
+    customer_info: dict[str, Any] | None = None,
 ) -> None:
     """Persiste un mensaje del assistant/bot en el backend (fuente de verdad)."""
 
@@ -491,18 +538,18 @@ def push_assistant_message_to_backend(
         logger.error("Skipping assistant backend write: BACKEND_API_URL or BACKEND_SERVICE_TOKEN missing")
         return
     try:
+        payload: dict[str, Any] = {
+            "user_id": normalized_phone,
+            "platform": normalized_platform,
+            "message": normalized_content,
+            "from": "assistant",
+            "selected_car": "",
+        }
+        if isinstance(customer_info, dict) and customer_info:
+            payload["customer_info"] = customer_info
         response = requests.post(
             url,
-            json=_with_owner_body(
-                {
-                    "user_id": normalized_phone,
-                    "platform": normalized_platform,
-                    "message": normalized_content,
-                    "from": "assistant",
-                    "selected_car": "",
-                    "customer_info": {},
-                }
-            ),
+            json=_with_owner_body(payload),
             headers=headers,
             timeout=8,
         )
@@ -667,66 +714,85 @@ def upsert_bot_session_state(
         connection.close()
 
 
+def _faq_rows_to_entries(rows: list[Any]) -> list[dict[str, str]]:
+    """Normaliza filas de faqs a entradas con id, question y answer."""
+
+    entries: list[dict[str, str]] = []
+    for row in rows:
+        if not row:
+            continue
+        faq_id = str(row[0] if len(row) > 0 else "").strip()
+        question = str(row[1] if len(row) > 1 else "").strip()
+        answer = str(row[2] if len(row) > 2 else "").strip()
+        if not question and not answer:
+            continue
+        entries.append(
+            {
+                "id": faq_id,
+                "question": question,
+                "answer": answer,
+            }
+        )
+    return entries
+
+
+def faq_entry_to_candidate(entry: dict[str, str]) -> str:
+    """Formatea una entrada FAQ para contexto del generador."""
+
+    question = str(entry.get("question", "")).strip()
+    answer = str(entry.get("answer", "")).strip()
+    if question and answer:
+        return f"P: {question}\nR: {answer}"
+    if answer:
+        return answer
+    return question
+
+
+def fetch_all_faqs_for_owner(limit: int = 200) -> list[dict[str, str]]:
+    """Obtiene todas las FAQs del tenant actual (hasta `limit`)."""
+
+    owner_user_id = _owner_from_context()
+    if not owner_user_id:
+        logger.warning("fetch_all_faqs_for_owner skipped: missing owner_user_id in context")
+        return []
+
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, question, answer
+                FROM faqs
+                WHERE owner_user_id = %s
+                ORDER BY updated_at DESC
+                LIMIT %s
+                """,
+                (owner_user_id, max(1, int(limit))),
+            )
+            rows = cursor.fetchall() or []
+        return _faq_rows_to_entries(rows)
+    except Exception:
+        return []
+    finally:
+        connection.close()
+
+
 def fetch_faq_candidates(question: str, limit: int = 12) -> list[str]:
-    """Obtiene FAQs candidatas y, si no hay match, un bloque base de FAQs recientes."""
+    """Carga todas las FAQs del tenant y usa LLM para elegir las relevantes a la pregunta."""
 
     normalized_question = str(question or "").strip()
     if not normalized_question:
         return []
 
-    # Busca por palabras clave en question/answer para evitar dependencia de match exacto.
-    terms = [
-        term
-        for term in re.findall(r"[a-zA-Z0-9áéíóúñÁÉÍÓÚÑ]{3,}", normalized_question.lower())
-        if term not in {"que", "como", "cual", "cuales", "para", "con", "por", "una", "unos", "unas"}
-    ][:5]
-    if not terms:
-        terms = [normalized_question.lower()]
-
-    connection = get_connection()
-    try:
-        where_clause = " OR ".join(["LOWER(question) LIKE %s OR LOWER(answer) LIKE %s" for _ in terms])
-        query = f"""
-            SELECT question, answer
-            FROM faqs
-            WHERE {where_clause}
-            ORDER BY updated_at DESC
-            LIMIT %s
-        """
-        params: list[Any] = []
-        for term in terms:
-            like_term = f"%{term}%"
-            params.extend([like_term, like_term])
-        params.append(limit)
-        with connection.cursor() as cursor:
-            cursor.execute(query, tuple(params))
-            rows = cursor.fetchall() or []
-            if not rows:
-                # Fallback: cuando no hay coincidencias claras, entrega FAQs recientes para que
-                # el LLM tenga una base minima y pueda responder de forma conversacional.
-                cursor.execute(
-                    """
-                    SELECT question, answer
-                    FROM faqs
-                    ORDER BY updated_at DESC
-                    LIMIT %s
-                    """,
-                    (max(limit, 12),),
-                )
-                rows = cursor.fetchall() or []
-        candidates: list[str] = []
-        for row in rows:
-            if not row:
-                continue
-            q = str(row[0] if len(row) > 0 else "").strip()
-            a = str(row[1] if len(row) > 1 else "").strip()
-            if q and a:
-                candidates.append(f"P: {q}\nR: {a}")
-            elif a:
-                candidates.append(a)
-        return candidates
-    except Exception:
-        # FAQ DB es opcional para el MVP.
+    all_faqs = fetch_all_faqs_for_owner()
+    if not all_faqs:
         return []
-    finally:
-        connection.close()
+
+    # Import diferido para evitar ciclo database <-> llm_responses.
+    from src.services.llm_responses import select_faq_candidates_with_llm
+
+    return select_faq_candidates_with_llm(
+        normalized_question,
+        all_faqs,
+        max_candidates=max(1, int(limit)),
+    )

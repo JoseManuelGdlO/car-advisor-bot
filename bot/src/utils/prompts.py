@@ -347,9 +347,91 @@ _VERIFIED_MODE_INSTRUCTIONS: dict[str, str] = {
         "Despues de la respuesta FAQ, si transicion_literal no es '(ninguna)', integra esa pregunta de transicion "
         "de forma natural (conectores y mayusculas; conserva el sentido de la pregunta).\n"
         "Al final, si cierre_literal no es '(ninguno)', incluye esa pregunta o cierre de forma natural.\n"
+        "Si tema_faq_cierre es horarios: responde solo la informacion de horario/atencion; PROHIBIDO sugerir "
+        "catalogo, comprar o ver un carro; el unico cierre comercial debe ser cierre_literal sobre agendar cita.\n"
         "Un solo mensaje coherente. Espanol (Mexico). Sin prefijos tipo 'Respuesta:'."
     ),
+    "welcome_and_name_request": (
+        "TAREA: Primer mensaje del bot en una conversacion nueva sin nombre del cliente.\n"
+        "DATOS_VERIFICADOS incluye mensaje_bienvenida_literal (si existe) y configuracion del bot.\n"
+        "Redacta UN mensaje breve en espanol (Mexico):\n"
+        "1) Usa mensaje_bienvenida_literal como base (puedes adaptar levemente al tono sin cambiar el sentido).\n"
+        "2) Si no hay mensaje_bienvenida_literal, saluda como asistente de la agencia.\n"
+        "3) Cierra pidiendo el nombre del usuario de forma amable (ej. ¿Cómo te llamas?, ¿Con quién tengo el gusto?).\n"
+        "PROHIBIDO: pedir telefono, correo o datos de contacto adicionales.\n"
+        "Un solo mensaje. Sin prefijos."
+    ),
+    "welcome_with_known_name": (
+        "TAREA: Primer mensaje del bot cuando ya conocemos el nombre del cliente.\n"
+        "DATOS_VERIFICADOS incluye nombre_cliente y mensaje_bienvenida_literal (si existe).\n"
+        "Redacta UN mensaje breve en espanol (Mexico):\n"
+        "1) Saluda al usuario por su nombre al INICIO de forma natural (ej. ¡Hola María!).\n"
+        "2) Usa mensaje_bienvenida_literal como base del resto (adaptacion minima al tono, sin cambiar el sentido).\n"
+        "3) Si no hay mensaje_bienvenida_literal, presenta al asistente y ofrece ayuda con vehiculos.\n"
+        "PROHIBIDO: volver a pedir el nombre; pedir telefono o correo.\n"
+        "Un solo mensaje. Sin prefijos."
+    ),
 }
+
+
+def build_extract_customer_name_prompt(
+    previous_bot_message: str,
+    user_message: str,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Prompt para extraer el nombre propio del usuario desde su respuesta."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    previous = previous_bot_message.strip() or "(sin mensaje previo)"
+    current = user_message.strip() or "(mensaje vacio)"
+    return (
+        f"{system_prompt}\n\n"
+        "EXTRACTOR_NOMBRE_CLIENTE:\n"
+        "Responde SOLO con JSON de una linea:\n"
+        '{ "nombre": "<string|null>", "is_refusal": <bool> }\n'
+        "Reglas:\n"
+        "- Extrae el nombre propio (primer nombre o nombre completo si lo indica).\n"
+        "- Limpia prefijos: me llamo, soy, mi nombre es, me dicen.\n"
+        "- Capitaliza correctamente (ej. juan -> Juan, maria lopez -> Maria Lopez).\n"
+        "- nombre=null si el mensaje es saludo, pregunta, telefono, numero, negativa "
+        "(prefiero no decir, no quiero) o no contiene un nombre.\n"
+        "- is_refusal=true solo si rechaza compartir su nombre explicitamente.\n"
+        "- No inventes nombres que el usuario no haya dicho.\n\n"
+        f"mensaje_previo_bot: {previous}\n"
+        f"mensaje_usuario: {current}\n"
+    )
+
+
+def build_onboarding_first_message_classifier_prompt(
+    user_message: str,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Prompt para clasificar si el primer mensaje trae intencion comercial o es solo cortesia."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    current = user_message.strip() or "(mensaje vacio)"
+    return (
+        f"{system_prompt}\n\n"
+        "CLASIFICADOR_ONBOARDING_PRIMER_MENSAJE:\n"
+        "Clasifica el primer mensaje del usuario al iniciar la conversacion.\n"
+        "Responde SOLO con JSON de una linea:\n"
+        '{ "tiene_intencion_comercial": <bool> }\n'
+        "Reglas para tiene_intencion_comercial=true:\n"
+        "- Pide o insinua algo comercial ademas de (o en lugar de) un saludo.\n"
+        "- Catalogo: ver, buscar, comparar vehiculos, modelos o marcas; menciona un modelo.\n"
+        "- Financiamiento: credito, planes, enganche, mensualidades, tasas.\n"
+        "- Promociones: ofertas, descuentos, bonos.\n"
+        "- FAQ del negocio: ubicacion, horarios, garantias, politicas.\n"
+        "- Quiere hablar con un asesor humano o persona del equipo.\n"
+        "- Cualquier peticion concreta de informacion o accion sobre el negocio.\n"
+        "Reglas para tiene_intencion_comercial=false:\n"
+        "- Solo saludo o cortesia (hola, buenas tardes, buen dia, que tal, saludos, etc.).\n"
+        "- Agradecimiento o despedida sin pedir nada mas.\n"
+        "- Mensaje vacio, ambiguo o de cortesia sin solicitud clara.\n"
+        "- Si combina saludo + peticion comercial (ej. 'hola quiero ver autos'), responde true.\n"
+        "- Ante duda entre cortesia pura y peticion comercial, responde false.\n\n"
+        f"mensaje_usuario: {current}\n"
+    )
 
 
 def build_verified_user_message_prompt(
@@ -400,10 +482,11 @@ def build_vehicle_detail_conversation_prompt(
         "- Usa SOLO informacion que aparezca literalmente en DATOS_VERIFICADOS (mismos valores: km, motor, etc.). "
         "No inventes equipamiento, garantias, historial, consumo, seguridad, financiamiento, promociones ni disponibilidad extra.\n"
         "- No agregues cifras, fechas ni hechos que no esten en el bloque.\n"
-        "- No menciones precio, costo ni valor del vehiculo a menos que DATOS_VERIFICADOS incluya la linea Precio.\n"
         "- No menciones color, tonalidad ni pintura del vehiculo a menos que DATOS_VERIFICADOS incluya la linea Color.\n"
-        "- Incluye de forma natural todos los campos que aparezcan en DATOS_VERIFICADOS (marca, modelo, año, kilometraje, "
+        "- Incluye de forma natural todos los campos que aparezcan en DATOS_VERIFICADOS (marca, modelo, año, precio, kilometraje o estado, "
         "transmision, motor y descripcion). Si algun valor es N/D o indica que no hay descripcion, dilo con naturalidad sin inventar detalles.\n"
+        "- Si en DATOS_VERIFICADOS figura Estado Nuevo (unidad sin kilometraje o 0 km en inventario), NO menciones '0 km', "
+        "'cero kilometros' ni expresiones equivalentes; puedes describirlo como vehiculo nuevo de forma natural o omitir por completo el tema del kilometraje.\n"
         "- No uses listas con viñetas ni formato 'Etiqueta: valor' en lineas separadas; integra todo en parrafos o frases enlazadas.\n"
         "- Evita markdown de tablas o listas; maximo un salto de linea entre dos parrafos cortos si ayuda a la lectura.\n"
         "- No agregues cierre invitando a pedir mas informacion, ver otros modelos, seguir explorando el catalogo\n"
@@ -442,7 +525,6 @@ def build_vehicle_comparison_conversation_prompt(
         "- Usa SOLO informacion que aparezca en DATOS_VERIFICADOS para ambas unidades (mismos valores: km, motor, etc.). "
         "No inventes equipamiento, garantias, historial, consumo, seguridad, financiamiento, promociones ni datos que no esten en las fichas.\n"
         "- Menciona a ambos vehiculos de forma clara (puedes usar los nombres de las secciones o marca/modelo/año del bloque).\n"
-        "- No menciones precio, costo ni valor salvo que ambas fichas en DATOS_VERIFICADOS incluyan la linea Precio.\n"
         "- No menciones color, tonalidad ni pintura salvo que ambas fichas en DATOS_VERIFICADOS incluyan la linea Color.\n"
         "- Contrasta de forma natural lo que difiere (kilometraje, motor, año, descripcion, estado) sin inventar similitudes no respaldadas.\n"
         "- No uses listas con viñetas ni formato tabla 'campo | A | B' ni lineas tipo 'Etiqueta: valor' repetidas como ficha; integra todo en parrafos o frases enlazadas.\n"
@@ -476,8 +558,6 @@ def build_selected_vehicle_qa_prompt(
         "- Responde en espanol (Mexico), tono claro y breve (1-3 oraciones salvo que la pregunta exija un poco mas).\n"
         "- Usa EXCLUSIVAMENTE informacion que aparezca en DATOS_VERIFICADOS (mismos valores: kilometraje, motor, etc.). "
         "No inventes equipamiento, garantias, historial, consumo, revisiones, financiamiento ni promociones.\n"
-        "- Si preguntan por precio, costo o valor, respondelo solo si DATOS_VERIFICADOS incluye la linea Precio; "
-        "si no esta en el bloque, dilo con naturalidad y sugiere que el equipo pueda confirmarlo.\n"
         "- Si preguntan por color, tonalidad o pintura, respondelo solo si DATOS_VERIFICADOS incluye la linea Color; "
         "si no esta en el bloque, dilo con naturalidad y sugiere que el equipo pueda confirmarlo.\n"
         "- Si el dato no esta en DATOS_VERIFICADOS o figura como N/D, dilo con naturalidad y sugiere que el equipo pueda confirmarlo.\n"
@@ -585,6 +665,39 @@ def build_promotion_selection_classifier_prompt(
     )
 
 
+def build_faq_selection_prompt(
+    user_question: str,
+    faq_catalog: str,
+    *,
+    max_candidates: int,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Clasificador: elige indices de FAQ del catalogo que responden la pregunta del usuario."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    question = user_question.strip() or "(mensaje vacio)"
+    catalog = faq_catalog.strip() or "(sin FAQs en catalogo)"
+    max_n = max(1, int(max_candidates))
+    return (
+        f"{system_prompt}\n\n"
+        "CLASIFICADOR_SELECCION_FAQ:\n"
+        "El usuario hizo una pregunta sobre el negocio. Abajo hay un catalogo numerado de FAQs (pregunta/respuesta).\n"
+        "Tu tarea es identificar cuales entradas del catalogo responden correctamente la pregunta del usuario.\n"
+        "Responde SOLO con un objeto JSON en una sola linea, sin comentarios ni markdown. Formato exacto:\n"
+        '{"indices": [<enteros 1-based>], "sin_match": <bool>}\n\n'
+        "Reglas:\n"
+        "- Usa coincidencia semantica, no literal: plurales/singulares, sinonimos y reformulaciones cuentan "
+        "(ej. 'horarios' con FAQ 'horario', 'donde estan' con FAQ de direccion).\n"
+        f"- Devuelve como maximo {max_n} indices, ordenados por relevancia (mas relevante primero).\n"
+        "- Si ninguna FAQ responde la pregunta, devuelve indices: [] y sin_match: true.\n"
+        "- indices debe contener solo numeros validos del catalogo (1..N).\n"
+        "- No inventes FAQs que no esten en el catalogo.\n"
+        "- Si la pregunta abarca varios temas cubiertos por FAQs distintas, puedes devolver mas de un indice.\n\n"
+        f"PREGUNTA_USUARIO: {question}\n\n"
+        f"CATALOGO_FAQ:\n{catalog}\n"
+    )
+
+
 def build_router_intent_classifier_prompt(
     user_message: str,
     previous_intent: str,
@@ -638,7 +751,8 @@ def build_vehicle_step_flags_prompt(
         "- ask_financing=false si pide prueba de manejo, agendar prueba o ver/visitar el vehiculo en persona "
         "(incluye 'quiero una prueba', 'agendar prueba', typos como 'prubea'). En esos casos usa confirm_purchase=true.\n"
         "- ask_images=true cuando pide ver fotos/imagenes del vehiculo actual por primera vez (muestrame fotos, quiero ver imagenes, "
-        "tienen fotos del auto). No uses ask_images si solo habla de ver el vehiculo en persona o agendar prueba de manejo.\n"
+        "tienen fotos del auto, enviar fotos, me puedes enviar fotos, mandame imagenes). "
+        "No uses ask_images si solo habla de ver el vehiculo en persona o agendar prueba de manejo.\n"
         "- ask_more_images=true cuando pide mas fotos/imagenes del vehiculo actual despues de un envio previo (mas fotos, siguientes imagenes).\n"
         "- Si es claramente primer pedido de fotos, ask_images=true y ask_more_images=false.\n"
         "- wants_other_vehicles=true cuando quiere ver otro modelo/u otro carro/catalogo sin pedir comparacion explícita.\n"
@@ -876,42 +990,72 @@ def build_financing_step_flags_prompt(
     has_selected_vehicle: bool,
     has_selected_promotion: bool,
     awaiting_plan_selection: bool,
+    awaiting_vehicle_selection: bool,
+    numbered_plan_lines: str,
     bot_settings: dict[str, Any] | None,
 ) -> str:
-    """Prompt clasificador por flags para navegacion en seleccion de plan de financing."""
+    """Prompt clasificador por flags para navegacion en el nodo financing."""
 
     system_prompt = build_system_prompt(bot_settings)
     previous = previous_bot_message.strip() or "(sin mensaje previo)"
     current = user_message.strip() or "(mensaje vacio)"
     vehicle = selected_vehicle_name.strip() or "(sin vehiculo seleccionado)"
+    numbered = numbered_plan_lines.strip() or "(sin lista numerada reciente)"
     return (
         f"{system_prompt}\n\n"
         "CLASIFICADOR_FLAGS_FINANCING_STEP:\n"
         "Responde SOLO con JSON de una linea con estas claves booleanas exactas:\n"
-        '{ "reject_financing_keep_purchase": <bool>, "ask_explicit_plan": <bool>, "wants_compare_two_plans": <bool> }\n'
-        "Contexto de negocio:\n"
-        "- Estamos en el nodo financing, esperando seleccion explicita de un plan.\n"
-        "- Si el usuario rechaza los planes pero mantiene intencion de compra del vehiculo actual, "
-        "entonces reject_financing_keep_purchase=true.\n"
-        "- Si el usuario sigue ambiguo o no confirma compra sin plan, ask_explicit_plan=true.\n"
-        "- wants_compare_two_plans=true cuando pide comparar dos planes de financiamiento (compara plan 1 y 2, diferencias entre planes, vs, "
-        "cual conviene mas, en que se diferencian X y Y, ventajas de un plan sobre otro).\n"
-        "- wants_compare_two_plans=true si en un solo mensaje nombra o alude claramente a DOS planes distintos para contrastarlos "
-        "(ej. menciona dos nombres o apodos de plan distintos, o 'diferencias entre el plan de la fila 1 y el de la fila 3'). "
-        "En ese caso NO es seleccion de un solo plan: quiere comparacion.\n"
+        '{ "ask_promotions": <bool>, "ask_other_vehicles": <bool>, "ask_financing_with_vehicle": <bool>, '
+        '"wants_compare_two_plans": <bool>, "select_plan": <bool>, "ask_plan_vehicle_info": <bool>, '
+        '"reject_financing_keep_purchase": <bool>, "ask_explicit_plan": <bool> }\n'
+        "Reglas generales:\n"
+        "- Evalua la intencion principal de ESTE turno dentro del flujo de financiamiento.\n"
+        "- Usa true solo cuando haya senales claras; en caso de duda, deja false.\n"
+        "- Puedes poner varios flags en true si el mensaje mezcla intenciones, pero evita "
+        "marcar select_plan=true cuando el usuario solo explora o compara.\n"
+        "Definiciones:\n"
+        "- ask_promotions=true: quiere ver o hablar de promociones/ofertas/descuentos, no de planes de credito.\n"
+        '  Ejemplos: "tienes promociones?", "mejor cuentame las promos", "que ofertas manejan".\n'
+        "- ask_other_vehicles=true: quiere ver catalogo u otros modelos fuera del flujo actual de planes.\n"
+        '  Ejemplos: "muestrame otros carros", "quiero ver mas modelos disponibles".\n'
+        "- ask_financing_with_vehicle=true: pregunta que planes de credito/financiamiento existen para un vehiculo "
+        "concreto (marca/modelo), distinto o mas especifico que el vehiculo ya en contexto.\n"
+        '  Ejemplos: "y para un jimny que planes hay?", "financiamiento para versa 2011", "que opciones de pago tienen para ese carro".\n'
+        "  NO uses ask_financing_with_vehicle=true si el usuario solo pide ficha, detalles, especificaciones, "
+        "fotos o mas informacion del auto sin mencionar planes, credito o financiamiento.\n"
+        "- wants_compare_two_plans=true: pide comparar dos planes (por numero, nombre o prestamista).\n"
+        '  Ejemplos: "compara el 1 y el 2", "diferencias entre shilo y bbva", "cual conviene mas".\n'
+        "- select_plan=true: elige UN plan de la lista numerada sin pedir comparacion.\n"
+        '  Ejemplos: "el plan 2", "financiamiento shilo", "me interesa el de bbva", "la 1".\n'
+        "- ask_plan_vehicle_info=true: quiere ver datos, detalles, ficha tecnica o fotos del vehiculo "
+        "(del plan en contexto o del vehiculo ya consultado), sin pedir listar planes de credito.\n"
+        '  Ejemplos: "que carro trae ese plan?", "muestrame el auto del plan shilo", "fotos del vehiculo del plan 1", '
+        '"dame mas informacion del jimny", "quiero detalles del vehiculo", "como es ese auto".\n'
+        "- reject_financing_keep_purchase=true: rechaza planes pero mantiene intencion de comprar el vehiculo actual.\n"
+        '  Ejemplos: "no me interesa ningun plan, solo quiero el carro", "sin financiamiento pero si compro".\n'
+        "- ask_explicit_plan=true: sigue ambiguo sobre que plan elegir o no confirma compra sin plan.\n"
         "Reglas criticas:\n"
-        "- reject_financing_keep_purchase=true cuando haya rechazo claro de planes "
-        "(ej. no me interesa ninguno, sin financiamiento, no quiero plan) y al mismo tiempo intencion de compra "
-        "del carro actual (ej. solo quiero comprar el carro, si quiero ese carro).\n"
-        "- Si no hay evidencia de ambas cosas a la vez, usa reject_financing_keep_purchase=false.\n"
-        "- ask_explicit_plan=false solo cuando reject_financing_keep_purchase=true.\n"
-        "- Si wants_compare_two_plans=true, pon ask_explicit_plan=false salvo que tambien sea ambiguo sin numeros.\n\n"
+        "- reject_financing_keep_purchase=true solo con rechazo claro de planes E intencion de compra del carro actual.\n"
+        "- ask_explicit_plan=false cuando reject_financing_keep_purchase=true.\n"
+        "- Si wants_compare_two_plans=true, pon select_plan=false salvo que tambien elija uno tras comparar.\n"
+        "- ask_promotions y ask_financing_with_vehicle pueden coexistir; prioriza ask_financing_with_vehicle "
+        "si el mensaje menciona vehiculo y credito/planes a la vez.\n"
+        "- Si el mensaje pide mas informacion, detalles o ficha del auto SIN mencionar planes/credito/financiamiento, "
+        "usa ask_plan_vehicle_info=true y ask_financing_with_vehicle=false.\n"
+        "- Si el mensaje mezcla interes en un plan con pedido de info del vehiculo "
+        '(ej. "me interesa el plan pero quiero mas informacion del vehiculo"), usa ask_plan_vehicle_info=true '
+        "y select_plan=false.\n"
+        "- No marques ask_other_vehicles=true si el usuario solo dice 'carro' dentro de 'quiero comprar el carro' "
+        "sin pedir ver catalogo u otros modelos.\n\n"
         f"awaiting_plan_selection: {str(awaiting_plan_selection).lower()}\n"
+        f"awaiting_vehicle_selection: {str(awaiting_vehicle_selection).lower()}\n"
         f"has_selected_vehicle: {str(has_selected_vehicle).lower()}\n"
         f"has_selected_promotion: {str(has_selected_promotion).lower()}\n"
         f"vehiculo_actual: {vehicle}\n"
         f"mensaje_previo_bot: {previous}\n"
         f"mensaje_usuario: {current}\n"
+        "Lista numerada reciente de planes (si aplica):\n"
+        f"{numbered}\n"
     )
 
 
@@ -1040,21 +1184,25 @@ def build_faq_interrupt_flags_prompt(
         "- true: pregunta por el negocio, agencia o lote: ubicacion, horarios, garantia o politica del lote, "
         "contacto de oficina, datos generales de la concesionaria, que metodos de pago aceptan en caja, "
         "politica por atraso de pagos, papeles/documentos para comprar, adeudos o multas del vehiculo, "
+        "consultas sobre buró o historial crediticio como requisito del negocio, "
         "disponibilidad y condiciones de prueba de manejo, etc.\n"
         "- false: todo lo demas, incluido: preguntas sobre un coche, modelo, anio, estado, 'como es' un auto, "
-        "comparaciones de unidades, mas fotos, si/no, respuestas cortas al turno, credito/enganche/plazos concretos al elegir coche, "
+        "comparaciones de unidades, mas fotos, si/no, respuestas cortas al turno, seleccion de plan concreto, "
+        "enganche/plazos/mensualidad al elegir coche o plan, "
         "cualquier cosa de inventario, catalogo o cierre de paso (confirmacion de compra, datos, etc.)\n"
         "Ejemplos que DEBEN marcarse como FAQ (interrumpir_por_faq=true):\n"
         "- 'que pasa si me atraso en el pago?'\n"
         "- 'que papeles necesito para comprarlo?'\n"
         "- 'el auto tiene adeudos o multas?'\n"
+        "- 'revisan buro de credito?'\n"
         "- 'tienen prueba de manejo?'\n"
         "Ejemplos que NO deben marcarse como FAQ (interrumpir_por_faq=false):\n"
         "- 'quiero ver mas fotos'\n"
         "- 'me interesa el plan 2'\n"
         f"Contexto: esperando_confirmacion_compra={espera_conf} | candidatos_vehiculo_listos_para_elegir={cands}.\n"
         "tema_vehiculo_inventario: el mensaje trata de autos, unidades, modelos, anios, fotos, detalles, comparar.\n"
-        "tema_financiamiento_credi: enganche, plazo, tasa, credito, mensualidad en contexto de plan o coche (no caja del negocio en abstracto si el usuario pide oficina).\n"
+        "tema_financiamiento_credi: enganche, plazo, tasa, mensualidad o seleccion de plan en contexto de compra; "
+        "false si pregunta politicas del negocio sobre credito/buro/requisitos generales.\n"
         "es_respuesta_o_seguimiento_al_ultimo_bot: el mensaje responde o reacciona al turno inmediato del bot (si, no, ok, otra, una seleccion, un dato pedido).\n"
         f"Nodo actual: {node}\n"
         f"Ultimo mensaje del bot: {bot_msg}\n"
@@ -1207,12 +1355,39 @@ def build_answer_first_faq_prompt(
     user_question: str,
     context_blocks: str,
     bot_settings: dict[str, Any] | None,
+    *,
+    faq_close_topic: str = "general",
 ) -> str:
     """Prompt answer-first para FAQ de negocio."""
 
-    return _build_answer_first_prompt_by_mode(
+    prompt = _build_answer_first_prompt_by_mode(
         user_question=user_question,
         context_blocks=context_blocks,
         mode="faq",
         bot_settings=bot_settings,
     )
+    topic = str(faq_close_topic or "").strip().lower()
+    if topic == "horarios":
+        return (
+            f"{prompt}\n"
+            "Regla adicional para FAQ de horarios:\n"
+            "- Responde SOLO con la informacion de horario o dias de atencion.\n"
+            "- NO sugieras revisar modelos, comprar ni ver un carro.\n"
+            "- NO incluyas pregunta de cierre comercial; el sistema agregara el cierre sobre agendar cita.\n"
+        )
+    if topic == "ubicacion":
+        return (
+            f"{prompt}\n"
+            "Reglas adicionales para FAQ de ubicacion:\n"
+            "- El CONTEXTO puede incluir varias direcciones (agencia/showroom de ventas vs taller o area de servicio/refacciones).\n"
+            "- Lee TODAS las entradas del CONTEXTO antes de responder.\n"
+            "- Si el usuario pregunta de forma general (donde estan, direccion, ubicacion, sucursal) "
+            "SIN mencionar servicio, taller, refacciones ni mantenimiento: responde con la direccion de la "
+            "AGENCIA o showroom principal de ventas, NO la del taller o servicio temporal.\n"
+            "- Si el usuario menciona servicio, taller, refacciones, mantenimiento o area de servicio: "
+            "responde con la direccion del TALLER o area de servicio que corresponda en el CONTEXTO.\n"
+            "- Si el usuario no especifica y en el CONTEXTO hay agencia y taller con direcciones distintas, "
+            "puedes mencionar ambas en una o dos oraciones cortas, dejando claro cual es ventas y cual es servicio.\n"
+            "- Usa EXCLUSIVAMENTE direcciones del CONTEXTO; no inventes ni mezcles datos de distintas entradas.\n"
+        )
+    return prompt

@@ -1,5 +1,7 @@
 # Arquitectura actual: Car Advisor Bot
 
+> Diagrama detallado del flujo por nodo (heurísticas vs LLM): [flujo-completo.md](flujo-completo.md).
+
 ## Objetivo
 
 El bot implementa un flujo conversacional guiado por estados deterministas sobre LangGraph,
@@ -24,7 +26,8 @@ flowchart TD
     chatApi --> dbRead[fetch_active_bot_session]
     chatApi --> crmIn[upsert_inbound_user_message]
     dbRead --> graphEngine[LangGraph StateGraph]
-    graphEngine --> intentChecker[intent_checker]
+    graphEngine --> onboardingNode[customer_onboarding]
+    onboardingNode --> intentChecker[intent_checker]
     intentChecker --> routerNode[router]
     routerNode --> domainNodes[car_selection | financing | promotions | lead_capture | faq]
     domainNodes --> crmOut[push_assistant_message_to_backend]
