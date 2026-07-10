@@ -133,6 +133,36 @@ class TestFormatVehicleDetail(unittest.TestCase):
         self.assertNotIn("Rojo", out)
         self.assertIn("**Marca**", out)
 
+    def test_omits_description_when_empty(self) -> None:
+        vehicle = {
+            "brand": "Nissan",
+            "model": "Versa",
+            "year": 2011,
+            "price": "350000",
+            "km": 45000,
+            "transmission": "automatica",
+            "engine": "1.6",
+            "description": "",
+        }
+        out = format_vehicle_detail(vehicle, platform="web")
+        self.assertNotIn("**Descripción**", out)
+        self.assertNotIn("Sin descripcion", out)
+
+    def test_includes_description_when_present(self) -> None:
+        vehicle = {
+            "brand": "Nissan",
+            "model": "Versa",
+            "year": 2011,
+            "price": "350000",
+            "km": 45000,
+            "transmission": "automatica",
+            "engine": "1.6",
+            "description": "Unidad impecable",
+        }
+        out = format_vehicle_detail(vehicle, platform="web")
+        self.assertIn("**Descripción**", out)
+        self.assertIn("Unidad impecable", out)
+
     def test_includes_color_when_requested(self) -> None:
         vehicle = {
             "brand": "Nissan",

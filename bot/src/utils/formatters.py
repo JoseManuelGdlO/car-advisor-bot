@@ -193,7 +193,7 @@ def format_vehicle_detail(
     brand = _title_or_default(vehicle.get("brand"))
     model = _title_or_default(vehicle.get("model"))
     year = vehicle.get("year")
-    description = str(vehicle.get("description", "")).strip() or "Sin descripcion disponible"
+    description = str(vehicle.get("description", "")).strip()
 
     lines = [
         f"{_bold_label('Marca', platform)}: {brand}",
@@ -214,7 +214,8 @@ def format_vehicle_detail(
     )
     if include_color:
         lines.append(f"{_bold_label('Color', platform)}: {_title_or_default(vehicle.get('color'))}")
-    lines.append(f"{_bold_label('Descripción', platform)}: {description}")
+    if description:
+        lines.append(f"{_bold_label('Descripción', platform)}: {description}")
     return "\n".join(lines)
 
 
