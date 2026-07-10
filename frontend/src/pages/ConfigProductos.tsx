@@ -270,6 +270,9 @@ export default function ConfigProductos() {
   const [updating, setUpdating] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const [vehicleFormError, setVehicleFormError] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -313,6 +316,11 @@ export default function ConfigProductos() {
   const isFormValid =
     Boolean(form.brand && form.model && form.year && form.price && form.transmission && form.engine && form.color);
 
+  const editingVehicle = useMemo(
+    () => (editingId ? cars.find((car) => car.id === editingId) ?? null : null),
+    [cars, editingId],
+  );
+
   useEffect(() => {
     if (!focusedVehicleId) return;
     const element = document.getElementById(`vehicle-${focusedVehicleId}`);
@@ -347,6 +355,8 @@ export default function ConfigProductos() {
     setMetadataRows([]);
     setForm(emptyForm);
     setVehicleFormError("");
+    setDeleteOpen(false);
+    setDeleteError("");
   };
 
   const togglePlanForVehicle = async (vehicleId: string, planId: string, selected: boolean) => {
@@ -458,6 +468,24 @@ export default function ConfigProductos() {
       setVehicleFormError(normalizeApiError(err, "No se pudo guardar el vehículo.").formError);
     } finally {
       setCreating(false);
+    }
+  };
+
+  const deleteVehicle = async () => {
+    if (!token || !editingId) return;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await crmApi.deleteVehicle(token, editingId);
+      await queryClient.invalidateQueries({ queryKey: ["vehicles"] });
+      await queryClient.invalidateQueries({ queryKey: ["promotions"] });
+      setDeleteOpen(false);
+      setCreateOpen(false);
+      resetVehicleForm();
+    } catch (err) {
+      setDeleteError(normalizeApiError(err, "No se pudo eliminar el vehículo.").formError);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -828,11 +856,28 @@ export default function ConfigProductos() {
                         onChange={(e) => setForm((s) => ({ ...s, description: e.target.value }))}
                       />
                     </div>
+                    {editingId ? (
+                      <div className="pt-2 border-t border-border">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="w-full border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          disabled={creating || deleting}
+                          onClick={() => {
+                            setDeleteError("");
+                            setDeleteOpen(true);
+                          }}
+                        >
+                          <Trash2 className="w-4 h-4 mr-1" />
+                          Eliminar auto
+                        </Button>
+                      </div>
+                    ) : null}
                   </FormSection>
                 </div>
 
                 <div className="shrink-0 border-t bg-muted/20 px-5 py-4 space-y-2">
-                  <Button type="submit" className="w-full" disabled={creating || !isFormValid}>
+                  <Button type="submit" className="w-full" disabled={creating || deleting || !isFormValid}>
                     {creating ? "Guardando…" : editingId ? "Guardar cambios" : "Crear auto"}
                   </Button>
                   {!isFormValid ? (
@@ -1114,6 +1159,34 @@ export default function ConfigProductos() {
           })}
         </div>
       )}
+      <Dialog
+        open={deleteOpen}
+        onOpenChange={(open) => {
+          setDeleteOpen(open);
+          if (!open) setDeleteError("");
+        }}
+      >
+        <DialogContent className="max-w-md overflow-x-hidden">
+          <DialogHeader>
+            <DialogTitle>Eliminar auto</DialogTitle>
+            <DialogDescription>Esta acción no se puede deshacer. Se quitará del catálogo y de promociones vinculadas.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm font-semibold break-words">
+              {editingVehicle ? `${editingVehicle.brand} ${editingVehicle.model} · ${editingVehicle.year}` : "Vehículo seleccionado"}
+            </p>
+            <div className="flex gap-2">
+              <Button variant="outline" className="w-full" onClick={() => setDeleteOpen(false)} disabled={deleting}>
+                Cancelar
+              </Button>
+              <Button variant="destructive" className="w-full" disabled={deleting} onClick={deleteVehicle}>
+                {deleting ? "Eliminando…" : "Sí, eliminar"}
+              </Button>
+            </div>
+            <FormErrorAlert title="No se pudo eliminar el vehículo" message={deleteError} />
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

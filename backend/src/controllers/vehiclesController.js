@@ -1,4 +1,4 @@
-import { FinancingPlan, Vehicle } from "../models/index.js";
+import { FinancingPlan, Promotion, Vehicle, VehicleFinancingPlan } from "../models/index.js";
 import { Op } from "sequelize";
 import { ApiError } from "../utils/errors.js";
 import { resolveRequestOwner } from "../utils/resolveRequestOwner.js";
@@ -29,6 +29,27 @@ export const updateVehicle = async (req, res, next) => {
   if (!row) return next(new ApiError(404, "Vehicle not found"));
   await row.update(req.body);
   return res.json(row);
+};
+
+export const deleteVehicle = async (req, res, next) => {
+  const userId = req.auth.userId;
+  const vehicleId = String(req.params.id || "").trim();
+  const row = await Vehicle.findOne({ where: { id: vehicleId, ...ownerWhere(userId) } });
+  if (!row) return next(new ApiError(404, "Vehicle not found"));
+
+  await VehicleFinancingPlan.destroy({ where: { ownerUserId: userId, vehicleId } });
+
+  const promotions = await Promotion.findAll({ where: ownerWhere(userId) });
+  await Promise.all(
+    promotions.map(async (promo) => {
+      const ids = Array.isArray(promo.vehicleIds) ? promo.vehicleIds.map(String) : [];
+      if (!ids.includes(vehicleId)) return;
+      await promo.update({ vehicleIds: ids.filter((id) => id !== vehicleId) });
+    }),
+  );
+
+  await row.destroy();
+  return res.status(204).send();
 };
 
 export const getVehicleById = async (req, res, next) => {

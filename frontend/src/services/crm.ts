@@ -95,6 +95,7 @@ export const crmApi = {
       outboundPriority?: number;
     }
   ) => apiRequest(`/vehicles/${id}`, "PATCH", payload, token),
+  deleteVehicle: (token: string, id: string) => apiRequest(`/vehicles/${id}`, "DELETE", undefined, token),
   uploadVehicleImages: async (token: string, files: File[]) => {
     const formData = new FormData();
     files.forEach((file) => formData.append("images", file));

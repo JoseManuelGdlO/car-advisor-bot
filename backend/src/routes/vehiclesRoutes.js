@@ -5,6 +5,7 @@ import path from "path";
 import { requireUserAuth, requireUserOrServiceAuth } from "../middlewares/auth.js";
 import {
   createVehicle,
+  deleteVehicle,
   getVehicleById,
   getVehicleImages,
   getVehiclesByFilters,
@@ -45,6 +46,7 @@ vehiclesRoutes.get("/vehicles/:id", requireUserOrServiceAuth, getVehicleById);
 vehiclesRoutes.get("/vehicles/:id/images", requireUserOrServiceAuth, getVehicleImages);
 vehiclesRoutes.post("/vehicles", requireUserAuth, createVehicle);
 vehiclesRoutes.patch("/vehicles/:id", requireUserAuth, updateVehicle);
+vehiclesRoutes.delete("/vehicles/:id", requireUserAuth, deleteVehicle);
 vehiclesRoutes.post("/vehicles/images/upload", requireUserAuth, upload.array("images", 10), uploadVehicleImages);
 vehiclesRoutes.post(
   "/vehicles/technical-sheet/upload",
