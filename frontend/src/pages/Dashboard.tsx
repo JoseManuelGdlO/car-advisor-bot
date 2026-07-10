@@ -22,6 +22,17 @@ function KpiTrend({ value }: { value: number }) {
   );
 }
 
+const WEEKDAY_LABELS = ["D", "L", "M", "X", "J", "V", "S"] as const;
+
+function getLast7DayLabels(): string[] {
+  const today = new Date();
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(today);
+    d.setDate(today.getDate() - (6 - i));
+    return WEEKDAY_LABELS[d.getDay()];
+  });
+}
+
 const DEFAULT_KPIS: DashboardKpisDto = {
   activeChats: 0,
   newToday: 0,
@@ -46,7 +57,7 @@ export default function Dashboard() {
   const safeKpis = kpis ?? DEFAULT_KPIS;
   const weeklyChats = Array.from({ length: 7 }, (_, i) => safeKpis.weeklyChats[i] ?? 0);
   const max = Math.max(...weeklyChats, 1);
-  const days = ["L", "M", "X", "J", "V", "S", "D"];
+  const days = getLast7DayLabels();
   const currentWeekTotal = weeklyChats.reduce((acc, value) => acc + value, 0);
   const yesterdayChats = weeklyChats[weeklyChats.length - 2] ?? 0;
   const todayChats = weeklyChats[weeklyChats.length - 1] ?? 0;

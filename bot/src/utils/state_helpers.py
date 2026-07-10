@@ -24,10 +24,13 @@ def effective_user_message(state: clientState) -> str:
 
 
 def clear_onboarding_resume(state: clientState) -> None:
-    """Limpia mensajes pendientes de reanudacion tras onboarding."""
+    """Limpia el mensaje de reanudacion intra-turno tras onboarding.
+
+    `pending_onboarding_user_message` se conserva entre turnos HTTP hasta que
+    `_resume_pending_flow` lo consume al capturar el nombre del cliente.
+    """
 
     state["onboarding_resume_user_message"] = ""
-    state["pending_onboarding_user_message"] = ""
 
 
 def latest_human_ai_pair(state: clientState) -> tuple[str, str]:

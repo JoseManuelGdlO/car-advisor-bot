@@ -16,7 +16,11 @@ from src.utils.human_advisor_notify import (
     human_advisor_heuristic_match,
 )
 from src.utils.app_logging import get_app_logger
-from src.utils.signals import TEST_DRIVE_VISIT_SIGNALS, VEHICLE_INFO_REQUEST_SIGNALS
+from src.utils.signals import (
+    TEST_DRIVE_VISIT_SIGNALS,
+    VEHICLE_INFO_REQUEST_SIGNALS,
+    is_business_faq_question,
+)
 from src.utils.state_helpers import latest_human_ai_pair
 
 _TEST_DRIVE_VISIT_SIGNALS_NORMALIZED = {
@@ -63,6 +67,15 @@ def _should_route_scheduling_to_lead_capture(state: clientState, user_text: str)
         return False
     return is_test_drive_or_visit_request(user_text, _TEST_DRIVE_VISIT_SIGNALS_NORMALIZED)
 
+
+_VEHICLE_STEP_FLAGS_BLOCKING_FAQ = (
+    "ask_promotions",
+    "ask_financing",
+    "ask_images",
+    "ask_more_images",
+    "wants_other_vehicles",
+    "reject_purchase",
+)
 
 _FINANCING_COMMERCIAL_FLAG_KEYS = (
     "ask_promotions",
@@ -116,26 +129,19 @@ def intent_checker(state: clientState) -> clientState:
         state["is_faq_interrupt"] = False
         return state
 
-    # Cuando estamos en confirmacion de compra de vehiculo, priorizamos el clasificador
-    # del paso de vehiculo para no desviar preguntas de promociones/financiamiento a FAQ.
-    if current_node == "car_selection" and bool(state.get("awaiting_purchase_confirmation")):
+    # En confirmacion de compra, las FAQ de negocio se evaluan antes que el clasificador
+    # de vehiculo. confirm_purchase no bloquea FAQ: horarios/ubicacion no son cierre comercial.
+    if (
+        current_node == "car_selection"
+        and bool(state.get("awaiting_purchase_confirmation"))
+        and not is_business_faq_question(last_user)
+    ):
         vehicle_flags = classify_vehicle_step_flags(
             previous_bot_message=last_ai,
             user_message=last_user,
             selected_vehicle_name=str(state.get("selected_car", "")).strip(),
         )
-        if any(
-            vehicle_flags.get(key)
-            for key in (
-                "ask_promotions",
-                "ask_financing",
-                "ask_images",
-                "ask_more_images",
-                "wants_other_vehicles",
-                "confirm_purchase",
-                "reject_purchase",
-            )
-        ):
+        if any(vehicle_flags.get(key) for key in _VEHICLE_STEP_FLAGS_BLOCKING_FAQ):
             state["is_faq_interrupt"] = False
             return state
 

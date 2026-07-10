@@ -265,6 +265,55 @@ BUSINESS_LOCATION_FAQ_SUBSTR: frozenset[str] = frozenset(
     )
 )
 
+BUSINESS_HOURS_FAQ_SUBSTR: frozenset[str] = frozenset(
+    (
+        "horario",
+        "horarios",
+        "a que hora",
+        "que hora",
+        "hora abren",
+        "hora cierran",
+        "cuando abren",
+        "cuando cierran",
+        "dias de atencion",
+        "horas de atencion",
+        "hora de atencion",
+    )
+)
+
+BUSINESS_GENERAL_FAQ_SUBSTR: frozenset[str] = frozenset(
+    (
+        "garantia",
+        "garantias",
+        "papeles",
+        "documentos para comprar",
+        "metodos de pago",
+        "formas de pago",
+        "buro de credito",
+        "buro crediticio",
+        "adeudos",
+        "multas del vehiculo",
+        "politica de devolucion",
+        "telefono de la agencia",
+        "telefono de oficina",
+    )
+)
+
+BUSINESS_FAQ_QUESTION_SUBSTR: frozenset[str] = frozenset(
+    BUSINESS_LOCATION_FAQ_SUBSTR | BUSINESS_HOURS_FAQ_SUBSTR | BUSINESS_GENERAL_FAQ_SUBSTR
+)
+
+
+def is_business_faq_question(text: str) -> bool:
+    """True si el mensaje parece FAQ de negocio (horario, ubicacion, garantia, etc.)."""
+
+    from src.tools.vehicles import normalize_user_text
+
+    normalized = normalize_user_text(text)
+    if not normalized:
+        return False
+    return any(term in normalized for term in BUSINESS_FAQ_QUESTION_SUBSTR)
+
 # Subcadenas en texto ya normalizado (normalize_user_text: sin acentos, minusculas).
 HUMAN_ADVISOR_HEURISTIC_SUBSTR: frozenset[str] = frozenset(
     (

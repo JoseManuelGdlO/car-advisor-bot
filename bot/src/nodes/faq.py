@@ -10,6 +10,7 @@ from src.services.llm_responses import (
     generate_faq_resume_transition,
     generate_faq_user_turn,
 )
+from src.utils.signals import BUSINESS_HOURS_FAQ_SUBSTR
 from src.utils.state_helpers import (
     append_assistant_message,
     latest_human_ai_pair,
@@ -19,19 +20,7 @@ from src.utils.state_helpers import (
 _FAQ_DEFAULT_CLOSE = "¿Hay algo más en lo que pueda ayudarte?"
 _FAQ_HOURS_CLOSE = "¿Te gustaría agendar una cita?"
 
-_FAQ_HOURS_QUESTION_TERMS = (
-    "horario",
-    "horarios",
-    "a que hora",
-    "que hora",
-    "hora abren",
-    "hora cierran",
-    "cuando abren",
-    "cuando cierran",
-    "dias de atencion",
-    "horas de atencion",
-    "hora de atencion",
-)
+_FAQ_HOURS_QUESTION_TERMS = BUSINESS_HOURS_FAQ_SUBSTR
 
 _FAQ_HOURS_CONTEXT_TERMS = (
     "horario",
