@@ -33,7 +33,11 @@ def clear_onboarding_resume(state: clientState) -> None:
 def latest_human_ai_pair(state: clientState) -> tuple[str, str]:
     """Obtiene el ultimo par relevante (Human -> AI) del historial operativo."""
 
-    last_user = latest_user_message(state)
+    last_user = ""
+    for message in reversed(state.get("messages", [])):
+        if message.get("role") == "user":
+            last_user = str(message.get("content", "")).strip()
+            break
     last_ai = ""
     for message in reversed(state.get("messages", [])):
         role = message.get("role")

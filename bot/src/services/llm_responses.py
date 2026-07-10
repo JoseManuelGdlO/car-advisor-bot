@@ -596,6 +596,26 @@ def generate_welcome_with_known_name(customer_name: str, *, user_message: str = 
     )
 
 
+def _heuristic_message_without_name(user_message: str, nombre: str) -> str:
+    """Quita el nombre y prefijos introductorios del mensaje del usuario."""
+
+    text = str(user_message or "").strip()
+    name = str(nombre or "").strip()
+    if not text or not name:
+        return text
+    lowered = text.lower()
+    for prefix in ("me llamo", "soy", "mi nombre es", "me dicen"):
+        if lowered.startswith(prefix):
+            text = text[len(prefix) :].lstrip(" :,-.")
+            lowered = text.lower()
+            break
+    if lowered.startswith("con "):
+        text = text[4:].lstrip()
+    pattern = re.compile(re.escape(name), re.IGNORECASE)
+    text = pattern.sub("", text, count=1).strip(" ,.-:;")
+    return text.strip()
+
+
 def _heuristic_customer_name(user_message: str) -> str | None:
     """Fallback minimo si el LLM no esta disponible."""
 
@@ -645,7 +665,7 @@ def extract_customer_name(previous_bot_message: str, user_message: str) -> dict[
     """Extrae nombre del usuario via LLM; heuristica solo como fallback."""
 
     model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
-    out: dict[str, Any] = {"nombre": None, "is_refusal": False}
+    out: dict[str, Any] = {"nombre": None, "is_refusal": False, "mensaje_restante": None}
     try:
         settings = get_bot_settings()
         llm = ChatOpenAI(model=model_name, temperature=0)
@@ -658,6 +678,11 @@ def extract_customer_name(previous_bot_message: str, user_message: str) -> dict[
                 if 2 <= len(cleaned) <= 80:
                     out["nombre"] = cleaned
             out["is_refusal"] = bool(parsed.get("is_refusal"))
+            remainder = parsed.get("mensaje_restante")
+            if remainder is not None and str(remainder).strip().lower() not in ("null", "none", ""):
+                out["mensaje_restante"] = str(remainder).strip()
+            elif out["nombre"]:
+                out["mensaje_restante"] = _heuristic_message_without_name(user_message, str(out["nombre"]))
             if out["nombre"]:
                 return out
     except Exception as exc:
@@ -671,6 +696,7 @@ def extract_customer_name(previous_bot_message: str, user_message: str) -> dict[
     heuristic = _heuristic_customer_name(user_message)
     if heuristic:
         out["nombre"] = heuristic
+        out["mensaje_restante"] = _heuristic_message_without_name(user_message, heuristic)
     return out
 
 

@@ -61,15 +61,49 @@ def _sync_customer_name(state: clientState, nombre: str) -> None:
     )
 
 
-def _resume_pending_flow(state: clientState, nombre: str) -> clientState:
-    """Tras capturar nombre, reanuda la intencion del primer mensaje si existia."""
+def _proceed_without_name(state: clientState, *, reason: str = "name_not_provided") -> clientState:
+    """Cierra captura de nombre sin persistir uno; reanuda intencion pendiente si existia."""
 
+    state["awaiting_customer_name"] = False
+    state["onboarding_greeting_done"] = True
     pending = str(state.get("pending_onboarding_user_message", "")).strip()
     state["pending_onboarding_user_message"] = ""
     if pending:
         state["onboarding_resume_user_message"] = pending
         state["onboarding_turn_complete"] = False
-        _debug("resume_pending_flow", pending=pending, nombre=nombre)
+        _debug(f"{reason}_resume_pending", pending=pending)
+        return append_assistant_message(state, "Entendido. Con gusto te ayudo.")
+    state["onboarding_turn_complete"] = True
+    _debug(reason)
+    return append_assistant_message(state, "Entendido. ¿En qué te puedo ayudar hoy?")
+
+
+def _resume_pending_flow(
+    state: clientState,
+    nombre: str,
+    *,
+    message_remainder: str = "",
+) -> clientState:
+    """Tras capturar nombre, reanuda la intencion pendiente o la peticion del mismo mensaje."""
+
+    pending = str(state.get("pending_onboarding_user_message", "")).strip()
+    state["pending_onboarding_user_message"] = ""
+    resume_text = pending
+    if not resume_text:
+        remainder = str(message_remainder or "").strip()
+        if remainder:
+            onboarding_flags = classify_onboarding_first_message(remainder)
+            if onboarding_flags.get("tiene_intencion_comercial"):
+                resume_text = remainder
+                _debug(
+                    "resume_from_name_capture_remainder",
+                    remainder=remainder,
+                    onboarding_flags=onboarding_flags,
+                )
+    if resume_text:
+        state["onboarding_resume_user_message"] = resume_text
+        state["onboarding_turn_complete"] = False
+        _debug("resume_pending_flow", pending=resume_text, nombre=nombre)
         return append_assistant_message(state, f"Mucho gusto, {nombre}.")
     state["onboarding_turn_complete"] = True
     return append_assistant_message(
@@ -99,20 +133,6 @@ def customer_onboarding(state: clientState) -> clientState:
         state["current_node"] = "customer_onboarding"
         previous_bot = str(state.get("last_bot_message", "")).strip()
         extracted = extract_customer_name(previous_bot, user_text)
-        if extracted.get("is_refusal"):
-            state["awaiting_customer_name"] = False
-            state["onboarding_greeting_done"] = True
-            pending = str(state.get("pending_onboarding_user_message", "")).strip()
-            state["pending_onboarding_user_message"] = ""
-            if pending:
-                state["onboarding_resume_user_message"] = pending
-                state["onboarding_turn_complete"] = False
-                _debug("name_refused_resume_pending", pending=pending)
-                return append_assistant_message(state, "Entendido. Con gusto te ayudo.")
-            state["onboarding_turn_complete"] = True
-            _debug("name_refused")
-            return append_assistant_message(state, "Entendido. ¿En qué te puedo ayudar hoy?")
-
         nombre = str(extracted.get("nombre") or "").strip()
         if nombre and _is_real_customer_name(nombre):
             info = dict(state.get("customer_info") or {})
@@ -122,14 +142,14 @@ def customer_onboarding(state: clientState) -> clientState:
             state["onboarding_greeting_done"] = True
             _sync_customer_name(state, nombre)
             _debug("name_captured", nombre=nombre)
-            return _resume_pending_flow(state, nombre)
+            return _resume_pending_flow(
+                state,
+                nombre,
+                message_remainder=str(extracted.get("mensaje_restante") or "").strip(),
+            )
 
-        state["onboarding_turn_complete"] = True
-        _debug("name_not_extracted", user_text=user_text)
-        return append_assistant_message(
-            state,
-            "Perdón, no alcancé a captar tu nombre. ¿Cómo te llamas?",
-        )
+        reason = "name_refused" if extracted.get("is_refusal") else "name_not_extracted"
+        return _proceed_without_name(state, reason=reason)
 
     if customer_name and state.get("onboarding_greeting_done"):
         if saved_node not in {"", "start"}:
