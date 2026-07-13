@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import ExitStack
 from unittest.mock import patch
 
 from tests.test_helpers import GraphTestCase, initial_state, with_user_message
@@ -571,53 +572,132 @@ class FinancingFlowTests(GraphTestCase):
                 return shilo_plan
             return None
 
-        with (
-            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", side_effect=faq_flags),
-            patch("src.nodes.faq.fetch_faq_candidates", return_value=["Estamos ubicados por el colegio REX."]),
-            patch("src.nodes.faq.generate_faq_resume_transition", return_value="¿Seguimos con el financiamiento?"),
-            patch("src.nodes.faq.generate_faq_user_turn", return_value="Estamos ubicados por el colegio REX."),
-            patch("src.nodes.car_selection.fetch_vehicles", return_value=[versa_2011, versa_2001]),
-            patch("src.nodes.car_selection.search_vehicles", side_effect=[[versa_2011, versa_2001], [versa_2011]]),
-            patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=versa_2011),
-            patch("src.nodes.car_selection.generate_vehicle_candidates_selection_message", return_value="1. Nissan Versa 2011\n2. Nissan Versa 2001"),
-            patch(
-                "src.nodes.car_selection.generate_vehicle_detail_conversation",
-                return_value="Aqui tienes la información completa del Nissan Versa 2011. 😊",
-            ),
-            patch(
-                "src.nodes.car_selection.generate_verified_user_message",
-                side_effect=lambda **kw: kw["fallback"],
-            ),
-            patch("src.nodes.financing.resolve_single_vehicle_from_text", side_effect=resolve_vehicle_hint),
-            patch("src.nodes.financing.fetch_financing_plans_by_vehicle", return_value=[shilo_plan, plan_test]),
-            patch(
-                "src.nodes.financing.classify_financing_step_flags",
-                return_value=_FINANCING_STEP_FLAGS_DEFAULT,
-            ),
-            patch(
-                "src.nodes.financing.generate_verified_user_message",
-                side_effect=lambda **kw: kw["fallback"],
-            ),
-            patch("src.nodes.financing.classify_financing_plan_selection_intent", return_value="ASK_EXPLICIT_PLAN"),
-            patch("src.nodes.financing._pick_plan_from_state", side_effect=pick_plan_from_state_side_effect),
-            patch("src.nodes.financing.extract_financing_plan_selection_payload", return_value={}),
-            patch(
-                "src.nodes.lead_capture.generate_lead_capture_scheduling_message",
-                return_value=(
-                    "Agenda Nissan Versa 2011 en "
-                    "https://calendar.app.google/tYniJNfcrd8qXvut8"
-                ),
-            ),
-            patch("src.nodes.lead_capture.notify_advisor") as notify_mock,
-            patch("src.nodes.lead_capture.push_event_to_backend") as event_mock,
-            patch("src.nodes.lead_capture.deactivate_bot", side_effect=lambda s, **_: {**s, "bot_disabled": True}),
-        ):
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch("src.nodes.intent_checker.maybe_escalate_financing_detail", return_value=None)
+            )
+            stack.enter_context(
+                patch("src.nodes.intent_checker.classify_faq_interrupt_flags", side_effect=faq_flags)
+            )
+            stack.enter_context(
+                patch(
+                    "src.nodes.faq.fetch_faq_candidates",
+                    return_value=["Estamos ubicados por el colegio REX."],
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "src.nodes.faq.generate_faq_resume_transition",
+                    return_value="¿Seguimos con el financiamiento?",
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "src.nodes.faq.generate_faq_user_turn",
+                    return_value="Estamos ubicados por el colegio REX.",
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "src.nodes.car_selection.fetch_vehicles",
+                    return_value=[versa_2011, versa_2001],
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "src.nodes.car_selection.search_vehicles",
+                    side_effect=[[versa_2011, versa_2001], [versa_2011]],
+                )
+            )
+            stack.enter_context(
+                patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=versa_2011)
+            )
+            stack.enter_context(
+                patch(
+                    "src.nodes.car_selection.generate_vehicle_candidates_selection_message",
+                    return_value="1. Nissan Versa 2011\n2. Nissan Versa 2001",
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "src.nodes.car_selection.generate_vehicle_detail_conversation",
+                    return_value="Aqui tienes la información completa del Nissan Versa 2011. 😊",
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "src.nodes.car_selection.generate_verified_user_message",
+                    side_effect=lambda **kw: kw["fallback"],
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "src.nodes.financing.resolve_single_vehicle_from_text",
+                    side_effect=resolve_vehicle_hint,
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "src.nodes.financing.fetch_financing_plans_by_vehicle",
+                    return_value=[shilo_plan, plan_test],
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "src.nodes.financing.classify_financing_step_flags",
+                    return_value=_FINANCING_STEP_FLAGS_DEFAULT,
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "src.nodes.financing.generate_verified_user_message",
+                    side_effect=lambda **kw: kw["fallback"],
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "src.nodes.financing.classify_financing_plan_selection_intent",
+                    return_value="ASK_EXPLICIT_PLAN",
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "src.nodes.financing._pick_plan_from_state",
+                    side_effect=pick_plan_from_state_side_effect,
+                )
+            )
+            stack.enter_context(
+                patch("src.nodes.financing.extract_financing_plan_selection_payload", return_value={})
+            )
+            stack.enter_context(
+                patch(
+                    "src.nodes.lead_capture.generate_lead_capture_scheduling_message",
+                    return_value=(
+                        "Agenda Nissan Versa 2011 en "
+                        "https://calendar.app.google/tYniJNfcrd8qXvut8"
+                    ),
+                )
+            )
+            notify_mock = stack.enter_context(patch("src.nodes.lead_capture.notify_advisor"))
+            event_mock = stack.enter_context(patch("src.nodes.lead_capture.push_event_to_backend"))
+            stack.enter_context(
+                patch(
+                    "src.nodes.lead_capture.deactivate_bot",
+                    side_effect=lambda s, **_: {**s, "bot_disabled": True},
+                )
+            )
+
             state = self.graph.invoke(with_user_message(state, "tienes carros versa?"))
             state = self.graph.invoke(with_user_message(state, "Cómo es el nissan versa 2011?"))
             state = self.graph.invoke(with_user_message(state, "dónde estan ubicados?"))
             self.assertIn("colegio REX", state["messages"][-1]["content"])
 
-            state = self.graph.invoke(with_user_message(state, "si me interesa el vehiculo, pero no tienen planes de financiamiento?"))
+            state = self.graph.invoke(
+                with_user_message(
+                    state,
+                    "si me interesa el vehiculo, pero no tienen planes de financiamiento?",
+                )
+            )
             self.assertEqual(state.get("current_node"), "financing")
 
             state = self.graph.invoke(with_user_message(state, "el shilo suena interesante"))

@@ -340,6 +340,7 @@ class PurchaseFlowTests(GraphTestCase):
         state["intent"] = "vehicle_catalog"
         state["selected_car"] = "Dodge Ram 2015"
         state["selected_vehicle_id"] = "veh-ram"
+        state["technical_sheet_delivered_vehicle_id"] = "veh-ram"
         state["awaiting_purchase_confirmation"] = True
         state["vehicle_images_last_batch"] = []
         state["last_bot_message"] = (
@@ -384,6 +385,61 @@ class PurchaseFlowTests(GraphTestCase):
         self.assertIn("ram-ficha.pdf", document_blocks[0])
         payload = json.loads(document_blocks[0].replace("<<WC_DOCUMENT_JSON>>", "", 1))
         self.assertEqual(payload["caption"], "Aquí tienes la ficha técnica")
+        self.assertEqual(updated.get("technical_sheet_delivered_vehicle_id"), "veh-ram")
+
+    def test_pregunta_modelo_skips_technical_sheet_when_already_delivered(self) -> None:
+        state = initial_state()
+        state["platform"] = "web"
+        state["current_node"] = "car_selection"
+        state["intent"] = "vehicle_catalog"
+        state["selected_car"] = "Suzuki Dzire 2026"
+        state["selected_vehicle_id"] = "veh-dzire"
+        state["technical_sheet_delivered_vehicle_id"] = "veh-dzire"
+        state["awaiting_purchase_confirmation"] = True
+        state["vehicle_images_last_batch"] = []
+        state["last_bot_message"] = (
+            "¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? "
+            "También puedes pedir ver más imágenes del mismo."
+        )
+        state = with_user_message(state, "Cuáles son las dimensiones del vehículo?")
+
+        vehicles = [{"id": "veh-dzire", "brand": "Suzuki", "model": "Dzire", "year": 2026, "status": "available"}]
+        dzire_detail = {
+            "id": "veh-dzire",
+            "brand": "Suzuki",
+            "model": "Dzire",
+            "year": 2026,
+            "status": "available",
+            "price": 312990,
+            "km": 0,
+            "transmission": "manual",
+            "engine": "1.2",
+            "color": "blanco",
+            "description": "Sedan eficiente",
+            "technicalSheetUrl": "/uploads/autobot/dzire-ficha.pdf",
+            "metadata": {"lengthMm": 3995, "widthMm": 1735},
+        }
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=dzire_detail),
+            patch(
+                "src.nodes.car_selection.classify_purchase_confirmation_intent",
+                return_value="PREGUNTA_MODELO",
+            ),
+            patch(
+                "src.nodes.car_selection.generate_selected_vehicle_qa_response",
+                return_value="La longitud total es 3995 mm y el ancho total 1735 mm.",
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        contents = [m["content"] for m in updated["messages"] if m.get("role") == "assistant"]
+        joined = "\n".join(contents)
+        self.assertIn("3995", joined)
+        self.assertNotIn("dzire-ficha.pdf", joined)
+        self.assertNotIn("ficha técnica", joined.lower())
+        self.assertEqual(updated.get("technical_sheet_delivered_vehicle_id"), "veh-dzire")
 
     def test_pregunta_modelo_skips_technical_sheet_when_missing(self) -> None:
         state = initial_state()

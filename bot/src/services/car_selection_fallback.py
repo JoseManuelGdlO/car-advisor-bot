@@ -144,6 +144,33 @@ def user_asks_for_color(user_text: str) -> bool:
     return any(contains_signal_phrase(normalized, signal) for signal in _COLOR_QUESTION_SIGNALS)
 
 
+_TECHNICAL_SHEET_REQUEST_SIGNALS = (
+    "dame la ficha",
+    "ficha tecnica",
+    "ficha del auto",
+    "ficha del vehiculo",
+    "ficha del modelo",
+    "ficha del carro",
+    "la ficha tecnica",
+    "mandame la ficha",
+    "enviale la ficha",
+    "enviame la ficha",
+    "comparte la ficha",
+    "pdf de la ficha",
+    "pasame el pdf",
+    "pasame el archivo",
+)
+
+
+def user_asks_for_technical_sheet(user_text: str) -> bool:
+    """True si el usuario pide explicitamente la ficha tecnica PDF del vehiculo."""
+
+    normalized = normalize_user_text(user_text)
+    if not normalized:
+        return False
+    return any(signal in normalized for signal in _TECHNICAL_SHEET_REQUEST_SIGNALS)
+
+
 def is_promotions_request(user_text: str, promotions_signals_normalized: set[str]) -> bool:
     """Detecta interés en promociones u ofertas vigentes."""
 

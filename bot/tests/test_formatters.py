@@ -179,6 +179,65 @@ class TestFormatVehicleDetail(unittest.TestCase):
         self.assertIn("**Color**", out)
         self.assertIn("Rojo", out)
 
+    def test_omits_metadata_when_empty_or_missing(self) -> None:
+        vehicle = {
+            "brand": "Nissan",
+            "model": "Versa",
+            "year": 2011,
+            "price": "350000",
+            "km": 45000,
+            "transmission": "automatica",
+            "engine": "1.6",
+            "description": "Unidad impecable",
+            "metadata": {},
+        }
+        out = format_vehicle_detail(vehicle, platform="web")
+        self.assertIn("**Descripción**", out)
+        self.assertNotIn("Longitud", out)
+        out_missing = format_vehicle_detail({**vehicle, "metadata": None}, platform="web")
+        self.assertIn("**Descripción**", out_missing)
+
+    def test_includes_mapped_dimensions_from_metadata(self) -> None:
+        vehicle = {
+            "brand": "Suzuki",
+            "model": "Dzire",
+            "year": 2026,
+            "price": "312990",
+            "km": 0,
+            "transmission": "manual",
+            "engine": "1.2",
+            "description": "Sedan eficiente",
+            "metadata": {
+                "lengthMm": 3995,
+                "widthMm": 1735,
+                "heightMm": 1515,
+                "wheelbaseMm": 2450,
+            },
+        }
+        out = format_vehicle_detail(vehicle, platform="web")
+        self.assertIn("**Descripción**: Sedan eficiente", out)
+        self.assertIn("**Longitud total**: 3995", out)
+        self.assertIn("**Ancho total**: 1735", out)
+        self.assertIn("**Altura total**: 1515", out)
+        self.assertIn("**Distancia entre ejes**: 2450", out)
+
+    def test_includes_freeform_ui_metadata_keys(self) -> None:
+        vehicle = {
+            "brand": "Nissan",
+            "model": "Versa",
+            "year": 2011,
+            "price": "350000",
+            "km": 45000,
+            "transmission": "automatica",
+            "engine": "1.6",
+            "description": "Unidad impecable",
+            "metadata": {"Puertas": "Cinco", "fuel": "Gasolina"},
+        }
+        out = format_vehicle_detail(vehicle, platform="web")
+        self.assertIn("**Descripción**: Unidad impecable", out)
+        self.assertIn("**Puertas**: Cinco", out)
+        self.assertIn("**Combustible**: Gasolina", out)
+
 
 class TestFormatFinancingPlanComparison(unittest.TestCase):
     def test_two_plans_row_structure(self) -> None:

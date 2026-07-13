@@ -31,6 +31,7 @@ from src.services.car_selection_fallback import (
     looks_like_feature_request,
     looks_like_specific_vehicle_request,
     user_asks_for_color,
+    user_asks_for_technical_sheet,
 )
 from src.tools.vehicles import (
     canonicalize_with_typo_support,
@@ -326,6 +327,29 @@ def _reset_vehicle_images_state(state: clientState) -> None:
     reset_vehicle_images_state(state)
 
 
+def _reset_technical_sheet_delivery(state: clientState) -> None:
+    """Limpia el tracking de ficha tecnica enviada (cambio o descarte de vehiculo)."""
+    state["technical_sheet_delivered_vehicle_id"] = ""
+
+
+def _mark_technical_sheet_delivered(state: clientState, vehicle_id: str) -> None:
+    """Registra que ya se entrego la ficha tecnica PDF para este vehiculo."""
+    normalized = str(vehicle_id or "").strip()
+    if normalized:
+        state["technical_sheet_delivered_vehicle_id"] = normalized
+
+
+def _should_attach_technical_sheet(state: clientState, vehicle_id: str, user_text: str) -> bool:
+    """True si aun no se envio la ficha de este vehiculo, o el usuario la pide de nuevo."""
+    current_id = str(vehicle_id or "").strip()
+    if not current_id:
+        return False
+    already_delivered = str(state.get("technical_sheet_delivered_vehicle_id", "")).strip() == current_id
+    if not already_delivered:
+        return True
+    return user_asks_for_technical_sheet(user_text)
+
+
 def _respond_with_first_images(state: clientState) -> clientState:
     """Entrega primer lote de imágenes del vehículo seleccionado."""
 
@@ -415,6 +439,7 @@ def _build_technical_sheet_message(state: clientState, detail: dict[str, Any]) -
             caption="Aquí tienes la ficha técnica",
         )
         if message:
+            _mark_technical_sheet_delivered(state, vehicle_id)
             _debug(
                 "technical_sheet_sent",
                 vehicle_id=vehicle_id,
@@ -423,6 +448,7 @@ def _build_technical_sheet_message(state: clientState, detail: dict[str, Any]) -
                 delivery="whatsapp_document",
             )
         return message
+    _mark_technical_sheet_delivered(state, vehicle_id)
     _debug(
         "technical_sheet_sent",
         vehicle_id=vehicle_id,
@@ -469,9 +495,10 @@ def _respond_selected_vehicle_inventory_qa(state: clientState, user_text: str) -
     state["awaiting_purchase_confirmation"] = True
     _debug("answered_inventory_qa_while_awaiting_confirmation", vehicle_id=vehicle_id)
     blocks = [body]
-    sheet_msg = _build_technical_sheet_message(state, detail)
-    if sheet_msg:
-        blocks.append(sheet_msg)
+    if _should_attach_technical_sheet(state, vehicle_id, user_text):
+        sheet_msg = _build_technical_sheet_message(state, detail)
+        if sheet_msg:
+            blocks.append(sheet_msg)
     blocks.append(question)
     return _append_assistant_blocks(state, blocks)
 
@@ -615,6 +642,7 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
     state["last_vehicle_candidates"] = []
     state["awaiting_purchase_confirmation"] = True
     _reset_vehicle_images_state(state)
+    _reset_technical_sheet_delivery(state)
     _debug(
         "vehicle_selected",
         selected_vehicle_id=state["selected_vehicle_id"],
@@ -711,6 +739,7 @@ def _respond_available_list(
     state["selected_car"] = ""
     state["vehicle_comparison_ctx"] = {}
     _reset_vehicle_images_state(state)
+    _reset_technical_sheet_delivery(state)
     available_count = sum(1 for item in vehicles if str(item.get("status", "")).strip().lower() == "available")
     _debug(
         "showing_available_list",

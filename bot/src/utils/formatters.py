@@ -2,8 +2,26 @@
 
 from __future__ import annotations
 
+import re
 from decimal import Decimal, InvalidOperation
 from typing import Any, Callable
+
+# Etiquetas legibles para keys comunes de metadata (import Suzuki / ConfigProductos).
+_METADATA_LABELS: dict[str, str] = {
+    "lengthMm": "Longitud total",
+    "widthMm": "Ancho total",
+    "heightMm": "Altura total",
+    "wheelbaseMm": "Distancia entre ejes",
+    "fuelCityKmL": "Rendimiento ciudad",
+    "fuelHighwayKmL": "Rendimiento carretera",
+    "fuelCombinedKmL": "Rendimiento combinado",
+    "passengers": "Pasajeros",
+    "doors": "Puertas",
+    "fuel": "Combustible",
+    "drivetrain": "Tracción",
+    "versions": "Versiones",
+    "transmissionFull": "Transmisión completa",
+}
 
 
 def _title_or_default(value: Any, fallback: str = "N/D") -> str:
@@ -67,6 +85,67 @@ def _bold_labels(labels: list[str], platform: str = "web") -> dict[str, str]:
     """Devuelve un mapa etiqueta->etiqueta en negritas para reutilizar formateo."""
 
     return {label: _bold_label(label, platform) for label in labels}
+
+
+def _metadata_key_label(key: str) -> str:
+    """Convierte key de metadata a etiqueta legible (mapa conocido o camelCase/snake_case)."""
+
+    raw = str(key or "").strip()
+    if not raw:
+        return ""
+    mapped = _METADATA_LABELS.get(raw)
+    if mapped:
+        return mapped
+    # Keys libres de UI ya suelen venir en español title-case.
+    if " " in raw or (raw[:1].isupper() and not raw.isupper() and "_" not in raw and not re.search(r"[a-z][A-Z]", raw)):
+        return raw
+    spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", raw.replace("_", " "))
+    spaced = re.sub(r"\s+", " ", spaced).strip()
+    if not spaced:
+        return raw
+    return spaced[:1].upper() + spaced[1:]
+
+
+def _format_metadata_value(value: Any) -> str:
+    """Stringify limpio de un valor de metadata para el bloque DATOS_VERIFICADOS."""
+
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "sí" if value else "no"
+    if isinstance(value, (int, float)):
+        if isinstance(value, float) and value == int(value):
+            return str(int(value))
+        return str(value)
+    if isinstance(value, list):
+        parts = [_format_metadata_value(item) for item in value]
+        parts = [part for part in parts if part]
+        return ", ".join(parts)
+    if isinstance(value, dict):
+        parts = []
+        for nested_key, nested_value in value.items():
+            nested_text = _format_metadata_value(nested_value)
+            if not nested_text:
+                continue
+            label = _metadata_key_label(str(nested_key))
+            parts.append(f"{label}: {nested_text}" if label else nested_text)
+        return "; ".join(parts)
+    return str(value).strip()
+
+
+def _format_metadata_lines(metadata: Any, platform: str = "web") -> list[str]:
+    """Arma lineas Etiqueta: valor desde vehicle.metadata (información adicional)."""
+
+    if not isinstance(metadata, dict) or not metadata:
+        return []
+    lines: list[str] = []
+    for key, value in metadata.items():
+        label = _metadata_key_label(str(key))
+        text = _format_metadata_value(value)
+        if not label or not text:
+            continue
+        lines.append(f"{_bold_label(label, platform)}: {text}")
+    return lines
 
 
 def format_vehicle_name(item: dict[str, Any]) -> str:
@@ -216,6 +295,7 @@ def format_vehicle_detail(
         lines.append(f"{_bold_label('Color', platform)}: {_title_or_default(vehicle.get('color'))}")
     if description:
         lines.append(f"{_bold_label('Descripción', platform)}: {description}")
+    lines.extend(_format_metadata_lines(vehicle.get("metadata"), platform))
     return "\n".join(lines)
 
 

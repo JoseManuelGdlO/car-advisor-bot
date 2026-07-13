@@ -14,6 +14,7 @@ from src.services.car_selection_fallback import (
     looks_like_feature_request,
     looks_like_specific_vehicle_request,
     user_asks_for_color,
+    user_asks_for_technical_sheet,
 )
 from src.tools.vehicles import normalize_user_text
 from src.utils.signals import TEST_DRIVE_VISIT_SIGNALS
@@ -99,6 +100,12 @@ class CarSelectionFallbackTests(unittest.TestCase):
         self.assertFalse(user_asks_for_color("tienen nissan versa"))
         self.assertFalse(user_asks_for_color("dame la ficha tecnica"))
         self.assertFalse(user_asks_for_color("compara versa con march"))
+
+    def test_user_asks_for_technical_sheet_detects_explicit_requests(self) -> None:
+        self.assertTrue(user_asks_for_technical_sheet("dame la ficha tecnica"))
+        self.assertTrue(user_asks_for_technical_sheet("mandame la ficha del auto"))
+        self.assertFalse(user_asks_for_technical_sheet("cuales son las dimensiones"))
+        self.assertFalse(user_asks_for_technical_sheet("cuantos kilometros tiene"))
 
     def test_selected_vehicle_specs_request_true_when_same_vehicle_or_unresolved(self) -> None:
         selected_id = "veh-1"
