@@ -33,7 +33,10 @@ from src.utils.signals import (
 )
 from src.utils.vehicle_images import reset_vehicle_images_state
 from src.utils.app_logging import get_app_logger, log_flow_trace
-from src.utils.financing_advisor_notify import maybe_escalate_financing_detail
+from src.utils.financing_advisor_notify import (
+    append_down_payment_faq_if_applicable,
+    maybe_escalate_financing_detail,
+)
 from src.utils.state_helpers import append_assistant_message, latest_user_message
 
 _log = get_app_logger("financing")
@@ -46,9 +49,10 @@ def _debug(event: str, **payload: Any) -> None:
 
 
 def _return_plan_listing(state: clientState, message: str, user_text: str) -> clientState:
-    """Muestra planes y, si aplica, escala a asesor tras publicar el catalogo."""
+    """Muestra planes, FAQ de enganche si aplica, y escala a asesor tras publicar el catalogo."""
 
     state = append_assistant_message(state, message)
+    state = append_down_payment_faq_if_applicable(state, user_text)
     escalated = maybe_escalate_financing_detail(
         state,
         trigger="financing_after_plans",
@@ -1053,7 +1057,8 @@ def financing(state: clientState) -> clientState:
             ),
             temperature=0.35,
         )
-        return append_assistant_message(state, message)
+        state = append_assistant_message(state, message)
+        return append_down_payment_faq_if_applicable(state, user_text)
 
     state["financing_plan_candidates"] = plans
     state["awaiting_financing_plan_selection"] = True

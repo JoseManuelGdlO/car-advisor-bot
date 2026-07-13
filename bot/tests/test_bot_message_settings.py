@@ -8,6 +8,7 @@ from src.services.llm_responses import strip_name_request_from_welcome_message
 from src.utils.prompts import (
     append_bot_message_templates_to_verified_block,
     build_bot_message_templates_block,
+    build_faq_interrupt_flags_prompt,
     build_settings_block,
 )
 
@@ -57,6 +58,19 @@ class BotMessageSettingsTests(unittest.TestCase):
             strip_name_request_from_welcome_message(raw),
             "Hola buen día, en qué te puedo ayudar",
         )
+
+    def test_faq_interrupt_prompt_rejects_name_as_human_advisor(self) -> None:
+        prompt = build_faq_interrupt_flags_prompt(
+            current_node="customer_onboarding",
+            last_bot_message="Mucho gusto, Javier.",
+            user_message="Con Javier",
+            awaiting_purchase_confirmation=False,
+            pending_vehicle_count=0,
+            bot_settings=None,
+        )
+        self.assertIn("Con Javier", prompt)
+        self.assertIn("quiere_asesor_humano: false", prompt)
+        self.assertIn("la preposicion 'con' + nombre NO significa pedir un asesor", prompt)
 
 
 if __name__ == "__main__":

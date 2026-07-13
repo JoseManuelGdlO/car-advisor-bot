@@ -210,8 +210,8 @@ def is_enganche_related_request(text: str) -> bool:
     return bool(normalized and "enganche" in normalized)
 
 
-def _resolve_down_payment_message(user_text: str) -> str | None:
-    """Mensaje configurable de enganche; solo si el usuario lo menciona y hay texto guardado."""
+def resolve_down_payment_message(user_text: str) -> str | None:
+    """Mensaje configurable de enganche (FAQ); solo si el usuario lo menciona y hay texto guardado."""
 
     if not is_enganche_related_request(user_text):
         return None
@@ -220,6 +220,25 @@ def _resolve_down_payment_message(user_text: str) -> str | None:
         return None
     text = str(raw).strip()
     return text or None
+
+
+def append_down_payment_faq_if_applicable(
+    state: clientState,
+    user_text: str | None = None,
+) -> clientState:
+    """Agrega el mensaje de enganche como FAQ si aplica; no duplica el ultimo assistant."""
+
+    text = str(user_text or "").strip()
+    if not text:
+        last_user, _ = latest_human_ai_pair(state)
+        text = last_user
+    msg = resolve_down_payment_message(text)
+    if not msg:
+        return state
+    _, last_ai = latest_human_ai_pair(state)
+    if last_ai == msg:
+        return state
+    return append_assistant_message(state, msg)
 
 
 def handle_financing_detail_escalation(
@@ -297,9 +316,7 @@ def handle_financing_detail_escalation(
     if not user_text:
         last_user, _ = latest_human_ai_pair(state)
         user_text = last_user
-    down_payment_msg = _resolve_down_payment_message(user_text)
-    if down_payment_msg:
-        state = append_assistant_message(state, down_payment_msg)
+    state = append_down_payment_faq_if_applicable(state, user_text)
     ack = _user_escalation_ack(notify_ok=notify_ok, owner_set=bool(owner_user_id))
     state = append_assistant_message(state, ack)
     return deactivate_bot(state, reason="financing_detail")

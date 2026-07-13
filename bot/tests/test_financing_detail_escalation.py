@@ -10,6 +10,7 @@ from src.nodes.financing import financing
 from src.nodes.intent_checker import intent_checker
 from src.nodes.router import router
 from src.utils.financing_advisor_notify import (
+    append_down_payment_faq_if_applicable,
     handle_financing_detail_escalation,
     is_financing_catalog_request,
     is_financing_personalized_quote_request,
@@ -160,6 +161,37 @@ class TestHandleFinancingDetailEscalation(unittest.TestCase):
         self.assertEqual(len(tail), 1)
         self.assertIn("Un asesor te contactara", tail[0])
         self.assertNotIn("15%", tail[0])
+
+
+class TestDownPaymentFaqAppend(unittest.TestCase):
+    def test_appends_configured_message_for_any_enganche_question(self) -> None:
+        state = _state_with_bot_exchange(
+            user="De cuanto es el enganche para un carro?",
+            bot="Estos son los planes disponibles.",
+        )
+        with patch(
+            "src.utils.financing_advisor_notify.get_bot_settings",
+            return_value={"downPaymentMessage": "El enganche minimo para un carro es de 15%"},
+        ):
+            out = append_down_payment_faq_if_applicable(
+                dict(state),
+                "De cuanto es el enganche para un carro?",
+            )
+        msgs = [m.get("content", "") for m in out.get("messages", []) if m.get("role") == "assistant"]
+        self.assertEqual(msgs[-1], "El enganche minimo para un carro es de 15%")
+
+    def test_does_not_duplicate_if_already_last_assistant(self) -> None:
+        state = _state_with_bot_exchange(
+            user="cuanto de enganche",
+            bot="El enganche minimo para un carro es de 15%",
+        )
+        with patch(
+            "src.utils.financing_advisor_notify.get_bot_settings",
+            return_value={"downPaymentMessage": "El enganche minimo para un carro es de 15%"},
+        ):
+            out = append_down_payment_faq_if_applicable(dict(state), "cuanto de enganche")
+        msgs = [m.get("content", "") for m in out.get("messages", []) if m.get("role") == "assistant"]
+        self.assertEqual(msgs.count("El enganche minimo para un carro es de 15%"), 1)
 
 
 class TestIsFinancingCatalogRequest(unittest.TestCase):
@@ -515,6 +547,38 @@ class TestFinancingNodeEscalation(unittest.TestCase):
         self.assertTrue(out.get("financing_detail_push_sent"))
 
 
+    def test_financing_node_appends_down_payment_faq_without_escalation(self) -> None:
+        from src.nodes.financing import _return_plan_listing
+
+        state = _state_with_bot_exchange(
+            user="De cuanto es el enganche para un carro?",
+            bot="Mucho gusto, Julio.",
+        )
+        with (
+            patch("src.nodes.financing.maybe_escalate_financing_detail", return_value=None),
+            patch(
+                "src.nodes.financing.append_down_payment_faq_if_applicable",
+                side_effect=lambda s, text: {
+                    **s,
+                    "messages": list(s.get("messages", []))
+                    + [
+                        {
+                            "role": "assistant",
+                            "content": "El enganche minimo es 15%",
+                            "type": "AIMessage",
+                        }
+                    ],
+                },
+            ) as faq_mock,
+        ):
+            out = _return_plan_listing(dict(state), "Tenemos el plan Suzuki Finance.", "De cuanto es el enganche para un carro?")
+        faq_mock.assert_called_once()
+        self.assertIn(
+            "El enganche minimo es 15%",
+            [m.get("content") for m in out.get("messages", [])],
+        )
+
+
 class TestFaqNodeFinancingEscalation(unittest.TestCase):
     def test_faq_escalates_non_business_financing_question(self) -> None:
         state = with_user_message(initial_state(), "Me aprueban con mal buro?")
@@ -558,3 +622,38 @@ class TestFaqNodeFinancingEscalation(unittest.TestCase):
             out = faq(dict(state))
         escalate_mock.assert_called_once()
         self.assertTrue(out.get("financing_detail_push_sent"))
+
+    def test_faq_node_returns_down_payment_message_for_enganche(self) -> None:
+        state = with_user_message(initial_state(), "de cuanto es el enganche?")
+        state["current_node"] = "faq"
+        with (
+            patch("src.nodes.faq.maybe_escalate_financing_detail", return_value=None),
+            patch(
+                "src.utils.financing_advisor_notify.get_bot_settings",
+                return_value={"downPaymentMessage": "El enganche minimo es del 15%"},
+            ),
+            patch("src.nodes.faq.fetch_faq_candidates") as fetch_mock,
+        ):
+            out = faq(dict(state))
+        fetch_mock.assert_not_called()
+        msgs = [m.get("content", "") for m in out.get("messages", []) if m.get("role") == "assistant"]
+        self.assertEqual(msgs[-1], "El enganche minimo es del 15%")
+        self.assertEqual(out.get("current_node"), "router")
+
+    def test_faq_node_does_not_duplicate_down_payment_message(self) -> None:
+        msg = "El enganche minimo es del 15%"
+        state = _state_with_bot_exchange(user="de cuanto es el enganche?", bot=msg)
+        state["current_node"] = "faq"
+        with (
+            patch("src.nodes.faq.maybe_escalate_financing_detail", return_value=None),
+            patch(
+                "src.utils.financing_advisor_notify.get_bot_settings",
+                return_value={"downPaymentMessage": msg},
+            ),
+            patch("src.nodes.faq.fetch_faq_candidates") as fetch_mock,
+        ):
+            out = faq(dict(state))
+        fetch_mock.assert_not_called()
+        msgs = [m.get("content", "") for m in out.get("messages", []) if m.get("role") == "assistant"]
+        self.assertEqual(msgs.count(msg), 1)
+        self.assertEqual(out.get("current_node"), "router")

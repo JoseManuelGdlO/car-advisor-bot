@@ -11,7 +11,11 @@ from src.services.llm_responses import (
     generate_faq_user_turn,
 )
 from src.utils.signals import BUSINESS_HOURS_FAQ_SUBSTR
-from src.utils.financing_advisor_notify import maybe_escalate_financing_detail
+from src.utils.financing_advisor_notify import (
+    append_down_payment_faq_if_applicable,
+    maybe_escalate_financing_detail,
+    resolve_down_payment_message,
+)
 from src.utils.financing_credit_faq import (
     CREDIT_FAQ_ADVISOR_CLOSE,
     is_credit_requirements_faq_interrupt,
@@ -66,6 +70,12 @@ def faq(state: clientState) -> clientState:
     escalated = maybe_escalate_financing_detail(state, trigger="faq_node_entry", user_message=question)
     if escalated is not None:
         return escalated
+
+    if resolve_down_payment_message(question):
+        state["intent"] = "other"
+        state["current_node"] = "router"
+        state["is_faq_interrupt"] = False
+        return append_down_payment_faq_if_applicable(state, question)
 
     candidates = fetch_faq_candidates(question)
 
