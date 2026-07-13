@@ -245,13 +245,38 @@ class TestMaybeEscalateFinancingDetail(unittest.TestCase):
         self.assertTrue(out.get("financing_detail_push_sent"))
 
 
-    def test_skips_catalog_request_without_llm(self) -> None:
+    def test_skips_catalog_request_when_llm_false(self) -> None:
         state = _state_with_bot_exchange(user="planes de financieamiento", bot="Hola Javier")
         with patch(
             "src.utils.financing_advisor_notify.classify_financing_detail_escalation",
+            return_value=False,
         ) as classify_mock:
             self.assertIsNone(maybe_escalate_financing_detail(state, trigger="test"))
-        classify_mock.assert_not_called()
+        classify_mock.assert_called_once()
+
+    def test_llm_can_escalate_catalog_looking_specific_term(self) -> None:
+        state = _state_with_bot_exchange(
+            user="Quiero un plan de financiamiento a 24 meses",
+            bot="¿Te gustaría agendar una prueba de manejo?",
+        )
+        with (
+            patch(
+                "src.utils.financing_advisor_notify.classify_financing_detail_escalation",
+                return_value=True,
+            ) as classify_mock,
+            patch("src.utils.financing_advisor_notify.push_event_to_backend"),
+            patch("src.utils.financing_advisor_notify.notify_advisor", return_value=True),
+            patch(
+                "src.utils.financing_advisor_notify.deactivate_bot",
+                side_effect=lambda s, **_: {**s, "bot_disabled": True},
+            ),
+        ):
+            out = maybe_escalate_financing_detail(state, trigger="test")
+        classify_mock.assert_called_once()
+        self.assertIsNotNone(out)
+        assert out is not None
+        self.assertTrue(out.get("financing_detail_push_sent"))
+        self.assertTrue(out.get("bot_disabled"))
 
     def test_skips_promotion_apply_when_classifier_false(self) -> None:
         state = _state_with_bot_exchange(
@@ -266,7 +291,7 @@ class TestMaybeEscalateFinancingDetail(unittest.TestCase):
             self.assertIsNone(maybe_escalate_financing_detail(state, trigger="test"))
         classify_mock.assert_called_once()
 
-    def test_escalates_personalized_quote_without_llm(self) -> None:
+    def test_escalates_personalized_quote_via_heuristic_after_llm_false(self) -> None:
         state = _state_with_bot_exchange(
             user="Cuánto sería de enganche y mensualidad",
             bot="Para el financiamiento, tenemos la oferta comercial Suzuki.",
@@ -280,10 +305,11 @@ class TestMaybeEscalateFinancingDetail(unittest.TestCase):
             ),
             patch(
                 "src.utils.financing_advisor_notify.classify_financing_detail_escalation",
+                return_value=False,
             ) as classify_mock,
         ):
             out = maybe_escalate_financing_detail(state, trigger="test")
-        classify_mock.assert_not_called()
+        classify_mock.assert_called_once()
         self.assertIsNotNone(out)
         assert out is not None
         self.assertTrue(out.get("financing_detail_push_sent"))

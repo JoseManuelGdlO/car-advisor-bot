@@ -330,7 +330,7 @@ def maybe_escalate_financing_detail(
     previous_bot_message: str | None = None,
     apply_catalog_request_skip: bool = True,
 ) -> clientState | None:
-    """Evalua clasificador LLM y escala si aplica; None si debe continuar el flujo."""
+    """Clasificador LLM primero; heurísticas solo como respaldo. None si continúa el flujo."""
 
     if _already_escalated(state):
         return None
@@ -339,26 +339,6 @@ def maybe_escalate_financing_detail(
     user_text = str(user_message if user_message is not None else last_user or "").strip()
     if not user_text:
         return None
-
-    if apply_catalog_request_skip and is_financing_catalog_request(user_text):
-        _app.info(
-            "[financing_detail] skip_catalog_request trigger=%s text_preview=%r",
-            trigger,
-            user_text[:80],
-        )
-        return None
-
-    if is_financing_personalized_quote_request(user_text):
-        _app.info(
-            "[financing_detail] personalized_quote_escalation trigger=%s text_preview=%r",
-            trigger,
-            user_text[:80],
-        )
-        return handle_financing_detail_escalation(
-            state,
-            advisor_trigger=trigger,
-            user_message=user_text,
-        )
 
     bot_text = str(
         previous_bot_message
@@ -374,12 +354,36 @@ def maybe_escalate_financing_detail(
         selected_plan_name=str(state.get("selected_financing_plan_name", "")).strip(),
         numbered_plan_lines=_numbered_plan_lines(state),
     )
-    if not requires_advisor:
+    if requires_advisor:
+        _app.info(
+            "[financing_detail] escalation trigger=%s node=%s source=llm",
+            trigger,
+            state.get("current_node"),
+        )
+        return handle_financing_detail_escalation(
+            state,
+            advisor_trigger=trigger,
+            user_message=user_text,
+        )
+
+    if is_financing_personalized_quote_request(user_text):
+        _app.info(
+            "[financing_detail] personalized_quote_escalation trigger=%s text_preview=%r",
+            trigger,
+            user_text[:80],
+        )
+        return handle_financing_detail_escalation(
+            state,
+            advisor_trigger=trigger,
+            user_message=user_text,
+        )
+
+    if apply_catalog_request_skip and is_financing_catalog_request(user_text):
+        _app.info(
+            "[financing_detail] skip_catalog_request_after_llm trigger=%s text_preview=%r",
+            trigger,
+            user_text[:80],
+        )
         return None
 
-    _app.info("[financing_detail] escalation trigger=%s node=%s", trigger, state.get("current_node"))
-    return handle_financing_detail_escalation(
-        state,
-        advisor_trigger=trigger,
-        user_message=user_text,
-    )
+    return None
