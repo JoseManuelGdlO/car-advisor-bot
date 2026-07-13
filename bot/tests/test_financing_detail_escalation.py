@@ -12,6 +12,7 @@ from src.nodes.router import router
 from src.utils.financing_advisor_notify import (
     handle_financing_detail_escalation,
     is_financing_catalog_request,
+    is_financing_personalized_quote_request,
     maybe_escalate_financing_detail,
     resolve_client_display_phone,
 )
@@ -91,10 +92,19 @@ class TestIsFinancingCatalogRequest(unittest.TestCase):
     def test_detects_standard_catalog_phrases(self) -> None:
         self.assertTrue(is_financing_catalog_request("que planes de financiamiento tienen"))
         self.assertTrue(is_financing_catalog_request("cuales son las tasas"))
+        self.assertTrue(
+            is_financing_catalog_request(
+                "cual es el enganche para un suzuki como el del anuncio y como quedarian los pagos"
+            )
+        )
 
     def test_rejects_personalized_credit_questions(self) -> None:
         self.assertFalse(is_financing_catalog_request("me aprueban con mal buro"))
         self.assertFalse(is_financing_catalog_request("puedo financiar con comprobante informal"))
+
+    def test_rejects_personalized_quote_requests(self) -> None:
+        self.assertFalse(is_financing_catalog_request("cuanto seria de enganche y mensualidad"))
+        self.assertTrue(is_financing_personalized_quote_request("Cuánto sería de enganche y mensualidad"))
 
 
 class TestMaybeEscalateFinancingDetail(unittest.TestCase):
@@ -133,6 +143,42 @@ class TestMaybeEscalateFinancingDetail(unittest.TestCase):
         ) as classify_mock:
             self.assertIsNone(maybe_escalate_financing_detail(state, trigger="test"))
         classify_mock.assert_not_called()
+
+    def test_skips_promotion_apply_when_classifier_false(self) -> None:
+        state = _state_with_bot_exchange(
+            user="quiero aplicar la promocion",
+            bot="Promociones aplicables al Jetta...",
+            node="promotions",
+        )
+        with patch(
+            "src.utils.financing_advisor_notify.classify_financing_detail_escalation",
+            return_value=False,
+        ) as classify_mock:
+            self.assertIsNone(maybe_escalate_financing_detail(state, trigger="test"))
+        classify_mock.assert_called_once()
+
+    def test_escalates_personalized_quote_without_llm(self) -> None:
+        state = _state_with_bot_exchange(
+            user="Cuánto sería de enganche y mensualidad",
+            bot="Para el financiamiento, tenemos la oferta comercial Suzuki.",
+        )
+        with (
+            patch("src.utils.financing_advisor_notify.push_event_to_backend"),
+            patch("src.utils.financing_advisor_notify.notify_advisor", return_value=True),
+            patch(
+                "src.utils.financing_advisor_notify.deactivate_bot",
+                side_effect=lambda s, **_: {**s, "bot_disabled": True},
+            ),
+            patch(
+                "src.utils.financing_advisor_notify.classify_financing_detail_escalation",
+            ) as classify_mock,
+        ):
+            out = maybe_escalate_financing_detail(state, trigger="test")
+        classify_mock.assert_not_called()
+        self.assertIsNotNone(out)
+        assert out is not None
+        self.assertTrue(out.get("financing_detail_push_sent"))
+        self.assertTrue(out.get("bot_disabled"))
 
 
 class TestIntentCheckerFinancingEscalation(unittest.TestCase):
@@ -188,7 +234,7 @@ class TestIntentCheckerFinancingEscalation(unittest.TestCase):
         escalate_mock.assert_not_called()
         self.assertTrue(out.get("is_faq_interrupt"))
 
-    def test_customer_onboarding_skips_faq_interrupt(self) -> None:
+    def test_customer_onboarding_buro_question_routes_to_faq(self) -> None:
         state = _state_with_bot_exchange(
             user="revisan buro de credito",
             bot="Hola Javier, en que te ayudo?",
@@ -196,13 +242,23 @@ class TestIntentCheckerFinancingEscalation(unittest.TestCase):
         )
         with (
             patch(
+                "src.nodes.intent_checker.classify_faq_interrupt_flags",
+                return_value={
+                    "interrumpir_por_faq": True,
+                    "quiere_asesor_humano": False,
+                    "tema_financiamiento_credi": False,
+                    "es_respuesta_o_seguimiento_al_ultimo_bot": False,
+                },
+            ),
+            patch(
                 "src.nodes.intent_checker.maybe_escalate_financing_detail",
                 return_value=None,
             ),
         ):
             out = intent_checker(dict(state))
-        self.assertFalse(out.get("is_faq_interrupt"))
-        self.assertEqual(out.get("current_node"), "customer_onboarding")
+        self.assertTrue(out.get("is_faq_interrupt"))
+        self.assertEqual(out.get("current_node"), "faq")
+        self.assertEqual(out.get("resume_to_step"), "customer_onboarding")
 
     def test_customer_onboarding_escalates_affirmative_bureau_followup(self) -> None:
         state = _state_with_bot_exchange(
@@ -211,6 +267,15 @@ class TestIntentCheckerFinancingEscalation(unittest.TestCase):
             node="customer_onboarding",
         )
         with (
+            patch(
+                "src.nodes.intent_checker.classify_faq_interrupt_flags",
+                return_value={
+                    "interrumpir_por_faq": False,
+                    "quiere_asesor_humano": False,
+                    "tema_financiamiento_credi": True,
+                    "es_respuesta_o_seguimiento_al_ultimo_bot": True,
+                },
+            ),
             patch(
                 "src.nodes.intent_checker.maybe_escalate_financing_detail",
             ) as escalate_mock,
@@ -277,6 +342,10 @@ class TestFinancingCreditFaqLayer1(unittest.TestCase):
                     "es_respuesta_o_seguimiento_al_ultimo_bot": True,
                 },
             ),
+            patch(
+                "src.nodes.intent_checker.maybe_escalate_financing_detail",
+                return_value=None,
+            ),
             patch("src.nodes.intent_checker.classify_financing_step_flags") as step_mock,
             patch("src.nodes.intent_checker.handle_financing_detail_escalation") as escalate_mock,
         ):
@@ -338,6 +407,35 @@ class TestFinancingNodeEscalation(unittest.TestCase):
         escalate_mock.assert_not_called()
         self.assertFalse(out.get("financing_detail_push_sent"))
         self.assertFalse(out.get("bot_disabled"))
+
+    def test_financing_node_escalates_after_plan_listing(self) -> None:
+        state = _state_with_bot_exchange(
+            user="cual es el enganche para un suzuki y como quedarian los pagos",
+            bot="Mucho gusto, Julio.",
+        )
+        state["owner_user_id"] = "owner-uuid"
+        sample_plan = {
+            "id": "plan-1",
+            "name": "Plan Suzuki",
+            "lender": "Banco",
+            "active": True,
+            "vehicles": [{"id": "v1", "brand": "Suzuki", "model": "Swift", "status": "available"}],
+        }
+        with (
+            patch("src.nodes.financing.classify_financing_step_flags", return_value={}),
+            patch("src.nodes.financing.fetch_financing_plans", return_value=[sample_plan]),
+            patch(
+                "src.nodes.financing.maybe_escalate_financing_detail",
+            ) as escalate_mock,
+        ):
+            escalated = {**state, "financing_detail_push_sent": True, "bot_disabled": True}
+            escalate_mock.return_value = escalated
+            out = financing(dict(state))
+        escalate_mock.assert_called_once()
+        call_kwargs = escalate_mock.call_args.kwargs
+        self.assertEqual(call_kwargs.get("trigger"), "financing_after_plans")
+        self.assertFalse(call_kwargs.get("apply_catalog_request_skip", True))
+        self.assertTrue(out.get("financing_detail_push_sent"))
 
 
 class TestFaqNodeFinancingEscalation(unittest.TestCase):

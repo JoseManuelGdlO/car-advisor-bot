@@ -12,13 +12,49 @@ from src.services.llm_responses import (
 )
 from src.state import clientState
 from src.tools.database import sync_customer_info_to_backend
+from src.tools.vehicles import normalize_user_text
 from src.utils.app_logging import get_app_logger, log_flow_trace
-from src.utils.signals import is_greeting_only_message
+from src.utils.signals import is_greeting_only_message, is_simple_greeting
 from src.utils.state_helpers import append_assistant_message, latest_user_message
 
 _log = get_app_logger("customer_onboarding")
 
 _GENERIC_CLIENT_NAMES = frozenset({"cliente", "client", ""})
+
+# Consultas comerciales que no deben interpretarse como nombre propio.
+_COMMERCIAL_NOT_NAME_SUBSTR: frozenset[str] = frozenset(
+    (
+        "precio",
+        "costo",
+        "cuanto cuesta",
+        "cuanto vale",
+        "modelo",
+        "modelos",
+        "marca",
+        "marcas",
+        "catalogo",
+        "inventario",
+        "disponible",
+        "disponibles",
+        "financ",
+        "credito",
+        "enganche",
+        "mensualidad",
+        "promocion",
+        "oferta",
+        "descuento",
+        "auto",
+        "autos",
+        "carro",
+        "carros",
+        "vehiculo",
+        "vehiculos",
+        "camioneta",
+        "suv",
+        "sedan",
+        "pickup",
+    )
+)
 
 
 def _debug(event: str, **payload: Any) -> None:
@@ -28,6 +64,37 @@ def _debug(event: str, **payload: Any) -> None:
 def _is_real_customer_name(name: str) -> bool:
     cleaned = str(name or "").strip()
     return len(cleaned) >= 2 and cleaned.lower() not in _GENERIC_CLIENT_NAMES
+
+
+def _looks_like_commercial_not_name(user_message: str) -> bool:
+    """True si el mensaje parece consulta comercial/catalogo y no un nombre propio."""
+
+    normalized = normalize_user_text(user_message)
+    if not normalized:
+        return False
+    return any(term in normalized for term in _COMMERCIAL_NOT_NAME_SUBSTR)
+
+
+def _sanitize_name_extraction(extracted: dict[str, Any], user_message: str) -> dict[str, Any]:
+    """Descarta nombres inventados a partir de consultas comerciales."""
+
+    nombre = str(extracted.get("nombre") or "").strip()
+    remainder = str(extracted.get("mensaje_restante") or "").strip()
+
+    if nombre and remainder and not _looks_like_commercial_not_name(nombre):
+        return extracted
+
+    if nombre and not _looks_like_commercial_not_name(nombre) and not _looks_like_commercial_not_name(user_message):
+        return extracted
+
+    if not _looks_like_commercial_not_name(user_message) and not (nombre and _looks_like_commercial_not_name(nombre)):
+        return extracted
+
+    out = dict(extracted)
+    out["nombre"] = None
+    out["is_refusal"] = True
+    out["mensaje_restante"] = remainder or str(user_message or "").strip() or None
+    return out
 
 
 def _customer_name_from_state(state: clientState) -> str:
@@ -89,18 +156,19 @@ def _resume_pending_flow(
 
     pending = str(state.get("pending_onboarding_user_message", "")).strip()
     state["pending_onboarding_user_message"] = ""
-    resume_text = pending
+    remainder = str(message_remainder or "").strip()
+    resume_text = ""
+    if remainder:
+        remainder_flags = classify_onboarding_first_message(remainder)
+        if remainder_flags.get("tiene_intencion_comercial"):
+            resume_text = remainder
+            _debug(
+                "resume_from_name_capture_remainder",
+                remainder=remainder,
+                onboarding_flags=remainder_flags,
+            )
     if not resume_text:
-        remainder = str(message_remainder or "").strip()
-        if remainder:
-            onboarding_flags = classify_onboarding_first_message(remainder)
-            if onboarding_flags.get("tiene_intencion_comercial"):
-                resume_text = remainder
-                _debug(
-                    "resume_from_name_capture_remainder",
-                    remainder=remainder,
-                    onboarding_flags=onboarding_flags,
-                )
+        resume_text = pending
     if resume_text:
         state["onboarding_resume_user_message"] = resume_text
         state["onboarding_turn_complete"] = False
@@ -133,7 +201,10 @@ def customer_onboarding(state: clientState) -> clientState:
     if state.get("awaiting_customer_name"):
         state["current_node"] = "customer_onboarding"
         previous_bot = str(state.get("last_bot_message", "")).strip()
-        extracted = extract_customer_name(previous_bot, user_text)
+        extracted = _sanitize_name_extraction(
+            extract_customer_name(previous_bot, user_text),
+            user_text,
+        )
         nombre = str(extracted.get("nombre") or "").strip()
         if nombre and _is_real_customer_name(nombre):
             info = dict(state.get("customer_info") or {})
@@ -150,10 +221,19 @@ def customer_onboarding(state: clientState) -> clientState:
             )
 
         reason = "name_refused" if extracted.get("is_refusal") else "name_not_extracted"
+        if extracted.get("is_refusal"):
+            remainder = str(extracted.get("mensaje_restante") or user_text).strip()
+            if remainder:
+                state["pending_onboarding_user_message"] = remainder
+                _debug("commercial_instead_of_name_resume_pending", remainder=remainder)
         return _proceed_without_name(state, reason=reason)
 
     if customer_name and state.get("onboarding_greeting_done"):
         if is_greeting_only_message(user_text):
+            # Saludo simple al inicio de sesión: el router marca intent=other sin bienvenida extra.
+            if saved_node in {"", "start"} and is_simple_greeting(user_text):
+                _debug("returning_customer_simple_greeting_pass_through", customer_name=customer_name)
+                return state
             state["current_node"] = "customer_onboarding"
             state["onboarding_turn_complete"] = True
             _debug("returning_customer_greeting_only", customer_name=customer_name)
@@ -176,7 +256,13 @@ def customer_onboarding(state: clientState) -> clientState:
             state["onboarding_turn_complete"] = True
             _debug("welcome_known_name_only_greeting", onboarding_flags=onboarding_flags)
         else:
-            _debug("welcome_known_name_continue_flow", onboarding_flags=onboarding_flags)
+            state["onboarding_resume_user_message"] = user_text
+            state["onboarding_welcome_sent_this_turn"] = True
+            _debug(
+                "welcome_known_name_continue_flow",
+                onboarding_flags=onboarding_flags,
+                resume_user_message=user_text,
+            )
         return state
 
     if not customer_name and _is_first_user_turn(state):

@@ -52,8 +52,18 @@ def _route_from_router(state: clientState) -> str:
     return "end"
 
 
+def _flow_suppressed_after_escalation(state: clientState) -> bool:
+    """True si ya se escalo a asesor y no debe continuar el invoke actual."""
+
+    return bool(state.get("bot_disabled") or state.get("financing_detail_push_sent"))
+
+
 def _route_after_intent_checker(state: clientState) -> str:
     """Define si se continua flujo o se enruta a FAQ interruptiva."""
+
+    if _flow_suppressed_after_escalation(state):
+        _log_transition("intent_checker", "end", "bot desactivado tras escalacion")
+        return "end"
 
     node = state.get("current_node", "router")
     if node == "faq" and state.get("is_faq_interrupt"):
@@ -195,6 +205,7 @@ def build_graph():
             "car_selection": "car_selection",
             "financing": "financing",
             "promotions": "promotions",
+            "end": END,
         },
     )
     graph.add_conditional_edges(

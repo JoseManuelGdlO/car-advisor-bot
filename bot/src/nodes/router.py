@@ -71,6 +71,15 @@ def _apply_router_resolution(
     raise ValueError(f"etiqueta router no soportada: {resolved!r}")
 
 
+def _skip_duplicate_other_after_onboarding_welcome(state: clientState, *, reason: str) -> clientState:
+    """Evita segunda bienvenida cuando onboarding ya saludo en este invoke."""
+
+    state["onboarding_welcome_sent_this_turn"] = False
+    state["intent"] = "other"
+    _debug_router("route_to_other", reason=reason)
+    return state
+
+
 def _other_response_kwargs(state: clientState) -> dict[str, object]:
     """Contexto de onboarding para respuestas en intent other."""
 
@@ -88,6 +97,10 @@ def router(state: clientState) -> clientState:
     """Clasifica intención básica y enruta el flujo conversacional."""
 
     state["current_node"] = "router"
+    if state.get("bot_disabled") or state.get("financing_detail_push_sent"):
+        _debug_router("skip_already_escalated")
+        return state
+
     user_text = latest_user_message(state)
     text = normalize_user_text(user_text)
     _debug_router(
@@ -124,6 +137,8 @@ def router(state: clientState) -> clientState:
         return state
 
     if not text:
+        if state.get("onboarding_welcome_sent_this_turn"):
+            return _skip_duplicate_other_after_onboarding_welcome(state, reason="empty_after_onboarding_welcome")
         state["intent"] = "other"
         message = generate_other_response(user_text, **_other_response_kwargs(state))
         _debug_router("route_to_other", reason="empty")
@@ -138,6 +153,8 @@ def router(state: clientState) -> clientState:
     )
 
     if llm_intent in _VALID_ROUTER_LABELS:
+        if state.get("onboarding_welcome_sent_this_turn"):
+            state["onboarding_welcome_sent_this_turn"] = False
         _debug_router("resolved_intent", resolved=llm_intent, reason="llm_classifier")
         if llm_intent == "FINANCING":
             escalated = maybe_escalate_financing_detail(state, trigger="router_financing_intent")
@@ -145,6 +162,8 @@ def router(state: clientState) -> clientState:
                 return escalated
         return _apply_router_resolution(state, llm_intent, reason="llm_classifier")
 
+    if state.get("onboarding_welcome_sent_this_turn"):
+        return _skip_duplicate_other_after_onboarding_welcome(state, reason="llm_unknown_after_onboarding_welcome")
     state["intent"] = "other"
     message = generate_other_response(user_text, **_other_response_kwargs(state))
     _debug_router("route_to_other", reason="llm_unknown")

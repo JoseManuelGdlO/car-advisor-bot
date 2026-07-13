@@ -60,6 +60,7 @@ class clientState(TypedDict, total=False):
     - onboarding_turn_complete: True cuando el nodo onboarding genero respuesta y debe terminar el turno.
     - pending_onboarding_user_message: primer mensaje del usuario con intencion comercial mientras faltaba el nombre.
     - onboarding_resume_user_message: mensaje del usuario a procesar tras capturar el nombre.
+    - onboarding_welcome_sent_this_turn: True si onboarding acaba de enviar bienvenida y el router no debe duplicarla.
     """
 
     messages: list[dict[str, Any]]
@@ -118,3 +119,4 @@ class clientState(TypedDict, total=False):
     onboarding_turn_complete: bool
     pending_onboarding_user_message: str
     onboarding_resume_user_message: str
+    onboarding_welcome_sent_this_turn: bool

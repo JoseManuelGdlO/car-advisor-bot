@@ -221,6 +221,189 @@ class CustomerOnboardingTests(GraphTestCase):
         assistant_texts = [m["content"] for m in updated["messages"] if m.get("role") == "assistant"]
         self.assertTrue(any("Con gusto te ayudo" in text for text in assistant_texts))
 
+    def test_mixed_name_and_commercial_query_registers_name_and_resumes(self) -> None:
+        state = initial_state()
+        state["customer_info"] = {}
+        state["onboarding_greeting_done"] = False
+        state["awaiting_customer_name"] = True
+        state["pending_onboarding_user_message"] = "Hola! Quiero más información"
+        state["messages"] = [
+            {"role": "user", "content": "Hola! Quiero más información", "type": "HumanMessage"},
+            {
+                "role": "assistant",
+                "content": "Hola, buen día. ¿En qué te puedo ayudar? ¿Con quién tengo el gusto?",
+                "type": "AIMessage",
+            },
+            {
+                "role": "user",
+                "content": (
+                    "Con julio cuál es el enganche para un Susuki como el del anuncio "
+                    "y como quedarían los pagos"
+                ),
+                "type": "HumanMessage",
+            },
+        ]
+        state["last_bot_message"] = "Hola, buen día. ¿En qué te puedo ayudar? ¿Con quién tengo el gusto?"
+
+        with (
+            patch(
+                "src.nodes.customer_onboarding.extract_customer_name",
+                return_value={
+                    "nombre": "Julio",
+                    "is_refusal": False,
+                    "mensaje_restante": (
+                        "cuál es el enganche para un Susuki como el del anuncio "
+                        "y como quedarían los pagos"
+                    ),
+                },
+            ),
+            patch(
+                "src.nodes.customer_onboarding.classify_onboarding_first_message",
+                return_value=_onboarding_commercial_flags(),
+            ),
+            patch("src.nodes.customer_onboarding.sync_customer_info_to_backend"),
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.intent_checker.maybe_escalate_financing_detail", return_value=None),
+            patch("src.nodes.router.classify_router_intent", return_value="FINANCING"),
+            patch("src.nodes.router.maybe_escalate_financing_detail", return_value=None),
+            patch("src.nodes.financing.fetch_financing_plans", return_value=[]),
+            patch(
+                "src.nodes.financing.generate_verified_user_message",
+                side_effect=lambda **kw: kw.get("fallback", ""),
+            ),
+            patch("src.nodes.financing.maybe_escalate_financing_detail", return_value=None),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertEqual(updated.get("customer_info", {}).get("nombre"), "Julio")
+        self.assertFalse(updated.get("awaiting_customer_name"))
+        self.assertTrue(updated.get("onboarding_greeting_done"))
+        self.assertEqual(updated.get("current_node"), "financing")
+        assistant_texts = [m["content"] for m in updated["messages"] if m.get("role") == "assistant"]
+        self.assertTrue(any("Mucho gusto, Julio" in text for text in assistant_texts))
+        self.assertFalse(any("Con gusto te ayudo" in text for text in assistant_texts))
+        self.assertFalse(any("Con quién tengo el gusto" in text for text in assistant_texts[1:]))
+
+    def test_two_turn_onboarding_resumes_financing_question_over_generic_pending(self) -> None:
+        state = initial_state()
+        state["customer_info"] = {}
+        state["onboarding_greeting_done"] = False
+        state["awaiting_customer_name"] = True
+        state["pending_onboarding_user_message"] = "¡Hola! Quiero más información"
+        state["owner_user_id"] = "owner-uuid"
+        state["messages"] = [
+            {"role": "user", "content": "¡Hola! Quiero más información", "type": "HumanMessage"},
+            {
+                "role": "assistant",
+                "content": "Hola, buen día. ¿En qué te puedo ayudar? ¿Con quién tengo el gusto?",
+                "type": "AIMessage",
+            },
+            {
+                "role": "user",
+                "content": (
+                    "Con julio cuál es el enganche para un Susuki como el del anuncio "
+                    "y como quedarían los pagos"
+                ),
+                "type": "HumanMessage",
+            },
+        ]
+        state["last_bot_message"] = "Hola, buen día. ¿En qué te puedo ayudar? ¿Con quién tengo el gusto?"
+        sample_plan = {
+            "id": "plan-1",
+            "name": "Plan Suzuki",
+            "lender": "Banco",
+            "active": True,
+            "vehicles": [{"id": "v1", "brand": "Suzuki", "model": "Swift", "status": "available"}],
+        }
+
+        with (
+            patch(
+                "src.nodes.customer_onboarding.extract_customer_name",
+                return_value={
+                    "nombre": "Julio",
+                    "is_refusal": False,
+                    "mensaje_restante": (
+                        "cuál es el enganche para un Susuki como el del anuncio "
+                        "y como quedarían los pagos"
+                    ),
+                },
+            ),
+            patch(
+                "src.nodes.customer_onboarding.classify_onboarding_first_message",
+                return_value=_onboarding_commercial_flags(),
+            ),
+            patch("src.nodes.customer_onboarding.sync_customer_info_to_backend"),
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.router.classify_router_intent", return_value="FINANCING"),
+            patch("src.nodes.financing.fetch_financing_plans", return_value=[sample_plan]),
+            patch("src.nodes.financing.classify_financing_step_flags", return_value={}),
+            patch("src.nodes.router.generate_other_response") as other_mock,
+            patch("src.utils.financing_advisor_notify.push_event_to_backend"),
+            patch("src.utils.financing_advisor_notify.notify_advisor", return_value=True),
+            patch(
+                "src.utils.financing_advisor_notify.deactivate_bot",
+                side_effect=lambda s, **_: {**s, "bot_disabled": True},
+            ),
+            patch(
+                "src.utils.financing_advisor_notify.classify_financing_detail_escalation",
+                return_value=True,
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        other_mock.assert_not_called()
+        self.assertEqual(updated.get("customer_info", {}).get("nombre"), "Julio")
+        self.assertTrue(updated.get("financing_detail_push_sent"))
+        self.assertTrue(updated.get("bot_disabled"))
+        assistant_texts = [m["content"] for m in updated["messages"] if m.get("role") == "assistant"]
+        self.assertTrue(any("Mucho gusto, Julio" in text for text in assistant_texts))
+        self.assertTrue(any("Planes" in text or "plan" in text.lower() for text in assistant_texts))
+        self.assertTrue(any("asesor" in text.lower() for text in assistant_texts))
+        greeting_count = sum(1 for text in assistant_texts if "Con quién tengo el gusto" in text)
+        self.assertEqual(greeting_count, 1)
+
+    def test_commercial_query_instead_of_name_does_not_register_name(self) -> None:
+        state = initial_state()
+        state["customer_info"] = {}
+        state["onboarding_greeting_done"] = False
+        state["awaiting_customer_name"] = True
+        state["messages"] = [
+            {"role": "user", "content": "Hola! Quiero más información", "type": "HumanMessage"},
+            {
+                "role": "assistant",
+                "content": "Hola, buen día. ¿En qué te puedo ayudar? ¿Con quién tengo el gusto?",
+                "type": "AIMessage",
+            },
+            {"role": "user", "content": "Precio del dzire", "type": "HumanMessage"},
+        ]
+        state["last_bot_message"] = "Hola, buen día. ¿En qué te puedo ayudar? ¿Con quién tengo el gusto?"
+
+        with (
+            patch(
+                "src.nodes.customer_onboarding.extract_customer_name",
+                return_value={
+                    "nombre": "Precio Del Dzire",
+                    "is_refusal": False,
+                    "mensaje_restante": None,
+                },
+            ),
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.router.classify_router_intent", return_value="VEHICLE_CATALOG"),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=[]),
+            patch(
+                "src.nodes.car_selection.generate_verified_user_message",
+                side_effect=lambda **kw: kw.get("fallback", ""),
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertNotIn("nombre", updated.get("customer_info", {}))
+        self.assertFalse(updated.get("awaiting_customer_name"))
+        self.assertTrue(updated.get("onboarding_greeting_done"))
+        assistant_texts = [m["content"] for m in updated["messages"] if m.get("role") == "assistant"]
+        self.assertFalse(any("Mucho gusto, Precio Del Dzire" in text for text in assistant_texts))
+        self.assertTrue(any("Con gusto te ayudo" in text for text in assistant_texts))
+
     def test_name_capture_resumes_pending_catalog_flow(self) -> None:
         state = initial_state()
         state["customer_info"] = {}
@@ -305,6 +488,65 @@ class CustomerOnboardingTests(GraphTestCase):
         assistant_messages = [m["content"] for m in updated["messages"] if m.get("role") == "assistant"]
         self.assertEqual(len(assistant_messages), 1)
         self.assertIn("Javier", assistant_messages[0])
+
+    def test_known_name_vague_commercial_welcome_does_not_duplicate_greeting(self) -> None:
+        state = with_user_message(initial_state(), "¡Hola! Quiero más información")
+        state["customer_info"] = {"nombre": "Julio"}
+        state["onboarding_greeting_done"] = False
+
+        with (
+            patch(
+                "src.nodes.customer_onboarding.generate_welcome_with_known_name",
+                return_value="¡Hola Julio! Hola buen día, en qué te puedo ayudar.",
+            ),
+            patch(
+                "src.nodes.customer_onboarding.classify_onboarding_first_message",
+                return_value=_onboarding_commercial_flags(),
+            ),
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.router.classify_router_intent", return_value="OTHER"),
+            patch("src.nodes.router.generate_other_response") as other_mock,
+        ):
+            updated = self.graph.invoke(state)
+
+        other_mock.assert_not_called()
+        self.assertTrue(updated.get("onboarding_greeting_done"))
+        self.assertFalse(updated.get("onboarding_welcome_sent_this_turn"))
+        assistant_messages = [m["content"] for m in updated["messages"] if m.get("role") == "assistant"]
+        self.assertEqual(len(assistant_messages), 1)
+        self.assertIn("Julio", assistant_messages[0])
+        self.assertFalse(any("Con quién tengo el gusto" in text for text in assistant_messages))
+
+    def test_known_name_commercial_intent_routes_after_welcome(self) -> None:
+        state = with_user_message(initial_state(), "hola quiero ver el suzuki jimny")
+        state["customer_info"] = {"nombre": "Julio"}
+        state["onboarding_greeting_done"] = False
+
+        with (
+            patch(
+                "src.nodes.customer_onboarding.generate_welcome_with_known_name",
+                return_value="¡Hola Julio! ¿En qué te puedo ayudar?",
+            ),
+            patch(
+                "src.nodes.customer_onboarding.classify_onboarding_first_message",
+                return_value=_onboarding_commercial_flags(),
+            ),
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.router.classify_router_intent", return_value="VEHICLE_CATALOG"),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=[]),
+            patch(
+                "src.nodes.car_selection.generate_verified_user_message",
+                side_effect=lambda **kw: kw.get("fallback", ""),
+            ),
+            patch("src.nodes.router.generate_other_response") as other_mock,
+        ):
+            updated = self.graph.invoke(state)
+
+        other_mock.assert_not_called()
+        self.assertEqual(updated.get("customer_info", {}).get("nombre"), "Julio")
+        self.assertEqual(updated.get("current_node"), "car_selection")
+        assistant_messages = [m["content"] for m in updated["messages"] if m.get("role") == "assistant"]
+        self.assertTrue(any("Julio" in text for text in assistant_messages))
 
     def test_known_name_compound_greeting_ends_turn_without_router_reply(self) -> None:
         state = with_user_message(initial_state(), "hola buenas tardes")

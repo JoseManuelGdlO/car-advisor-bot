@@ -18,7 +18,7 @@ export const PhoneFrame = ({ children }: PhoneFrameProps) => {
   if (isNativeApp) {
     return (
       <div className="min-h-screen w-full bg-background">
-        <div className={`h-screen w-full flex flex-col ${showNav ? "pb-[calc(72px+var(--safe-area-bottom))]" : "pb-safe"}`}>
+        <div className={`h-screen w-full flex flex-col pt-safe ${showNav ? "pb-[calc(72px+var(--safe-area-bottom))]" : "pb-safe"}`}>
           <div className="flex-1 overflow-y-auto scrollbar-hide">{children}</div>
         </div>
         {showNav && <BottomNav />}

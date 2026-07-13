@@ -71,6 +71,7 @@ def initial_state() -> dict:
         "onboarding_turn_complete": False,
         "pending_onboarding_user_message": "",
         "onboarding_resume_user_message": "",
+        "onboarding_welcome_sent_this_turn": False,
     }
 
 

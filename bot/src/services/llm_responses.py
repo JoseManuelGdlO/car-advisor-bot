@@ -726,6 +726,12 @@ def generate_other_response(
             and not onboarding_greeting_done
         ):
             return welcome
+        if has_known_name and onboarding_greeting_done:
+            name = str(customer_name).strip()
+            return (
+                f"Hola {name}, con gusto te ayudo. "
+                "Cuentame que vehiculo o informacion te interesa y lo revisamos."
+            )
         llm = ChatOpenAI(model=model_name, temperature=0.5)
         verified = build_settings_block(settings) or "CONFIGURACION_NEGOCIO: (sin campos extra)"
         verified = append_business_profile_to_verified_block(verified, get_business_profile())

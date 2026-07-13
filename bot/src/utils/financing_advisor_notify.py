@@ -63,7 +63,35 @@ _FINANCING_PERSONALIZED_SUBSTR: frozenset[str] = frozenset(
     )
 )
 
-_CATALOG_RATE_TERMS: frozenset[str] = frozenset(("tasa", "enganche", "mensualidad", "mensualidades", "plazo", "plazos"))
+# Cotizacion/calculo personalizado: debe escalar a asesor humano.
+_FINANCING_PERSONALIZED_QUOTE_SUBSTR: frozenset[str] = frozenset(
+    (
+        "cuanto seria",
+        "cuanto seria de",
+        "cuanto seria el",
+        "cuanto seria la",
+        "cuanto quedaria",
+        "cuanto quedaria de",
+        "cuanto pagaria",
+        "cuanto pagaria de",
+        "cuanto me sale",
+        "cuanto me costaria",
+        "cuanto daria de",
+        "enganche y mensualidad",
+        "mensualidad y enganche",
+        "cuanto de enganche",
+        "cuanto de mensualidad",
+        "calcular enganche",
+        "calcular mensualidad",
+        "cotizar",
+        "cotizacion",
+        "cotizacion de",
+    )
+)
+
+_CATALOG_RATE_TERMS: frozenset[str] = frozenset(
+    ("tasa", "enganche", "mensualidad", "mensualidades", "plazo", "plazos")
+)
 
 ADVISOR_HELP_PUSH_TITLE = "Cliente necesita ayuda"
 ADVISOR_HELP_PUSH_BODY_SUFFIX = "necesita ayuda para resolver dudas"
@@ -77,11 +105,22 @@ def _looks_like_display_phone(value: str) -> bool:
     return len(digits) >= 7
 
 
+def is_financing_personalized_quote_request(text: str) -> bool:
+    """True si el usuario pide cotizacion o calculo personalizado de credito."""
+
+    normalized = normalize_user_text(text)
+    if not normalized:
+        return False
+    return any(term in normalized for term in _FINANCING_PERSONALIZED_QUOTE_SUBSTR)
+
+
 def is_financing_catalog_request(text: str) -> bool:
     """True si el usuario pide ver/listar planes o condiciones publicadas del catalogo."""
 
     normalized = normalize_user_text(text)
     if not normalized:
+        return False
+    if is_financing_personalized_quote_request(normalized):
         return False
     if any(term in normalized for term in _FINANCING_PERSONALIZED_SUBSTR):
         return False
@@ -245,6 +284,7 @@ def maybe_escalate_financing_detail(
     trigger: str,
     user_message: str | None = None,
     previous_bot_message: str | None = None,
+    apply_catalog_request_skip: bool = True,
 ) -> clientState | None:
     """Evalua clasificador LLM y escala si aplica; None si debe continuar el flujo."""
 
@@ -256,13 +296,21 @@ def maybe_escalate_financing_detail(
     if not user_text:
         return None
 
-    if is_financing_catalog_request(user_text):
+    if apply_catalog_request_skip and is_financing_catalog_request(user_text):
         _app.info(
             "[financing_detail] skip_catalog_request trigger=%s text_preview=%r",
             trigger,
             user_text[:80],
         )
         return None
+
+    if is_financing_personalized_quote_request(user_text):
+        _app.info(
+            "[financing_detail] personalized_quote_escalation trigger=%s text_preview=%r",
+            trigger,
+            user_text[:80],
+        )
+        return handle_financing_detail_escalation(state, advisor_trigger=trigger)
 
     bot_text = str(
         previous_bot_message

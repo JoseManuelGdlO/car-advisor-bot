@@ -33,6 +33,7 @@ from src.utils.signals import (
 )
 from src.utils.vehicle_images import reset_vehicle_images_state
 from src.utils.app_logging import get_app_logger, log_flow_trace
+from src.utils.financing_advisor_notify import maybe_escalate_financing_detail
 from src.utils.state_helpers import append_assistant_message, latest_user_message
 
 _log = get_app_logger("financing")
@@ -42,6 +43,22 @@ def _debug(event: str, **payload: Any) -> None:
     """Trazas del flujo de financiamiento; payload completo solo con LOG_LEVEL=debug."""
 
     log_flow_trace(_log, "financing", event, **payload)
+
+
+def _return_plan_listing(state: clientState, message: str, user_text: str) -> clientState:
+    """Muestra planes y, si aplica, escala a asesor tras publicar el catalogo."""
+
+    state = append_assistant_message(state, message)
+    escalated = maybe_escalate_financing_detail(
+        state,
+        trigger="financing_after_plans",
+        user_message=user_text,
+        apply_catalog_request_skip=False,
+    )
+    if escalated is not None:
+        _debug("escalated_after_plan_listing", user_text=user_text)
+        return escalated
+    return state
 
 
 def _digit_message_selects_financing_plan(
@@ -1012,7 +1029,7 @@ def financing(state: clientState) -> clientState:
                 follow_up=follow_up,
                 fallback_semantic=f"Claro, para {selected_car or 'este vehiculo'} si tenemos opciones de pago a plazos.",
             )
-            return append_assistant_message(state, question)
+            return _return_plan_listing(state, question, user_text)
 
     try:
         plans = fetch_financing_plans()
@@ -1050,4 +1067,4 @@ def financing(state: clientState) -> clientState:
         follow_up="Si te interesa uno en particular, dime el nombre o numero del plan. Despues te pedire seleccionar el vehiculo dentro de ese plan.",
         fallback_semantic="Claro, manejamos pagos a plazos y puedo mostrarte los planes disponibles.",
     )
-    return append_assistant_message(state, prompt)
+    return _return_plan_listing(state, prompt, user_text)

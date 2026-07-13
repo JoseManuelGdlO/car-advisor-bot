@@ -31,6 +31,7 @@ def clear_onboarding_resume(state: clientState) -> None:
     """
 
     state["onboarding_resume_user_message"] = ""
+    state["onboarding_welcome_sent_this_turn"] = False
 
 
 def latest_human_ai_pair(state: clientState) -> tuple[str, str]:

@@ -133,6 +133,10 @@ class PromotionFinancingChainTests(GraphTestCase):
                 return_value={"interrumpir_por_faq": False},
             ),
             patch(
+                "src.nodes.intent_checker.maybe_escalate_financing_detail",
+                return_value=None,
+            ),
+            patch(
                 "src.nodes.promotions.classify_promotions_step_flags",
                 return_value=_NAV_FLAGS_APPLY_ONLY,
             ),

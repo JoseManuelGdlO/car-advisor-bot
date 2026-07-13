@@ -242,7 +242,10 @@ def is_greeting_only_message(text: str) -> bool:
         return False
     if normalized in ROUTER_SIMPLE_GREETINGS_NORMALIZED:
         return True
-    return len(_strip_greeting_tokens(normalized)) < 4
+    stripped = _strip_greeting_tokens(normalized)
+    if stripped != normalized:
+        return len(stripped) < 4
+    return False
 
 FINANCING_PLANES_COMBO_SUFFIXES: frozenset[str] = frozenset(
     ("financ", "credito", "mensual", "enganche", "tasa", "interes")
