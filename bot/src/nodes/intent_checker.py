@@ -122,7 +122,7 @@ def _financing_flow_allows_commercial_followup(state: clientState, last_ai: str,
 
 
 _FINANCING_ESCALATION_NODES = frozenset(
-    {"car_selection", "financing", "promotions", "lead_capture", "customer_onboarding"}
+    {"car_selection", "financing", "promotions", "lead_capture"}
 )
 
 
@@ -137,6 +137,9 @@ def _try_financing_detail_escalation_from_checker(
     """Evalua escalacion por financiamiento detallado; devuelve estado escalado o None."""
 
     if current_node not in _FINANCING_ESCALATION_NODES:
+        return None
+    # Reanudacion post-onboarding: dejar listar catalogo en financing y escalar ahi (post-planes).
+    if str(state.get("onboarding_resume_user_message", "")).strip():
         return None
     escalated = maybe_escalate_financing_detail(
         state,

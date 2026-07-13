@@ -28,6 +28,13 @@ _COMMERCIAL_NOT_NAME_SUBSTR: frozenset[str] = frozenset(
         "costo",
         "cuanto cuesta",
         "cuanto vale",
+        "cotizar",
+        "cotizacion",
+        "cotizame",
+        "presupuesto",
+        "quiero ver",
+        "me interesa",
+        "busco",
         "modelo",
         "modelos",
         "marca",
@@ -221,11 +228,18 @@ def customer_onboarding(state: clientState) -> clientState:
             )
 
         reason = "name_refused" if extracted.get("is_refusal") else "name_not_extracted"
-        if extracted.get("is_refusal"):
-            remainder = str(extracted.get("mensaje_restante") or user_text).strip()
-            if remainder:
-                state["pending_onboarding_user_message"] = remainder
-                _debug("commercial_instead_of_name_resume_pending", remainder=remainder)
+        # Si respondio con consulta comercial (o el sanitizer la marco como tal), priorizar
+        # ese mensaje sobre el pendiente generico del primer turno al reanudar.
+        remainder = str(extracted.get("mensaje_restante") or "").strip()
+        commercial_resume = ""
+        candidate = remainder or user_text
+        if candidate and _looks_like_commercial_not_name(candidate):
+            commercial_resume = candidate
+        elif extracted.get("is_refusal") and remainder:
+            commercial_resume = remainder
+        if commercial_resume:
+            state["pending_onboarding_user_message"] = commercial_resume
+            _debug("commercial_instead_of_name_resume_pending", remainder=commercial_resume)
         return _proceed_without_name(state, reason=reason)
 
     if customer_name and state.get("onboarding_greeting_done"):

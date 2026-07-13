@@ -63,7 +63,9 @@ _FINANCING_PERSONALIZED_SUBSTR: frozenset[str] = frozenset(
     )
 )
 
-# Cotizacion/calculo personalizado: debe escalar a asesor humano.
+# Cotizacion/calculo personalizado de CREDITO: debe escalar a asesor humano.
+# "cotizar"/"cotizacion" solos NO bastan: suelen ser interes por un vehiculo
+# (ej. "quiero cotizar el Swift"). Requieren contexto de financiamiento.
 _FINANCING_PERSONALIZED_QUOTE_SUBSTR: frozenset[str] = frozenset(
     (
         "cuanto seria",
@@ -83,14 +85,61 @@ _FINANCING_PERSONALIZED_QUOTE_SUBSTR: frozenset[str] = frozenset(
         "cuanto de mensualidad",
         "calcular enganche",
         "calcular mensualidad",
+        "cotizar enganche",
+        "cotizar mensualidad",
+        "cotizar el credito",
+        "cotizar credito",
+        "cotizar financ",
+        "cotizacion de enganche",
+        "cotizacion de mensualidad",
+        "cotizacion de credito",
+        "cotizacion de financ",
+        "cotizame el enganche",
+        "cotizame la mensualidad",
+        "cotizame el credito",
+    )
+)
+
+# Terminos de interes por cotizar un vehiculo (sin credito personalizado).
+_VEHICLE_QUOTE_SUBSTR: frozenset[str] = frozenset(
+    (
         "cotizar",
         "cotizacion",
-        "cotizacion de",
+        "cotizame",
+        "presupuesto",
+    )
+)
+
+# Contexto de financiamiento que convierte una "cotizacion" en duda de credito.
+_FINANCING_QUOTE_CONTEXT_SUBSTR: frozenset[str] = frozenset(
+    (
+        "enganche",
+        "mensualidad",
+        "mensualidades",
+        "credito",
+        "financ",
+        "tasa",
+        "plazo",
+        "plazos",
+        "pago mensual",
+        "pagaria",
+        "buro",
+        "aprueba",
+        "aprueban",
     )
 )
 
 _CATALOG_RATE_TERMS: frozenset[str] = frozenset(
     ("tasa", "enganche", "mensualidad", "mensualidades", "plazo", "plazos")
+)
+
+# Plazo concreto a la medida ("a 24 meses", "en 36 anios") junto a credito/plan.
+_CUSTOM_TERM_PLAZO_RE = re.compile(
+    r"\b(?:a|en)\s+\d{1,3}\s*(?:meses?|anios?|anos?)\b",
+    re.IGNORECASE,
+)
+_CUSTOM_TERM_CONTEXT_SUBSTR: frozenset[str] = frozenset(
+    ("plan", "credito", "financ", "pagarlo", "pagar", "mensual", "armame")
 )
 
 ADVISOR_HELP_PUSH_TITLE = "Cliente necesita ayuda"
@@ -105,13 +154,39 @@ def _looks_like_display_phone(value: str) -> bool:
     return len(digits) >= 7
 
 
+def is_vehicle_quote_without_financing_context(text: str) -> bool:
+    """True si pide cotizar un vehiculo/modelo sin duda personalizada de credito."""
+
+    normalized = normalize_user_text(text)
+    if not normalized:
+        return False
+    if not any(term in normalized for term in _VEHICLE_QUOTE_SUBSTR):
+        return False
+    if any(term in normalized for term in _FINANCING_QUOTE_CONTEXT_SUBSTR):
+        return False
+    return True
+
+
 def is_financing_personalized_quote_request(text: str) -> bool:
     """True si el usuario pide cotizacion o calculo personalizado de credito."""
 
     normalized = normalize_user_text(text)
     if not normalized:
         return False
+    if is_vehicle_quote_without_financing_context(normalized):
+        return False
     return any(term in normalized for term in _FINANCING_PERSONALIZED_QUOTE_SUBSTR)
+
+
+def is_custom_term_financing_request(text: str) -> bool:
+    """True si pide un plazo concreto (N meses/anios) para financiar SU compra."""
+
+    normalized = normalize_user_text(text)
+    if not normalized:
+        return False
+    if not _CUSTOM_TERM_PLAZO_RE.search(normalized):
+        return False
+    return any(term in normalized for term in _CUSTOM_TERM_CONTEXT_SUBSTR)
 
 
 def is_financing_catalog_request(text: str) -> bool:
@@ -121,6 +196,8 @@ def is_financing_catalog_request(text: str) -> bool:
     if not normalized:
         return False
     if is_financing_personalized_quote_request(normalized):
+        return False
+    if is_custom_term_financing_request(normalized):
         return False
     if any(term in normalized for term in _FINANCING_PERSONALIZED_SUBSTR):
         return False
@@ -340,6 +417,15 @@ def maybe_escalate_financing_detail(
     if not user_text:
         return None
 
+    # "Cotizar el Swift" / interes por modelo sin terminos de credito: flujo de catalogo.
+    if is_vehicle_quote_without_financing_context(user_text):
+        _app.info(
+            "[financing_detail] skip_vehicle_quote_without_financing trigger=%s text_preview=%r",
+            trigger,
+            user_text[:80],
+        )
+        return None
+
     bot_text = str(
         previous_bot_message
         if previous_bot_message is not None
@@ -354,6 +440,15 @@ def maybe_escalate_financing_detail(
         selected_plan_name=str(state.get("selected_financing_plan_name", "")).strip(),
         numbered_plan_lines=_numbered_plan_lines(state),
     )
+    # Catalogo claro sin cotizacion/plazo a la medida: no escalar aunque el LLM diga true.
+    catalog_skip = apply_catalog_request_skip and is_financing_catalog_request(user_text)
+    if requires_advisor and catalog_skip:
+        _app.info(
+            "[financing_detail] override_llm_true_catalog_request trigger=%s text_preview=%r",
+            trigger,
+            user_text[:80],
+        )
+        return None
     if requires_advisor:
         _app.info(
             "[financing_detail] escalation trigger=%s node=%s source=llm",
@@ -378,7 +473,7 @@ def maybe_escalate_financing_detail(
             user_message=user_text,
         )
 
-    if apply_catalog_request_skip and is_financing_catalog_request(user_text):
+    if catalog_skip:
         _app.info(
             "[financing_detail] skip_catalog_request_after_llm trigger=%s text_preview=%r",
             trigger,

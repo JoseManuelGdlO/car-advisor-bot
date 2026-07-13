@@ -404,6 +404,57 @@ class CustomerOnboardingTests(GraphTestCase):
         self.assertFalse(any("Mucho gusto, Precio Del Dzire" in text for text in assistant_texts))
         self.assertTrue(any("Con gusto te ayudo" in text for text in assistant_texts))
 
+    def test_cotizar_vehicle_instead_of_name_resumes_vehicle_not_generic_pending(self) -> None:
+        state = initial_state()
+        state["customer_info"] = {}
+        state["onboarding_greeting_done"] = False
+        state["awaiting_customer_name"] = True
+        state["pending_onboarding_user_message"] = "Hola! Quiero más información"
+        state["messages"] = [
+            {"role": "user", "content": "Hola! Quiero más información", "type": "HumanMessage"},
+            {
+                "role": "assistant",
+                "content": "Hola, buen día. ¿En qué te puedo ayudar? ¿Con quién tengo el gusto?",
+                "type": "AIMessage",
+            },
+            {"role": "user", "content": "Quiero cotizar el Swift", "type": "HumanMessage"},
+        ]
+        state["last_bot_message"] = "Hola, buen día. ¿En qué te puedo ayudar? ¿Con quién tengo el gusto?"
+
+        with (
+            patch(
+                "src.nodes.customer_onboarding.extract_customer_name",
+                return_value={
+                    "nombre": "Quiero Cotizar El Swift",
+                    "is_refusal": False,
+                    "mensaje_restante": None,
+                },
+            ),
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.intent_checker.maybe_escalate_financing_detail", return_value=None),
+            patch("src.nodes.router.classify_router_intent", return_value="VEHICLE_CATALOG"),
+            patch("src.nodes.router.maybe_escalate_financing_detail", return_value=None),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=[]),
+            patch(
+                "src.nodes.car_selection.generate_verified_user_message",
+                side_effect=lambda **kw: kw.get("fallback", ""),
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertNotIn("nombre", updated.get("customer_info", {}))
+        self.assertFalse(updated.get("awaiting_customer_name"))
+        self.assertTrue(updated.get("onboarding_greeting_done"))
+        assistant_texts = [m["content"] for m in updated["messages"] if m.get("role") == "assistant"]
+        self.assertFalse(any("Mucho gusto, Quiero Cotizar El Swift" in text for text in assistant_texts))
+        self.assertTrue(any("Con gusto te ayudo" in text for text in assistant_texts))
+        # Prioriza la consulta comercial del segundo turno sobre el pendiente generico.
+        self.assertEqual(updated.get("onboarding_resume_user_message"), "Quiero cotizar el Swift")
+        self.assertEqual(updated.get("pending_onboarding_user_message"), "")
+        self.assertEqual(updated.get("intent"), "vehicle_catalog")
+        self.assertFalse(updated.get("bot_disabled"))
+        self.assertFalse(updated.get("financing_detail_push_sent"))
+
     def test_name_capture_resumes_pending_catalog_flow(self) -> None:
         state = initial_state()
         state["customer_info"] = {}

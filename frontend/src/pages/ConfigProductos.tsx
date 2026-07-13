@@ -984,16 +984,26 @@ export default function ConfigProductos() {
                   focusedVehicleId === c.id ? "ring-2 ring-primary/60" : ""
                 )}
               >
-                <div className="relative aspect-[4/3] bg-muted/80 overflow-hidden">
+                <button
+                  type="button"
+                  className="relative aspect-[4/3] bg-muted/80 overflow-hidden text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-inset"
+                  onClick={() => startEditVehicle(c)}
+                  aria-label={`Editar ${c.brand} ${c.model}`}
+                >
                   <VehicleCardImage car={c} />
                   <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-black/30 to-transparent" />
                   <div className="absolute bottom-2 right-2 pointer-events-none">
                     <StatusBadge status={c.status} />
                   </div>
-                </div>
+                </button>
 
                 <div className="flex flex-1 flex-col p-3">
-                  <div className="space-y-0.5 min-h-[3.25rem]">
+                  <button
+                    type="button"
+                    className="space-y-0.5 min-h-[3.25rem] text-left w-full cursor-pointer rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                    onClick={() => startEditVehicle(c)}
+                    aria-label={`Editar ${c.brand} ${c.model}`}
+                  >
                     <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wide leading-none truncate">
                       {c.brand}
                     </p>
@@ -1001,11 +1011,10 @@ export default function ConfigProductos() {
                     <p className="text-xs text-muted-foreground">
                       {c.year} · {c.km.toLocaleString("es-MX")} km
                     </p>
-                  </div>
-
-                  <p className="font-extrabold text-primary-dark text-base tabular-nums tracking-tight mt-2">
-                    {formatPrice(c.price)}
-                  </p>
+                    <p className="font-extrabold text-primary-dark text-base tabular-nums tracking-tight mt-2">
+                      {formatPrice(c.price)}
+                    </p>
+                  </button>
 
                   <div className="flex flex-wrap gap-1 mt-2">
                     {(c.outboundPriority ?? 0) > 0 ? (

@@ -12,8 +12,10 @@ from src.nodes.router import router
 from src.utils.financing_advisor_notify import (
     append_down_payment_faq_if_applicable,
     handle_financing_detail_escalation,
+    is_custom_term_financing_request,
     is_financing_catalog_request,
     is_financing_personalized_quote_request,
+    is_vehicle_quote_without_financing_context,
     maybe_escalate_financing_detail,
     resolve_client_display_phone,
 )
@@ -215,6 +217,23 @@ class TestIsFinancingCatalogRequest(unittest.TestCase):
         self.assertFalse(is_financing_catalog_request("cuanto seria de enganche y mensualidad"))
         self.assertTrue(is_financing_personalized_quote_request("Cuánto sería de enganche y mensualidad"))
 
+    def test_rejects_custom_term_requests(self) -> None:
+        self.assertTrue(is_custom_term_financing_request("Quiero un plan de financiamiento a 24 meses"))
+        self.assertFalse(is_financing_catalog_request("Quiero un plan de financiamiento a 24 meses"))
+        self.assertFalse(is_custom_term_financing_request("hay plan de financiamiento?"))
+
+    def test_detects_promo_plus_catalog_compound(self) -> None:
+        self.assertTrue(
+            is_financing_catalog_request("aplico la promocion, hay plan de financiamiento?")
+        )
+
+    def test_vehicle_cotizar_without_financing_is_not_personalized_quote(self) -> None:
+        self.assertTrue(is_vehicle_quote_without_financing_context("Quiero cotizar el Swift"))
+        self.assertTrue(is_vehicle_quote_without_financing_context("cotizacion del Jimny"))
+        self.assertFalse(is_financing_personalized_quote_request("Quiero cotizar el Swift"))
+        self.assertFalse(is_vehicle_quote_without_financing_context("cotizar enganche y mensualidad"))
+        self.assertTrue(is_financing_personalized_quote_request("cotizar enganche y mensualidad"))
+
 
 class TestMaybeEscalateFinancingDetail(unittest.TestCase):
     def test_returns_none_when_classifier_false(self) -> None:
@@ -250,6 +269,19 @@ class TestMaybeEscalateFinancingDetail(unittest.TestCase):
         with patch(
             "src.utils.financing_advisor_notify.classify_financing_detail_escalation",
             return_value=False,
+        ) as classify_mock:
+            self.assertIsNone(maybe_escalate_financing_detail(state, trigger="test"))
+        classify_mock.assert_called_once()
+
+    def test_overrides_llm_true_for_clear_catalog_request(self) -> None:
+        state = _state_with_bot_exchange(
+            user="aplico la promocion, hay plan de financiamiento?",
+            bot="Promociones aplicables al Jetta...",
+            node="promotions",
+        )
+        with patch(
+            "src.utils.financing_advisor_notify.classify_financing_detail_escalation",
+            return_value=True,
         ) as classify_mock:
             self.assertIsNone(maybe_escalate_financing_detail(state, trigger="test"))
         classify_mock.assert_called_once()
@@ -314,6 +346,19 @@ class TestMaybeEscalateFinancingDetail(unittest.TestCase):
         assert out is not None
         self.assertTrue(out.get("financing_detail_push_sent"))
         self.assertTrue(out.get("bot_disabled"))
+
+    def test_skips_vehicle_cotizar_even_if_llm_would_escalate(self) -> None:
+        state = _state_with_bot_exchange(
+            user="Quiero cotizar el Swift",
+            bot="Hola, ¿con quién tengo el gusto?",
+            node="customer_onboarding",
+        )
+        with patch(
+            "src.utils.financing_advisor_notify.classify_financing_detail_escalation",
+            return_value=True,
+        ) as classify_mock:
+            self.assertIsNone(maybe_escalate_financing_detail(state, trigger="test"))
+        classify_mock.assert_not_called()
 
 
 class TestIntentCheckerFinancingEscalation(unittest.TestCase):
@@ -395,7 +440,9 @@ class TestIntentCheckerFinancingEscalation(unittest.TestCase):
         self.assertEqual(out.get("current_node"), "faq")
         self.assertEqual(out.get("resume_to_step"), "customer_onboarding")
 
-    def test_customer_onboarding_escalates_affirmative_bureau_followup(self) -> None:
+    def test_customer_onboarding_does_not_escalate_affirmative_bureau_followup(self) -> None:
+        """En customer_onboarding no se escala aqui; listar/escalar ocurre luego en financing."""
+
         state = _state_with_bot_exchange(
             user="Si por favor",
             bot="Te gustaria que te explique como funciona el proceso de revision del buro de credito?",
@@ -415,11 +462,11 @@ class TestIntentCheckerFinancingEscalation(unittest.TestCase):
                 "src.nodes.intent_checker.maybe_escalate_financing_detail",
             ) as escalate_mock,
         ):
-            escalated = {**state, "financing_detail_push_sent": True, "bot_disabled": True}
-            escalate_mock.return_value = escalated
             out = intent_checker(dict(state))
-        escalate_mock.assert_called_once()
-        self.assertTrue(out.get("financing_detail_push_sent"))
+        escalate_mock.assert_not_called()
+        self.assertFalse(out.get("financing_detail_push_sent"))
+        self.assertFalse(out.get("bot_disabled"))
+        self.assertEqual(out.get("current_node"), "customer_onboarding")
 
 
 class TestFinancingCreditFaqLayer1(unittest.TestCase):
