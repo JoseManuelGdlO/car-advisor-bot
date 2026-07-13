@@ -93,8 +93,8 @@ class TestFormatTwoVehicleComparisonGrounding(unittest.TestCase):
         self.assertIn("VEHICULO_A (", out)
         self.assertIn("VEHICULO_B (", out)
         self.assertIn("**Precio**", out)
-        self.assertIn("$350,000.00", out)
-        self.assertIn("$280,000.50", out)
+        self.assertIn("a partir de $350,000.00", out)
+        self.assertIn("a partir de $280,000.50", out)
         self.assertNotIn("**Color**", out)
 
     def test_web_includes_colors_when_requested(self) -> None:
@@ -128,7 +128,7 @@ class TestFormatVehicleDetail(unittest.TestCase):
         }
         out = format_vehicle_detail(vehicle, platform="web")
         self.assertIn("**Precio**", out)
-        self.assertIn("$350,000.00", out)
+        self.assertIn("a partir de $350,000.00", out)
         self.assertNotIn("**Color**", out)
         self.assertNotIn("Rojo", out)
         self.assertIn("**Marca**", out)

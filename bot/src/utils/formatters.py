@@ -278,7 +278,7 @@ def format_vehicle_detail(
         f"{_bold_label('Marca', platform)}: {brand}",
         f"{_bold_label('Modelo', platform)}: {model}",
         f"{_bold_label('Año', platform)}: {year if isinstance(year, int) else 'N/D'}",
-        f"{_bold_label('Precio', platform)}: {_format_currency(vehicle.get('price'))}",
+        f"{_bold_label('Precio', platform)}: a partir de {_format_currency(vehicle.get('price'))}",
     ]
     km_value = vehicle.get("km")
     if _is_zero_km(km_value):

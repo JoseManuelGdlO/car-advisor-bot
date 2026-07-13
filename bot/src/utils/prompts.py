@@ -20,6 +20,8 @@ _SYSTEM_RULES_BLOCK = (
     "- Trata de mantener la conversacion fluida y natural."
     "- Usa lenguaje natural y no robotizado."
     "- Prioriza respuestas cortas y faciles de leer en el chat; evita textos largos salvo que el usuario pida mas detalle."
+    "- Cada vez que menciones un precio de vehiculo, escribelo como 'a partir de' seguido del monto exacto "
+    "que aparezca en DATOS_VERIFICADOS (ej. 'a partir de $350,000.00'); no presentes el monto como precio fijo."
 )
 
 
@@ -514,6 +516,8 @@ def build_vehicle_detail_conversation_prompt(
         "- No menciones color, tonalidad ni pintura del vehiculo a menos que DATOS_VERIFICADOS incluya la linea Color.\n"
         "- Incluye de forma natural solo los campos que aparezcan en DATOS_VERIFICADOS (marca, modelo, año, precio, kilometraje o estado, "
         "transmision, motor y descripcion cuando exista). Si no hay linea Descripcion o algún otro campo, omitela por completo; no digas que falta ni que no esta disponible a menos que te hayan preguntado sobre eso específicamente.\n"
+        "- Si mencionas el precio, usa siempre la formulacion 'a partir de' + el monto exacto de DATOS_VERIFICADOS "
+        "(no lo presentes como precio cerrado ni omitas 'a partir de').\n"
         "- Si algun otro valor figura como N/D, dilo con naturalidad sin inventar detalles.\n"
         "- Si en DATOS_VERIFICADOS figura Estado Nuevo (unidad sin kilometraje o 0 km en inventario), NO menciones '0 km', "
         "'cero kilometros' ni expresiones equivalentes; puedes describirlo como vehiculo nuevo de forma natural o omitir por completo el tema del kilometraje.\n"
@@ -556,8 +560,10 @@ def build_vehicle_comparison_conversation_prompt(
         "No inventes equipamiento, garantias, historial, consumo, seguridad, financiamiento, promociones ni datos que no esten en las fichas.\n"
         "- Menciona a ambos vehiculos de forma clara (puedes usar los nombres de las secciones o marca/modelo/año del bloque).\n"
         "- No menciones color, tonalidad ni pintura salvo que ambas fichas en DATOS_VERIFICADOS incluyan la linea Color.\n"
-        "- Contrasta de forma natural lo que difiere segun los campos presentes en DATOS_VERIFICADOS (kilometraje, motor, año, descripcion, estado); "
+        "- Contrasta de forma natural lo que difiere segun los campos presentes en DATOS_VERIFICADOS (kilometraje, motor, año, descripcion, estado, precio); "
         "no menciones descripcion si no aparece en alguna ficha.\n"
+        "- Si mencionas precios, usa siempre 'a partir de' + el monto exacto de cada ficha en DATOS_VERIFICADOS "
+        "(no los presentes como precio cerrado).\n"
         "- No uses listas con viñetas ni formato tabla 'campo | A | B' ni lineas tipo 'Etiqueta: valor' repetidas como ficha; integra todo en parrafos o frases enlazadas.\n"
         "- Evita markdown de tablas; como maximo un salto de linea entre dos parrafos cortos si ayuda a la lectura.\n"
         "- No cierres con una pregunta fija literal obligatoria: el sistema agregara el cierre. Termina el texto despues de la comparacion, "
@@ -598,6 +604,8 @@ def build_selected_vehicle_qa_prompt(
         "- Si preguntan explicitamente por descripcion y no hay linea Descripcion en DATOS_VERIFICADOS, dilo con naturalidad "
         "y sugiere que el equipo pueda confirmarlo; si no viene la descripción, no menciones que no esta disponible a menos que te hayan preguntado sobre eso específicamente.\n"
         "- Si el dato no esta en DATOS_VERIFICADOS o figura como N/D, dilo con naturalidad y sugiere que el equipo pueda confirmarlo.\n"
+        "- Si la pregunta es sobre precio/costo y el monto aparece en DATOS_VERIFICADOS, responde siempre con "
+        "'a partir de' + el monto exacto (ej. 'a partir de $450,000.00'); no digas que ese es el precio fijo.\n"
         "- No repitas toda la ficha: centrate en lo que pregunto el usuario.\n"
         "- No saludes ni menciones que eres una IA.\n"
         "- Evita listas largas con viñetas; texto corrido.\n"
