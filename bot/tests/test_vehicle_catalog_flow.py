@@ -366,6 +366,178 @@ class VehicleCatalogFlowTests(GraphTestCase):
         self.assertTrue(updated.get("awaiting_purchase_confirmation"))
         mocked_search.assert_called_once_with({"minPrice": 100000, "maxPrice": 200000})
 
+    def test_requirement_search_filters_by_description_platform(self) -> None:
+        platform_car = {
+            "id": "veh-swift",
+            "brand": "Suzuki",
+            "model": "Swift",
+            "year": 2026,
+            "status": "available",
+            "price": 300000,
+            "description": "El carro ideal para plataformas como uber o diddi",
+        }
+        other = {
+            "id": "veh-jimny",
+            "brand": "Suzuki",
+            "model": "Jimny",
+            "year": 2027,
+            "status": "available",
+            "price": 450000,
+            "description": "SUV compacto para aventura",
+        }
+        vehicles = [platform_car, other]
+        state = with_user_message(initial_state(), "tienes carros para plataforma?")
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.router.classify_router_intent", return_value="VEHICLE_CATALOG"),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.detect_vehicle_filters", return_value={}),
+            patch(
+                "src.nodes.car_selection.classify_vehicle_requirement_matches",
+                return_value={
+                    "is_requirement_search": True,
+                    "matched_vehicles": [platform_car],
+                    "criterion_summary": "apto para plataforma uber/didi",
+                },
+            ) as mocked_requirement,
+            patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=platform_car),
+            patch(
+                "src.nodes.car_selection.generate_vehicle_detail_conversation",
+                return_value="El Suzuki Swift es ideal para plataformas.",
+            ),
+            patch("src.nodes.car_selection.search_vehicles") as mocked_search,
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertEqual(updated.get("selected_vehicle_id"), "veh-swift")
+        self.assertIn("Swift", str(updated.get("selected_car", "")))
+        mocked_requirement.assert_called_once()
+        mocked_search.assert_not_called()
+        self.assertTrue(updated.get("awaiting_purchase_confirmation"))
+
+    def test_requirement_search_filters_by_passengers_metadata(self) -> None:
+        five_seater = {
+            "id": "veh-ertiga",
+            "brand": "Suzuki",
+            "model": "Ertiga",
+            "year": 2026,
+            "status": "available",
+            "metadata": {"passengers": 7},
+            "description": "Familiar amplio",
+        }
+        two_seater = {
+            "id": "veh-sport",
+            "brand": "Suzuki",
+            "model": "Swift Sport",
+            "year": 2025,
+            "status": "available",
+            "metadata": {"passengers": 4},
+            "description": "Deportivo urbano",
+        }
+        vehicles = [five_seater, two_seater]
+        state = with_user_message(initial_state(), "tienes carros para 5 pasajeros o mas?")
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.router.classify_router_intent", return_value="VEHICLE_CATALOG"),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.detect_vehicle_filters", return_value={}),
+            patch(
+                "src.nodes.car_selection.classify_vehicle_requirement_matches",
+                return_value={
+                    "is_requirement_search": True,
+                    "matched_vehicles": [five_seater],
+                    "criterion_summary": "5 pasajeros o mas",
+                },
+            ),
+            patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=five_seater),
+            patch(
+                "src.nodes.car_selection.generate_vehicle_detail_conversation",
+                return_value="El Ertiga acomoda bien a 5 o mas pasajeros.",
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertEqual(updated.get("selected_vehicle_id"), "veh-ertiga")
+        self.assertIn("Ertiga", str(updated.get("selected_car", "")))
+        self.assertTrue(updated.get("awaiting_purchase_confirmation"))
+
+    def test_requirement_search_no_matches_lists_available_directly(self) -> None:
+        vehicles = [
+            {
+                "id": "veh-1",
+                "brand": "Nissan",
+                "model": "Versa",
+                "year": 2011,
+                "status": "available",
+                "description": "Sedan urbano",
+            },
+            {
+                "id": "veh-2",
+                "brand": "Dodge",
+                "model": "Ram",
+                "year": 2015,
+                "status": "available",
+                "description": "Pickup de trabajo",
+            },
+        ]
+        state = with_user_message(initial_state(), "tienes carros electricos?")
+        captured: dict[str, str] = {}
+
+        def _capture_verified(**kwargs):
+            captured["facts"] = str(kwargs.get("verified_facts_block", ""))
+            return "No hay electricos; estos son los disponibles.\n\n" + str(kwargs.get("fallback", ""))
+
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.router.classify_router_intent", return_value="VEHICLE_CATALOG"),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.detect_vehicle_filters", return_value={}),
+            patch(
+                "src.nodes.car_selection.classify_vehicle_requirement_matches",
+                return_value={
+                    "is_requirement_search": True,
+                    "matched_vehicles": [],
+                    "criterion_summary": "vehiculos electricos",
+                },
+            ),
+            patch(
+                "src.nodes.car_selection.generate_verified_user_message",
+                side_effect=_capture_verified,
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        answer = str(updated["messages"][-1]["content"])
+        self.assertIn("Nissan", answer)
+        self.assertIn("Dodge", answer)
+        self.assertIn("criterio_sin_coincidencias: vehiculos electricos", captured.get("facts", ""))
+        self.assertNotIn("quieres ver todos", answer.lower())
+        self.assertEqual(len(updated.get("last_vehicle_candidates", [])), 2)
+
+    def test_price_filter_takes_priority_over_requirement_search(self) -> None:
+        vehicles = [
+            {"id": "veh-versa", "brand": "Nissan", "model": "Versa", "year": 2011, "status": "available", "price": 150000},
+            {"id": "veh-ram", "brand": "Dodge", "model": "Ram", "year": 2015, "status": "available", "price": 450000},
+        ]
+        state = with_user_message(initial_state(), "quiero carros entre 100 mil y 200 mil")
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.router.classify_router_intent", return_value="VEHICLE_CATALOG"),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.search_vehicles", return_value=[vehicles[0]]) as mocked_search,
+            patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=vehicles[0]),
+            patch(
+                "src.nodes.car_selection.generate_vehicle_detail_conversation",
+                return_value="Encontramos un Nissan Versa 2011 dentro de tu presupuesto.",
+            ),
+            patch("src.nodes.car_selection.classify_vehicle_requirement_matches") as mocked_requirement,
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertEqual(updated.get("selected_vehicle_id"), "veh-versa")
+        mocked_search.assert_called_once_with({"minPrice": 100000, "maxPrice": 200000})
+        mocked_requirement.assert_not_called()
+
 
 class CarSelectionSmokeTests(GraphTestCase):
     """Smoke mínimo: pregunta genérica de catálogo lista inventario mockeado."""
@@ -380,6 +552,10 @@ class CarSelectionSmokeTests(GraphTestCase):
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
             patch("src.nodes.router.classify_router_intent", return_value="VEHICLE_CATALOG"),
             patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch(
+                "src.nodes.car_selection.classify_vehicle_requirement_matches",
+                return_value={"is_requirement_search": False, "matched_vehicles": [], "criterion_summary": ""},
+            ),
         ):
             updated = self.graph.invoke(state)
         self.assertEqual(updated.get("current_node"), "car_selection")

@@ -572,6 +572,57 @@ def _extract_price_filters(user_text: str) -> dict[str, int]:
     return filters
 
 
+_REQUIREMENT_METADATA_KEYS = (
+    "passengers",
+    "doors",
+    "fuel",
+    "drivetrain",
+    "versions",
+    "transmissionFull",
+)
+
+
+def build_vehicle_requirement_catalog_block(vehicles: list[dict[str, Any]]) -> str:
+    """Serializa catálogo compacto (id, nombre, description, metadata útil) para matching LLM."""
+
+    lines: list[str] = []
+    for item in vehicles:
+        if not isinstance(item, dict):
+            continue
+        vehicle_id = str(item.get("id", "")).strip()
+        if not vehicle_id:
+            continue
+        brand = str(item.get("brand", "")).strip()
+        model = str(item.get("model", "")).strip()
+        year = item.get("year")
+        year_suffix = f" {year}" if isinstance(year, int) else ""
+        name = f"{brand} {model}{year_suffix}".strip() or "Sin nombre"
+        status = str(item.get("status", "")).strip() or "unknown"
+        description = str(item.get("description", "")).strip() or "(sin descripcion)"
+        meta_parts: list[str] = []
+        metadata = item.get("metadata")
+        if isinstance(metadata, dict):
+            for key in _REQUIREMENT_METADATA_KEYS:
+                if key not in metadata:
+                    continue
+                value = metadata.get(key)
+                if value in (None, ""):
+                    continue
+                meta_parts.append(f"{key}={value}")
+        transmission = str(item.get("transmission", "")).strip()
+        engine = str(item.get("engine", "")).strip()
+        if transmission:
+            meta_parts.append(f"transmission={transmission}")
+        if engine:
+            meta_parts.append(f"engine={engine}")
+        meta_text = "; ".join(meta_parts) if meta_parts else "(sin metadata)"
+        lines.append(
+            f"- id={vehicle_id} | name={name} | status={status} | "
+            f"description={description} | metadata={meta_text}"
+        )
+    return "\n".join(lines) if lines else "(sin vehiculos)"
+
+
 def detect_vehicle_filters(user_text: str, vehicles: list[dict[str, Any]]) -> dict[str, Any]:
     """Extrae filtros brand/model/color/year/precio con clasificador LLM + heurística."""
 

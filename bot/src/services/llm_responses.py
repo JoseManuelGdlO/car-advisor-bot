@@ -36,6 +36,7 @@ from src.utils.prompts import (
     build_faq_selection_prompt,
     build_vehicle_comparison_extract_prompt,
     build_vehicle_pending_selection_extract_prompt,
+    build_vehicle_requirement_match_prompt,
     build_vehicle_step_flags_prompt,
     build_promotions_step_flags_prompt,
     build_extract_customer_name_prompt,
@@ -1252,6 +1253,69 @@ def classify_lead_capture_navigation(
             temperature=0.0,
         )
         return "STAY"
+
+
+def classify_vehicle_requirement_matches(
+    user_text: str,
+    vehicles: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Clasifica si el usuario pide un filtro por uso/capacidad y resuelve IDs del catálogo."""
+
+    from src.tools.vehicles import build_vehicle_requirement_catalog_block
+
+    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
+    default: dict[str, Any] = {
+        "is_requirement_search": False,
+        "matched_vehicles": [],
+        "criterion_summary": "",
+    }
+    catalog = [item for item in vehicles if isinstance(item, dict)]
+    if not catalog or not str(user_text or "").strip():
+        return default
+
+    by_id = {
+        str(item.get("id", "")).strip(): item
+        for item in catalog
+        if str(item.get("id", "")).strip()
+    }
+    try:
+        llm = ChatOpenAI(model=model_name, temperature=0)
+        prompt = build_vehicle_requirement_match_prompt(
+            user_text,
+            build_vehicle_requirement_catalog_block(catalog),
+        )
+        parsed = _parse_json_object_from_llm(str(llm.invoke(prompt).content or ""))
+        if not parsed:
+            return default
+        is_requirement = _coerce_to_bool(parsed.get("is_requirement_search"))
+        criterion = str(parsed.get("criterion_summary") or "").strip()
+        raw_ids = parsed.get("matched_vehicle_ids")
+        matched: list[dict[str, Any]] = []
+        if isinstance(raw_ids, list):
+            seen: set[str] = set()
+            for raw in raw_ids:
+                vehicle_id = str(raw or "").strip()
+                if not vehicle_id or vehicle_id in seen:
+                    continue
+                vehicle = by_id.get(vehicle_id)
+                if vehicle is None:
+                    continue
+                seen.add(vehicle_id)
+                matched.append(vehicle)
+        return {
+            "is_requirement_search": is_requirement,
+            "matched_vehicles": matched if is_requirement else [],
+            "criterion_summary": criterion if is_requirement else "",
+        }
+    except Exception as exc:
+        _log_llm_invoke_failure(
+            "classify_vehicle_requirement_matches",
+            exc,
+            model_name=model_name,
+            prompt_kind="vehicle_requirement_match",
+            temperature=0.0,
+        )
+        return default
 
 
 def classify_vehicle_step_flags(

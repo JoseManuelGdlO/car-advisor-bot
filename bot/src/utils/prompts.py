@@ -217,6 +217,8 @@ _VERIFIED_MODE_INSTRUCTIONS: dict[str, str] = {
         "El bloque DATOS_VERIFICADOS incluye el listado agrupado del inventario (o mensaje de vacio del sistema) "
         "y puede incluir la ultima pregunta del usuario y banderas (por ejemplo si pidio un modelo no disponible).\n"
         "Redacta en espanol (Mexico) un mensaje unico para el chat: tono de consultor de agencia.\n"
+        "Si DATOS_VERIFICADOS incluye criterio_sin_coincidencias, di claramente que no hay vehiculos que cumplan ese "
+        "criterio y muestra el listado disponible; NO preguntes si quiere ver todos ni ofrezcas mostrar el catalogo despues.\n"
         "Si DATOS_VERIFICADOS contiene un listado de vehiculos, COPIALO TAL CUAL en tu respuesta en una seccion clara "
         "(mismas lineas y datos); puedes agregar antes o despues una frase breve de contexto sin contradecir el listado.\n"
         "Si el listado indica que no hay vehiculos, dilo con naturalidad sin inventar unidades.\n"
@@ -247,6 +249,7 @@ _VERIFIED_MODE_INSTRUCTIONS: dict[str, str] = {
     ),
     "filtered_vehicles_followup": (
         "TAREA: El usuario hizo una busqueda por caracteristicas; DATOS_VERIFICADOS incluye el listado formateado.\n"
+        "Si hay criterio_busqueda, mencionalo de forma breve al presentar los resultados (sin inventar coincidencias).\n"
         "Mantén el listado exacto dentro de tu respuesta si aparece en DATOS_VERIFICADOS.\n"
         "Agrega una sola frase de cierre pidiendo el nombre exacto del vehiculo de interes.\n"
         "No inventes datos. Espanol (Mexico). Sin prefijos."
@@ -1452,6 +1455,32 @@ def build_vehicle_filter_extraction_prompt(
         f"brands_catalog={json.dumps(brands, ensure_ascii=False)}\n"
         f"models_catalog={json.dumps(models, ensure_ascii=False)}\n"
         f"colors_catalog={json.dumps(colors, ensure_ascii=False)}\n"
+        f"user_message={json.dumps(str(user_text or ''), ensure_ascii=False)}\n"
+    )
+
+
+def build_vehicle_requirement_match_prompt(user_text: str, catalog_block: str) -> str:
+    """Prompt para emparejar requisitos de uso/capacidad contra description+metadata del catálogo."""
+
+    return (
+        "Determina si el usuario pide vehiculos segun un requisito de uso, capacidad o caracteristica "
+        "que se pueda inferir de la descripcion o metadata del catalogo "
+        "(ej. plataforma/uber/didi, pasajeros, familiar, carga, ciudad, etc.).\n"
+        "Responde SOLO un JSON con esta forma exacta:\n"
+        '{"is_requirement_search": true|false, "matched_vehicle_ids": ["id"], "criterion_summary": "..."}\n'
+        "Reglas:\n"
+        "- is_requirement_search=true solo si el mensaje pide filtrar por uso/capacidad/caracteristica "
+        "basada en description o metadata.\n"
+        "- is_requirement_search=false si pide catalogo general (que carros tienes), marca/modelo/año/color/precio, "
+        "o no hay un requisito interpretable contra description/metadata.\n"
+        "- matched_vehicle_ids: solo IDs que aparecen en CATALOGO y que cumplen el requisito con evidencia "
+        "en description o metadata. Si ninguno cumple, usa [].\n"
+        "- No inventes IDs ni datos. Si description/metadata no sostiene el match, no lo incluyas.\n"
+        "- criterion_summary: resumen corto del criterio (ej. 'apto para plataforma uber/didi') o \"\" si "
+        "is_requirement_search=false.\n"
+        "- Para pasajeros u otros valores numericos en metadata, aplica el umbral exacto del usuario "
+        "(ej. 5 o mas).\n\n"
+        f"CATALOGO:\n{catalog_block.strip() or '(vacio)'}\n\n"
         f"user_message={json.dumps(str(user_text or ''), ensure_ascii=False)}\n"
     )
 

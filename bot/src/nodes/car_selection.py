@@ -13,6 +13,7 @@ from src.services.llm_responses import (
     classify_financing_step_flags,
     classify_purchase_confirmation_intent,
     classify_vehicle_comparison_payload,
+    classify_vehicle_requirement_matches,
     classify_vehicle_step_flags,
     extract_vehicle_pending_selection_payload,
     generate_selected_vehicle_qa_response,
@@ -730,6 +731,7 @@ def _respond_available_list(
     vehicles: list[dict[str, Any]],
     *,
     unavailable_request: bool = False,
+    failed_requirement_criterion: str = "",
 ) -> clientState:
     """Muestra inventario disponible y limpia contexto de selección previa."""
     state["awaiting_purchase_confirmation"] = False
@@ -746,14 +748,20 @@ def _respond_available_list(
         total_vehicles=len(vehicles),
         available_vehicles=available_count,
         pending_candidates=len(state["last_vehicle_candidates"]),
+        failed_requirement_criterion=failed_requirement_criterion or None,
     )
     available_list = format_available_vehicles_grouped(sorted_vehicles)
     user_q = latest_user_message(state)
-    verified = "\n".join(
+    verified_lines = [
+        f"consulta_usuario: {user_q}",
+        f"consulta_especifica_sin_stock_conocido: {str(unavailable_request or bool(failed_requirement_criterion)).lower()}",
+        f"vehiculos_disponibles_contados: {available_count}",
+    ]
+    criterion = str(failed_requirement_criterion or "").strip()
+    if criterion:
+        verified_lines.append(f"criterio_sin_coincidencias: {criterion}")
+    verified_lines.extend(
         [
-            f"consulta_usuario: {user_q}",
-            f"consulta_especifica_sin_stock_conocido: {str(unavailable_request).lower()}",
-            f"vehiculos_disponibles_contados: {available_count}",
             "",
             "LISTADO_INVENTARIO_AGRUPADO:",
             available_list,
@@ -761,6 +769,7 @@ def _respond_available_list(
             "cierre_sugerido_literal: Si quieres, te ayudo a comparar cual te conviene mas.",
         ]
     )
+    verified = "\n".join(verified_lines)
     message = generate_verified_user_message(
         mode="catalog_availability",
         verified_facts_block=verified,
@@ -769,6 +778,99 @@ def _respond_available_list(
         temperature=0.42,
     )
     return append_assistant_message(state, message)
+
+
+def _respond_with_requirement_matches(
+    state: clientState,
+    matched: list[dict[str, Any]],
+    user_text: str,
+    *,
+    criterion_summary: str,
+    all_vehicles: list[dict[str, Any]],
+    source: str,
+) -> clientState:
+    """Responde matches de filtro semántico (description/metadata): 0/1/N resultados."""
+
+    criterion = str(criterion_summary or "").strip() or "el criterio solicitado"
+    filtered = sort_vehicles_by_outbound_priority(
+        [
+            item
+            for item in matched
+            if isinstance(item, dict) and str(item.get("status", "")).strip().lower() == "available"
+        ]
+        or [item for item in matched if isinstance(item, dict)]
+    )
+    _debug(
+        f"{source}_requirement_matches",
+        count=len(filtered),
+        criterion=criterion,
+    )
+    if not filtered:
+        return _respond_available_list(
+            state,
+            all_vehicles,
+            unavailable_request=True,
+            failed_requirement_criterion=criterion,
+        )
+    if len(filtered) == 1:
+        _debug(f"{source}_requirement_single_match", match=format_vehicle_name(filtered[0]))
+        return _respond_with_vehicle_detail(state, filtered[0])
+
+    platform = str(state.get("platform", "web")).strip().lower() or "web"
+    listing = format_filtered_vehicles(filtered, platform=platform)
+    verified = "\n".join(
+        [
+            f"criterio_busqueda: {criterion}",
+            f"vehiculos_encontrados: {len(filtered)}",
+            "",
+            "LISTADO_RESULTADO_BUSQUEDA:",
+            listing,
+            "",
+            "instruccion_cierre_literal: Si te interesa uno de estos, dime por favor el nombre exacto del vehiculo.",
+        ]
+    )
+    message = generate_verified_user_message(
+        mode="filtered_vehicles_followup",
+        verified_facts_block=verified,
+        user_message=user_text,
+        fallback=f"{listing}\n\nSi te interesa uno de estos, dime por favor el nombre exacto del vehiculo.",
+        temperature=0.42,
+    )
+    state["awaiting_purchase_confirmation"] = False
+    state["selected_vehicle_id"] = ""
+    state["selected_car"] = ""
+    state["vehicle_comparison_ctx"] = {}
+    _reset_vehicle_images_state(state)
+    _reset_technical_sheet_delivery(state)
+    state["last_vehicle_candidates"] = _top_vehicle_candidates(filtered)
+    _debug(f"{source}_requirement_pending_candidates_saved", count=len(state["last_vehicle_candidates"]))
+    return append_assistant_message(state, message)
+
+
+def _try_respond_requirement_search(
+    state: clientState,
+    vehicles: list[dict[str, Any]],
+    user_text: str,
+    *,
+    source: str,
+) -> clientState | None:
+    """Si el mensaje es un filtro por description/metadata, responde con matches; si no, None."""
+
+    result = classify_vehicle_requirement_matches(user_text, vehicles)
+    if not result.get("is_requirement_search"):
+        _debug(f"{source}_requirement_search_skipped")
+        return None
+    matched = result.get("matched_vehicles") or []
+    if not isinstance(matched, list):
+        matched = []
+    return _respond_with_requirement_matches(
+        state,
+        matched,
+        user_text,
+        criterion_summary=str(result.get("criterion_summary") or ""),
+        all_vehicles=vehicles,
+        source=source,
+    )
 
 
 def _respond_other_vehicles_with_optional_filters(
@@ -780,9 +882,14 @@ def _respond_other_vehicles_with_optional_filters(
 
     filters = detect_vehicle_filters(user_text, vehicles)
     _debug("other_vehicles_filters_detected", filters=filters)
-    if not filters:
-        return _respond_available_list(state, vehicles)
-    return _respond_with_filtered_search(state, filters, user_text, source="other_vehicles")
+    if filters:
+        return _respond_with_filtered_search(state, filters, user_text, source="other_vehicles")
+    requirement_state = _try_respond_requirement_search(
+        state, vehicles, user_text, source="other_vehicles"
+    )
+    if requirement_state is not None:
+        return requirement_state
+    return _respond_available_list(state, vehicles)
 
 
 def _price_hint_from_filters(filters: dict[str, Any]) -> str:
@@ -1364,6 +1471,10 @@ def car_selection(state: clientState) -> clientState:
     _debug("filters_detected", filters=filters)
     if filters:
         return _respond_with_filtered_search(state, filters, user_text, source="search")
+
+    requirement_state = _try_respond_requirement_search(state, vehicles, user_text, source="search")
+    if requirement_state is not None:
+        return requirement_state
 
     unavailable_request = looks_like_specific_vehicle_request(
         user_text,
