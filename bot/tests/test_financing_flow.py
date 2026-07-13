@@ -51,6 +51,7 @@ class FinancingFlowTests(GraphTestCase):
         state = with_user_message(state, "no pero no me interesa ninguno, solo quiero comprar el carro")
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.intent_checker.maybe_escalate_financing_detail", return_value=None),
             patch(
                 "src.nodes.financing.classify_financing_step_flags",
                 return_value={
@@ -465,8 +466,10 @@ class FinancingFlowTests(GraphTestCase):
 
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.intent_checker.maybe_escalate_financing_detail", return_value=None),
             patch("src.nodes.router.classify_router_intent", return_value="FINANCING"),
             patch("src.nodes.router.maybe_escalate_financing_detail", return_value=None),
+            patch("src.nodes.financing.maybe_escalate_financing_detail", return_value=None),
             patch("src.nodes.financing.resolve_single_vehicle_from_text", side_effect=resolve_vehicle_hint),
             patch("src.nodes.financing.fetch_financing_plans_by_vehicle", return_value=[plan_a, plan_b]),
             patch(

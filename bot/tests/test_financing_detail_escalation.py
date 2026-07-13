@@ -84,6 +84,83 @@ class TestHandleFinancingDetailEscalation(unittest.TestCase):
         self.assertEqual(payload.get("data", {}).get("notification_kind"), "financing_detail_help")
         self.assertEqual(payload.get("data", {}).get("conversationId"), "conv-uuid")
 
+    def test_appends_down_payment_message_before_advisor_ack_when_configured(self) -> None:
+        state = _state_with_bot_exchange(
+            user="Cuánto sería de enganche y mensualidad",
+            bot="Para el financiamiento, tenemos la oferta comercial Suzuki.",
+        )
+        with (
+            patch("src.utils.financing_advisor_notify.push_event_to_backend"),
+            patch("src.utils.financing_advisor_notify.notify_advisor", return_value=True),
+            patch(
+                "src.utils.financing_advisor_notify.deactivate_bot",
+                side_effect=lambda s, **_: {**s, "bot_disabled": True},
+            ),
+            patch(
+                "src.utils.financing_advisor_notify.get_bot_settings",
+                return_value={"downPaymentMessage": "El enganche minimo para un carro es de 15%"},
+            ),
+        ):
+            out = handle_financing_detail_escalation(
+                dict(state),
+                user_message="Cuánto sería de enganche y mensualidad",
+            )
+        msgs = [m.get("content", "") for m in out.get("messages", []) if m.get("role") == "assistant"]
+        tail = msgs[-2:]
+        self.assertEqual(len(tail), 2)
+        self.assertEqual(tail[0], "El enganche minimo para un carro es de 15%")
+        self.assertIn("Un asesor te contactara", tail[1])
+
+    def test_skips_down_payment_message_when_not_configured(self) -> None:
+        state = _state_with_bot_exchange(
+            user="Cuánto sería de enganche y mensualidad",
+            bot="Para el financiamiento, tenemos la oferta comercial Suzuki.",
+        )
+        with (
+            patch("src.utils.financing_advisor_notify.push_event_to_backend"),
+            patch("src.utils.financing_advisor_notify.notify_advisor", return_value=True),
+            patch(
+                "src.utils.financing_advisor_notify.deactivate_bot",
+                side_effect=lambda s, **_: {**s, "bot_disabled": True},
+            ),
+            patch(
+                "src.utils.financing_advisor_notify.get_bot_settings",
+                return_value={"downPaymentMessage": None},
+            ),
+        ):
+            out = handle_financing_detail_escalation(
+                dict(state),
+                user_message="Cuánto sería de enganche y mensualidad",
+            )
+        msgs = [m.get("content", "") for m in out.get("messages", []) if m.get("role") == "assistant"]
+        tail = msgs[-1:]
+        self.assertEqual(len(tail), 1)
+        self.assertIn("Un asesor te contactara", tail[0])
+
+    def test_skips_down_payment_message_without_enganche_in_user_text(self) -> None:
+        state = _state_with_bot_exchange(user="Me aprueban con mal buro?", bot="Estos son los planes")
+        with (
+            patch("src.utils.financing_advisor_notify.push_event_to_backend"),
+            patch("src.utils.financing_advisor_notify.notify_advisor", return_value=True),
+            patch(
+                "src.utils.financing_advisor_notify.deactivate_bot",
+                side_effect=lambda s, **_: {**s, "bot_disabled": True},
+            ),
+            patch(
+                "src.utils.financing_advisor_notify.get_bot_settings",
+                return_value={"downPaymentMessage": "El enganche minimo para un carro es de 15%"},
+            ),
+        ):
+            out = handle_financing_detail_escalation(
+                dict(state),
+                user_message="Me aprueban con mal buro?",
+            )
+        msgs = [m.get("content", "") for m in out.get("messages", []) if m.get("role") == "assistant"]
+        tail = msgs[-1:]
+        self.assertEqual(len(tail), 1)
+        self.assertIn("Un asesor te contactara", tail[0])
+        self.assertNotIn("15%", tail[0])
+
 
 class TestIsFinancingCatalogRequest(unittest.TestCase):
     def test_detects_plan_catalog_browse_with_typo(self) -> None:

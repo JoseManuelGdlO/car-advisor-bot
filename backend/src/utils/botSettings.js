@@ -160,6 +160,17 @@ export const normalizeBotSettingsPayload = (payload) => {
     }
     next.faqFallbackMessage = normalizedFaqFallback;
   }
+  if (payload.downPaymentMessage !== undefined) {
+    if (payload.downPaymentMessage !== null && typeof payload.downPaymentMessage !== "string") {
+      throw new ApiError(400, "downPaymentMessage must be a string or null");
+    }
+    const normalizedDownPayment =
+      payload.downPaymentMessage === null ? null : payload.downPaymentMessage.trim();
+    if (normalizedDownPayment && normalizedDownPayment.length > BOT_MESSAGE_MAX_LENGTH) {
+      throw new ApiError(400, `downPaymentMessage max length is ${BOT_MESSAGE_MAX_LENGTH}`);
+    }
+    next.downPaymentMessage = normalizedDownPayment || null;
+  }
   return next;
 };
 
@@ -174,6 +185,10 @@ export const toBotSettingsDto = (row) => ({
   botName: typeof row?.botName === "string" ? row.botName : "",
   welcomeMessage: typeof row?.welcomeMessage === "string" ? row.welcomeMessage : "",
   faqFallbackMessage: typeof row?.faqFallbackMessage === "string" ? row.faqFallbackMessage : "",
+  downPaymentMessage:
+    typeof row?.downPaymentMessage === "string" && row.downPaymentMessage.trim()
+      ? row.downPaymentMessage
+      : null,
 });
 
 const getNowParts = (timezone, date = new Date()) => {

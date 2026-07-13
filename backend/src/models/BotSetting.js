@@ -68,5 +68,10 @@ export default function BotSettingModel(sequelize) {
       allowNull: true,
       field: "faq_fallback_message",
     },
+    downPaymentMessage: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      field: "down_payment_message",
+    },
   });
 }

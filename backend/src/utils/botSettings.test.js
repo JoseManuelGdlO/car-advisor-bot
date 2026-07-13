@@ -83,3 +83,24 @@ test("normalizeBotSettingsPayload accepts empty botName and message fields", () 
     faqFallbackMessage: "",
   });
 });
+
+test("normalizeBotSettingsPayload accepts downPaymentMessage text and normalizes empty to null", () => {
+  const result = normalizeBotSettingsPayload({
+    downPaymentMessage: "  El enganche minimo es del 15%  ",
+  });
+  assert.equal(result.downPaymentMessage, "El enganche minimo es del 15%");
+
+  assert.deepEqual(normalizeBotSettingsPayload({ downPaymentMessage: "" }), {
+    downPaymentMessage: null,
+  });
+  assert.deepEqual(normalizeBotSettingsPayload({ downPaymentMessage: null }), {
+    downPaymentMessage: null,
+  });
+});
+
+test("normalizeBotSettingsPayload rejects downPaymentMessage longer than max length", () => {
+  assert.throws(
+    () => normalizeBotSettingsPayload({ downPaymentMessage: "a".repeat(2001) }),
+    ApiError
+  );
+});

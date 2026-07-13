@@ -12,7 +12,14 @@ import { normalizeApiError } from "@/lib/formErrors";
 
 type BehaviorForm = Pick<
   BotSettingsDto,
-  "tone" | "emojiStyle" | "salesProactivity" | "customInstructions" | "botName" | "welcomeMessage" | "faqFallbackMessage"
+  | "tone"
+  | "emojiStyle"
+  | "salesProactivity"
+  | "customInstructions"
+  | "botName"
+  | "welcomeMessage"
+  | "faqFallbackMessage"
+  | "downPaymentMessage"
 >;
 
 const DEFAULT_FORM: BehaviorForm = {
@@ -23,6 +30,7 @@ const DEFAULT_FORM: BehaviorForm = {
   botName: "",
   welcomeMessage: "",
   faqFallbackMessage: "",
+  downPaymentMessage: "",
 };
 
 const BOT_NAME_MAX = 40;
@@ -50,6 +58,7 @@ export default function ConfigComportamientoBot() {
       botName: data.botName || "",
       welcomeMessage: data.welcomeMessage || "",
       faqFallbackMessage: data.faqFallbackMessage || "",
+      downPaymentMessage: data.downPaymentMessage ?? "",
     });
   }, [data]);
 
@@ -63,6 +72,7 @@ export default function ConfigComportamientoBot() {
         botName: form.botName,
         welcomeMessage: form.welcomeMessage,
         faqFallbackMessage: form.faqFallbackMessage,
+        downPaymentMessage: form.downPaymentMessage.trim() || null,
       }),
     onSuccess: () => {
       setError(null);
@@ -83,7 +93,8 @@ export default function ConfigComportamientoBot() {
       data.customInstructions !== form.customInstructions ||
       data.botName !== form.botName ||
       data.welcomeMessage !== form.welcomeMessage ||
-      data.faqFallbackMessage !== form.faqFallbackMessage
+      data.faqFallbackMessage !== form.faqFallbackMessage ||
+      (data.downPaymentMessage ?? "") !== form.downPaymentMessage
     );
   }, [data, form]);
 
@@ -157,6 +168,24 @@ export default function ConfigComportamientoBot() {
               Se muestra cuando el bot no encuentra respuesta en las FAQs.
             </p>
             <p className="text-[11px] text-muted-foreground text-right">{form.faqFallbackMessage.length}/{MESSAGE_MAX}</p>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-muted-foreground" htmlFor="down-payment-message">
+              Mensaje de enganche
+            </label>
+            <Textarea
+              id="down-payment-message"
+              rows={3}
+              maxLength={MESSAGE_MAX}
+              placeholder="Ej: El enganche mínimo para un carro es de 15%"
+              value={form.downPaymentMessage}
+              onChange={(e) => setForm((prev) => ({ ...prev, downPaymentMessage: e.target.value }))}
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Se envía cuando el cliente pregunta por enganche y además se notifica al asesor. Solo aplica si hay texto guardado.
+            </p>
+            <p className="text-[11px] text-muted-foreground text-right">{form.downPaymentMessage.length}/{MESSAGE_MAX}</p>
           </div>
         </div>
 

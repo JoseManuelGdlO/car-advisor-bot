@@ -8,7 +8,7 @@ from typing import Any
 
 from src.services.llm_responses import classify_financing_detail_escalation
 from src.state import clientState
-from src.tools.database import push_event_to_backend
+from src.tools.database import get_bot_settings, push_event_to_backend
 from src.tools.vehicles import normalize_user_text, notify_advisor
 from src.utils.app_logging import get_app_logger
 from src.utils.bot_control import deactivate_bot
@@ -203,10 +203,30 @@ def _user_escalation_ack(*, notify_ok: bool, owner_set: bool) -> str:
     )
 
 
+def is_enganche_related_request(text: str) -> bool:
+    """True si el usuario pregunta por enganche."""
+
+    normalized = normalize_user_text(text)
+    return bool(normalized and "enganche" in normalized)
+
+
+def _resolve_down_payment_message(user_text: str) -> str | None:
+    """Mensaje configurable de enganche; solo si el usuario lo menciona y hay texto guardado."""
+
+    if not is_enganche_related_request(user_text):
+        return None
+    raw = get_bot_settings().get("downPaymentMessage")
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    return text or None
+
+
 def handle_financing_detail_escalation(
     state: clientState,
     *,
     advisor_trigger: str | None = None,
+    user_message: str | None = None,
 ) -> clientState:
     """Registra evento CRM, envia push al owner y desactiva el bot."""
 
@@ -273,6 +293,13 @@ def handle_financing_detail_escalation(
         notify_ok = True
 
     state["financing_detail_push_sent"] = True
+    user_text = str(user_message or "").strip()
+    if not user_text:
+        last_user, _ = latest_human_ai_pair(state)
+        user_text = last_user
+    down_payment_msg = _resolve_down_payment_message(user_text)
+    if down_payment_msg:
+        state = append_assistant_message(state, down_payment_msg)
     ack = _user_escalation_ack(notify_ok=notify_ok, owner_set=bool(owner_user_id))
     state = append_assistant_message(state, ack)
     return deactivate_bot(state, reason="financing_detail")
@@ -310,7 +337,11 @@ def maybe_escalate_financing_detail(
             trigger,
             user_text[:80],
         )
-        return handle_financing_detail_escalation(state, advisor_trigger=trigger)
+        return handle_financing_detail_escalation(
+            state,
+            advisor_trigger=trigger,
+            user_message=user_text,
+        )
 
     bot_text = str(
         previous_bot_message
@@ -330,4 +361,8 @@ def maybe_escalate_financing_detail(
         return None
 
     _app.info("[financing_detail] escalation trigger=%s node=%s", trigger, state.get("current_node"))
-    return handle_financing_detail_escalation(state, advisor_trigger=trigger)
+    return handle_financing_detail_escalation(
+        state,
+        advisor_trigger=trigger,
+        user_message=user_text,
+    )
