@@ -19,6 +19,7 @@ import FinancingRequirementModel from "./FinancingRequirement.js";
 import VehicleFinancingPlanModel from "./VehicleFinancingPlan.js";
 import FinancingPlanRequirementModel from "./FinancingPlanRequirement.js";
 import PushDeviceModel from "./PushDevice.js";
+import OwnerNotificationModel from "./OwnerNotification.js";
 import PasswordResetCodeModel from "./PasswordResetCode.js";
 import BlackListEntryModel from "./BlackListEntry.js";
 
@@ -42,6 +43,7 @@ export const FinancingRequirement = FinancingRequirementModel(sequelize);
 export const VehicleFinancingPlan = VehicleFinancingPlanModel(sequelize);
 export const FinancingPlanRequirement = FinancingPlanRequirementModel(sequelize);
 export const PushDevice = PushDeviceModel(sequelize);
+export const OwnerNotification = OwnerNotificationModel(sequelize);
 export const PasswordResetCode = PasswordResetCodeModel(sequelize);
 export const BlackListEntry = BlackListEntryModel(sequelize);
 
@@ -94,6 +96,20 @@ User.hasMany(PushDevice, {
   onUpdate: "CASCADE",
 });
 PushDevice.belongsTo(User, {
+  foreignKey: { name: "ownerUserId", field: "owner_user_id", allowNull: false },
+  targetKey: "id",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+
+User.hasMany(OwnerNotification, {
+  foreignKey: { name: "ownerUserId", field: "owner_user_id", allowNull: false },
+  sourceKey: "id",
+  as: "ownerNotifications",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+OwnerNotification.belongsTo(User, {
   foreignKey: { name: "ownerUserId", field: "owner_user_id", allowNull: false },
   targetKey: "id",
   onDelete: "CASCADE",

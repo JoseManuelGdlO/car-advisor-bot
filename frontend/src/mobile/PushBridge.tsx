@@ -39,6 +39,7 @@ export function PushBridge() {
 
   const refreshConversationQueries = (conversationId?: string) => {
     void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    void queryClient.invalidateQueries({ queryKey: ["notifications"] });
     if (conversationId) {
       void queryClient.invalidateQueries({ queryKey: ["messages", conversationId] });
     }

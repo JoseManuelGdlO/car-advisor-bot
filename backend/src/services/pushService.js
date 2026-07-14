@@ -3,6 +3,7 @@ import { env } from "../config/env.js";
 import { PushDevice, User } from "../models/index.js";
 import { appLog } from "../utils/appLogger.js";
 import { shouldDeliverPush, toNotificationPreferencesDto } from "./notificationPreferences.js";
+import { createOwnerNotification } from "./ownerNotifications.js";
 
 let firebaseApp;
 
@@ -74,6 +75,16 @@ export const sendPushToOwner = async ({ ownerUserId, title, body, data = {} }) =
       deactivatedCount: 0,
       skippedReason: "owner_not_found",
     };
+  }
+
+  // Inbox in-app: siempre se persiste aunque FCM se salte por prefs o devices.
+  try {
+    await createOwnerNotification({ ownerUserId, title, body, data });
+  } catch (error) {
+    console.error("[pushService] Failed persisting owner notification", {
+      ownerUserId,
+      message: String(error?.message || ""),
+    });
   }
 
   const prefs = toNotificationPreferencesDto(user);

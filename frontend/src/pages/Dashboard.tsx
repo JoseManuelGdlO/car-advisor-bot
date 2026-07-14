@@ -1,12 +1,32 @@
-import { useState } from "react";
-import { Bell, TrendingUp, TrendingDown, MessageCircle, UserPlus, Trophy, ChevronRight } from "lucide-react";
+import { useMemo, useState } from "react";
+import {
+  Bell,
+  TrendingUp,
+  TrendingDown,
+  MessageCircle,
+  UserPlus,
+  Trophy,
+  ChevronRight,
+  Trash2,
+  Landmark,
+  Headphones,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ScreenHeader } from "@/components/ScreenHeader";
-import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { crmApi } from "@/services/crm";
 import type { DashboardKpisDto } from "@/services/crm";
+import {
+  notificationsApi,
+  type NotificationKindFilter,
+  type OwnerNotificationDto,
+} from "@/services/notifications";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { normalizeApiError } from "@/lib/formErrors";
+import { toast } from "sonner";
 
 function KpiTrend({ value }: { value: number }) {
   const isPositive = value > 0;
@@ -45,15 +65,109 @@ const DEFAULT_KPIS: DashboardKpisDto = {
   topProducts: [],
 };
 
+type FilterChip = { id: NotificationKindFilter; label: string };
+
+const FILTER_CHIPS: FilterChip[] = [
+  { id: "", label: "Todas" },
+  { id: "lead", label: "Leads" },
+  { id: "advisor", label: "Asesor" },
+  { id: "escalation", label: "Escalaciones" },
+  { id: "inbound", label: "Mensajes" },
+];
+
+const formatRelativeTime = (iso: string | null) => {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const diffMs = Date.now() - date.getTime();
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 1) return "Ahora";
+  if (minutes < 60) return `Hace ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `Hace ${hours} h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `Hace ${days} d`;
+  return date.toLocaleDateString("es-MX", { day: "numeric", month: "short" });
+};
+
+const pathForNotification = (item: OwnerNotificationDto) => {
+  if (item.conversationId) return `/chat/${item.conversationId}`;
+  if (item.kind === "lead_interest") return "/clientes";
+  return "/chats";
+};
+
+const iconForKind = (kind: string | null) => {
+  if (kind === "lead_interest") return UserPlus;
+  if (kind === "human_advisor") return Headphones;
+  if (kind === "financing_detail_help") return Landmark;
+  if (kind === "new_inbound_message") return MessageCircle;
+  return Bell;
+};
+
+const iconToneForKind = (kind: string | null) => {
+  if (kind === "lead_interest") return "bg-primary/10 text-primary-dark";
+  if (kind === "human_advisor") return "bg-warning/15 text-warning";
+  if (kind === "financing_detail_help") return "bg-info/15 text-info";
+  if (kind === "new_inbound_message") return "bg-accent text-accent-foreground";
+  return "bg-muted text-muted-foreground";
+};
+
 export default function Dashboard() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [notifOpen, setNotifOpen] = useState(false);
+  const [filterKind, setFilterKind] = useState<NotificationKindFilter>("");
   const { token, user } = useAuth();
+
   const { data: kpis } = useQuery<DashboardKpisDto>({
     queryKey: ["kpis"],
     queryFn: () => crmApi.getKpis(token!),
     enabled: Boolean(token),
   });
+
+  const { data: notificationsData, isLoading: notificationsLoading } = useQuery({
+    queryKey: ["notifications", filterKind || "all"],
+    queryFn: () =>
+      notificationsApi.list(token!, {
+        kind: filterKind || undefined,
+        limit: 30,
+      }),
+    enabled: Boolean(token),
+  });
+
+  const items = notificationsData?.items ?? [];
+  const unreadCount = notificationsData?.unreadCount ?? 0;
+  const hasNotifDot = unreadCount > 0;
+
+  const invalidateNotifications = () =>
+    queryClient.invalidateQueries({ queryKey: ["notifications"] });
+
+  const markReadMutation = useMutation({
+    mutationFn: (id: string) => notificationsApi.markRead(token!, id),
+    onSuccess: () => void invalidateNotifications(),
+  });
+
+  const markAllMutation = useMutation({
+    mutationFn: () => notificationsApi.markAllRead(token!, filterKind ? { kind: filterKind } : {}),
+    onSuccess: () => void invalidateNotifications(),
+    onError: (error) => {
+      toast.error(normalizeApiError(error, "No se pudieron marcar como leídas.").formError);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => notificationsApi.delete(token!, id),
+    onSuccess: () => void invalidateNotifications(),
+    onError: (error) => {
+      toast.error(normalizeApiError(error, "No se pudo eliminar la notificación.").formError);
+    },
+  });
+
+  const emptyLabel = useMemo(() => {
+    if (filterKind) return "No hay notificaciones de este tipo.";
+    return "No hay notificaciones por ahora.";
+  }, [filterKind]);
+
   const safeKpis = kpis ?? DEFAULT_KPIS;
   const weeklyChats = Array.from({ length: 7 }, (_, i) => safeKpis.weeklyChats[i] ?? 0);
   const max = Math.max(...weeklyChats, 1);
@@ -63,12 +177,13 @@ export default function Dashboard() {
   const todayChats = weeklyChats[weeklyChats.length - 1] ?? 0;
   const weeklyTrendPct = yesterdayChats > 0 ? Math.round(((todayChats - yesterdayChats) / yesterdayChats) * 100) : 0;
   const hasWeeklyData = currentWeekTotal > 0;
-  const hasNotifDot =
-    safeKpis.waiting > 0 || safeKpis.newToday > 0 || safeKpis.newLeads > 0 || safeKpis.activeChats > 0;
 
-  const go = (path: string) => {
+  const openNotification = async (item: OwnerNotificationDto) => {
     setNotifOpen(false);
-    navigate(path);
+    if (!item.readAt) {
+      markReadMutation.mutate(item.id);
+    }
+    navigate(pathForNotification(item));
   };
 
   return (
@@ -92,7 +207,6 @@ export default function Dashboard() {
       />
 
       <div className="px-4 py-5 space-y-5">
-        {/* Hero KPI */}
         <button
           onClick={() => navigate("/chats")}
           className="w-full text-left bg-gradient-primary rounded-2xl p-5 shadow-green text-primary-foreground active:scale-[0.99] transition-transform"
@@ -112,7 +226,6 @@ export default function Dashboard() {
           </div>
         </button>
 
-        {/* KPI grid */}
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-card rounded-2xl p-4 shadow-card border border-border">
             <div className="w-9 h-9 rounded-xl bg-info/10 grid place-items-center text-info mb-3">
@@ -133,7 +246,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Weekly chart */}
         <div className="bg-card rounded-2xl p-4 shadow-card border border-border">
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -175,7 +287,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Top products */}
         <div className="bg-card rounded-2xl p-4 shadow-card border border-border">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-bold text-foreground">Top autos consultados</h3>
@@ -204,7 +315,6 @@ export default function Dashboard() {
           </ul>
         </div>
 
-        {/* Quick action */}
         {safeKpis.waiting > 0 ? (
           <button
             onClick={() => navigate("/chats")}
@@ -230,94 +340,101 @@ export default function Dashboard() {
         <SheetContent side="bottom" className="rounded-t-2xl max-h-[85vh] overflow-y-auto">
           <SheetHeader className="text-left">
             <SheetTitle>Notificaciones</SheetTitle>
-            <SheetDescription>Lo que necesita tu atención hoy, según el panel.</SheetDescription>
+            <SheetDescription>
+              {unreadCount > 0
+                ? `${unreadCount} sin leer · últimas alertas de tu cuenta`
+                : "Últimas alertas de tu cuenta"}
+            </SheetDescription>
           </SheetHeader>
-          <div className="mt-5 space-y-2 pb-safe">
-            {safeKpis.waiting > 0 ? (
-              <button
+
+          <div className="mt-4 flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+            {FILTER_CHIPS.map((chip) => {
+              const active = filterKind === chip.id;
+              return (
+                <button
+                  key={chip.id || "all"}
+                  type="button"
+                  onClick={() => setFilterKind(chip.id)}
+                  className={cn(
+                    "shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
+                    active
+                      ? "border-primary bg-primary/10 text-primary-dark"
+                      : "border-border bg-card text-muted-foreground hover:bg-muted/50",
+                  )}
+                >
+                  {chip.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {items.length > 0 || unreadCount > 0 ? (
+            <div className="mt-3 flex justify-end">
+              <Button
                 type="button"
-                onClick={() => go("/chats")}
-                className="w-full flex items-center gap-3 rounded-xl border border-border bg-card p-3 text-left hover:bg-muted/50 transition-colors"
+                variant="ghost"
+                size="sm"
+                className="h-8 text-xs"
+                disabled={markAllMutation.isPending || unreadCount === 0}
+                onClick={() => markAllMutation.mutate()}
               >
-                <div className="w-10 h-10 shrink-0 rounded-xl bg-warning/15 text-warning grid place-items-center">
-                  <MessageCircle className="w-5 h-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-foreground">Chats en espera</p>
-                  <p className="text-xs text-muted-foreground">
-                    {safeKpis.waiting === 1
-                      ? "Hay 1 conversación esperando respuesta."
-                      : `Hay ${safeKpis.waiting} conversaciones esperando respuesta.`}
-                  </p>
-                </div>
-                <ChevronRight className="w-5 h-5 shrink-0 text-muted-foreground" />
-              </button>
+                Marcar todas como leídas
+              </Button>
+            </div>
+          ) : null}
+
+          <div className="mt-3 space-y-2 pb-safe">
+            {notificationsLoading ? (
+              <p className="text-sm text-muted-foreground text-center py-8 px-2">Cargando…</p>
             ) : null}
-            {safeKpis.newToday > 0 ? (
-              <button
-                type="button"
-                onClick={() => go("/chats")}
-                className="w-full flex items-center gap-3 rounded-xl border border-border bg-card p-3 text-left hover:bg-muted/50 transition-colors"
-              >
-                <div className="w-10 h-10 shrink-0 rounded-xl bg-info/15 text-info grid place-items-center">
-                  <TrendingUp className="w-5 h-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-foreground">Conversaciones nuevas hoy</p>
-                  <p className="text-xs text-muted-foreground">
-                    {safeKpis.newToday === 1
-                      ? "1 conversación iniciada hoy."
-                      : `${safeKpis.newToday} conversaciones iniciadas hoy.`}
-                  </p>
-                </div>
-                <ChevronRight className="w-5 h-5 shrink-0 text-muted-foreground" />
-              </button>
+
+            {!notificationsLoading && items.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8 px-2">{emptyLabel}</p>
             ) : null}
-            {safeKpis.newLeads > 0 ? (
-              <button
-                type="button"
-                onClick={() => go("/clientes")}
-                className="w-full flex items-center gap-3 rounded-xl border border-border bg-card p-3 text-left hover:bg-muted/50 transition-colors"
-              >
-                <div className="w-10 h-10 shrink-0 rounded-xl bg-primary/10 text-primary-dark grid place-items-center">
-                  <UserPlus className="w-5 h-5" />
+
+            {items.map((item) => {
+              const Icon = iconForKind(item.kind);
+              const unread = !item.readAt;
+              return (
+                <div
+                  key={item.id}
+                  className={cn(
+                    "flex items-stretch gap-1 rounded-xl border border-border bg-card overflow-hidden",
+                    unread && "border-primary/25 bg-primary/[0.03]",
+                  )}
+                >
+                  <button
+                    type="button"
+                    onClick={() => void openNotification(item)}
+                    className="min-w-0 flex-1 flex items-center gap-3 p-3 text-left hover:bg-muted/40 transition-colors"
+                  >
+                    <div className={cn("w-10 h-10 shrink-0 rounded-xl grid place-items-center", iconToneForKind(item.kind))}>
+                      <Icon className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className={cn("text-sm text-foreground truncate", unread ? "font-bold" : "font-semibold")}>
+                          {item.title}
+                        </p>
+                        {unread ? <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-warning" /> : null}
+                      </div>
+                      <p className="text-xs text-muted-foreground line-clamp-2">{item.body}</p>
+                      <p className="text-[11px] text-muted-foreground mt-1">{formatRelativeTime(item.createdAt)}</p>
+                    </div>
+                    <ChevronRight className="w-5 h-5 shrink-0 text-muted-foreground" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Eliminar notificación"
+                    className="shrink-0 px-3 grid place-items-center text-muted-foreground hover:text-destructive hover:bg-destructive/5 transition-colors border-l border-border"
+                    disabled={deleteMutation.isPending}
+                    onClick={() => deleteMutation.mutate(item.id)}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-foreground">Leads nuevos</p>
-                  <p className="text-xs text-muted-foreground">
-                    {safeKpis.newLeads === 1
-                      ? "Tienes 1 lead nuevo para revisar."
-                      : `Tienes ${safeKpis.newLeads} leads nuevos para revisar.`}
-                  </p>
-                </div>
-                <ChevronRight className="w-5 h-5 shrink-0 text-muted-foreground" />
-              </button>
-            ) : null}
-            {safeKpis.activeChats > 0 && safeKpis.waiting === 0 && safeKpis.newToday === 0 && safeKpis.newLeads === 0 ? (
-              <button
-                type="button"
-                onClick={() => go("/chats")}
-                className="w-full flex items-center gap-3 rounded-xl border border-border bg-card p-3 text-left hover:bg-muted/50 transition-colors"
-              >
-                <div className="w-10 h-10 shrink-0 rounded-xl bg-accent grid place-items-center text-accent-foreground">
-                  <MessageCircle className="w-5 h-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-foreground">Conversaciones activas</p>
-                  <p className="text-xs text-muted-foreground">
-                    {safeKpis.activeChats === 1
-                      ? "1 conversación activa en curso."
-                      : `${safeKpis.activeChats} conversaciones activas en curso.`}
-                  </p>
-                </div>
-                <ChevronRight className="w-5 h-5 shrink-0 text-muted-foreground" />
-              </button>
-            ) : null}
-            {!safeKpis.waiting && !safeKpis.newToday && !safeKpis.newLeads && !safeKpis.activeChats ? (
-              <p className="text-sm text-muted-foreground text-center py-8 px-2">
-                No hay alertas por ahora. Cuando haya chats en espera, leads o actividad nueva, aparecerán aquí.
-              </p>
-            ) : null}
+              );
+            })}
           </div>
         </SheetContent>
       </Sheet>

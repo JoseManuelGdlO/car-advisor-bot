@@ -229,6 +229,7 @@ export const upsertConversationEvent = async ({
         body: `${lead.name || "Cliente"}: ${normalizedMessage.slice(0, 140)}`,
         data: {
           type: "chat_intent",
+          notification_kind: "new_inbound_message",
           conversationId: conv.id,
         },
       });
