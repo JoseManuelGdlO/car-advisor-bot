@@ -6,8 +6,27 @@ import unittest
 from unittest.mock import patch
 
 from src.nodes.customer_onboarding import customer_onboarding
-from src.utils.ad_campaign_shortcut import ad_matching_text, apply_ad_campaign_shortcut
+from src.utils.ad_campaign_shortcut import (
+    ad_matching_text,
+    apply_ad_campaign_shortcut,
+    can_apply_ad_campaign_shortcut,
+)
 from tests.test_helpers import GraphTestCase, initial_state, with_user_message
+
+_AD_CONTEXT = {
+    "isAd": True,
+    "title": "Nissan Versa 2020",
+    "body": "Vacaciones con Versa",
+    "greetingMessageBody": None,
+}
+
+_VEHICLE = {
+    "id": "veh-1",
+    "brand": "Nissan",
+    "model": "Versa",
+    "year": 2020,
+    "status": "available",
+}
 
 
 class AdCampaignShortcutUnitTests(unittest.TestCase):
@@ -31,22 +50,14 @@ class AdCampaignShortcutUnitTests(unittest.TestCase):
     def test_apply_shortcut_sets_car_selection_flags(self) -> None:
         state = initial_state()
         state["onboarding_greeting_done"] = False
-        vehicle = {"id": "veh-1", "brand": "Nissan", "model": "Versa", "year": 2020, "status": "available"}
         with patch(
             "src.utils.ad_campaign_shortcut.resolve_single_vehicle_from_text",
-            return_value=vehicle,
+            return_value=_VEHICLE,
         ):
-            applied = apply_ad_campaign_shortcut(
-                state,
-                {
-                    "isAd": True,
-                    "title": "Nissan Versa 2020",
-                    "body": "Vacaciones con Versa",
-                    "greetingMessageBody": None,
-                },
-            )
+            applied = apply_ad_campaign_shortcut(state, dict(_AD_CONTEXT))
         self.assertTrue(applied)
         self.assertTrue(state.get("ad_campaign_shortcut"))
+        self.assertTrue(state.get("ad_campaign_shortcut_applied"))
         self.assertEqual(state.get("selected_vehicle_id"), "veh-1")
         self.assertEqual(state.get("selected_car"), "Nissan Versa 2020")
         self.assertEqual(state.get("current_node"), "car_selection")
@@ -66,7 +77,38 @@ class AdCampaignShortcutUnitTests(unittest.TestCase):
             )
         self.assertFalse(applied)
         self.assertFalse(state.get("ad_campaign_shortcut"))
+        self.assertFalse(state.get("ad_campaign_shortcut_applied"))
         self.assertEqual(state.get("selected_vehicle_id"), "")
+
+    def test_apply_shortcut_skips_when_already_applied(self) -> None:
+        state = initial_state()
+        state["ad_campaign_shortcut_applied"] = True
+        with patch(
+            "src.utils.ad_campaign_shortcut.resolve_single_vehicle_from_text",
+            return_value=_VEHICLE,
+        ) as resolve_mock:
+            applied = apply_ad_campaign_shortcut(state, dict(_AD_CONTEXT))
+        self.assertFalse(applied)
+        resolve_mock.assert_not_called()
+        self.assertEqual(state.get("selected_vehicle_id"), "")
+
+    def test_apply_shortcut_skips_mid_session_car_selection(self) -> None:
+        state = initial_state()
+        state["current_node"] = "car_selection"
+        state["selected_vehicle_id"] = "veh-other"
+        with patch(
+            "src.utils.ad_campaign_shortcut.resolve_single_vehicle_from_text",
+            return_value=_VEHICLE,
+        ) as resolve_mock:
+            applied = apply_ad_campaign_shortcut(state, dict(_AD_CONTEXT))
+        self.assertFalse(applied)
+        resolve_mock.assert_not_called()
+        self.assertEqual(state.get("selected_vehicle_id"), "veh-other")
+
+    def test_can_apply_false_when_awaiting_purchase_confirmation(self) -> None:
+        state = initial_state()
+        state["awaiting_purchase_confirmation"] = True
+        self.assertFalse(can_apply_ad_campaign_shortcut(state))
 
 
 class AdCampaignOnboardingTests(unittest.TestCase):

@@ -230,3 +230,69 @@ test("normalizeWcInboundEvent deja adContext null en mensajes sin anuncio", () =
   });
   assert.equal(normalized.adContext, null);
 });
+
+test("normalizeWcInboundEvent no marca adContext en preview de link (solo title/body/url)", () => {
+  const normalized = normalizeWcInboundEvent({
+    payload: {
+      eventId: "evt-link-preview",
+      type: "message.inbound",
+      deviceId: "dev-ad",
+      normalized: {
+        messageId: "msg-link-preview",
+        from: "5215512345678@s.whatsapp.net",
+        content: { type: "text", text: "mira este auto https://example.com/versa" },
+      },
+      raw: {
+        key: { remoteJid: "5215512345678@s.whatsapp.net" },
+        message: {
+          extendedTextMessage: {
+            text: "mira este auto https://example.com/versa",
+            contextInfo: {
+              externalAdReply: {
+                title: "Nissan Versa 2020",
+                body: "Ficha del Versa en stock",
+                sourceUrl: "https://example.com/versa",
+                mediaUrl: "https://cdn.example/preview.jpg",
+              },
+            },
+          },
+        },
+      },
+    },
+    integration: { id: "int-ad", ownerUserId: "owner-ad" },
+    credentials: { deviceId: "dev-ad" },
+  });
+  assert.equal(normalized.adContext, null);
+});
+
+test("normalizeWcInboundEvent detecta CTWA por entryPointConversionSource sin externalAdReply", () => {
+  const normalized = normalizeWcInboundEvent({
+    payload: {
+      eventId: "evt-ctwa-entry",
+      type: "message.inbound",
+      deviceId: "dev-ad",
+      normalized: {
+        messageId: "msg-ctwa-entry",
+        from: "5215512345678@s.whatsapp.net",
+        content: { type: "text", text: "Hola! Quiero más información" },
+      },
+      raw: {
+        key: { remoteJid: "5215512345678@s.whatsapp.net" },
+        message: {
+          extendedTextMessage: {
+            text: "Hola! Quiero más información",
+            contextInfo: {
+              entryPointConversionSource: "ctwa_ad",
+              conversionSource: "FB_Ads",
+              entryPointConversionApp: "instagram",
+            },
+          },
+        },
+      },
+    },
+    integration: { id: "int-ad", ownerUserId: "owner-ad" },
+    credentials: { deviceId: "dev-ad" },
+  });
+  assert.equal(normalized.adContext?.isAd, true);
+  assert.equal(normalized.adContext?.sourceApp, "instagram");
+});

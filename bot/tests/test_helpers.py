@@ -74,6 +74,7 @@ def initial_state() -> dict:
         "onboarding_resume_user_message": "",
         "onboarding_welcome_sent_this_turn": False,
         "ad_campaign_shortcut": False,
+        "ad_campaign_shortcut_applied": False,
     }
 
 

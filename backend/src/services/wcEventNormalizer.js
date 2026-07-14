@@ -69,38 +69,48 @@ const findContextInfoInBaileysMessage = (messageNode) => {
   return null;
 };
 
-const adContextFromExternalAdReply = (externalAdReply) => {
+const isAdSourceType = (value) => String(value ?? "").trim().toLowerCase() === "ad";
+
+const isFbAdsConversionSource = (value) => {
+  const normalized = String(value ?? "").trim().toLowerCase().replace(/-/g, "_");
+  return normalized === "fb_ads" || normalized === "facebook_ads" || normalized === "ig_ads";
+};
+
+const isCtwaEntryPoint = (value) => {
+  const normalized = String(value ?? "").trim().toLowerCase().replace(/-/g, "_");
+  return normalized === "ctwa_ad" || normalized === "ctwa";
+};
+
+/** Señales fuertes CTWA/Meta; title/body/url solos NO bastan (evita link previews). */
+const hasStrongAdCampaignSignal = (contextInfo, externalAdReply) => {
+  if (contextInfo && typeof contextInfo === "object") {
+    if (isCtwaEntryPoint(contextInfo.entryPointConversionSource)) return true;
+    if (isFbAdsConversionSource(contextInfo.conversionSource)) return true;
+    if (isFbAdsConversionSource(contextInfo.entryPointConversionExternalSource)) return true;
+    if (asNullableString(contextInfo.ctwaPayload)) return true;
+  }
+  if (!externalAdReply || typeof externalAdReply !== "object") return false;
+  if (asNullableString(externalAdReply.ctwaClid)) return true;
+  if (externalAdReply.showAdAttribution === true) return true;
+  if (externalAdReply.alwaysShowAdAttribution === true) return true;
+  if (isAdSourceType(externalAdReply.sourceType)) return true;
+  if (externalAdReply.adType != null && externalAdReply.adType !== "") return true;
+  return false;
+};
+
+const adContextFromExternalAdReply = (externalAdReply, contextInfo) => {
   if (!externalAdReply || typeof externalAdReply !== "object") return null;
-  const title = asNullableString(externalAdReply.title);
-  const body = asNullableString(externalAdReply.body);
-  const sourceId = asNullableString(externalAdReply.sourceId);
-  const sourceUrl = asNullableString(externalAdReply.sourceUrl);
-  const sourceApp = asNullableString(externalAdReply.sourceApp);
-  const ctwaClid = asNullableString(externalAdReply.ctwaClid);
-  const mediaUrl = asNullableString(externalAdReply.mediaUrl);
-  const greetingMessageBody = asNullableString(externalAdReply.greetingMessageBody);
-  const sourceType = asNullableString(externalAdReply.sourceType);
-  const hasSignal =
-    Boolean(ctwaClid) ||
-    externalAdReply.showAdAttribution === true ||
-    Boolean(sourceType) ||
-    externalAdReply.adType != null ||
-    Boolean(sourceId) ||
-    Boolean(title) ||
-    Boolean(body) ||
-    Boolean(sourceUrl) ||
-    Boolean(mediaUrl);
-  if (!hasSignal) return null;
+  if (!hasStrongAdCampaignSignal(contextInfo, externalAdReply)) return null;
   return {
     isAd: true,
-    title,
-    body,
-    sourceId,
-    sourceUrl,
-    sourceApp,
-    ctwaClid,
-    mediaUrl,
-    greetingMessageBody,
+    title: asNullableString(externalAdReply.title),
+    body: asNullableString(externalAdReply.body),
+    sourceId: asNullableString(externalAdReply.sourceId),
+    sourceUrl: asNullableString(externalAdReply.sourceUrl),
+    sourceApp: asNullableString(externalAdReply.sourceApp),
+    ctwaClid: asNullableString(externalAdReply.ctwaClid),
+    mediaUrl: asNullableString(externalAdReply.mediaUrl),
+    greetingMessageBody: asNullableString(externalAdReply.greetingMessageBody),
   };
 };
 
@@ -133,8 +143,23 @@ export const readAdContext = (payload) => {
   const contextInfo = findContextInfoInBaileysMessage(rawMessage);
   if (!contextInfo) return null;
 
-  const fromExternal = adContextFromExternalAdReply(contextInfo.externalAdReply);
+  const fromExternal = adContextFromExternalAdReply(contextInfo.externalAdReply, contextInfo);
   if (fromExternal) return fromExternal;
+
+  // Sin externalAdReply: algunos CTWA solo traen entryPoint/conversion en contextInfo.
+  if (hasStrongAdCampaignSignal(contextInfo, null)) {
+    return {
+      isAd: true,
+      title: null,
+      body: null,
+      sourceId: null,
+      sourceUrl: null,
+      sourceApp: asNullableString(contextInfo.entryPointConversionApp),
+      ctwaClid: null,
+      mediaUrl: null,
+      greetingMessageBody: null,
+    };
+  }
 
   const quotedAd = contextInfo.quotedAd;
   if (quotedAd && typeof quotedAd === "object") {

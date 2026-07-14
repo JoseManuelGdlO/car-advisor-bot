@@ -63,6 +63,7 @@ class clientState(TypedDict, total=False):
     - onboarding_resume_user_message: mensaje del usuario a procesar tras capturar el nombre.
     - onboarding_welcome_sent_this_turn: True si onboarding acaba de enviar bienvenida y el router no debe duplicarla.
     - ad_campaign_shortcut: True en el turno de entrada CTWA con vehiculo resuelto (salta onboarding a car_selection).
+    - ad_campaign_shortcut_applied: True tras aplicar el atajo una vez; no se reaplica en turnos siguientes.
     """
 
     messages: list[dict[str, Any]]
@@ -124,3 +125,4 @@ class clientState(TypedDict, total=False):
     onboarding_resume_user_message: str
     onboarding_welcome_sent_this_turn: bool
     ad_campaign_shortcut: bool
+    ad_campaign_shortcut_applied: bool

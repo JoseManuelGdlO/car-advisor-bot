@@ -10,6 +10,8 @@ from src.utils.formatters import format_vehicle_name
 
 _log = get_app_logger("ad_campaign_shortcut")
 
+_EARLY_NODES = frozenset({"", "start", "customer_onboarding"})
+
 
 def _debug(event: str, **payload: Any) -> None:
     log_flow_trace(_log, "ad_campaign_shortcut", event, **payload)
@@ -28,6 +30,39 @@ def ad_matching_text(ad_context: dict[str, Any] | None) -> str:
     return " ".join(parts).strip()
 
 
+def _has_advanced_commercial_progress(state: dict[str, Any]) -> bool:
+    """True si la sesion ya avanzo en catalogo / financiamiento / promo / lead."""
+
+    if str(state.get("selected_vehicle_id") or "").strip():
+        return True
+    if state.get("lead_capture_done"):
+        return True
+    if state.get("awaiting_purchase_confirmation"):
+        return True
+    if state.get("awaiting_financing_plan_selection") or state.get("awaiting_financing_vehicle_selection"):
+        return True
+    if state.get("awaiting_promotion_selection") or state.get("awaiting_promotion_vehicle_selection"):
+        return True
+    if state.get("awaiting_promotion_vehicle_interest_confirmation"):
+        return True
+    if state.get("awaiting_promotion_apply_confirmation"):
+        return True
+    return False
+
+
+def can_apply_ad_campaign_shortcut(state: dict[str, Any]) -> bool:
+    """Solo al inicio de sesion / onboarding, una vez, sin progreso comercial previo."""
+
+    if state.get("ad_campaign_shortcut_applied"):
+        return False
+    node = str(state.get("current_node") or "").strip()
+    if node not in _EARLY_NODES:
+        return False
+    if _has_advanced_commercial_progress(state):
+        return False
+    return True
+
+
 def apply_ad_campaign_shortcut(state: dict[str, Any], ad_context: dict[str, Any] | None) -> bool:
     """Si el anuncio resuelve un vehiculo unico, prepara salto a car_selection.
 
@@ -36,6 +71,15 @@ def apply_ad_campaign_shortcut(state: dict[str, Any], ad_context: dict[str, Any]
     """
 
     if not isinstance(ad_context, dict) or ad_context.get("isAd") is not True:
+        return False
+
+    if not can_apply_ad_campaign_shortcut(state):
+        _debug(
+            "skip_not_eligible",
+            current_node=str(state.get("current_node") or ""),
+            already_applied=bool(state.get("ad_campaign_shortcut_applied")),
+            selected_vehicle_id=str(state.get("selected_vehicle_id") or ""),
+        )
         return False
 
     matching_text = ad_matching_text(ad_context)
@@ -60,6 +104,7 @@ def apply_ad_campaign_shortcut(state: dict[str, Any], ad_context: dict[str, Any]
     state["current_node"] = "car_selection"
     state["show_selected_vehicle_detail_once"] = True
     state["ad_campaign_shortcut"] = True
+    state["ad_campaign_shortcut_applied"] = True
     state["onboarding_greeting_done"] = True
     state["awaiting_customer_name"] = False
     state["onboarding_turn_complete"] = False
