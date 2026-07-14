@@ -37,5 +37,29 @@ export default function UserModel(sequelize) {
       allowNull: false,
       field: "calendar_scheduling_url",
     },
+    pushEnabled: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: true,
+      field: "push_enabled",
+    },
+    notifyLeadInterest: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: true,
+      field: "notify_lead_interest",
+    },
+    notifyEscalations: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: true,
+      field: "notify_escalations",
+    },
+    notifyInboundMessages: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: true,
+      field: "notify_inbound_messages",
+    },
   });
 }

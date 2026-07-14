@@ -22,6 +22,7 @@ import ConfigBot from "./pages/ConfigBot.tsx";
 import ConfigComportamientoBot from "./pages/ConfigComportamientoBot.tsx";
 import Vehiculos from "./pages/Vehiculos.tsx";
 import Perfil from "./pages/Perfil.tsx";
+import ConfigNotificaciones from "./pages/ConfigNotificaciones.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import { AuthProvider } from "@/context/AuthContext";
 import { RequireAuth } from "@/components/RequireAuth";
@@ -63,6 +64,7 @@ const App = () => (
               <Route path="/config/financiamiento" element={<RequireAuth><Navigate to="/vehiculos/financiamiento" replace /></RequireAuth>} />
               <Route path="/config/promociones" element={<RequireAuth><Navigate to="/vehiculos/promociones" replace /></RequireAuth>} />
               <Route path="/perfil" element={<RequireAuth><Perfil /></RequireAuth>} />
+              <Route path="/perfil/notificaciones" element={<RequireAuth><ConfigNotificaciones /></RequireAuth>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </PhoneFrame>

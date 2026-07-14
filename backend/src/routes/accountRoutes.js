@@ -1,6 +1,12 @@
 import { Router } from "express";
 import { requireUserAuth } from "../middlewares/auth.js";
-import { deleteAccount, getAccountProfile, patchAccountProfile } from "../controllers/accountController.js";
+import {
+  deleteAccount,
+  getAccountProfile,
+  getNotificationPreferences,
+  patchAccountProfile,
+  patchNotificationPreferences,
+} from "../controllers/accountController.js";
 import {
   createIntegration,
   deleteIntegration,
@@ -14,6 +20,8 @@ export const accountRoutes = Router();
 
 accountRoutes.get("/account/profile", requireUserAuth, getAccountProfile);
 accountRoutes.patch("/account/profile", requireUserAuth, patchAccountProfile);
+accountRoutes.get("/account/notification-preferences", requireUserAuth, getNotificationPreferences);
+accountRoutes.patch("/account/notification-preferences", requireUserAuth, patchNotificationPreferences);
 accountRoutes.delete("/account", requireUserAuth, deleteAccount);
 
 accountRoutes.get("/integrations", requireUserAuth, listIntegrations);

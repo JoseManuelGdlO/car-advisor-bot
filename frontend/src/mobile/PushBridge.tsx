@@ -6,9 +6,10 @@ import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { pushApi, type PushPlatform } from "@/services/push";
+import { accountApi } from "@/services/account";
+import { DEVICE_TOKEN_KEY, ensurePushRegistration } from "@/mobile/pushRegistration";
 
 const PENDING_CHAT_KEY = "pending_push_chat_id";
-const DEVICE_TOKEN_KEY = "push_device_token";
 
 const resolveConversationId = (value: unknown) => {
   if (typeof value !== "string") return "";
@@ -62,15 +63,15 @@ export function PushBridge() {
     };
 
     const setupPush = async () => {
-      let permissions = await PushNotifications.checkPermissions();
-      if (permissions.receive === "prompt") {
-        permissions = await PushNotifications.requestPermissions();
+      if (token) {
+        try {
+          const prefs = await accountApi.getNotificationPreferences(token);
+          if (!prefs.pushEnabled) return;
+        } catch {
+          // Si falla el fetch de prefs, intenta registrar como hasta ahora.
+        }
       }
-      if (permissions.receive !== "granted") {
-        return;
-      }
-
-      await PushNotifications.register();
+      await ensurePushRegistration(token || "");
     };
 
     const onRegistration = async (registration: Token) => {
@@ -95,13 +96,19 @@ export function PushBridge() {
       refreshConversationQueries(resolveConversationIdFromPushData(data));
     };
 
-    setupPush().catch(() => undefined);
-    PushNotifications.addListener("registration", (registration) => {
-      onRegistration(registration).catch(() => undefined);
-    });
-    PushNotifications.addListener("registrationError", () => undefined);
-    PushNotifications.addListener("pushNotificationReceived", onPushReceived);
-    PushNotifications.addListener("pushNotificationActionPerformed", onActionPerformed);
+    // Capacitor: los listeners deben existir antes de register(), o el evento
+    // "registration" puede perderse (sobre todo en iOS) y el token no se captura.
+    void Promise.all([
+      PushNotifications.addListener("registration", (registration) => {
+        onRegistration(registration).catch(() => undefined);
+      }),
+      PushNotifications.addListener("registrationError", () => undefined),
+      PushNotifications.addListener("pushNotificationReceived", onPushReceived),
+      PushNotifications.addListener("pushNotificationActionPerformed", onActionPerformed),
+    ])
+      .then(() => setupPush())
+      .catch(() => undefined);
+
     const urlHandle = CapacitorApp.addListener("appUrlOpen", ({ url }) => {
       const conversationId = parseConversationIdFromUrl(url);
       openConversation(conversationId);
@@ -117,8 +124,14 @@ export function PushBridge() {
     if (!Capacitor.isNativePlatform() || !token) return;
     const pendingDeviceToken = localStorage.getItem(DEVICE_TOKEN_KEY);
     if (pendingDeviceToken) {
-      const platform = Capacitor.getPlatform() === "ios" ? "ios" : "android";
-      pushApi.registerDevice(token, pendingDeviceToken, platform as PushPlatform).catch(() => undefined);
+      accountApi
+        .getNotificationPreferences(token)
+        .then((prefs) => {
+          if (!prefs.pushEnabled) return;
+          const platform = Capacitor.getPlatform() === "ios" ? "ios" : "android";
+          return pushApi.registerDevice(token, pendingDeviceToken, platform as PushPlatform);
+        })
+        .catch(() => undefined);
     }
     const pending = localStorage.getItem(PENDING_CHAT_KEY);
     if (!pending) return;

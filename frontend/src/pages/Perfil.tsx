@@ -886,12 +886,12 @@ export default function Perfil() {
             </button>
           </li>
           <li className="border-t border-border">
-            <button type="button" className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-muted/40 opacity-70" disabled>
-              <div className="w-9 h-9 rounded-xl bg-muted grid place-items-center text-muted-foreground">
+            <button type="button" onClick={() => navigate("/perfil/notificaciones")} className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-muted/40">
+              <div className="w-9 h-9 rounded-xl bg-warning/10 grid place-items-center text-warning">
                 <Bell className="w-4 h-4" />
               </div>
               <span className="flex-1 text-sm font-medium">Notificaciones</span>
-              <span className="text-xs text-muted-foreground">Pronto</span>
+              <ChevronRight className="w-4 h-4 text-muted-foreground" />
             </button>
           </li>
           <li className="border-t border-border">

@@ -3,6 +3,7 @@ import { BusinessProfile, User } from "../models/index.js";
 import { ApiError } from "../utils/errors.js";
 import { toBusinessProfileDto } from "../utils/businessProfile.js";
 import { calendarSchedulingUrlSchema } from "../utils/calendarUrl.js";
+import { toNotificationPreferencesDto } from "../services/notificationPreferences.js";
 
 const businessPatchSchema = z
   .object({
@@ -110,6 +111,54 @@ export const patchAccountProfile = async (req, res, next) => {
       },
       business: toBusinessProfileDto(business),
     });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+const notificationPreferencesPatchSchema = z
+  .object({
+    pushEnabled: z.boolean().optional(),
+    notifyLeadInterest: z.boolean().optional(),
+    notifyEscalations: z.boolean().optional(),
+    notifyInboundMessages: z.boolean().optional(),
+  })
+  .strict();
+
+export const getNotificationPreferences = async (req, res, next) => {
+  try {
+    const user = await User.findByPk(req.auth.userId, {
+      attributes: ["id", "pushEnabled", "notifyLeadInterest", "notifyEscalations", "notifyInboundMessages"],
+    });
+    if (!user) throw new ApiError(404, "User not found");
+    return res.json(toNotificationPreferencesDto(user));
+  } catch (err) {
+    return next(err);
+  }
+};
+
+export const patchNotificationPreferences = async (req, res, next) => {
+  try {
+    const user = await User.findByPk(req.auth.userId);
+    if (!user) throw new ApiError(404, "User not found");
+
+    const parsed = notificationPreferencesPatchSchema.safeParse(req.body || {});
+    if (!parsed.success) throw parsed.error;
+
+    const patch = parsed.data;
+    if (Object.keys(patch).length) {
+      await user.update({
+        ...(patch.pushEnabled !== undefined ? { pushEnabled: patch.pushEnabled } : {}),
+        ...(patch.notifyLeadInterest !== undefined ? { notifyLeadInterest: patch.notifyLeadInterest } : {}),
+        ...(patch.notifyEscalations !== undefined ? { notifyEscalations: patch.notifyEscalations } : {}),
+        ...(patch.notifyInboundMessages !== undefined ? { notifyInboundMessages: patch.notifyInboundMessages } : {}),
+      });
+    }
+
+    await user.reload({
+      attributes: ["id", "pushEnabled", "notifyLeadInterest", "notifyEscalations", "notifyInboundMessages"],
+    });
+    return res.json(toNotificationPreferencesDto(user));
   } catch (err) {
     return next(err);
   }

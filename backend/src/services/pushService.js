@@ -1,7 +1,8 @@
 import admin from "firebase-admin";
 import { env } from "../config/env.js";
-import { PushDevice } from "../models/index.js";
+import { PushDevice, User } from "../models/index.js";
 import { appLog } from "../utils/appLogger.js";
+import { shouldDeliverPush, toNotificationPreferencesDto } from "./notificationPreferences.js";
 
 let firebaseApp;
 
@@ -61,6 +62,34 @@ export const deactivatePushDevice = async ({ ownerUserId, token }) => {
 };
 
 export const sendPushToOwner = async ({ ownerUserId, title, body, data = {} }) => {
+  const user = await User.findByPk(ownerUserId, {
+    attributes: ["id", "pushEnabled", "notifyLeadInterest", "notifyEscalations", "notifyInboundMessages"],
+  });
+  if (!user) {
+    appLog.info("pushService", "Push skipped reason=owner_not_found");
+    appLog.debug("pushService", { ownerUserId, skippedReason: "owner_not_found" });
+    return {
+      sentCount: 0,
+      failedCount: 0,
+      deactivatedCount: 0,
+      skippedReason: "owner_not_found",
+    };
+  }
+
+  const prefs = toNotificationPreferencesDto(user);
+  const kind = data?.notification_kind ?? data?.notificationKind ?? "";
+  const delivery = shouldDeliverPush({ prefs, kind });
+  if (!delivery.deliver) {
+    appLog.info("pushService", `Push skipped reason=${delivery.skippedReason}`);
+    appLog.debug("pushService", { ownerUserId, kind, skippedReason: delivery.skippedReason });
+    return {
+      sentCount: 0,
+      failedCount: 0,
+      deactivatedCount: 0,
+      skippedReason: delivery.skippedReason,
+    };
+  }
+
   const devices = await PushDevice.findAll({
     where: { ownerUserId, isActive: true },
     attributes: ["id", "token"],

@@ -29,10 +29,21 @@ export type AccountProfileResponse = {
   business: BusinessProfileDto | null;
 };
 
+export type NotificationPreferencesDto = {
+  pushEnabled: boolean;
+  notifyLeadInterest: boolean;
+  notifyEscalations: boolean;
+  notifyInboundMessages: boolean;
+};
+
 export const accountApi = {
   getProfile: (token: string, options?: ApiRequestOptions) =>
     apiRequest<AccountProfileResponse>("/account/profile", "GET", undefined, token, options),
   patchProfile: (token: string, body: { user?: Partial<Pick<AccountUserDto, "name" | "phone" | "defaultPlatform" | "calendarSchedulingUrl">>; business?: Partial<BusinessProfileDto> }) =>
     apiRequest<AccountProfileResponse>("/account/profile", "PATCH", body, token),
+  getNotificationPreferences: (token: string) =>
+    apiRequest<NotificationPreferencesDto>("/account/notification-preferences", "GET", undefined, token),
+  patchNotificationPreferences: (token: string, body: Partial<NotificationPreferencesDto>) =>
+    apiRequest<NotificationPreferencesDto>("/account/notification-preferences", "PATCH", body, token),
   deleteAccount: (token: string, body: { confirmText: string }) => apiRequest<void>("/account", "DELETE", body, token),
 };

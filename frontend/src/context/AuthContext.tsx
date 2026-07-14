@@ -4,6 +4,7 @@ import { Capacitor } from "@capacitor/core";
 import { apiRequest, setUnauthorizedHandler } from "@/lib/api";
 import { accountApi } from "@/services/account";
 import { pushApi } from "@/services/push";
+import { DEVICE_TOKEN_KEY } from "@/mobile/pushRegistration";
 
 export type AuthUser = {
   id: string;
@@ -94,7 +95,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(
     async (options?: ClearSessionOptions) => {
       const currentToken = token;
-      const deviceToken = localStorage.getItem("push_device_token");
+      const deviceToken = localStorage.getItem(DEVICE_TOKEN_KEY);
       if (Capacitor.isNativePlatform() && currentToken && deviceToken) {
         await pushApi.unregisterDevice(currentToken, deviceToken).catch(() => undefined);
       }
