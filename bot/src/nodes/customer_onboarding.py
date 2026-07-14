@@ -194,6 +194,19 @@ def customer_onboarding(state: clientState) -> clientState:
     saved_node = str(state.get("current_node", "start")).strip()
     state["onboarding_turn_complete"] = False
 
+    # CTWA: saltar captura de nombre y dejar continuar a car_selection.
+    if state.get("ad_campaign_shortcut") and str(state.get("selected_vehicle_id") or "").strip():
+        state["current_node"] = "car_selection"
+        state["onboarding_greeting_done"] = True
+        state["awaiting_customer_name"] = False
+        state["onboarding_turn_complete"] = False
+        _debug(
+            "ad_campaign_shortcut_skip",
+            selected_vehicle_id=str(state.get("selected_vehicle_id") or ""),
+            selected_car=str(state.get("selected_car") or ""),
+        )
+        return state
+
     user_text = latest_user_message(state)
     customer_name = _customer_name_from_state(state)
     _debug(

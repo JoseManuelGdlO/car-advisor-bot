@@ -41,7 +41,7 @@ export const setBotSessionDisabled = async ({ userId, platform, botDisabled }) =
   }
 };
 
-export const runBotChat = async ({ userId, platform, message, ownerUserId, conversationId }) => {
+export const runBotChat = async ({ userId, platform, message, ownerUserId, conversationId, adContext }) => {
   // Wrapper del endpoint /chat para desacoplar la orquestación del controlador HTTP.
   const base = botEngineBaseUrl();
   if (!base) throw new ApiError(500, "BOT_ENGINE_URL is not configured");
@@ -55,6 +55,9 @@ export const runBotChat = async ({ userId, platform, message, ownerUserId, conve
   if (owner) body.owner_user_id = owner;
   const convId = String(conversationId || "").trim();
   if (convId) body.conversation_id = convId;
+  if (adContext && adContext.isAd === true) {
+    body.ad_context = adContext;
+  }
   // 1) Invoca el motor FastAPI del bot.
   const response = await fetch(`${base}/chat`, {
     method: "POST",

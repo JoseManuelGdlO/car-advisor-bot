@@ -141,3 +141,92 @@ test("normalizeWcInboundEvent marca unsupportedMediaOnly cuando hay media sin te
   assert.equal(normalized.unsupportedMediaOnly, true);
   assert.ok(Array.isArray(normalized.media));
 });
+
+test("normalizeWcInboundEvent propaga adContext normalizado de WC", () => {
+  const normalized = normalizeWcInboundEvent({
+    payload: {
+      eventId: "evt-ad",
+      type: "message.inbound",
+      deviceId: "dev-ad",
+      normalized: {
+        messageId: "msg-ad",
+        from: "5215512345678@s.whatsapp.net",
+        content: { type: "text", text: "Hola! Quiero más información" },
+        adContext: {
+          isAd: true,
+          title: "Nissan Versa 2020",
+          body: "Estas vacaciones merecen un Versa",
+          sourceId: "ad-1",
+          sourceUrl: "https://fb.me/x",
+          sourceApp: "facebook",
+          ctwaClid: "clid-1",
+          mediaUrl: null,
+          greetingMessageBody: "Hola! Quiero más información",
+        },
+      },
+    },
+    integration: { id: "int-ad", ownerUserId: "owner-ad" },
+    credentials: { deviceId: "dev-ad" },
+  });
+
+  assert.equal(normalized.adContext?.isAd, true);
+  assert.equal(normalized.adContext?.title, "Nissan Versa 2020");
+  assert.equal(normalized.adContext?.ctwaClid, "clid-1");
+});
+
+test("normalizeWcInboundEvent extrae adContext desde raw Baileys si falta en normalized", () => {
+  const normalized = normalizeWcInboundEvent({
+    payload: {
+      eventId: "evt-ad-raw",
+      type: "message.inbound",
+      deviceId: "dev-ad",
+      normalized: {
+        messageId: "msg-ad-raw",
+        from: "5215512345678@s.whatsapp.net",
+        content: { type: "text", text: "Hola! Quiero más información" },
+      },
+      raw: {
+        key: { remoteJid: "5215512345678@s.whatsapp.net" },
+        message: {
+          extendedTextMessage: {
+            text: "Hola! Quiero más información",
+            contextInfo: {
+              externalAdReply: {
+                title: "Toyota Corolla 2019",
+                body: "Corolla en excelentes condiciones",
+                sourceType: "ad",
+                ctwaClid: "clid-raw",
+                showAdAttribution: true,
+              },
+            },
+          },
+        },
+      },
+    },
+    integration: { id: "int-ad", ownerUserId: "owner-ad" },
+    credentials: { deviceId: "dev-ad" },
+  });
+
+  assert.equal(normalized.adContext?.isAd, true);
+  assert.equal(normalized.adContext?.title, "Toyota Corolla 2019");
+  assert.equal(normalized.adContext?.ctwaClid, "clid-raw");
+});
+
+test("normalizeWcInboundEvent deja adContext null en mensajes sin anuncio", () => {
+  const normalized = normalizeWcInboundEvent({
+    payload: {
+      eventId: "evt-3",
+      type: "message.inbound",
+      deviceId: "dev-3",
+      createdAt: "2026-04-27T12:00:00.000Z",
+      normalized: {
+        messageId: "msg-3",
+        from: "5215512345678@s.whatsapp.net",
+        content: { type: "text", text: "hola desde normalized" },
+      },
+    },
+    integration: { id: "int-3", ownerUserId: "owner-3" },
+    credentials: { deviceId: "dev-3" },
+  });
+  assert.equal(normalized.adContext, null);
+});

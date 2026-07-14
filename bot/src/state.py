@@ -62,6 +62,7 @@ class clientState(TypedDict, total=False):
     - pending_onboarding_user_message: primer mensaje del usuario con intencion comercial mientras faltaba el nombre.
     - onboarding_resume_user_message: mensaje del usuario a procesar tras capturar el nombre.
     - onboarding_welcome_sent_this_turn: True si onboarding acaba de enviar bienvenida y el router no debe duplicarla.
+    - ad_campaign_shortcut: True en el turno de entrada CTWA con vehiculo resuelto (salta onboarding a car_selection).
     """
 
     messages: list[dict[str, Any]]
@@ -122,3 +123,4 @@ class clientState(TypedDict, total=False):
     pending_onboarding_user_message: str
     onboarding_resume_user_message: str
     onboarding_welcome_sent_this_turn: bool
+    ad_campaign_shortcut: bool

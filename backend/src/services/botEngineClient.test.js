@@ -42,3 +42,47 @@ test("runBotChat parsea marcador de documento embebido", async () => {
     caption: "Aquí tienes la ficha técnica",
   });
 });
+
+test("runBotChat incluye ad_context solo cuando isAd=true", async () => {
+  env.bot.engineUrl = "https://bot.example";
+  let capturedBody = null;
+
+  global.fetch = async (_url, options) => {
+    capturedBody = JSON.parse(String(options?.body || "{}"));
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ reply: "ok" }),
+    };
+  };
+
+  await runBotChat({
+    userId: "5215512345678",
+    platform: "whatsapp",
+    message: "Hola! Quiero más información",
+    ownerUserId: "owner-1",
+    adContext: {
+      isAd: true,
+      title: "Nissan Versa 2020",
+      body: "copy del anuncio",
+      sourceId: null,
+      sourceUrl: null,
+      sourceApp: null,
+      ctwaClid: "clid",
+      mediaUrl: null,
+      greetingMessageBody: null,
+    },
+  });
+
+  assert.equal(capturedBody.ad_context?.isAd, true);
+  assert.equal(capturedBody.ad_context?.title, "Nissan Versa 2020");
+
+  await runBotChat({
+    userId: "5215512345678",
+    platform: "whatsapp",
+    message: "hola",
+    ownerUserId: "owner-1",
+    adContext: null,
+  });
+  assert.equal(capturedBody.ad_context, undefined);
+});

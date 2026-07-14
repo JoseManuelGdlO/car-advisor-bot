@@ -577,6 +577,15 @@ class FinancingFlowTests(GraphTestCase):
                 patch("src.nodes.intent_checker.maybe_escalate_financing_detail", return_value=None)
             )
             stack.enter_context(
+                patch("src.nodes.router.maybe_escalate_financing_detail", return_value=None)
+            )
+            stack.enter_context(
+                patch("src.nodes.financing.maybe_escalate_financing_detail", return_value=None)
+            )
+            stack.enter_context(
+                patch("src.nodes.lead_capture.classify_lead_capture_navigation", return_value="")
+            )
+            stack.enter_context(
                 patch("src.nodes.intent_checker.classify_faq_interrupt_flags", side_effect=faq_flags)
             )
             stack.enter_context(

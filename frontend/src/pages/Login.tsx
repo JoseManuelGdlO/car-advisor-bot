@@ -36,7 +36,7 @@ const LOGIN_KNOWN_FIELDS = ["name", "email", "password", "calendarSchedulingUrl"
 export default function Login() {
   const navigate = useNavigate();
   const { login, register } = useAuth();
-  const [formDefaults] = useState(readLoginFormDefaults);
+  const [formDefaults] = useState(readLoginFormDefaults());
   const [show, setShow] = useState(false);
   const [email, setEmail] = useState(formDefaults.email);
   const [pass, setPass] = useState("");

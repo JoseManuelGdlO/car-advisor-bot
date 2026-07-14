@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field, field_validator
 from src.graph import build_graph
 from src.context.tenant_context import reset_owner_user_id, set_owner_user_id
 from src.utils.state_helpers import clear_onboarding_resume
+from src.utils.ad_campaign_shortcut import apply_ad_campaign_shortcut
 from src.tools.database import (
     delete_bot_session,
     fetch_active_bot_session,
@@ -61,6 +62,7 @@ class ChatRequest(BaseModel):
     persist_to_backend: bool = Field(default=True)
     owner_user_id: str | None = None
     conversation_id: str | None = None
+    ad_context: dict[str, Any] | None = None
 
     @field_validator("user_id", "message")
     @classmethod
@@ -83,6 +85,19 @@ class ChatRequest(BaseModel):
                 "Plataforma invalida. Usa: web, whatsapp, telegram, facebook, instagram o api."
             )
         return normalized
+
+    @field_validator("ad_context")
+    @classmethod
+    def normalize_ad_context(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        """Acepta solo metadatos de anuncio con isAd=true."""
+
+        if value is None:
+            return None
+        if not isinstance(value, dict):
+            return None
+        if value.get("isAd") is not True:
+            return None
+        return value
 
 
 class ChatResponse(BaseModel):
@@ -224,6 +239,7 @@ def _build_initial_state() -> dict[str, Any]:
         "pending_onboarding_user_message": "",
         "onboarding_resume_user_message": "",
         "onboarding_welcome_sent_this_turn": False,
+        "ad_campaign_shortcut": False,
     }
 
 
@@ -393,7 +409,12 @@ def chat(payload: ChatRequest) -> ChatResponse:
         state["messages"] = messages[-MAX_MESSAGES_HISTORY:]
         previous_len = len(state["messages"])
 
+        # Atajo CTWA: solo cuando el webhook trae metadatos de campaña.
+        apply_ad_campaign_shortcut(state, payload.ad_context)
+
         updated_state = graph.invoke(state)
+        # Consumir bandera de atajo para no reaplicarla en turnos siguientes.
+        updated_state["ad_campaign_shortcut"] = False
         clear_onboarding_resume(updated_state)
         updated_messages = list(updated_state.get("messages", []))
 
