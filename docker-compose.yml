@@ -33,6 +33,9 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       BACKEND_PUBLIC_URL: ${BACKEND_PUBLIC_URL:-}
       BACKEND_SERVICE_TOKEN: ${BACKEND_SERVICE_TOKEN:-}
+    volumes:
+      # Persist images/PDFs across redeploys (EasyPanel COMPOSE uses this file from Git).
+      - autobot-uploads:/app/autobot
     depends_on:
       - autobot
 
@@ -63,3 +66,6 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
       - "${BOT_PORT:-8000}:8000"
+
+volumes:
+  autobot-uploads:
