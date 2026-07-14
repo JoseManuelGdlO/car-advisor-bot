@@ -218,6 +218,7 @@ def _fetch_bot_tenant_config() -> dict[str, Any]:
             "welcomeMessage": _optional_setting(payload.get("welcomeMessage")),
             "faqFallbackMessage": _optional_setting(payload.get("faqFallbackMessage")),
             "downPaymentMessage": _optional_setting(payload.get("downPaymentMessage")),
+            "visitIncentiveMessage": _optional_setting(payload.get("visitIncentiveMessage")),
         }
         resolved_profile = _normalize_business_profile_payload(payload.get("businessProfile"))
     except Exception:

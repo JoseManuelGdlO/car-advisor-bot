@@ -73,5 +73,10 @@ export default function BotSettingModel(sequelize) {
       allowNull: true,
       field: "down_payment_message",
     },
+    visitIncentiveMessage: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      field: "visit_incentive_message",
+    },
   });
 }

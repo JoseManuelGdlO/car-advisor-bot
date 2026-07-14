@@ -10,7 +10,10 @@ from src.tools.database import push_event_to_backend
 from src.tools.vehicles import normalize_user_text, notify_advisor
 from src.utils.app_logging import get_app_logger
 from src.utils.bot_control import deactivate_bot
-from src.utils.financing_advisor_notify import build_advisor_help_push_copy
+from src.utils.financing_advisor_notify import (
+    append_visit_incentive_if_configured,
+    build_advisor_help_push_copy,
+)
 from src.utils.signals import HUMAN_ADVISOR_HEURISTIC_SUBSTR
 from src.utils.state_helpers import append_assistant_message, latest_user_message
 
@@ -174,6 +177,7 @@ def handle_human_advisor_request(
     state["human_advisor_requested"] = True
     state["human_advisor_push_sent"] = True
 
+    state = append_visit_incentive_if_configured(state)
     ack = _user_handoff_ack(state, notify_ok=notify_ok, prior_advisor_contact=prior_advisor_contact)
     state = append_assistant_message(state, ack)
     return deactivate_bot(state, reason="human_advisor")

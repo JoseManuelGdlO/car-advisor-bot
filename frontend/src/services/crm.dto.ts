@@ -77,6 +77,7 @@ export type BotSettingsDto = {
   welcomeMessage: string;
   faqFallbackMessage: string;
   downPaymentMessage: string | null;
+  visitIncentiveMessage: string | null;
   calendarSchedulingUrl: string;
 };
 

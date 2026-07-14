@@ -108,6 +108,58 @@ class TestHandleHumanAdvisorRequest(unittest.TestCase):
             out = handle_human_advisor_request(dict(state))
         self.assertTrue(out.get("bot_disabled"))
 
+    def test_appends_visit_incentive_before_ack_when_configured(self) -> None:
+        state = with_user_message(initial_state(), "Necesito un asesor")
+        state["user_id"] = "u1"
+        state["platform"] = "web"
+        state["owner_user_id"] = "owner-uuid"
+        state["current_node"] = "car_selection"
+        with (
+            patch("src.utils.human_advisor_notify.push_event_to_backend"),
+            patch("src.utils.human_advisor_notify.notify_advisor", return_value=True),
+            patch(
+                "src.utils.human_advisor_notify.deactivate_bot",
+                side_effect=lambda s, **_: {**s, "bot_disabled": True},
+            ),
+            patch(
+                "src.utils.financing_advisor_notify.get_bot_settings",
+                return_value={
+                    "visitIncentiveMessage": "Te invitamos a visitarnos en la agencia",
+                },
+            ),
+        ):
+            out = handle_human_advisor_request(dict(state))
+        msgs = [m.get("content", "") for m in out.get("messages", []) if m.get("role") == "assistant"]
+        tail = msgs[-2:]
+        self.assertEqual(len(tail), 2)
+        self.assertEqual(tail[0], "Te invitamos a visitarnos en la agencia")
+        self.assertIn("contacten", tail[1].lower())
+
+    def test_skips_visit_incentive_when_not_configured(self) -> None:
+        state = with_user_message(initial_state(), "Necesito un asesor")
+        state["user_id"] = "u1"
+        state["platform"] = "web"
+        state["owner_user_id"] = "owner-uuid"
+        state["current_node"] = "car_selection"
+        with (
+            patch("src.utils.human_advisor_notify.push_event_to_backend"),
+            patch("src.utils.human_advisor_notify.notify_advisor", return_value=True),
+            patch(
+                "src.utils.human_advisor_notify.deactivate_bot",
+                side_effect=lambda s, **_: {**s, "bot_disabled": True},
+            ),
+            patch(
+                "src.utils.financing_advisor_notify.get_bot_settings",
+                return_value={"visitIncentiveMessage": None},
+            ),
+        ):
+            out = handle_human_advisor_request(dict(state))
+        msgs = [m.get("content", "") for m in out.get("messages", []) if m.get("role") == "assistant"]
+        tail = msgs[-1:]
+        self.assertEqual(len(tail), 1)
+        self.assertIn("contacten", tail[0].lower())
+        self.assertNotIn("agencia", tail[0].lower())
+
 
 class TestIntentCheckerHumanAdvisor(unittest.TestCase):
     def test_promotions_vehicle_followup_not_human_even_if_llm_flags_human(self) -> None:

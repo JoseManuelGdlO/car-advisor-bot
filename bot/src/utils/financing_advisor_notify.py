@@ -318,6 +318,28 @@ def append_down_payment_faq_if_applicable(
     return append_assistant_message(state, msg)
 
 
+def resolve_visit_incentive_message() -> str | None:
+    """Mensaje configurable para incentivar visita a tienda; solo si hay texto guardado."""
+
+    raw = get_bot_settings().get("visitIncentiveMessage")
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    return text or None
+
+
+def append_visit_incentive_if_configured(state: clientState) -> clientState:
+    """Agrega el incentivo de visita si esta configurado; no duplica el ultimo assistant."""
+
+    msg = resolve_visit_incentive_message()
+    if not msg:
+        return state
+    _, last_ai = latest_human_ai_pair(state)
+    if last_ai == msg:
+        return state
+    return append_assistant_message(state, msg)
+
+
 def handle_financing_detail_escalation(
     state: clientState,
     *,
@@ -394,6 +416,7 @@ def handle_financing_detail_escalation(
         last_user, _ = latest_human_ai_pair(state)
         user_text = last_user
     state = append_down_payment_faq_if_applicable(state, user_text)
+    state = append_visit_incentive_if_configured(state)
     ack = _user_escalation_ack(notify_ok=notify_ok, owner_set=bool(owner_user_id))
     state = append_assistant_message(state, ack)
     return deactivate_bot(state, reason="financing_detail")

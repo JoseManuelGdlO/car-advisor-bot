@@ -165,6 +165,94 @@ class TestHandleFinancingDetailEscalation(unittest.TestCase):
         self.assertNotIn("15%", tail[0])
 
 
+class TestVisitIncentiveOnFinancingEscalation(unittest.TestCase):
+    def test_appends_visit_incentive_before_advisor_ack_when_configured(self) -> None:
+        state = _state_with_bot_exchange(
+            user="Me aprueban con mal buro?",
+            bot="Estos son los planes",
+        )
+        with (
+            patch("src.utils.financing_advisor_notify.push_event_to_backend"),
+            patch("src.utils.financing_advisor_notify.notify_advisor", return_value=True),
+            patch(
+                "src.utils.financing_advisor_notify.deactivate_bot",
+                side_effect=lambda s, **_: {**s, "bot_disabled": True},
+            ),
+            patch(
+                "src.utils.financing_advisor_notify.get_bot_settings",
+                return_value={
+                    "visitIncentiveMessage": "Te invitamos a visitarnos en la agencia",
+                },
+            ),
+        ):
+            out = handle_financing_detail_escalation(
+                dict(state),
+                user_message="Me aprueban con mal buro?",
+            )
+        msgs = [m.get("content", "") for m in out.get("messages", []) if m.get("role") == "assistant"]
+        tail = msgs[-2:]
+        self.assertEqual(len(tail), 2)
+        self.assertEqual(tail[0], "Te invitamos a visitarnos en la agencia")
+        self.assertIn("Un asesor te contactara", tail[1])
+
+    def test_skips_visit_incentive_when_not_configured(self) -> None:
+        state = _state_with_bot_exchange(
+            user="Me aprueban con mal buro?",
+            bot="Estos son los planes",
+        )
+        with (
+            patch("src.utils.financing_advisor_notify.push_event_to_backend"),
+            patch("src.utils.financing_advisor_notify.notify_advisor", return_value=True),
+            patch(
+                "src.utils.financing_advisor_notify.deactivate_bot",
+                side_effect=lambda s, **_: {**s, "bot_disabled": True},
+            ),
+            patch(
+                "src.utils.financing_advisor_notify.get_bot_settings",
+                return_value={"visitIncentiveMessage": None},
+            ),
+        ):
+            out = handle_financing_detail_escalation(
+                dict(state),
+                user_message="Me aprueban con mal buro?",
+            )
+        msgs = [m.get("content", "") for m in out.get("messages", []) if m.get("role") == "assistant"]
+        tail = msgs[-1:]
+        self.assertEqual(len(tail), 1)
+        self.assertIn("Un asesor te contactara", tail[0])
+
+    def test_appends_down_payment_then_visit_incentive_then_ack(self) -> None:
+        state = _state_with_bot_exchange(
+            user="Cuánto sería de enganche y mensualidad",
+            bot="Para el financiamiento, tenemos la oferta comercial Suzuki.",
+        )
+        with (
+            patch("src.utils.financing_advisor_notify.push_event_to_backend"),
+            patch("src.utils.financing_advisor_notify.notify_advisor", return_value=True),
+            patch(
+                "src.utils.financing_advisor_notify.deactivate_bot",
+                side_effect=lambda s, **_: {**s, "bot_disabled": True},
+            ),
+            patch(
+                "src.utils.financing_advisor_notify.get_bot_settings",
+                return_value={
+                    "downPaymentMessage": "El enganche minimo para un carro es de 15%",
+                    "visitIncentiveMessage": "Te invitamos a visitarnos en la agencia",
+                },
+            ),
+        ):
+            out = handle_financing_detail_escalation(
+                dict(state),
+                user_message="Cuánto sería de enganche y mensualidad",
+            )
+        msgs = [m.get("content", "") for m in out.get("messages", []) if m.get("role") == "assistant"]
+        tail = msgs[-3:]
+        self.assertEqual(len(tail), 3)
+        self.assertEqual(tail[0], "El enganche minimo para un carro es de 15%")
+        self.assertEqual(tail[1], "Te invitamos a visitarnos en la agencia")
+        self.assertIn("Un asesor te contactara", tail[2])
+
+
 class TestDownPaymentFaqAppend(unittest.TestCase):
     def test_appends_configured_message_for_any_enganche_question(self) -> None:
         state = _state_with_bot_exchange(

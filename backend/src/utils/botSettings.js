@@ -171,6 +171,17 @@ export const normalizeBotSettingsPayload = (payload) => {
     }
     next.downPaymentMessage = normalizedDownPayment || null;
   }
+  if (payload.visitIncentiveMessage !== undefined) {
+    if (payload.visitIncentiveMessage !== null && typeof payload.visitIncentiveMessage !== "string") {
+      throw new ApiError(400, "visitIncentiveMessage must be a string or null");
+    }
+    const normalizedVisitIncentive =
+      payload.visitIncentiveMessage === null ? null : payload.visitIncentiveMessage.trim();
+    if (normalizedVisitIncentive && normalizedVisitIncentive.length > BOT_MESSAGE_MAX_LENGTH) {
+      throw new ApiError(400, `visitIncentiveMessage max length is ${BOT_MESSAGE_MAX_LENGTH}`);
+    }
+    next.visitIncentiveMessage = normalizedVisitIncentive || null;
+  }
   return next;
 };
 
@@ -188,6 +199,10 @@ export const toBotSettingsDto = (row) => ({
   downPaymentMessage:
     typeof row?.downPaymentMessage === "string" && row.downPaymentMessage.trim()
       ? row.downPaymentMessage
+      : null,
+  visitIncentiveMessage:
+    typeof row?.visitIncentiveMessage === "string" && row.visitIncentiveMessage.trim()
+      ? row.visitIncentiveMessage
       : null,
 });
 

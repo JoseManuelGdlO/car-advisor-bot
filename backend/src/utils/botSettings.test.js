@@ -104,3 +104,24 @@ test("normalizeBotSettingsPayload rejects downPaymentMessage longer than max len
     ApiError
   );
 });
+
+test("normalizeBotSettingsPayload accepts visitIncentiveMessage text and normalizes empty to null", () => {
+  const result = normalizeBotSettingsPayload({
+    visitIncentiveMessage: "  Visitanos en la agencia  ",
+  });
+  assert.equal(result.visitIncentiveMessage, "Visitanos en la agencia");
+
+  assert.deepEqual(normalizeBotSettingsPayload({ visitIncentiveMessage: "" }), {
+    visitIncentiveMessage: null,
+  });
+  assert.deepEqual(normalizeBotSettingsPayload({ visitIncentiveMessage: null }), {
+    visitIncentiveMessage: null,
+  });
+});
+
+test("normalizeBotSettingsPayload rejects visitIncentiveMessage longer than max length", () => {
+  assert.throws(
+    () => normalizeBotSettingsPayload({ visitIncentiveMessage: "a".repeat(2001) }),
+    ApiError
+  );
+});
