@@ -14,13 +14,18 @@ export type AuthUser = {
   calendarSchedulingUrl?: string;
 };
 
+type ClearSessionOptions = {
+  /** `expired` = JWT inválido/caducado; `logout` = cierre voluntario. */
+  reason?: "expired" | "logout";
+};
+
 type AuthContextType = {
   token: string | null;
   user: AuthUser | null;
   authReady: boolean;
   login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   register: (name: string, email: string, password: string, calendarSchedulingUrl?: string) => Promise<void>;
-  logout: () => Promise<void>;
+  logout: (options?: ClearSessionOptions) => Promise<void>;
   refreshProfile: () => Promise<void>;
 };
 
@@ -29,11 +34,27 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const TOKEN_KEY = "auth_token";
 const USER_KEY = "auth_user";
 const REMEMBER_KEY = "auth_remember_me";
+const LAST_EMAIL_KEY = "auth_last_email";
+const SESSION_EXPIRED_FLAG = "auth_session_expired";
 
 const getStoredValue = (key: string): string | null => {
   const local = localStorage.getItem(key);
   if (local !== null) return local;
   return sessionStorage.getItem(key);
+};
+
+/** Valores iniciales del formulario de login (email recordado + preferencia Recuérdame). */
+export function readLoginFormDefaults(): { email: string; rememberMe: boolean; sessionExpired: boolean } {
+  return {
+    email: localStorage.getItem(LAST_EMAIL_KEY)?.trim() || "",
+    rememberMe: localStorage.getItem(REMEMBER_KEY) !== "false",
+    sessionExpired: sessionStorage.getItem(SESSION_EXPIRED_FLAG) === "true",
+  };
+}
+
+const persistLastEmail = (email: string | null | undefined) => {
+  const trimmed = email?.trim();
+  if (trimmed) localStorage.setItem(LAST_EMAIL_KEY, trimmed);
 };
 
 const profileToAuthUser = (profile: Awaited<ReturnType<typeof accountApi.getProfile>>): AuthUser => ({
@@ -52,25 +73,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const raw = getStoredValue(USER_KEY);
     return raw ? JSON.parse(raw) : null;
   });
-  const [rememberMe, setRememberMe] = useState<boolean>(() => localStorage.getItem(REMEMBER_KEY) === "true");
+  const [rememberMe, setRememberMe] = useState<boolean>(() => localStorage.getItem(REMEMBER_KEY) !== "false");
   const [authReady, setAuthReady] = useState(false);
   const bootstrapStartedRef = useRef(false);
+  const userRef = useRef(user);
+  userRef.current = user;
 
-  const clearSession = useCallback(() => {
+  const clearSession = useCallback((options?: ClearSessionOptions) => {
+    persistLastEmail(userRef.current?.email);
     setToken(null);
     setUser(null);
-    setRememberMe(false);
-    localStorage.removeItem(REMEMBER_KEY);
+    // Conservar preferencia "Recuérdame"; solo se limpia la sesión (token/usuario).
+    if (options?.reason === "expired") {
+      sessionStorage.setItem(SESSION_EXPIRED_FLAG, "true");
+    } else {
+      sessionStorage.removeItem(SESSION_EXPIRED_FLAG);
+    }
   }, []);
 
-  const logout = useCallback(async () => {
-    const currentToken = token;
-    const deviceToken = localStorage.getItem("push_device_token");
-    if (Capacitor.isNativePlatform() && currentToken && deviceToken) {
-      await pushApi.unregisterDevice(currentToken, deviceToken).catch(() => undefined);
-    }
-    clearSession();
-  }, [token, clearSession]);
+  const logout = useCallback(
+    async (options?: ClearSessionOptions) => {
+      const currentToken = token;
+      const deviceToken = localStorage.getItem("push_device_token");
+      if (Capacitor.isNativePlatform() && currentToken && deviceToken) {
+        await pushApi.unregisterDevice(currentToken, deviceToken).catch(() => undefined);
+      }
+      clearSession({ reason: options?.reason ?? "logout" });
+    },
+    [token, clearSession],
+  );
 
   useEffect(() => {
     const store = rememberMe ? localStorage : sessionStorage;
@@ -88,6 +119,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const store = rememberMe ? localStorage : sessionStorage;
     const otherStore = rememberMe ? sessionStorage : localStorage;
     if (user) {
+      persistLastEmail(user.email);
       store.setItem(USER_KEY, JSON.stringify(user));
       otherStore.removeItem(USER_KEY);
       return;
@@ -114,7 +146,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const profile = await accountApi.getProfile(token, { suppressSessionExpiry: true });
         setUser(profileToAuthUser(profile));
       } catch {
-        clearSession();
+        clearSession({ reason: "expired" });
       } finally {
         setAuthReady(true);
       }
@@ -132,7 +164,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setUnauthorizedHandler(() => {
       queryClient.clear();
-      void logout();
+      void logout({ reason: "expired" });
     });
     return () => setUnauthorizedHandler(null);
   }, [queryClient, logout]);
@@ -144,6 +176,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       authReady,
       async login(email, password, remember = true) {
         const res = await apiRequest<{ token: string; user: AuthUser }>("/auth/login", "POST", { email, password });
+        persistLastEmail(email);
+        sessionStorage.removeItem(SESSION_EXPIRED_FLAG);
         setRememberMe(remember);
         setToken(res.token);
         try {

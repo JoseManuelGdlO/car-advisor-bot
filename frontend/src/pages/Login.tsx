@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { useAuth } from "@/context/AuthContext";
+import { readLoginFormDefaults, useAuth } from "@/context/AuthContext";
 import { ApiRequestError } from "@/lib/api";
 import { GOOGLE_CALENDAR_URL_ERROR, isGoogleCalendarSchedulingUrl } from "@/lib/calendarUrl";
 import { splitApiRequestError, zodIssuesToFieldErrors } from "@/lib/formErrors";
@@ -36,15 +36,17 @@ const LOGIN_KNOWN_FIELDS = ["name", "email", "password", "calendarSchedulingUrl"
 export default function Login() {
   const navigate = useNavigate();
   const { login, register } = useAuth();
+  const [formDefaults] = useState(readLoginFormDefaults);
   const [show, setShow] = useState(false);
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(formDefaults.email);
   const [pass, setPass] = useState("");
   const [name, setName] = useState("");
   const [calendarSchedulingUrl, setCalendarSchedulingUrl] = useState("");
   const [formError, setFormError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [isRegisterMode, setIsRegisterMode] = useState(false);
-  const [rememberMe, setRememberMe] = useState(true);
+  const [rememberMe, setRememberMe] = useState(formDefaults.rememberMe);
+  const [sessionExpired, setSessionExpired] = useState(formDefaults.sessionExpired);
 
   const clearErrors = () => {
     setFormError("");
@@ -85,6 +87,7 @@ export default function Login() {
         await register(name.trim(), emailTrim, passVal, calendarSchedulingUrl.trim());
       }
       await login(emailTrim, passVal, rememberMe);
+      setSessionExpired(false);
       navigate("/dashboard");
     } catch (err) {
       if (ApiRequestError.is(err)) {
@@ -102,6 +105,7 @@ export default function Login() {
   const toggleMode = () => {
     setIsRegisterMode((v) => !v);
     clearErrors();
+    setSessionExpired(false);
   };
 
   const errName = fieldErrors.name;
@@ -127,12 +131,23 @@ export default function Login() {
         <h2 className="text-xl font-bold mb-1">Bienvenido de vuelta 👋</h2>
         <p className="text-sm text-muted-foreground mb-6">Inicia sesión para gestionar tus chats</p>
 
-        <form onSubmit={submit} className="space-y-4" noValidate>
+        {!isRegisterMode && sessionExpired ? (
+          <p
+            className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950"
+            role="status"
+          >
+            Tu sesión expiró. Vuelve a iniciar sesión.
+          </p>
+        ) : null}
+
+        <form onSubmit={submit} className="space-y-4" autoComplete="on" noValidate>
           {isRegisterMode && (
             <div className="space-y-1.5">
               <Label htmlFor="name">Nombre</Label>
               <Input
                 id="name"
+                name="name"
+                autoComplete="name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className={cn("h-12 rounded-xl", errName && "border-destructive focus-visible:ring-destructive")}
@@ -150,7 +165,9 @@ export default function Login() {
             <Label htmlFor="email">Email o teléfono</Label>
             <Input
               id="email"
+              name="email"
               type="email"
+              autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="tu@email.com"
@@ -173,7 +190,9 @@ export default function Login() {
               </div>
               <Input
                 id="calendar-url"
+                name="calendar-url"
                 type="url"
+                autoComplete="off"
                 value={calendarSchedulingUrl}
                 onChange={(e) => setCalendarSchedulingUrl(e.target.value)}
                 placeholder="https://calendar.app.google/..."
@@ -197,7 +216,9 @@ export default function Login() {
             <div className="relative">
               <Input
                 id="pass"
+                name="password"
                 type={show ? "text" : "password"}
+                autoComplete={isRegisterMode ? "new-password" : "current-password"}
                 value={pass}
                 onChange={(e) => setPass(e.target.value)}
                 placeholder="••••••••"
