@@ -19,8 +19,17 @@ class FaqFollowUpTests(unittest.TestCase):
             )
         )
 
-    def test_non_hours_question_uses_default_close(self) -> None:
+    def test_location_question_uses_schedule_close(self) -> None:
         close, topic = resolve_faq_follow_up("¿Dónde están ubicados?", ["Ubicación: Centro."])
+        self.assertEqual(topic, "ubicacion")
+        self.assertIn("agendar una cita", close.lower())
+        self.assertNotIn("algo más", close.lower())
+
+    def test_non_hours_non_location_uses_default_close(self) -> None:
+        close, topic = resolve_faq_follow_up(
+            "¿Qué garantía ofrecen?",
+            ["Garantía de 1 año en motor."],
+        )
         self.assertEqual(topic, "general")
         self.assertIn("algo más", close.lower())
 

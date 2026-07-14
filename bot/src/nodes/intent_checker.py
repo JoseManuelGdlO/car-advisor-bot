@@ -69,7 +69,10 @@ def _has_selected_vehicle(state: clientState) -> bool:
 
 
 def _should_route_scheduling_to_lead_capture(state: clientState, user_text: str) -> bool:
-    """Pedido de cita/prueba con vehiculo ya elegido va a lead_capture, no a asesor humano."""
+    """Pedido de cita/prueba/visita (incl. direccion para ir) con vehiculo elegido va a lead_capture.
+
+    Tiene prioridad sobre FAQ interruptiva de ubicacion.
+    """
 
     if state.get("lead_capture_done"):
         return False
@@ -177,6 +180,13 @@ def intent_checker(state: clientState) -> clientState:
         state["is_faq_interrupt"] = False
         return state
 
+    # Heuristica: cita/visita (incl. "direccion para ir") gana a FAQ y evita el LLM FAQ.
+    if _should_route_scheduling_to_lead_capture(state, last_user):
+        state["is_faq_interrupt"] = False
+        state["current_node"] = "lead_capture"
+        state["intent"] = "lead_capture"
+        return state
+
     # En confirmacion de compra, las FAQ de negocio se evaluan antes que el clasificador
     # de vehiculo. confirm_purchase no bloquea FAQ: horarios/ubicacion no son cierre comercial.
     if (
@@ -209,12 +219,6 @@ def intent_checker(state: clientState) -> clientState:
         last_user
     ):
         state["is_faq_interrupt"] = False
-        return state
-
-    if _should_route_scheduling_to_lead_capture(state, last_user):
-        state["is_faq_interrupt"] = False
-        state["current_node"] = "lead_capture"
-        state["intent"] = "lead_capture"
         return state
 
     heuristic_substr = human_advisor_heuristic_match(last_user)

@@ -1616,5 +1616,7 @@ def build_answer_first_faq_prompt(
             "- Si el usuario no especifica y en el CONTEXTO hay agencia y taller con direcciones distintas, "
             "puedes mencionar ambas en una o dos oraciones cortas, dejando claro cual es ventas y cual es servicio.\n"
             "- Usa EXCLUSIVAMENTE direcciones del CONTEXTO; no inventes ni mezcles datos de distintas entradas.\n"
+            "- NO sugieras revisar modelos, comprar ni ver un carro.\n"
+            "- NO incluyas pregunta de cierre comercial; el sistema agregara el cierre sobre agendar cita.\n"
         )
     return prompt

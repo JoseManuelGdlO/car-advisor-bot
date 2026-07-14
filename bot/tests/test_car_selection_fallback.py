@@ -7,6 +7,7 @@ from src.services.car_selection_fallback import (
     is_financing_request,
     is_first_images_request,
     is_general_request,
+    is_location_for_visit_request,
     is_more_images_request,
     is_promotions_request,
     is_selected_vehicle_specs_request,
@@ -59,6 +60,19 @@ class CarSelectionFallbackTests(unittest.TestCase):
         self.assertTrue(is_test_drive_or_visit_request("me interesa verlo en persona", self.test_drive_visit))
         self.assertTrue(is_test_drive_or_visit_request("Okey, quiero agendar una cita", self.test_drive_visit))
         self.assertFalse(is_test_drive_or_visit_request("cuanto cuesta", self.test_drive_visit))
+
+    def test_location_for_visit_routes_as_visit_request(self) -> None:
+        self.assertTrue(is_location_for_visit_request("Me pasa dirección para ir por favor?"))
+        self.assertTrue(is_location_for_visit_request("pasame la ubicacion para visitar"))
+        self.assertTrue(is_location_for_visit_request("como llego, me das la direccion?"))
+        self.assertFalse(is_location_for_visit_request("Dónde están ubicados?"))
+        self.assertFalse(is_location_for_visit_request("Me pasa la dirección"))
+        self.assertTrue(
+            is_test_drive_or_visit_request(
+                "Me pasa dirección para ir por favor?",
+                self.test_drive_visit,
+            )
+        )
 
     def test_more_images_financing_promotions_requests(self) -> None:
         self.assertTrue(is_more_images_request("muestrame mas imagenes", self.more_images))

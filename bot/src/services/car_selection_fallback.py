@@ -98,6 +98,28 @@ _IN_PERSON_VISIT_LOOSE_RE = re.compile(
     r"\b(?:ver\w*\s+en\s+persona|visita\s+en\s+persona)\b"
 )
 
+# Pedido de direccion/ubicacion con proposito de ir/visitar (ej. "me pasa direccion para ir").
+_LOCATION_TERM = (
+    r"(?:direccion(?:es)?|ubicacion|ubicad[oa]s?|"
+    r"donde\s+(?:estan|quedan|se\s+encuentran|los\s+(?:encuentro|ubico)))"
+)
+_VISIT_PURPOSE = (
+    r"(?:para\s+ir|para\s+visitar|para\s+llegar|quiero\s+ir|voy\s+(?:a\s+)?(?:ir|pasar)|"
+    r"ir\s+a\s+(?:ver|visitar)|pasarme|pasar\s+a\s+ver|como\s+llego)"
+)
+_LOCATION_FOR_VISIT_RE = re.compile(
+    rf"(?:{_LOCATION_TERM}.{{0,48}}?{_VISIT_PURPOSE}|{_VISIT_PURPOSE}.{{0,48}}?{_LOCATION_TERM})"
+)
+
+
+def is_location_for_visit_request(user_text: str) -> bool:
+    """True si pide direccion/ubicacion con intencion explicita de ir o visitar."""
+
+    normalized = normalize_user_text(user_text)
+    if not normalized:
+        return False
+    return bool(_LOCATION_FOR_VISIT_RE.search(normalized))
+
 
 def is_test_drive_or_visit_request(
     user_text: str,
@@ -109,6 +131,8 @@ def is_test_drive_or_visit_request(
     if not normalized:
         return False
     if any(contains_signal_phrase(normalized, signal) for signal in test_drive_visit_signals_normalized):
+        return True
+    if is_location_for_visit_request(user_text):
         return True
     return bool(_TEST_DRIVE_LOOSE_RE.search(normalized) or _IN_PERSON_VISIT_LOOSE_RE.search(normalized))
 

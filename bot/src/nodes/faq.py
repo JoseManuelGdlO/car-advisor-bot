@@ -10,7 +10,7 @@ from src.services.llm_responses import (
     generate_faq_resume_transition,
     generate_faq_user_turn,
 )
-from src.utils.signals import BUSINESS_HOURS_FAQ_SUBSTR
+from src.utils.signals import BUSINESS_HOURS_FAQ_SUBSTR, BUSINESS_LOCATION_FAQ_SUBSTR
 from src.utils.financing_advisor_notify import (
     append_down_payment_faq_if_applicable,
     maybe_escalate_financing_detail,
@@ -28,9 +28,12 @@ from src.utils.state_helpers import (
 )
 
 _FAQ_DEFAULT_CLOSE = "¿Hay algo más en lo que pueda ayudarte?"
-_FAQ_HOURS_CLOSE = "¿Te gustaría agendar una cita?"
+_FAQ_SCHEDULE_CLOSE = "¿Te gustaría agendar una cita?"
+_FAQ_HOURS_CLOSE = _FAQ_SCHEDULE_CLOSE
+_FAQ_LOCATION_CLOSE = _FAQ_SCHEDULE_CLOSE
 
 _FAQ_HOURS_QUESTION_TERMS = BUSINESS_HOURS_FAQ_SUBSTR
+_FAQ_LOCATION_QUESTION_TERMS = BUSINESS_LOCATION_FAQ_SUBSTR
 
 _FAQ_HOURS_CONTEXT_TERMS = (
     "horario",
@@ -40,6 +43,17 @@ _FAQ_HOURS_CONTEXT_TERMS = (
     "lunes a viernes",
     "abrimos",
     "cerramos",
+)
+
+_FAQ_LOCATION_CONTEXT_TERMS = (
+    "ubicacion",
+    "direccion",
+    "direcciones",
+    "sucursal",
+    "sucursales",
+    "estamos en",
+    "nos encuentras",
+    "google maps",
 )
 
 
@@ -53,11 +67,23 @@ def is_faq_hours_topic(user_question: str, faq_candidates: list[str]) -> bool:
     return bool(context_blob) and any(term in context_blob for term in _FAQ_HOURS_CONTEXT_TERMS)
 
 
+def is_faq_location_topic(user_question: str, faq_candidates: list[str]) -> bool:
+    """Detecta si la FAQ trata sobre ubicacion o direccion del negocio."""
+
+    normalized_question = normalize_user_text(user_question)
+    if normalized_question and any(term in normalized_question for term in _FAQ_LOCATION_QUESTION_TERMS):
+        return True
+    context_blob = normalize_user_text("\n".join(str(item) for item in faq_candidates if str(item).strip()))
+    return bool(context_blob) and any(term in context_blob for term in _FAQ_LOCATION_CONTEXT_TERMS)
+
+
 def resolve_faq_follow_up(user_question: str, faq_candidates: list[str]) -> tuple[str, str]:
     """Devuelve (cierre_literal, tema_cierre) para el turno FAQ standalone."""
 
     if is_faq_hours_topic(user_question, faq_candidates):
         return _FAQ_HOURS_CLOSE, "horarios"
+    if is_faq_location_topic(user_question, faq_candidates):
+        return _FAQ_LOCATION_CLOSE, "ubicacion"
     return _FAQ_DEFAULT_CLOSE, "general"
 
 
@@ -82,9 +108,20 @@ def faq(state: clientState) -> clientState:
     if state.get("is_faq_interrupt"):
         resume_to_step = str(state.get("resume_to_step", "car_selection"))
         _last_user, last_ai = latest_human_ai_pair(state)
+        close_literal, close_topic = resolve_faq_follow_up(question, candidates)
+        mid_purchase_location = (
+            close_topic == "ubicacion"
+            and bool(state.get("awaiting_purchase_confirmation"))
+            and resume_to_step == "car_selection"
+        )
         if is_credit_requirements_faq_interrupt(state):
             transition = CREDIT_FAQ_ADVISOR_CLOSE
             mark_financing_credit_followup_pending(state)
+            used_close = ""
+        elif mid_purchase_location:
+            # Mid-compra: invitar a agendar en lugar de retomar "mas detalles del auto".
+            transition = close_literal
+            used_close = ""
         else:
             transition = generate_faq_resume_transition(
                 user_message=question,
@@ -92,12 +129,12 @@ def faq(state: clientState) -> clientState:
                 resume_to_step=resume_to_step,
                 state=state,
             )
-        _close_literal, close_topic = resolve_faq_follow_up(question, candidates)
+            used_close = ""
         message = generate_faq_user_turn(
             user_question=question,
             faq_candidates=candidates,
             transition_literal=transition,
-            close_literal="",
+            close_literal=used_close,
             faq_close_topic=close_topic,
             compact_faq_body=True,
         )
