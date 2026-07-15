@@ -27,6 +27,10 @@ def _log_transition(origin: str, destination: str, details: str | None = None) -
     _log.info(f"[GRAPH] {origin} -> {destination}")
 
 
+def _has_deferred_faq(state: clientState) -> bool:
+    return bool(str(state.get("deferred_faq_user_message", "")).strip())
+
+
 def _route_from_router(state: clientState) -> str:
     """Devuelve el nombre del siguiente nodo luego de `router`."""
 
@@ -48,6 +52,9 @@ def _route_from_router(state: clientState) -> str:
     if node == "promotions":
         _log_transition("router", "promotions")
         return "promotions"
+    if _has_deferred_faq(state):
+        _log_transition("router", "faq", "faq diferida post-comercial")
+        return "faq"
     _log_transition("router", "end", "sin nodo valido")
     return "end"
 
@@ -104,6 +111,9 @@ def _route_after_car_selection(state: clientState) -> str:
     if node == "promotions":
         _log_transition("car_selection", "promotions", "consulta de promociones")
         return "promotions"
+    if _has_deferred_faq(state):
+        _log_transition("car_selection", "faq", "faq diferida post-comercial")
+        return "faq"
     _log_transition("car_selection", "end")
     return "end"
 
@@ -121,6 +131,9 @@ def _route_after_financing(state: clientState) -> str:
     if node == "promotions":
         _log_transition("financing", "promotions", "consulta de promociones")
         return "promotions"
+    if _has_deferred_faq(state):
+        _log_transition("financing", "faq", "faq diferida post-comercial")
+        return "faq"
     _log_transition("financing", "end")
     return "end"
 
@@ -138,6 +151,9 @@ def _route_after_promotions(state: clientState) -> str:
     if node == "lead_capture":
         _log_transition("promotions", "lead_capture", "confirmacion de promocion + vehiculo")
         return "lead_capture"
+    if _has_deferred_faq(state):
+        _log_transition("promotions", "faq", "faq diferida post-comercial")
+        return "faq"
     _log_transition("promotions", "end")
     return "end"
 
@@ -157,8 +173,14 @@ def _route_after_lead_capture(state: clientState) -> str:
         return "car_selection"
     if node == "lead_capture":
         # Tras compartir el enlace de agenda el nodo pasa a router y desactiva el bot.
+        if _has_deferred_faq(state):
+            _log_transition("lead_capture", "faq", "faq diferida post-comercial")
+            return "faq"
         _log_transition("lead_capture", "end", "mensaje de agenda enviado")
         return "end"
+    if _has_deferred_faq(state):
+        _log_transition("lead_capture", "faq", "faq diferida post-comercial")
+        return "faq"
     _log_transition("lead_capture", "end")
     return "end"
 
@@ -169,6 +191,15 @@ def _route_after_customer_onboarding(state: clientState) -> str:
     if state.get("onboarding_turn_complete"):
         _log_transition("customer_onboarding", "end", "bienvenida o captura de nombre")
         return "end"
+    # FAQ sola (primer mensaje o durante captura de nombre) sin pending comercial.
+    if _has_deferred_faq(state) and not str(state.get("onboarding_resume_user_message", "")).strip():
+        _log_transition("customer_onboarding", "faq", "faq diferida sin comercial")
+        return "faq"
+    if str(state.get("current_node", "")).strip() == "faq" and not str(
+        state.get("onboarding_resume_user_message", "")
+    ).strip():
+        _log_transition("customer_onboarding", "faq", "faq durante captura de nombre")
+        return "faq"
     _log_transition("customer_onboarding", "intent_checker")
     return "intent_checker"
 
@@ -192,6 +223,7 @@ def build_graph():
         _route_after_customer_onboarding,
         {
             "intent_checker": "intent_checker",
+            "faq": "faq",
             "end": END,
         },
     )
@@ -228,6 +260,7 @@ def build_graph():
             "lead_capture": "lead_capture",
             "financing": "financing",
             "promotions": "promotions",
+            "faq": "faq",
             "end": END,
         },
     )
@@ -238,6 +271,7 @@ def build_graph():
             "car_selection": "car_selection",
             "lead_capture": "lead_capture",
             "promotions": "promotions",
+            "faq": "faq",
             "end": END,
         },
     )
@@ -248,6 +282,7 @@ def build_graph():
             "car_selection": "car_selection",
             "financing": "financing",
             "lead_capture": "lead_capture",
+            "faq": "faq",
             "end": END,
         },
     )
@@ -258,6 +293,7 @@ def build_graph():
             "promotions": "promotions",
             "financing": "financing",
             "car_selection": "car_selection",
+            "faq": "faq",
             "end": END,
         },
     )

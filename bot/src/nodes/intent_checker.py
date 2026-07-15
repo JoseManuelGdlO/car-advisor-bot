@@ -175,6 +175,13 @@ def intent_checker(state: clientState) -> clientState:
         state["is_faq_interrupt"] = False
         return state
 
+    # FAQ diferida tras captura de nombre: primero el pending comercial, luego el nodo faq.
+    if str(state.get("deferred_faq_user_message", "")).strip() and str(
+        state.get("onboarding_resume_user_message", "")
+    ).strip():
+        state["is_faq_interrupt"] = False
+        return state
+
     # Si no hay mensaje previo del bot, no existe interrupcion de flujo.
     if not last_ai:
         state["is_faq_interrupt"] = False

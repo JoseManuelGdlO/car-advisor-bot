@@ -695,6 +695,226 @@ class CustomerOnboardingTests(GraphTestCase):
         welcome_mock.assert_not_called()
         self.assertEqual(updated.get("current_node"), "car_selection")
 
+    def test_faq_during_name_capture_resumes_pending_then_answers_faq(self) -> None:
+        state = initial_state()
+        state["customer_info"] = {}
+        state["onboarding_greeting_done"] = False
+        state["awaiting_customer_name"] = True
+        state["pending_onboarding_user_message"] = "¡Hola! Quiero más información"
+        state["selected_vehicle_id"] = "veh-dzire"
+        state["selected_car"] = "Suzuki Dzire 2026"
+        state["show_selected_vehicle_detail_once"] = True
+        state["messages"] = [
+            {"role": "user", "content": "¡Hola! Quiero más información", "type": "HumanMessage"},
+            {
+                "role": "assistant",
+                "content": "Hola, buen día. ¿En qué te puedo ayudar? ¿Con quién tengo el gusto?",
+                "type": "AIMessage",
+            },
+            {
+                "role": "user",
+                "content": "Donde hacen los servicios de mantenimiento?",
+                "type": "HumanMessage",
+            },
+        ]
+        state["last_bot_message"] = "Hola, buen día. ¿En qué te puedo ayudar? ¿Con quién tengo el gusto?"
+
+        vehicle = {
+            "id": "veh-dzire",
+            "brand": "Suzuki",
+            "model": "Dzire",
+            "year": 2026,
+            "price": 312990,
+            "status": "available",
+            "images": [],
+        }
+
+        with (
+            patch(
+                "src.nodes.customer_onboarding.extract_customer_name",
+                return_value={"nombre": None, "is_refusal": True, "mensaje_restante": None},
+            ),
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.intent_checker.maybe_escalate_financing_detail", return_value=None),
+            patch("src.nodes.router.classify_router_intent", return_value="VEHICLE_CATALOG"),
+            patch("src.nodes.router.maybe_escalate_financing_detail", return_value=None),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=[vehicle]),
+            patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=vehicle),
+            patch(
+                "src.nodes.car_selection.generate_vehicle_detail_conversation",
+                return_value="Te presento el Suzuki Dzire Boostergreen 2026.",
+            ),
+            patch(
+                "src.nodes.car_selection.generate_verified_user_message",
+                side_effect=lambda **kw: kw.get("fallback", ""),
+            ),
+            patch(
+                "src.nodes.car_selection._build_technical_sheet_message",
+                return_value="Aquí tienes la ficha técnica",
+            ),
+            patch(
+                "src.nodes.faq.fetch_faq_candidates",
+                return_value=["El taller está en Av. Servicio 100."],
+            ),
+            patch(
+                "src.nodes.faq.generate_faq_user_turn",
+                return_value="El taller de mantenimiento está en Av. Servicio 100.",
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertFalse(updated.get("awaiting_customer_name"))
+        self.assertTrue(updated.get("onboarding_greeting_done"))
+        self.assertEqual(updated.get("deferred_faq_user_message"), "")
+        self.assertEqual(updated.get("pending_onboarding_user_message"), "")
+        assistant_texts = [m["content"] for m in updated["messages"] if m.get("role") == "assistant"]
+        self.assertTrue(any("Con gusto te ayudo" in text for text in assistant_texts))
+        self.assertTrue(any("Suzuki Dzire" in text for text in assistant_texts))
+        self.assertTrue(any("taller de mantenimiento" in text.lower() for text in assistant_texts))
+        # Comercial primero, FAQ después.
+        dzire_idx = next(i for i, text in enumerate(assistant_texts) if "Suzuki Dzire" in text)
+        faq_idx = next(i for i, text in enumerate(assistant_texts) if "taller de mantenimiento" in text.lower())
+        self.assertLess(dzire_idx, faq_idx)
+
+    def test_first_message_faq_asks_name_then_answers_faq_same_turn(self) -> None:
+        state = with_user_message(
+            initial_state(),
+            "Donde hacen los servicios de mantenimiento?",
+        )
+        state["customer_info"] = {}
+        state["onboarding_greeting_done"] = False
+
+        with (
+            patch(
+                "src.nodes.customer_onboarding.generate_welcome_and_name_request",
+                return_value="Hola, buen día. ¿Con quién tengo el gusto?",
+            ),
+            patch(
+                "src.nodes.customer_onboarding.classify_onboarding_first_message",
+                return_value=_onboarding_greeting_flags(),
+            ),
+            patch(
+                "src.nodes.faq.fetch_faq_candidates",
+                return_value=["El taller está en Av. Servicio 100."],
+            ),
+            patch(
+                "src.nodes.faq.generate_faq_user_turn",
+                return_value="El taller de mantenimiento está en Av. Servicio 100.",
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertTrue(updated.get("awaiting_customer_name"))
+        self.assertEqual(updated.get("deferred_faq_user_message"), "")
+        self.assertEqual(updated.get("pending_onboarding_user_message"), "")
+        assistant_texts = [m["content"] for m in updated["messages"] if m.get("role") == "assistant"]
+        self.assertTrue(any("Con quién tengo el gusto" in text for text in assistant_texts))
+        self.assertTrue(any("taller de mantenimiento" in text.lower() for text in assistant_texts))
+        welcome_idx = next(i for i, text in enumerate(assistant_texts) if "Con quién tengo el gusto" in text)
+        faq_idx = next(i for i, text in enumerate(assistant_texts) if "taller de mantenimiento" in text.lower())
+        self.assertLess(welcome_idx, faq_idx)
+
+    def test_faq_only_during_name_capture_answers_faq_same_turn(self) -> None:
+        state = initial_state()
+        state["customer_info"] = {}
+        state["onboarding_greeting_done"] = False
+        state["awaiting_customer_name"] = True
+        state["pending_onboarding_user_message"] = ""
+        state["messages"] = [
+            {"role": "user", "content": "hola", "type": "HumanMessage"},
+            {
+                "role": "assistant",
+                "content": "Hola, buen día. ¿Con quién tengo el gusto?",
+                "type": "AIMessage",
+            },
+            {
+                "role": "user",
+                "content": "Donde hacen los servicios de mantenimiento?",
+                "type": "HumanMessage",
+            },
+        ]
+        state["last_bot_message"] = "Hola, buen día. ¿Con quién tengo el gusto?"
+
+        with (
+            patch(
+                "src.nodes.customer_onboarding.extract_customer_name",
+                return_value={"nombre": None, "is_refusal": True, "mensaje_restante": None},
+            ),
+            patch(
+                "src.nodes.faq.fetch_faq_candidates",
+                return_value=["El taller está en Av. Servicio 100."],
+            ),
+            patch(
+                "src.nodes.faq.generate_faq_user_turn",
+                return_value="El taller de mantenimiento está en Av. Servicio 100.",
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertFalse(updated.get("awaiting_customer_name"))
+        self.assertEqual(updated.get("deferred_faq_user_message"), "")
+        assistant_texts = [m["content"] for m in updated["messages"] if m.get("role") == "assistant"]
+        self.assertTrue(any("taller de mantenimiento" in text.lower() for text in assistant_texts))
+        self.assertFalse(any("Con quién tengo el gusto" in text for text in assistant_texts[1:]))
+
+    def test_name_plus_faq_remainder_defers_faq_after_pending_commercial(self) -> None:
+        state = initial_state()
+        state["customer_info"] = {}
+        state["onboarding_greeting_done"] = False
+        state["awaiting_customer_name"] = True
+        state["pending_onboarding_user_message"] = "¡Hola! Quiero más información"
+        state["messages"] = [
+            {"role": "user", "content": "¡Hola! Quiero más información", "type": "HumanMessage"},
+            {
+                "role": "assistant",
+                "content": "Hola, buen día. ¿Con quién tengo el gusto?",
+                "type": "AIMessage",
+            },
+            {
+                "role": "user",
+                "content": "Soy Julio, donde hacen los servicios de mantenimiento?",
+                "type": "HumanMessage",
+            },
+        ]
+        state["last_bot_message"] = "Hola, buen día. ¿Con quién tengo el gusto?"
+
+        with (
+            patch(
+                "src.nodes.customer_onboarding.extract_customer_name",
+                return_value={
+                    "nombre": "Julio",
+                    "is_refusal": False,
+                    "mensaje_restante": "donde hacen los servicios de mantenimiento?",
+                },
+            ),
+            patch("src.nodes.customer_onboarding.sync_customer_info_to_backend"),
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.intent_checker.maybe_escalate_financing_detail", return_value=None),
+            patch("src.nodes.router.classify_router_intent", return_value="VEHICLE_CATALOG"),
+            patch("src.nodes.router.maybe_escalate_financing_detail", return_value=None),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=[]),
+            patch(
+                "src.nodes.car_selection.generate_verified_user_message",
+                side_effect=lambda **kw: kw.get("fallback", ""),
+            ),
+            patch(
+                "src.nodes.faq.fetch_faq_candidates",
+                return_value=["El taller está en Av. Servicio 100."],
+            ),
+            patch(
+                "src.nodes.faq.generate_faq_user_turn",
+                return_value="El taller de mantenimiento está en Av. Servicio 100.",
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertEqual(updated.get("customer_info", {}).get("nombre"), "Julio")
+        self.assertFalse(updated.get("awaiting_customer_name"))
+        self.assertEqual(updated.get("deferred_faq_user_message"), "")
+        assistant_texts = [m["content"] for m in updated["messages"] if m.get("role") == "assistant"]
+        self.assertTrue(any("Mucho gusto, Julio" in text for text in assistant_texts))
+        self.assertTrue(any("taller de mantenimiento" in text.lower() for text in assistant_texts))
+
     def test_extract_customer_name_uses_llm(self) -> None:
         from src.services.llm_responses import extract_customer_name
 

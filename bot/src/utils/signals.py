@@ -261,10 +261,17 @@ BUSINESS_LOCATION_FAQ_SUBSTR: frozenset[str] = frozenset(
         "donde quedan",
         "donde los encuentro",
         "donde los ubico",
+        "donde hacen",
         "direccion",
         "direcciones",
         "sucursal",
         "sucursales",
+        "mantenimiento",
+        "taller",
+        "refacciones",
+        "area de servicio",
+        "servicio de",
+        "servicios de",
     )
 )
 

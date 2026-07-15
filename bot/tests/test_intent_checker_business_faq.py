@@ -15,6 +15,12 @@ class BusinessFaqHeuristicTests(unittest.TestCase):
     def test_detects_location_question(self) -> None:
         self.assertTrue(is_business_faq_question("Dónde están ubicados?"))
 
+    def test_detects_maintenance_service_location(self) -> None:
+        self.assertTrue(is_business_faq_question("Donde hacen los servicios de mantenimiento?"))
+        self.assertTrue(is_business_faq_question("¿Dónde está el taller?"))
+        self.assertTrue(is_business_faq_question("Quiero la dirección del área de servicio"))
+        self.assertTrue(is_business_faq_question("¿Venden refacciones?"))
+
     def test_does_not_detect_purchase_confirmation(self) -> None:
         self.assertFalse(is_business_faq_question("Sí, quiero comprarlo"))
 

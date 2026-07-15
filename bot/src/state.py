@@ -61,6 +61,7 @@ class clientState(TypedDict, total=False):
     - onboarding_turn_complete: True cuando el nodo onboarding genero respuesta y debe terminar el turno.
     - pending_onboarding_user_message: primer mensaje del usuario con intencion comercial mientras faltaba el nombre.
     - onboarding_resume_user_message: mensaje del usuario a procesar tras capturar el nombre.
+    - deferred_faq_user_message: FAQ detectada en captura de nombre; se responde tras el flujo comercial del mismo turno.
     - onboarding_welcome_sent_this_turn: True si onboarding acaba de enviar bienvenida y el router no debe duplicarla.
     - ad_campaign_shortcut: True en el turno CTWA con vehiculo resuelto (salta onboarding a car_selection).
     - ad_campaign_shortcut_applied: True tras aplicar el atajo en algun turno; no bloquea reaplicar si llega otro ad.
@@ -123,6 +124,7 @@ class clientState(TypedDict, total=False):
     onboarding_turn_complete: bool
     pending_onboarding_user_message: str
     onboarding_resume_user_message: str
+    deferred_faq_user_message: str
     onboarding_welcome_sent_this_turn: bool
     ad_campaign_shortcut: bool
     ad_campaign_shortcut_applied: bool

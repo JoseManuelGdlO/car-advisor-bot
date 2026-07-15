@@ -238,6 +238,7 @@ def _build_initial_state() -> dict[str, Any]:
         "onboarding_turn_complete": False,
         "pending_onboarding_user_message": "",
         "onboarding_resume_user_message": "",
+        "deferred_faq_user_message": "",
         "onboarding_welcome_sent_this_turn": False,
         "ad_campaign_shortcut": False,
         "ad_campaign_shortcut_applied": False,
