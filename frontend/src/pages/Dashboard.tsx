@@ -5,7 +5,6 @@ import {
   TrendingDown,
   MessageCircle,
   UserPlus,
-  Trophy,
   ChevronRight,
   Trash2,
   Landmark,
@@ -28,11 +27,12 @@ import { cn } from "@/lib/utils";
 import { normalizeApiError } from "@/lib/formErrors";
 import { toast } from "sonner";
 
-function KpiTrend({ value }: { value: number }) {
-  const isPositive = value > 0;
-  const isNegative = value < 0;
+function KpiTrend({ value }: { value?: number | null }) {
+  const pct = typeof value === "number" && Number.isFinite(value) ? value : 0;
+  const isPositive = pct > 0;
+  const isNegative = pct < 0;
   const colorClass = isPositive ? "text-success" : isNegative ? "text-warning" : "text-muted-foreground";
-  const label = isPositive ? `+${value}%` : `${value}%`;
+  const label = isPositive ? `+${pct}%` : `${pct}%`;
 
   return (
     <div className={`flex items-center gap-1 mt-2 text-xs font-semibold ${colorClass}`}>
@@ -59,8 +59,8 @@ const DEFAULT_KPIS: DashboardKpisDto = {
   waiting: 0,
   newLeads: 0,
   newLeadsChange: 0,
-  conversions: 0,
-  conversionsChange: 0,
+  escalations: 0,
+  escalationsChange: 0,
   weeklyChats: [0, 0, 0, 0, 0, 0, 0],
   topProducts: [],
 };
@@ -168,7 +168,7 @@ export default function Dashboard() {
     return "No hay notificaciones por ahora.";
   }, [filterKind]);
 
-  const safeKpis = kpis ?? DEFAULT_KPIS;
+  const safeKpis = { ...DEFAULT_KPIS, ...(kpis || {}) };
   const weeklyChats = Array.from({ length: 7 }, (_, i) => safeKpis.weeklyChats[i] ?? 0);
   const max = Math.max(...weeklyChats, 1);
   const days = getLast7DayLabels();
@@ -215,10 +215,6 @@ export default function Dashboard() {
             <div>
               <p className="text-xs uppercase tracking-wider opacity-80 font-semibold">Conversaciones activas</p>
               <p className="text-5xl font-extrabold mt-1">{safeKpis.activeChats}</p>
-              <p className="text-xs mt-2 opacity-90">
-                <span className="font-semibold">{safeKpis.newToday}</span> nuevas hoy ·{" "}
-                <span className="font-semibold">{safeKpis.waiting}</span> en espera
-              </p>
             </div>
             <div className="w-12 h-12 rounded-2xl bg-white/15 grid place-items-center">
               <MessageCircle className="w-6 h-6" />
@@ -237,12 +233,12 @@ export default function Dashboard() {
           </div>
 
           <div className="bg-card rounded-2xl p-4 shadow-card border border-border">
-            <div className="w-9 h-9 rounded-xl bg-success/10 grid place-items-center text-success mb-3">
-              <Trophy className="w-5 h-5" />
+            <div className="w-9 h-9 rounded-xl bg-warning/15 grid place-items-center text-warning mb-3">
+              <Headphones className="w-5 h-5" />
             </div>
-            <p className="text-2xl font-bold text-foreground">{safeKpis.conversions}</p>
-            <p className="text-xs text-muted-foreground">Conversiones</p>
-            <KpiTrend value={safeKpis.conversionsChange} />
+            <p className="text-2xl font-bold text-foreground">{safeKpis.escalations}</p>
+            <p className="text-xs text-muted-foreground">Escalaciones</p>
+            <KpiTrend value={safeKpis.escalationsChange} />
           </div>
         </div>
 

@@ -256,8 +256,8 @@ export const kpis = {
   waiting: 3,
   newLeads: 28,
   newLeadsChange: 12,
-  conversions: 4,
-  conversionsChange: 33,
+  escalations: 4,
+  escalationsChange: 33,
   weeklyChats: [12, 18, 15, 22, 19, 25, 21],
   topProducts: [
     { name: "Honda Civic 2023", queries: 42 },

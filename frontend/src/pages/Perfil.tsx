@@ -309,10 +309,10 @@ export default function Perfil() {
     },
   });
 
-  const safeKpis: { activeChats: number; newLeads: number; conversions: number } = (kpis as { activeChats: number; newLeads: number; conversions: number } | undefined) || {
-    activeChats: 0,
-    newLeads: 0,
-    conversions: 0,
+  const safeKpis = {
+    activeChats: Number(kpis?.activeChats) || 0,
+    newLeads: Number(kpis?.newLeads) || 0,
+    escalations: Number(kpis?.escalations) || 0,
   };
 
   const dirty = useMemo(() => {
@@ -444,8 +444,8 @@ export default function Perfil() {
             <p className="text-[10px] uppercase font-semibold text-muted-foreground">Leads</p>
           </button>
           <div className="bg-card rounded-2xl p-3 text-center shadow-card border border-border">
-            <p className="text-xl font-extrabold text-primary-dark">{safeKpis.conversions}</p>
-            <p className="text-[10px] uppercase font-semibold text-muted-foreground">Ventas</p>
+            <p className="text-xl font-extrabold text-primary-dark">{safeKpis.escalations}</p>
+            <p className="text-[10px] uppercase font-semibold text-muted-foreground">Escalaciones</p>
           </div>
         </div>
 

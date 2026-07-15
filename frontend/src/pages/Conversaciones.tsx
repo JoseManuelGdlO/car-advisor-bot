@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, Filter } from "lucide-react";
+import { Search, Filter, Pause } from "lucide-react";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { Avatar } from "@/components/Avatar";
 import { ChannelIcon } from "@/components/ChannelIcon";
@@ -220,7 +220,18 @@ export default function Conversaciones() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="font-semibold text-sm truncate">{primaryLabel}</p>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <p className="font-semibold text-sm truncate">{primaryLabel}</p>
+                        {c.isHumanControlled ? (
+                          <span
+                            className="inline-flex items-center gap-0.5 shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-warning/15 text-warning"
+                            title="Bot pausado · control humano"
+                          >
+                            <Pause className="w-2.5 h-2.5" fill="currentColor" />
+                            Pausada
+                          </span>
+                        ) : null}
+                      </div>
                       {registeredName && clientPhone ? (
                         <p className="text-[14px] font-bold text-muted-foreground truncate">{registeredName}</p>
                       ) : null}

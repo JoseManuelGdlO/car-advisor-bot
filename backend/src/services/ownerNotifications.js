@@ -15,6 +15,13 @@ const KIND_ALIASES = Object.freeze({
   new_inbound_message: ["new_inbound_message"],
 });
 
+/** Kinds que cuentan en el KPI diario de escalaciones (asesor, financiamiento, cita). */
+export const DASHBOARD_ESCALATION_KINDS = Object.freeze([
+  "human_advisor",
+  "financing_detail_help",
+  "lead_interest",
+]);
+
 export const resolveKindFilter = (kind) => {
   const normalized = String(kind || "")
     .trim()

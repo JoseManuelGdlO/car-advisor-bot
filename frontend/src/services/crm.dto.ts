@@ -93,8 +93,8 @@ export type DashboardKpisDto = {
   waiting: number;
   newLeads: number;
   newLeadsChange: number;
-  conversions: number;
-  conversionsChange: number;
+  escalations: number;
+  escalationsChange: number;
   weeklyChats: number[];
   topProducts: Array<{ name: string; queries: number }>;
 };

@@ -1,6 +1,7 @@
 import { Op, fn, col, where } from "sequelize";
-import { ClientLead, Conversation } from "../models/index.js";
+import { ClientLead, Conversation, OwnerNotification } from "../models/index.js";
 import { calcDayOverDayChangePct, utcDayBounds } from "../utils/dashboardKpis.js";
+import { DASHBOARD_ESCALATION_KINDS } from "../services/ownerNotifications.js";
 
 // Scope multi-tenant por propietario autenticado.
 const ownerWhere = (userId) => ({ ownerUserId: userId });
@@ -14,10 +15,10 @@ const createdAtBetween = (start, end) => ({
   createdAt: { [Op.between]: [start, end] },
 });
 
-// Conversiones diarias: updatedAt como proxy de cuándo pasó a sold (sin columna sold_at).
-const soldUpdatedBetween = (start, end) => ({
-  status: "sold",
-  updatedAt: { [Op.between]: [start, end] },
+const escalationsBetween = (userId, start, end) => ({
+  ownerUserId: userId,
+  kind: { [Op.in]: DASHBOARD_ESCALATION_KINDS },
+  ...createdAtBetween(start, end),
 });
 
 export const getDashboard = async (req, res) => {
@@ -35,8 +36,8 @@ export const getDashboard = async (req, res) => {
     activeChats,
     newLeadsToday,
     newLeadsYesterday,
-    conversionsToday,
-    conversionsYesterday,
+    escalationsToday,
+    escalationsYesterday,
     waiting,
     topRows,
     weeklyRows,
@@ -48,11 +49,11 @@ export const getDashboard = async (req, res) => {
     ClientLead.count({
       where: { ...visibleLeadsWhere(userId), ...createdAtBetween(yesterdayBounds.start, yesterdayBounds.end) },
     }),
-    ClientLead.count({
-      where: { ...visibleLeadsWhere(userId), ...soldUpdatedBetween(todayBounds.start, todayBounds.end) },
+    OwnerNotification.count({
+      where: escalationsBetween(userId, todayBounds.start, todayBounds.end),
     }),
-    ClientLead.count({
-      where: { ...visibleLeadsWhere(userId), ...soldUpdatedBetween(yesterdayBounds.start, yesterdayBounds.end) },
+    OwnerNotification.count({
+      where: escalationsBetween(userId, yesterdayBounds.start, yesterdayBounds.end),
     }),
     Conversation.count({ where: { ...ownerWhere(userId), unread: { [Op.gt]: 0 } } }),
     ClientLead.findAll({
@@ -105,8 +106,8 @@ export const getDashboard = async (req, res) => {
     waiting,
     newLeads: newLeadsToday,
     newLeadsChange: calcDayOverDayChangePct(newLeadsToday, newLeadsYesterday),
-    conversions: conversionsToday,
-    conversionsChange: calcDayOverDayChangePct(conversionsToday, conversionsYesterday),
+    escalations: escalationsToday,
+    escalationsChange: calcDayOverDayChangePct(escalationsToday, escalationsYesterday),
     weeklyChats,
     topProducts: topRows
       .map((x) => ({
