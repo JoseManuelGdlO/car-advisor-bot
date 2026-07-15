@@ -324,8 +324,8 @@ class ChatInterface {
     this.userInput.value = "";
     this.updateCharCount();
     this.autoResize();
+    this.userInput.focus();
 
-    this.setInputState(false);
     const typingDelayMs = 350;
     const typingTimer = setTimeout(() => this.showTyping(), typingDelayMs);
 
@@ -352,8 +352,6 @@ class ChatInterface {
         "bot"
       );
       this.setStatus("Desconectado", "#fecaca");
-    } finally {
-      this.setInputState(true);
     }
   }
 
