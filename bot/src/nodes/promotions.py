@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.services.car_selection_fallback import user_asks_for_color
+from src.services.car_selection_fallback import user_asks_for_color, user_asks_for_dimensions
 from src.services.llm_responses import (
     classify_promotion_comparison_payload,
     classify_promotions_step_flags,
@@ -468,6 +468,7 @@ def _show_vehicle_and_confirm_interest(state: clientState, vehicle: dict[str, An
         vehicle,
         platform=str(state.get("platform", "web")),
         include_color=user_asks_for_color(user_text),
+        include_dimensions=user_asks_for_dimensions(user_text),
     )
     promotion_title = str(state.get("selected_promotion_title", "")).strip() or "esta promocion"
     promo_id = str(state.get("selected_promotion_id", "")).strip()

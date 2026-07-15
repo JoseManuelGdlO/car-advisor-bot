@@ -23,6 +23,26 @@ _METADATA_LABELS: dict[str, str] = {
     "transmissionFull": "Transmisión completa",
 }
 
+_DIMENSION_METADATA_KEYS = frozenset(
+    {
+        "lengthMm",
+        "widthMm",
+        "heightMm",
+        "wheelbaseMm",
+    }
+)
+
+_DIMENSION_LABEL_HINTS = (
+    "longitud",
+    "ancho",
+    "altura",
+    "entre ejes",
+    "dimensi",
+    "medida",
+    "tamaño",
+    "tamano",
+)
+
 
 def _title_or_default(value: Any, fallback: str = "N/D") -> str:
     """Helper de apoyo para title or default."""
@@ -133,7 +153,24 @@ def _format_metadata_value(value: Any) -> str:
     return str(value).strip()
 
 
-def _format_metadata_lines(metadata: Any, platform: str = "web") -> list[str]:
+def _is_dimension_metadata_key(key: str, label: str) -> bool:
+    """True si la key/etiqueta de metadata corresponde a dimensiones del vehiculo."""
+
+    raw_key = str(key or "").strip()
+    if raw_key in _DIMENSION_METADATA_KEYS:
+        return True
+    haystack = f"{raw_key} {label}".strip().lower()
+    if not haystack:
+        return False
+    return any(hint in haystack for hint in _DIMENSION_LABEL_HINTS)
+
+
+def _format_metadata_lines(
+    metadata: Any,
+    platform: str = "web",
+    *,
+    include_dimensions: bool = False,
+) -> list[str]:
     """Arma lineas Etiqueta: valor desde vehicle.metadata (información adicional)."""
 
     if not isinstance(metadata, dict) or not metadata:
@@ -143,6 +180,8 @@ def _format_metadata_lines(metadata: Any, platform: str = "web") -> list[str]:
         label = _metadata_key_label(str(key))
         text = _format_metadata_value(value)
         if not label or not text:
+            continue
+        if not include_dimensions and _is_dimension_metadata_key(str(key), label):
             continue
         lines.append(f"{_bold_label(label, platform)}: {text}")
     return lines
@@ -266,6 +305,7 @@ def format_vehicle_detail(
     platform: str = "web",
     *,
     include_color: bool = False,
+    include_dimensions: bool = False,
 ) -> str:
     """Construye detalle del vehiculo en lista vertical corta."""
 
@@ -295,7 +335,13 @@ def format_vehicle_detail(
         lines.append(f"{_bold_label('Color', platform)}: {_title_or_default(vehicle.get('color'))}")
     if description:
         lines.append(f"{_bold_label('Descripción', platform)}: {description}")
-    lines.extend(_format_metadata_lines(vehicle.get("metadata"), platform))
+    lines.extend(
+        _format_metadata_lines(
+            vehicle.get("metadata"),
+            platform,
+            include_dimensions=include_dimensions,
+        )
+    )
     return "\n".join(lines)
 
 
@@ -305,6 +351,7 @@ def format_two_vehicle_comparison_grounding(
     platform: str = "web",
     *,
     include_color: bool = False,
+    include_dimensions: bool = False,
 ) -> str:
     """Une dos fichas `format_vehicle_detail` para anclar narrativa de comparacion al LLM."""
 
@@ -316,11 +363,13 @@ def format_two_vehicle_comparison_grounding(
         vehicle_a,
         platform=platform,
         include_color=include_color,
+        include_dimensions=include_dimensions,
     )
     block_b = format_vehicle_detail(
         vehicle_b,
         platform=platform,
         include_color=include_color,
+        include_dimensions=include_dimensions,
     )
     return (
         f"VEHICULO_A ({name_a}):\n{block_a}\n\n"

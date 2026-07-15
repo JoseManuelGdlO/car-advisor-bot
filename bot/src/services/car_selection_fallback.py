@@ -168,6 +168,38 @@ def user_asks_for_color(user_text: str) -> bool:
     return any(contains_signal_phrase(normalized, signal) for signal in _COLOR_QUESTION_SIGNALS)
 
 
+_DIMENSION_QUESTION_SIGNALS: tuple[str, ...] = (
+    "dimension",
+    "dimensiones",
+    "medidas",
+    "medida",
+    "cuanto mide",
+    "cuanto mide de",
+    "longitud",
+    "ancho total",
+    "de ancho",
+    "altura",
+    "altura total",
+    "entre ejes",
+    "distancia entre ejes",
+    "que tan grande",
+    "que tan largo",
+    "tamano",
+    "tamaño",
+    "tamaño del",
+    "tamano del",
+)
+
+
+def user_asks_for_dimensions(user_text: str) -> bool:
+    """True si el mensaje pide dimensiones, medidas o tamaño del vehiculo."""
+
+    normalized = normalize_user_text(user_text)
+    if not normalized:
+        return False
+    return any(contains_signal_phrase(normalized, signal) for signal in _DIMENSION_QUESTION_SIGNALS)
+
+
 _TECHNICAL_SHEET_REQUEST_SIGNALS = (
     "dame la ficha",
     "ficha tecnica",

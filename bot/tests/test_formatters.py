@@ -212,14 +212,23 @@ class TestFormatVehicleDetail(unittest.TestCase):
                 "widthMm": 1735,
                 "heightMm": 1515,
                 "wheelbaseMm": 2450,
+                "passengers": 5,
             },
         }
         out = format_vehicle_detail(vehicle, platform="web")
         self.assertIn("**Descripción**: Sedan eficiente", out)
-        self.assertIn("**Longitud total**: 3995", out)
-        self.assertIn("**Ancho total**: 1735", out)
-        self.assertIn("**Altura total**: 1515", out)
-        self.assertIn("**Distancia entre ejes**: 2450", out)
+        self.assertNotIn("**Longitud total**", out)
+        self.assertNotIn("**Ancho total**", out)
+        self.assertNotIn("**Altura total**", out)
+        self.assertNotIn("**Distancia entre ejes**", out)
+        self.assertIn("**Pasajeros**: 5", out)
+
+        out_with_dims = format_vehicle_detail(vehicle, platform="web", include_dimensions=True)
+        self.assertIn("**Longitud total**: 3995", out_with_dims)
+        self.assertIn("**Ancho total**: 1735", out_with_dims)
+        self.assertIn("**Altura total**: 1515", out_with_dims)
+        self.assertIn("**Distancia entre ejes**: 2450", out_with_dims)
+        self.assertIn("**Pasajeros**: 5", out_with_dims)
 
     def test_includes_freeform_ui_metadata_keys(self) -> None:
         vehicle = {

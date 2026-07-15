@@ -15,6 +15,7 @@ from src.services.car_selection_fallback import (
     looks_like_feature_request,
     looks_like_specific_vehicle_request,
     user_asks_for_color,
+    user_asks_for_dimensions,
     user_asks_for_technical_sheet,
 )
 from src.tools.vehicles import normalize_user_text
@@ -114,6 +115,15 @@ class CarSelectionFallbackTests(unittest.TestCase):
         self.assertFalse(user_asks_for_color("tienen nissan versa"))
         self.assertFalse(user_asks_for_color("dame la ficha tecnica"))
         self.assertFalse(user_asks_for_color("compara versa con march"))
+
+    def test_user_asks_for_dimensions_detects_dimension_questions(self) -> None:
+        self.assertTrue(user_asks_for_dimensions("cuales son las dimensiones?"))
+        self.assertTrue(user_asks_for_dimensions("cuanto mide de largo"))
+        self.assertTrue(user_asks_for_dimensions("me das la longitud y el ancho"))
+        self.assertTrue(user_asks_for_dimensions("que tan grande es"))
+        self.assertFalse(user_asks_for_dimensions("tienen nissan versa"))
+        self.assertFalse(user_asks_for_dimensions("dame la ficha tecnica"))
+        self.assertFalse(user_asks_for_dimensions("compara versa con march"))
 
     def test_user_asks_for_technical_sheet_detects_explicit_requests(self) -> None:
         self.assertTrue(user_asks_for_technical_sheet("dame la ficha tecnica"))
