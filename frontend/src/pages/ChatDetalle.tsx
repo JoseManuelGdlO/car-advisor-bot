@@ -12,6 +12,7 @@ import { crmApi } from "@/services/crm";
 import { toast } from "sonner";
 import { normalizeApiError } from "@/lib/formErrors";
 import { buildTelHref, resolveClientDisplayPhone } from "@/lib/phone";
+import { formatConversationPreview } from "@/lib/crmEventLabels";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -308,19 +309,22 @@ export default function ChatDetalle() {
       {/* Messages */}
       <div ref={messagesContainerRef} onScroll={handleMessagesScroll} className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden bg-chat-pattern px-3 py-4 space-y-2">
         {((messages || []) as ChatMessageRow[]).map((m) => {
-          const mine = m.from !== "client";
-          const isBot = m.from === "bot";
+          const isSystem = m.from === "system";
+          const isBot = m.from === "bot" || m.from === "assistant";
+          const mine = m.from !== "client" && !isSystem;
           const attachment = parseAttachmentText(m.text);
           return (
-            <div key={m.id} className={cn("flex min-w-0", mine ? "justify-end" : "justify-start")}>
+            <div key={m.id} className={cn("flex min-w-0", isSystem ? "justify-center" : mine ? "justify-end" : "justify-start")}>
               <div
                 className={cn(
                   "max-w-[78%] min-w-0 px-3 py-2 rounded-2xl shadow-soft text-sm overflow-hidden",
-                  mine
-                    ? isBot
-                      ? "bg-chat-bot text-foreground rounded-br-md"
-                      : "bg-chat-out text-foreground rounded-br-md"
-                    : "bg-chat-in text-foreground rounded-bl-md",
+                  isSystem
+                    ? "bg-muted/80 text-muted-foreground rounded-md text-center"
+                    : mine
+                      ? isBot
+                        ? "bg-chat-bot text-foreground rounded-br-md"
+                        : "bg-chat-out text-foreground rounded-br-md"
+                      : "bg-chat-in text-foreground rounded-bl-md",
                 )}
               >
                 {isBot && (
@@ -328,8 +332,11 @@ export default function ChatDetalle() {
                     <Bot className="w-3 h-3" /> AutoBot
                   </p>
                 )}
-                {!isBot && mine && (
+                {!isBot && !isSystem && mine && (
                   <p className="text-[10px] font-bold text-primary-dark mb-1 uppercase tracking-wide">Tú (vendedor)</p>
+                )}
+                {isSystem && (
+                  <p className="text-[10px] font-bold text-muted-foreground mb-1 uppercase tracking-wide">Sistema</p>
                 )}
                 {attachment ? (
                   <div className="space-y-2">
@@ -344,7 +351,9 @@ export default function ChatDetalle() {
                     </a>
                   </div>
                 ) : (
-                  <p className="leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{m.text}</p>
+                  <p className="leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                    {formatConversationPreview(m.text)}
+                  </p>
                 )}
                 <p className="text-[10px] text-muted-foreground text-right mt-1">{m.time}</p>
               </div>

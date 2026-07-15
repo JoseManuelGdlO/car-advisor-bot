@@ -377,7 +377,8 @@ def handle_financing_detail_escalation(
         {
             "user_id": user_id,
             "platform": platform,
-            "message": "financing_detail_escalation",
+            "message": "Cliente necesita ayuda con financiamiento",
+            "from": "system",
             "selected_car": selected_car,
             "customer_info": customer_info,
             "current_node": current_node,

@@ -7,6 +7,7 @@ import { ChannelIcon } from "@/components/ChannelIcon";
 import { Channel } from "@/data/mockData";
 import { cn } from "@/lib/utils";
 import { normalizePhoneDigits, resolveClientDisplayPhone } from "@/lib/phone";
+import { formatConversationPreview } from "@/lib/crmEventLabels";
 import { useConversationsQuery } from "@/hooks/useConversationsQuery";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
@@ -230,7 +231,7 @@ export default function Conversaciones() {
                   </div>
                   <div className="flex items-center justify-between gap-2 mt-0.5">
                     <p className={cn("text-xs truncate", c.unread > 0 ? "text-foreground font-medium" : "text-muted-foreground")}>
-                      {c.lastMessage}
+                      {formatConversationPreview(c.lastMessage)}
                     </p>
                     {c.unread > 0 && (
                       <span className="shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold grid place-items-center">

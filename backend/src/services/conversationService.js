@@ -206,9 +206,12 @@ export const upsertConversationEvent = async ({
     },
   });
   const isHumanControlled = Boolean(conv.isHumanControlled);
+  const isSystemMessage = normalizedFrom === "system";
+  const isAssistantMessage = normalizedFrom === "assistant" || normalizedFrom === "bot";
+  const shouldUpdatePreview = isInboundClientMessage || isSystemMessage || isAssistantMessage;
   await conv.update({
-    lastMessage: isInboundClientMessage ? normalizedMessage : conv.lastMessage,
-    lastTime: isInboundClientMessage ? new Date() : conv.lastTime,
+    lastMessage: shouldUpdatePreview ? normalizedMessage : conv.lastMessage,
+    lastTime: shouldUpdatePreview ? new Date() : conv.lastTime,
   });
 
   await Message.create({

@@ -132,7 +132,8 @@ def handle_human_advisor_request(
         {
             "user_id": user_id,
             "platform": platform,
-            "message": "human_advisor_requested",
+            "message": "Cliente pidió hablar con un asesor",
+            "from": "system",
             "selected_car": selected_car,
             "customer_info": customer_info,
             "current_node": current_node,

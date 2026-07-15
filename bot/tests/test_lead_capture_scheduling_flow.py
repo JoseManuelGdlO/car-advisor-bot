@@ -54,7 +54,8 @@ class LeadCaptureSchedulingFlowTests(unittest.TestCase):
         notify_mock.assert_called_once()
         event_mock.assert_called_once()
         payload = event_mock.call_args.args[0]
-        self.assertEqual(payload["message"], "lead_capture_completed")
+        self.assertEqual(payload["message"], "Se envió el enlace para agendar visita o prueba de manejo")
+        self.assertEqual(payload["from"], "system")
         self.assertEqual(payload["customer_info"], {})
         self.assertEqual(payload["selected_car"], "Honda Civic 2020")
 

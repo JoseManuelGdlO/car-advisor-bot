@@ -116,7 +116,8 @@ def _notify_and_persist(
         {
             "user_id": uid,
             "platform": platform,
-            "message": "lead_capture_completed",
+            "message": "Se envió el enlace para agendar visita o prueba de manejo",
+            "from": "system",
             "selected_car": selected_car,
             "customer_info": {},
             "financing_selection": financing_selection,

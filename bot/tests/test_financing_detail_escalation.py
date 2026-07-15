@@ -80,7 +80,8 @@ class TestHandleFinancingDetailEscalation(unittest.TestCase):
         self.assertTrue(out.get("financing_detail_push_sent"))
         self.assertTrue(out.get("bot_disabled"))
         ev.assert_called_once()
-        self.assertEqual(ev.call_args[0][0].get("message"), "financing_detail_escalation")
+        self.assertEqual(ev.call_args[0][0].get("message"), "Cliente necesita ayuda con financiamiento")
+        self.assertEqual(ev.call_args[0][0].get("from"), "system")
         payload = mock_post.call_args[1]["json"]
         self.assertEqual(payload.get("body"), "6181556489 necesita ayuda para resolver dudas")
         self.assertEqual(payload.get("title"), "Cliente necesita ayuda")
