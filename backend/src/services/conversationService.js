@@ -223,9 +223,10 @@ export const upsertConversationEvent = async ({
 
   if (isInboundClientMessage) {
     try {
+      const pushPhone = String(lead.displayPhone || resolvedDisplayPhone || "Cliente").trim() || "Cliente";
       await sendPushToOwner({
         ownerUserId,
-        title: "Nuevo cliente quiere platicar",
+        title: `${pushPhone} mandó un mensaje`,
         body: `${lead.name || "Cliente"}: ${normalizedMessage.slice(0, 140)}`,
         data: {
           type: "chat_intent",

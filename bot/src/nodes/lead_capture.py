@@ -8,6 +8,7 @@ from src.state import clientState
 from src.tools.database import push_event_to_backend
 from src.tools.vehicles import notify_advisor
 from src.utils.bot_control import deactivate_bot
+from src.utils.financing_advisor_notify import resolve_client_display_phone
 from src.services.llm_responses import (
     classify_lead_capture_navigation,
     generate_lead_capture_scheduling_message,
@@ -128,6 +129,7 @@ def _notify_and_persist(
         return False
 
     try:
+        display_phone = resolve_client_display_phone(state)
         notify_advisor(
             selected_car,
             {},
@@ -136,7 +138,7 @@ def _notify_and_persist(
             promotion_selection=promotion_selection or None,
             push_title="Interes en agenda de vehiculo",
             push_body=(
-                f"El usuario recibio el enlace para agendar prueba de manejo o visita "
+                f"{display_phone} recibio el enlace para agendar prueba de manejo o visita "
                 f"de {selected_car}."
             ),
         )
