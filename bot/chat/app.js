@@ -19,6 +19,22 @@ const CHAT_OWNERS_REVISION = "2026-07-09-suzuki-delsy";
 const OWNER_STORAGE_KEY = "chat_owner_user_id";
 const OWNER_REVISION_STORAGE_KEY = "chat_owner_revision";
 
+/** Payload CTWA de prueba: Suzuki Swift Boostergreen 2026. */
+const TEST_AD_CAMPAIGN_SWIFT = {
+  message: "Hola, me interesa este auto",
+  ad_context: {
+    isAd: true,
+    title: "Suzuki Swift Boostergreen 2026",
+    body: "Conoce el nuevo Swift Boostergreen 2026. Escríbenos para más información.",
+    sourceId: "test-ad-swift-boostergreen-2026",
+    sourceUrl: "https://fb.me/test-swift-boostergreen",
+    sourceApp: "facebook",
+    ctwaClid: "test-ctwa-clid-swift-boostergreen",
+    mediaUrl: null,
+    greetingMessageBody: "Hola, me interesa este auto",
+  },
+};
+
 class ChatInterface {
   // python3 -m http.server 8090
   static BOT_MESSAGE_SEPARATOR = "<<BOT_MSG_BREAK>>";
@@ -27,6 +43,7 @@ class ChatInterface {
     this.userInput = document.getElementById("user-input");
     this.sendBtn = document.getElementById("send-btn");
     this.resetBtn = document.getElementById("reset-btn");
+    this.simulateAdBtn = document.getElementById("simulate-ad-btn");
     this.typingIndicator = document.getElementById("typing-indicator");
     this.statusElement = document.getElementById("status");
     this.charCount = document.getElementById("char-count");
@@ -75,6 +92,13 @@ class ChatInterface {
       event.stopPropagation();
       void this.resetConversation();
     });
+
+    if (this.simulateAdBtn) {
+      this.simulateAdBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        void this.simulateAdCampaign();
+      });
+    }
 
     if (this.ownerSelect) {
       this.ownerSelect.addEventListener("change", () => {
@@ -146,14 +170,26 @@ class ChatInterface {
     this.updateOwnerDisplay();
   }
 
-  buildChatPayload(message, userId) {
-    return {
+  buildChatPayload(message, userId, adContext = null) {
+    const payload = {
       user_id: userId,
       message,
       platform: "web",
       owner_user_id: this.getOwnerUserId(),
       persist_to_backend: true,
     };
+    if (adContext && adContext.isAd === true) {
+      payload.ad_context = adContext;
+    }
+    return payload;
+  }
+
+  async simulateAdCampaign() {
+    const campaign = TEST_AD_CAMPAIGN_SWIFT;
+    await this.sendMessage(campaign.message, {
+      adContext: campaign.ad_context,
+      displayBadge: "📢 Campaña CTWA",
+    });
   }
 
   hasChatMessages() {
@@ -264,9 +300,11 @@ class ChatInterface {
     return baseUrl ? `${baseUrl}/reset` : "/reset";
   }
 
-  async sendMessage(prefilledMessage = null) {
+  async sendMessage(prefilledMessage = null, options = {}) {
     const text = (prefilledMessage ?? this.userInput.value).trim();
     const userId = this.userIdInput.value.trim();
+    const adContext = options.adContext || null;
+    const displayBadge = options.displayBadge || null;
 
     if (!userId) {
       alert("Ingresa un ID de usuario.");
@@ -282,7 +320,7 @@ class ChatInterface {
       return;
     }
 
-    this.addMessage(text, "user");
+    this.addMessage(text, "user", { badge: displayBadge });
     this.userInput.value = "";
     this.updateCharCount();
     this.autoResize();
@@ -292,7 +330,7 @@ class ChatInterface {
     const typingTimer = setTimeout(() => this.showTyping(), typingDelayMs);
 
     try {
-      const response = await this.sendToAPI(text, userId);
+      const response = await this.sendToAPI(text, userId, adContext);
       clearTimeout(typingTimer);
       this.hideTyping();
 
@@ -300,7 +338,10 @@ class ChatInterface {
         this.setStatus("Bot en pausa — mensaje registrado", "#fde68a");
       } else {
         this.addBotReplyBlocks(response.reply);
-        this.setStatus("En línea", "#d1fae5");
+        this.setStatus(
+          adContext ? "Campaña CTWA enviada — En línea" : "En línea",
+          "#d1fae5"
+        );
       }
       this.updateSessionInfo(response);
     } catch (error) {
@@ -316,13 +357,13 @@ class ChatInterface {
     }
   }
 
-  async sendToAPI(message, userId) {
+  async sendToAPI(message, userId, adContext = null) {
     const response = await fetch(this.getChatEndpoint(), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(this.buildChatPayload(message, userId)),
+      body: JSON.stringify(this.buildChatPayload(message, userId, adContext)),
     });
 
     if (!response.ok) {
@@ -419,7 +460,7 @@ class ChatInterface {
     }
   }
 
-  addMessage(text, sender) {
+  addMessage(text, sender, options = {}) {
     const welcomeMsg = this.messagesContainer.querySelector(".welcome-message");
     if (welcomeMsg) {
       welcomeMsg.remove();
@@ -434,9 +475,13 @@ class ChatInterface {
     });
 
     const formattedText = this.formatText(text);
+    const badge = options.badge
+      ? `<div class="message-ad-badge">${this.escapeHtml(options.badge)}</div>`
+      : "";
 
     messageDiv.innerHTML = `
       <div class="message-content">
+        ${badge}
         ${formattedText}
         <div class="message-time">${time}</div>
       </div>
@@ -444,6 +489,14 @@ class ChatInterface {
 
     this.messagesContainer.appendChild(messageDiv);
     this.scrollToBottom();
+  }
+
+  escapeHtml(text) {
+    return String(text || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
   }
 
   addBotReplyBlocks(rawReply) {
@@ -498,6 +551,9 @@ class ChatInterface {
   setInputState(enabled) {
     this.userInput.disabled = !enabled;
     this.sendBtn.disabled = !enabled;
+    if (this.simulateAdBtn) {
+      this.simulateAdBtn.disabled = !enabled;
+    }
 
     if (enabled) {
       this.userInput.focus();
