@@ -3,7 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 VENV_DIR="$ROOT_DIR/scripts/suzuki_pdf_import/.venv"
-INPUT_DIR="${SUZUKI_PDF_INPUT:-/Users/intelekia/Downloads/suzuki_cars}"
+# Carpeta con PDFs, o ruta a un único archivo PDF
+INPUT_PATH="${SUZUKI_PDF_INPUT:-/Users/intelekia/Downloads/suzuki_cars}"
 DRY_RUN=0
 
 for arg in "$@"; do
@@ -22,7 +23,7 @@ echo "Instalando dependencias Python..."
 
 echo "Extrayendo datos de PDFs..."
 "$VENV_DIR/bin/python" "$ROOT_DIR/scripts/suzuki_pdf_import/extract.py" \
-  --input "$INPUT_DIR" \
+  --input "$INPUT_PATH" \
   --images-dir "$ROOT_DIR/backend/autobot" \
   --manifest "$ROOT_DIR/backend/scripts/.suzuki-import/manifest.json"
 

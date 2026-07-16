@@ -1,226 +1,26 @@
 [
   {
-    "sourcePdf": "DZIRE 2026.pdf",
+    "sourcePdf": "ficha_tec_swift_BG_2027.pdf",
     "brand": "Suzuki",
-    "model": "DZIRE BOOSTERGREEN 2026",
-    "year": 2026,
-    "price": 0,
-    "km": 0,
-    "color": "Sonic Silver",
-    "engine": "1.2 Litros DOHC / VVT, 1,197 cc",
-    "transmission": "manual de 5 velocidades / CVT",
-    "imageUrl": "/uploads/autobot/suzuki-dzire-2026.jpg",
-    "metadata": {
-      "lengthMm": 3995,
-      "widthMm": 1735,
-      "heightMm": 1525,
-      "wheelbaseMm": 2450,
-      "passengers": 5,
-      "versions": [
-        "GLS1 / GLX2",
-        "CVT",
-        "GLX",
-        "GLS"
-      ]
-    },
-    "ownerUserId": "bab219f0-9e32-4416-a4f5-a9790bbc1499",
-    "skipped": false
-  },
-  {
-    "sourcePdf": "ERTIGA 2026.pdf",
-    "brand": "Suzuki",
-    "model": "ERTIGA BOOSTERGREEN 2026",
-    "year": 2026,
-    "price": 0,
-    "km": 0,
-    "color": "Rojo Escarlata",
-    "engine": "1.5 Lt DOHC VVT y 16 válvulas, 1,462 cc",
-    "transmission": "TA 4 vel / TM 5 vel",
-    "imageUrl": "/uploads/autobot/suzuki-ertiga-2026.jpg",
-    "metadata": {
-      "lengthMm": 4395,
-      "widthMm": 1735,
-      "heightMm": 1700,
-      "wheelbaseMm": 2740,
-      "fuelCityKmL": 15.1,
-      "fuelHighwayKmL": 20.1,
-      "fuelCombinedKmL": 17.0,
-      "passengers": 7,
-      "versions": [
-        "BOOSTERGREEN GLS1, BOOSTERGREEN GLX2",
-        "GLX",
-        "GLS"
-      ],
-      "transmissionFull": "Automática de 4 velocidades (TA) / Manual de 5 velocidades (TM)"
-    },
-    "ownerUserId": "bab219f0-9e32-4416-a4f5-a9790bbc1499",
-    "skipped": false
-  },
-  {
-    "sourcePdf": "FRONX 2026.pdf",
-    "brand": "Suzuki",
-    "model": "FRONX BOOSTERGREEN 2026",
-    "year": 2026,
-    "price": 0,
-    "km": 0,
-    "color": "Negro Ninja",
-    "engine": "1.5 lt DOHC DUALJET, 1,462 cc",
-    "transmission": "Automática de 6 velocidades",
-    "imageUrl": "/uploads/autobot/suzuki-fronx-2026.jpg",
-    "metadata": {
-      "lengthMm": 3995,
-      "widthMm": 1765,
-      "heightMm": 1550,
-      "wheelbaseMm": 2520,
-      "fuelCityKmL": 18.96,
-      "fuelHighwayKmL": 23.9,
-      "fuelCombinedKmL": 20.9,
-      "passengers": 5,
-      "versions": [
-        "GLX",
-        "TA 6 VEL"
-      ]
-    },
-    "ownerUserId": "bab219f0-9e32-4416-a4f5-a9790bbc1499",
-    "skipped": false
-  },
-  {
-    "sourcePdf": "JIMNY 3 DOOR  GLX 2027.pdf",
-    "brand": "Suzuki",
-    "model": "JIMNY 2027",
+    "model": "SWIFT BOOSTERGREEN 2027",
     "year": 2027,
-    "price": 0,
-    "km": 0,
-    "color": "Blanco Polar",
-    "engine": "1.5 Litros DOHC/VVT y 16 Válvulas, 1,462 cc",
-    "transmission": "TM 5 vel / Autómatica de 4 velocidades",
-    "imageUrl": "/uploads/autobot/suzuki-jimny-3-door-glx-2027.jpg",
-    "metadata": {
-      "lengthMm": 3645,
-      "widthMm": 1645,
-      "heightMm": 1720,
-      "wheelbaseMm": 2250,
-      "passengers": 4,
-      "versions": [
-        "GLX1",
-        "GLX"
-      ],
-      "transmissionFull": "Manual de 5 velocidades / Autómatica de 4 velocidades"
-    },
-    "ownerUserId": "bab219f0-9e32-4416-a4f5-a9790bbc1499",
-    "skipped": false
-  },
-  {
-    "sourcePdf": "JIMNY 5P 2026.pdf",
-    "brand": "Suzuki",
-    "model": "JIMNY 5-DOOR 2026",
-    "year": 2026,
-    "price": 0,
-    "km": 0,
-    "color": "Gris Antártida",
-    "engine": "1.5 Litros DOHC/VVT y 16 Válvulas, 1,462 cc",
-    "transmission": "Autómatica de 4 velocidades (TA)",
-    "imageUrl": "/uploads/autobot/suzuki-jimny-5p-2026.jpg",
-    "metadata": {
-      "lengthMm": 3820,
-      "widthMm": 1645,
-      "heightMm": 1720,
-      "wheelbaseMm": 2590,
-      "fuelCityKmL": 13.4,
-      "fuelHighwayKmL": 15.3,
-      "fuelCombinedKmL": 14.2,
-      "passengers": 4,
-      "versions": [
-        "GLX1",
-        "GLX"
-      ]
-    },
-    "ownerUserId": "bab219f0-9e32-4416-a4f5-a9790bbc1499",
-    "skipped": false
-  },
-  {
-    "sourcePdf": "SWIFT BG.pdf",
-    "brand": "Suzuki",
-    "model": "SWIFT BOOSTERGREEN 2026",
-    "year": 2026,
     "price": 0,
     "km": 0,
     "color": "Blanco Pop",
     "engine": "1.2 Litros DOHC / VVT  DUALJET, 1197 cc",
     "transmission": "manual de 5 velocidades / CVT",
-    "imageUrl": "/uploads/autobot/suzuki-swift-bg.jpg",
+    "imageUrl": "/uploads/autobot/suzuki-ficha-tec-swift-bg-2027.jpg",
     "metadata": {
       "lengthMm": 3860,
       "widthMm": 1735,
       "heightMm": 1495,
       "wheelbaseMm": 2450,
-      "fuelCityKmL": 21.7,
-      "fuelHighwayKmL": 29.6,
-      "fuelCombinedKmL": 24.7,
       "passengers": 5,
       "versions": [
         "GLS1 / GLX2",
         "CVT",
         "GLX",
-        "GLS",
-        "TM5"
-      ]
-    },
-    "ownerUserId": "bab219f0-9e32-4416-a4f5-a9790bbc1499",
-    "skipped": false
-  },
-  {
-    "sourcePdf": "SWIFT SPORT FINAL EDITION 2025.pdf",
-    "brand": "Suzuki",
-    "model": "SWIFT BOOSTERJET SPORT 2025",
-    "year": 2025,
-    "price": 0,
-    "km": 0,
-    "color": "Blanco Pop",
-    "engine": "1.4 LT DOHC/VVT, 1,373 cc",
-    "transmission": "TA 6 vel / TM 6 vel",
-    "imageUrl": "/uploads/autobot/suzuki-swift-sport-final-edition-2025.jpg",
-    "metadata": {
-      "lengthMm": 3890,
-      "widthMm": 1735,
-      "heightMm": 1495,
-      "wheelbaseMm": 2450,
-      "fuelCityKmL": 14.7,
-      "fuelHighwayKmL": 21.5,
-      "fuelCombinedKmL": 17.5,
-      "passengers": 5,
-      "versions": [
-        "GLX",
-        "BOOSTERJET GLX"
-      ],
-      "transmissionFull": "automática de 6 velocidades con paletas de cambios al volante / manual de 6 velocidades"
-    },
-    "ownerUserId": "bab219f0-9e32-4416-a4f5-a9790bbc1499",
-    "skipped": false
-  },
-  {
-    "sourcePdf": "XL7 2026.pdf",
-    "brand": "Suzuki",
-    "model": "ERTIGA XL7 BOOSTERGREEN 2026",
-    "year": 2026,
-    "price": 0,
-    "km": 0,
-    "color": "Ivory",
-    "engine": "1.5 Lt DOHC VVT y 16 válvulas, 1,462 cm3",
-    "transmission": "automática de 4 velocidades (TA)",
-    "imageUrl": "/uploads/autobot/suzuki-xl7-2026.jpg",
-    "metadata": {
-      "lengthMm": 4450,
-      "widthMm": 1775,
-      "heightMm": 1710,
-      "wheelbaseMm": 2740,
-      "fuelCityKmL": 16.1,
-      "fuelHighwayKmL": 20.2,
-      "fuelCombinedKmL": 17.7,
-      "passengers": 7,
-      "versions": [
-        "BOOSTERGREEN GLX",
-        "GLX"
+        "GLS"
       ]
     },
     "ownerUserId": "bab219f0-9e32-4416-a4f5-a9790bbc1499",

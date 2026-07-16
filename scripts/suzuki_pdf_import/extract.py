@@ -375,12 +375,28 @@ def build_record(pdf_path: Path, images_dir: Path) -> dict:
     return record
 
 
+def resolve_pdf_files(input_path: Path) -> list[Path]:
+    """Acepta una carpeta (todos los .pdf) o un archivo PDF individual."""
+    if input_path.is_file():
+        if input_path.suffix.lower() != ".pdf":
+            raise ValueError(f"El archivo no es un PDF: {input_path}")
+        return [input_path]
+
+    if input_path.is_dir():
+        pdf_files = sorted(input_path.glob("*.pdf"))
+        if not pdf_files:
+            raise ValueError(f"No hay PDFs en {input_path}")
+        return pdf_files
+
+    raise ValueError(f"Ruta no encontrada: {input_path}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Extrae datos de fichas técnicas Suzuki (PDF).")
     parser.add_argument(
         "--input",
         default="/Users/intelekia/Downloads/suzuki_cars",
-        help="Carpeta con archivos PDF",
+        help="Carpeta con PDFs, o ruta a un único archivo PDF",
     )
     parser.add_argument(
         "--images-dir",
@@ -395,7 +411,7 @@ def main() -> int:
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[2]
-    input_dir = Path(args.input)
+    input_path = Path(args.input)
     images_dir = Path(args.images_dir)
     if not images_dir.is_absolute():
         images_dir = repo_root / images_dir
@@ -404,13 +420,10 @@ def main() -> int:
     if not manifest_path.is_absolute():
         manifest_path = repo_root / manifest_path
 
-    if not input_dir.is_dir():
-        print(f"Error: carpeta no encontrada: {input_dir}", file=sys.stderr)
-        return 1
-
-    pdf_files = sorted(input_dir.glob("*.pdf"))
-    if not pdf_files:
-        print(f"Error: no hay PDFs en {input_dir}", file=sys.stderr)
+    try:
+        pdf_files = resolve_pdf_files(input_path)
+    except ValueError as error:
+        print(f"Error: {error}", file=sys.stderr)
         return 1
 
     records: list[dict] = []
