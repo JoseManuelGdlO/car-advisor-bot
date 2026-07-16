@@ -11,6 +11,8 @@ import { useAuth } from "@/context/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 import { crmApi } from "@/services/crm";
 import { resolveClientDisplayPhone } from "@/lib/phone";
+import { formatDateTime } from "@/lib/datetime";
+import { useBotTimezone } from "@/hooks/useBotTimezone";
 
 const filters: { key: "all" | ClientStatus; label: string }[] = [
   { key: "all", label: "Todos" },
@@ -20,22 +22,10 @@ const filters: { key: "all" | ClientStatus; label: string }[] = [
   { key: "lost", label: "Perdidos" },
 ];
 
-const formatDateTime = (value: string) => {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("es-MX", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
-};
-
 export default function Clientes() {
   const navigate = useNavigate();
   const { token } = useAuth();
+  const timeZone = useBotTimezone();
   const { data } = useQuery({ queryKey: ["clients"], queryFn: () => crmApi.getClients(token!), enabled: Boolean(token) });
   const clients = (data || []) as any[];
   const [filter, setFilter] = useState<"all" | ClientStatus>("all");
@@ -96,7 +86,9 @@ export default function Clientes() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-semibold text-sm truncate">{c.name}</p>
-                  <span className="text-[10px] text-muted-foreground shrink-0">{formatDateTime(c.lastMessageAt)}</span>
+                  <span className="text-[10px] text-muted-foreground shrink-0">
+                    {formatDateTime(c.lastMessageAt, timeZone)}
+                  </span>
                 </div>
                 <p className="text-xs text-muted-foreground truncate">{c.interestedIn}</p>
                 {resolveClientDisplayPhone(c) ? (

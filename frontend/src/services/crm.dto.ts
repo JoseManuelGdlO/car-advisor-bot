@@ -118,6 +118,7 @@ export type ConversationMessageDto = {
   from: "client" | "bot" | "seller";
   text: string;
   time: string;
+  createdAt: string;
 };
 
 export type ConversationDto = {

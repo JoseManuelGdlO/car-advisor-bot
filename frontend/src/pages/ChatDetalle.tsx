@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Phone, MoreVertical, Send, Bot, Smile, Paperclip, User, Copy } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
@@ -13,6 +13,8 @@ import { toast } from "sonner";
 import { normalizeApiError } from "@/lib/formErrors";
 import { buildTelHref, resolveClientDisplayPhone } from "@/lib/phone";
 import { formatConversationPreview } from "@/lib/crmEventLabels";
+import { formatChatDayLabel, formatMessageTime, getZonedDayKey } from "@/lib/datetime";
+import { useBotTimezone } from "@/hooks/useBotTimezone";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -45,6 +47,7 @@ type ChatMessageRow = {
   from: string;
   text: string;
   time: string;
+  createdAt?: string;
 };
 
 type ParsedAttachmentText = {
@@ -80,6 +83,7 @@ export default function ChatDetalle() {
   const navigate = useNavigate();
   const { token } = useAuth();
   const queryClient = useQueryClient();
+  const timeZone = useBotTimezone();
   const { data: conversations } = useConversationsQuery();
   const conv = (conversations as ConversationWithClient[] | undefined)?.find((c) => c.id === id);
   const { data: messages } = useConversationMessagesQuery(id);
@@ -308,56 +312,70 @@ export default function ChatDetalle() {
 
       {/* Messages */}
       <div ref={messagesContainerRef} onScroll={handleMessagesScroll} className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden bg-chat-pattern px-3 py-4 space-y-2">
-        {((messages || []) as ChatMessageRow[]).map((m) => {
+        {((messages || []) as ChatMessageRow[]).map((m, index, list) => {
           const isSystem = m.from === "system";
           const isBot = m.from === "bot" || m.from === "assistant";
           const mine = m.from !== "client" && !isSystem;
           const attachment = parseAttachmentText(m.text);
+          const dayKey = getZonedDayKey(m.createdAt, timeZone);
+          const prevDayKey = index > 0 ? getZonedDayKey(list[index - 1]?.createdAt, timeZone) : null;
+          const showDaySeparator = Boolean(dayKey && dayKey !== prevDayKey);
           return (
-            <div key={m.id} className={cn("flex min-w-0", isSystem ? "justify-center" : mine ? "justify-end" : "justify-start")}>
-              <div
-                className={cn(
-                  "max-w-[78%] min-w-0 px-3 py-2 rounded-2xl shadow-soft text-sm overflow-hidden",
-                  isSystem
-                    ? "bg-muted/80 text-muted-foreground rounded-md text-center"
-                    : mine
-                      ? isBot
-                        ? "bg-chat-bot text-foreground rounded-br-md"
-                        : "bg-chat-out text-foreground rounded-br-md"
-                      : "bg-chat-in text-foreground rounded-bl-md",
-                )}
-              >
-                {isBot && (
-                  <p className="text-[10px] font-bold text-info mb-1 flex items-center gap-1 uppercase tracking-wide">
-                    <Bot className="w-3 h-3" /> AutoBot
+            <Fragment key={m.id}>
+              {showDaySeparator ? (
+                <div className="flex justify-center py-1">
+                  <span className="px-3 py-1 rounded-lg bg-card/95 text-[11px] font-medium text-muted-foreground shadow-soft border border-border/50">
+                    {formatChatDayLabel(m.createdAt, timeZone)}
+                  </span>
+                </div>
+              ) : null}
+              <div className={cn("flex min-w-0", isSystem ? "justify-center" : mine ? "justify-end" : "justify-start")}>
+                <div
+                  className={cn(
+                    "max-w-[78%] min-w-0 px-3 py-2 rounded-2xl shadow-soft text-sm overflow-hidden",
+                    isSystem
+                      ? "bg-muted/80 text-muted-foreground rounded-md text-center"
+                      : mine
+                        ? isBot
+                          ? "bg-chat-bot text-foreground rounded-br-md"
+                          : "bg-chat-out text-foreground rounded-br-md"
+                        : "bg-chat-in text-foreground rounded-bl-md",
+                  )}
+                >
+                  {isBot && (
+                    <p className="text-[10px] font-bold text-info mb-1 flex items-center gap-1 uppercase tracking-wide">
+                      <Bot className="w-3 h-3" /> AutoBot
+                    </p>
+                  )}
+                  {!isBot && !isSystem && mine && (
+                    <p className="text-[10px] font-bold text-primary-dark mb-1 uppercase tracking-wide">Tú (vendedor)</p>
+                  )}
+                  {isSystem && (
+                    <p className="text-[10px] font-bold text-muted-foreground mb-1 uppercase tracking-wide">Sistema</p>
+                  )}
+                  {attachment ? (
+                    <div className="space-y-2">
+                      {attachment.caption ? <p className="leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{attachment.caption}</p> : null}
+                      <a href={attachment.imageUrl} target="_blank" rel="noreferrer" className="block">
+                        <img
+                          src={attachment.imageUrl}
+                          alt={attachment.caption || "Imagen adjunta"}
+                          loading="lazy"
+                          className="max-h-64 w-auto rounded-lg border border-border/50"
+                        />
+                      </a>
+                    </div>
+                  ) : (
+                    <p className="leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                      {formatConversationPreview(m.text)}
+                    </p>
+                  )}
+                  <p className="text-[10px] text-muted-foreground text-right mt-1">
+                    {formatMessageTime(m.createdAt, timeZone, m.time)}
                   </p>
-                )}
-                {!isBot && !isSystem && mine && (
-                  <p className="text-[10px] font-bold text-primary-dark mb-1 uppercase tracking-wide">Tú (vendedor)</p>
-                )}
-                {isSystem && (
-                  <p className="text-[10px] font-bold text-muted-foreground mb-1 uppercase tracking-wide">Sistema</p>
-                )}
-                {attachment ? (
-                  <div className="space-y-2">
-                    {attachment.caption ? <p className="leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{attachment.caption}</p> : null}
-                    <a href={attachment.imageUrl} target="_blank" rel="noreferrer" className="block">
-                      <img
-                        src={attachment.imageUrl}
-                        alt={attachment.caption || "Imagen adjunta"}
-                        loading="lazy"
-                        className="max-h-64 w-auto rounded-lg border border-border/50"
-                      />
-                    </a>
-                  </div>
-                ) : (
-                  <p className="leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-                    {formatConversationPreview(m.text)}
-                  </p>
-                )}
-                <p className="text-[10px] text-muted-foreground text-right mt-1">{m.time}</p>
+                </div>
               </div>
-            </div>
+            </Fragment>
           );
         })}
       </div>

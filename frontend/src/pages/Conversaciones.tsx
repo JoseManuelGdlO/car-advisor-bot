@@ -9,6 +9,8 @@ import { cn } from "@/lib/utils";
 import { normalizePhoneDigits, resolveClientDisplayPhone } from "@/lib/phone";
 import { formatConversationPreview } from "@/lib/crmEventLabels";
 import { useConversationsQuery } from "@/hooks/useConversationsQuery";
+import { useBotTimezone } from "@/hooks/useBotTimezone";
+import { formatDateTime, getZonedDayDifference } from "@/lib/datetime";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 const channelFilters: { key: "all" | Channel; label: string }[] = [
@@ -54,18 +56,14 @@ const getConversationTime = (conversation: any) => {
   return Number.isNaN(time) ? 0 : time;
 };
 
-const matchesDateFilter = (conversation: any, dateFilter: DateFilter) => {
+const matchesDateFilter = (conversation: any, dateFilter: DateFilter, timeZone: string) => {
   if (dateFilter === "all") return true;
-  const time = getConversationTime(conversation);
-  if (!time) return false;
+  const difference = getZonedDayDifference(conversation.lastTime, timeZone);
+  if (difference === null || difference < 0) return false;
 
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const dayMs = 24 * 60 * 60 * 1000;
-
-  if (dateFilter === "today") return time >= startOfToday;
-  if (dateFilter === "7d") return time >= startOfToday - 7 * dayMs;
-  if (dateFilter === "30d") return time >= startOfToday - 30 * dayMs;
+  if (dateFilter === "today") return difference === 0;
+  if (dateFilter === "7d") return difference <= 7;
+  if (dateFilter === "30d") return difference <= 30;
   return true;
 };
 
@@ -94,21 +92,9 @@ const hasRegisteredClientName = (name?: string) => {
   return trimmed.length > 0 && trimmed.toLowerCase() !== GENERIC_CLIENT_NAME;
 };
 
-const formatDateTime = (value: string) => {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("es-MX", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
-};
-
 export default function Conversaciones() {
   const navigate = useNavigate();
+  const timeZone = useBotTimezone();
   const { data } = useConversationsQuery();
   const conversations = (data || []) as any[];
   const [filter, setFilter] = useState<"all" | Channel>("all");
@@ -130,7 +116,7 @@ export default function Conversaciones() {
       // if (readFilter === "read" && c.unread > 0) return false;
       if (controlFilter === "human" && !c.isHumanControlled) return false;
       if (controlFilter === "bot" && c.isHumanControlled) return false;
-      if (!matchesDateFilter(c, dateFilter)) return false;
+      if (!matchesDateFilter(c, dateFilter, timeZone)) return false;
       return matchesConversationSearch(c, q);
     });
 
@@ -138,7 +124,7 @@ export default function Conversaciones() {
       const diff = getConversationTime(a) - getConversationTime(b);
       return sortOrder === "asc" ? diff : -diff;
     });
-  }, [conversations, filter, controlFilter, sortOrder, dateFilter, q]);
+  }, [conversations, filter, controlFilter, sortOrder, dateFilter, q, timeZone]);
 
   const totalUnread = conversations.reduce((acc, c) => acc + c.unread, 0);
 
@@ -237,7 +223,7 @@ export default function Conversaciones() {
                       ) : null}
                     </div>
                     <span className={cn("text-[10px] shrink-0", c.unread > 0 ? "text-primary font-bold" : "text-muted-foreground")}>
-                      {formatDateTime(c.lastTime)}
+                      {formatDateTime(c.lastTime, timeZone)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-2 mt-0.5">
