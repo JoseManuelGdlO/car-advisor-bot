@@ -43,7 +43,7 @@ export const env = {
      * Ventana de debounce (ms) para fusionar mensajes rápidos del mismo usuario
      * antes de llamar al motor del bot (WhatsApp / Instagram).
      */
-    messageDebounceMs: Math.max(0, Number(must("BOT_MESSAGE_DEBOUNCE_MS", "3000")) || 3000),
+    messageDebounceMs: Math.max(0, Number(must("BOT_MESSAGE_DEBOUNCE_MS", "6000")) || 6000),
   },
   push: {
     firebaseProjectId: must("FIREBASE_PROJECT_ID", ""),

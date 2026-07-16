@@ -38,6 +38,7 @@ const TEST_AD_CAMPAIGN_SWIFT = {
 class ChatInterface {
   // python3 -m http.server 8090
   static BOT_MESSAGE_SEPARATOR = "<<BOT_MSG_BREAK>>";
+  static MESSAGE_DEBOUNCE_MS = 6000;
   constructor() {
     this.messagesContainer = document.getElementById("chat-messages");
     this.userInput = document.getElementById("user-input");
@@ -60,6 +61,12 @@ class ChatInterface {
     this.promotionElement = document.getElementById("promotion");
 
     this.previousOwnerId = null;
+    this.armedAdContext = null;
+    this.pendingMessages = [];
+    this.pendingAdContext = null;
+    this.debounceTimer = null;
+    this.typingTimer = null;
+    this.isFlushingMessages = false;
     this.init();
   }
 
@@ -184,12 +191,15 @@ class ChatInterface {
     return payload;
   }
 
-  async simulateAdCampaign() {
+  simulateAdCampaign() {
     const campaign = TEST_AD_CAMPAIGN_SWIFT;
-    await this.sendMessage(campaign.message, {
-      adContext: campaign.ad_context,
-      displayBadge: "📢 Campaña CTWA",
-    });
+    // Solo prellena el mensaje y deja armado el contexto CTWA; se envía al presionar enviar.
+    this.armedAdContext = campaign.ad_context;
+    this.userInput.value = campaign.message;
+    this.updateCharCount();
+    this.autoResize();
+    this.userInput.focus();
+    this.setStatus("Campaña CTWA lista — presiona enviar", "#fde68a");
   }
 
   hasChatMessages() {
@@ -303,8 +313,9 @@ class ChatInterface {
   async sendMessage(prefilledMessage = null, options = {}) {
     const text = (prefilledMessage ?? this.userInput.value).trim();
     const userId = this.userIdInput.value.trim();
-    const adContext = options.adContext || null;
-    const displayBadge = options.displayBadge || null;
+    const armedAdContext = this.armedAdContext;
+    const adContext = options.adContext || armedAdContext || null;
+    const displayBadge = options.displayBadge || (armedAdContext ? "📢 Campaña CTWA" : null);
 
     if (!userId) {
       alert("Ingresa un ID de usuario.");
@@ -320,19 +331,54 @@ class ChatInterface {
       return;
     }
 
+    this.armedAdContext = null;
     this.addMessage(text, "user", { badge: displayBadge });
     this.userInput.value = "";
     this.updateCharCount();
     this.autoResize();
     this.userInput.focus();
 
-    const typingDelayMs = 350;
-    const typingTimer = setTimeout(() => this.showTyping(), typingDelayMs);
+    this.pendingMessages.push(text);
+    if (adContext && this.pendingAdContext == null) {
+      this.pendingAdContext = adContext;
+    }
+    this.scheduleMessageFlush(userId);
+  }
+
+  scheduleMessageFlush(userId) {
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+    }
+    if (this.typingTimer) {
+      clearTimeout(this.typingTimer);
+    }
+
+    this.setStatus("Agrupando mensajes…", "#fde68a");
+    this.typingTimer = setTimeout(() => this.showTyping(), 350);
+
+    if (this.isFlushingMessages) {
+      return;
+    }
+
+    this.debounceTimer = setTimeout(() => {
+      this.debounceTimer = null;
+      void this.flushPendingMessages(userId);
+    }, ChatInterface.MESSAGE_DEBOUNCE_MS);
+  }
+
+  async flushPendingMessages(userId) {
+    if (this.isFlushingMessages || !this.pendingMessages.length) {
+      return;
+    }
+
+    const joinedMessage = this.pendingMessages.join("\n");
+    const adContext = this.pendingAdContext;
+    this.pendingMessages = [];
+    this.pendingAdContext = null;
+    this.isFlushingMessages = true;
 
     try {
-      const response = await this.sendToAPI(text, userId, adContext);
-      clearTimeout(typingTimer);
-      this.hideTyping();
+      const response = await this.sendToAPI(joinedMessage, userId, adContext);
 
       if (response.bot_suppressed) {
         this.setStatus("Bot en pausa — mensaje registrado", "#fde68a");
@@ -345,13 +391,22 @@ class ChatInterface {
       }
       this.updateSessionInfo(response);
     } catch (error) {
-      clearTimeout(typingTimer);
-      this.hideTyping();
       this.addMessage(
         "Lo sentimos, hubo un error inesperado, por favor espera un momento y vuelve a intentarlo.",
         "bot"
       );
       this.setStatus("Desconectado", "#fecaca");
+    } finally {
+      if (this.typingTimer) {
+        clearTimeout(this.typingTimer);
+        this.typingTimer = null;
+      }
+      this.hideTyping();
+      this.isFlushingMessages = false;
+
+      if (this.pendingMessages.length) {
+        this.scheduleMessageFlush(userId);
+      }
     }
   }
 
@@ -396,6 +451,7 @@ class ChatInterface {
   }
 
   async resetSessionOnServer(userId, { skipConfirm = false } = {}) {
+    this.clearPendingMessages();
     const resetUrl = this.getResetEndpoint();
     const response = await fetch(resetUrl, {
       method: "POST",
@@ -431,6 +487,21 @@ class ChatInterface {
     if (!skipConfirm) {
       this.setStatus("Sesión reiniciada", "#d1fae5");
     }
+  }
+
+  clearPendingMessages() {
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+    }
+    if (this.typingTimer) {
+      clearTimeout(this.typingTimer);
+      this.typingTimer = null;
+    }
+    this.pendingMessages = [];
+    this.pendingAdContext = null;
+    this.armedAdContext = null;
+    this.hideTyping();
   }
 
   async resetConversation() {
