@@ -598,6 +598,8 @@ def build_vehicle_requirement_catalog_block(vehicles: list[dict[str, Any]]) -> s
         year_suffix = f" {year}" if isinstance(year, int) else ""
         name = f"{brand} {model}{year_suffix}".strip() or "Sin nombre"
         status = str(item.get("status", "")).strip() or "unknown"
+        price_value = _coerce_price(item.get("price"))
+        price_text = str(price_value) if price_value is not None else "N/D"
         description = str(item.get("description", "")).strip() or "(sin descripcion)"
         meta_parts: list[str] = []
         metadata = item.get("metadata")
@@ -617,7 +619,7 @@ def build_vehicle_requirement_catalog_block(vehicles: list[dict[str, Any]]) -> s
             meta_parts.append(f"engine={engine}")
         meta_text = "; ".join(meta_parts) if meta_parts else "(sin metadata)"
         lines.append(
-            f"- id={vehicle_id} | name={name} | status={status} | "
+            f"- id={vehicle_id} | name={name} | status={status} | price={price_text} | "
             f"description={description} | metadata={meta_text}"
         )
     return "\n".join(lines) if lines else "(sin vehiculos)"

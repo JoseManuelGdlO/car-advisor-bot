@@ -19,6 +19,7 @@ class VehicleRequirementCatalogBlockTests(unittest.TestCase):
                     "model": "Swift",
                     "year": 2026,
                     "status": "available",
+                    "price": 299900,
                     "description": "Ideal para uber",
                     "metadata": {"passengers": 5, "doors": 4},
                     "transmission": "Automatica",
@@ -30,6 +31,13 @@ class VehicleRequirementCatalogBlockTests(unittest.TestCase):
         self.assertIn("passengers=5", block)
         self.assertIn("doors=4", block)
         self.assertIn("transmission=Automatica", block)
+        self.assertIn("price=299900", block)
+
+    def test_price_missing_renders_nd(self) -> None:
+        block = build_vehicle_requirement_catalog_block(
+            [{"id": "veh-2", "brand": "Nissan", "model": "Versa", "status": "available"}]
+        )
+        self.assertIn("price=N/D", block)
 
 
 class ClassifyVehicleRequirementMatchesTests(unittest.TestCase):

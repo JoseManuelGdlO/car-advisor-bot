@@ -25,6 +25,15 @@ def looks_like_feature_request(user_text: str, feature_signals_normalized: set[s
     return has_year or any(signal in normalized for signal in feature_signals_normalized)
 
 
+def is_cheapest_price_request(user_text: str, cheapest_signals_normalized: set[str]) -> bool:
+    """Detecta preguntas por el vehiculo mas barato/economico/accesible."""
+
+    normalized = normalize_user_text(user_text)
+    if not normalized:
+        return False
+    return any(signal in normalized for signal in cheapest_signals_normalized)
+
+
 def looks_like_specific_vehicle_request(
     user_text: str,
     *,

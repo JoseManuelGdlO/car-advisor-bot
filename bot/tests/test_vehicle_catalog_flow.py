@@ -538,6 +538,91 @@ class VehicleCatalogFlowTests(GraphTestCase):
         mocked_search.assert_called_once_with({"minPrice": 100000, "maxPrice": 200000})
         mocked_requirement.assert_not_called()
 
+    def test_cheapest_price_heuristic_selects_lowest_price_vehicle(self) -> None:
+        cheap = {
+            "id": "veh-versa",
+            "brand": "Nissan",
+            "model": "Versa",
+            "year": 2011,
+            "status": "available",
+            "price": 120000,
+        }
+        expensive = {
+            "id": "veh-ram",
+            "brand": "Dodge",
+            "model": "Ram",
+            "year": 2015,
+            "status": "available",
+            "price": 450000,
+        }
+        vehicles = [expensive, cheap]
+        state = with_user_message(initial_state(), "cual es el auto mas economico?")
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.router.classify_router_intent", return_value="VEHICLE_CATALOG"),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.detect_vehicle_filters", return_value={}),
+            patch("src.nodes.car_selection.classify_vehicle_requirement_matches") as mocked_requirement,
+            patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=cheap),
+            patch(
+                "src.nodes.car_selection.generate_vehicle_detail_conversation",
+                return_value="El Nissan Versa es la opcion mas economica.",
+            ),
+            patch("src.nodes.car_selection.search_vehicles") as mocked_search,
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertEqual(updated.get("selected_vehicle_id"), "veh-versa")
+        self.assertIn("Versa", str(updated.get("selected_car", "")))
+        self.assertTrue(updated.get("awaiting_purchase_confirmation"))
+        mocked_requirement.assert_not_called()
+        mocked_search.assert_not_called()
+
+    def test_cheapest_price_heuristic_before_purchase_confirmation_classifier(self) -> None:
+        cheap = {
+            "id": "veh-swift",
+            "brand": "Suzuki",
+            "model": "Swift",
+            "year": 2024,
+            "status": "available",
+            "price": 280000,
+        }
+        expensive = {
+            "id": "veh-jimny",
+            "brand": "Suzuki",
+            "model": "Jimny",
+            "year": 2025,
+            "status": "available",
+            "price": 420000,
+        }
+        state = with_user_message(initial_state(), "cual es el mas barato?")
+        state["awaiting_purchase_confirmation"] = True
+        state["selected_vehicle_id"] = "veh-jimny"
+        state["selected_car"] = "Suzuki Jimny 2025"
+        state["last_vehicle_candidates"] = [expensive, cheap]
+        state["last_bot_message"] = "Te interesa comprar el Suzuki Jimny?"
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.router.classify_router_intent", return_value="VEHICLE_CATALOG"),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=[expensive, cheap]),
+            patch(
+                "src.nodes.car_selection._llm_vehicle_image_flags",
+                return_value={"ask_images": False, "ask_more_images": False},
+            ),
+            patch("src.nodes.car_selection.classify_vehicle_step_flags") as mocked_step_flags,
+            patch("src.nodes.car_selection.classify_purchase_confirmation_intent") as mocked_confirm,
+            patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=cheap),
+            patch(
+                "src.nodes.car_selection.generate_vehicle_detail_conversation",
+                return_value="El Swift es el mas barato de la lista.",
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertEqual(updated.get("selected_vehicle_id"), "veh-swift")
+        mocked_step_flags.assert_not_called()
+        mocked_confirm.assert_not_called()
+
 
 class CarSelectionSmokeTests(GraphTestCase):
     """Smoke mínimo: pregunta genérica de catálogo lista inventario mockeado."""

@@ -42,6 +42,35 @@ FEATURE_SIGNALS = {
     "gris",
 }
 
+# Superlativos / intención de menor precio (texto ya normalizado sin acentos).
+CHEAPEST_PRICE_SIGNALS = {
+    "economico",
+    "economicos",
+    "barato",
+    "baratos",
+    "mas barato",
+    "mas baratos",
+    "el mas barato",
+    "la mas barata",
+    "mas economico",
+    "el mas economico",
+    "menor precio",
+    "el de menor precio",
+    "precio mas bajo",
+    "el precio mas bajo",
+    "mas accesible",
+    "mas accesibles",
+    "el mas accesible",
+    "la mas accesible",
+    "el de menor costo",
+    "cual es el mas barato",
+    "cual es el mas economico",
+    "cual sale mas barato",
+    "cual cuesta menos",
+    "el que cuesta menos",
+    "el de menor precio",
+}
+
 FIRST_IMAGES_SIGNALS = {
     "ver fotos",
     "ver foto",

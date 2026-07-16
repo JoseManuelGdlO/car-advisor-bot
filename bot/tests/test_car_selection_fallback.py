@@ -4,6 +4,7 @@ import unittest
 
 from src.services.car_selection_fallback import (
     contains_signal_phrase,
+    is_cheapest_price_request,
     is_financing_request,
     is_first_images_request,
     is_general_request,
@@ -19,7 +20,7 @@ from src.services.car_selection_fallback import (
     user_asks_for_technical_sheet,
 )
 from src.tools.vehicles import normalize_user_text
-from src.utils.signals import TEST_DRIVE_VISIT_SIGNALS
+from src.utils.signals import CHEAPEST_PRICE_SIGNALS, TEST_DRIVE_VISIT_SIGNALS
 
 
 class CarSelectionFallbackTests(unittest.TestCase):
@@ -31,6 +32,7 @@ class CarSelectionFallbackTests(unittest.TestCase):
         self.financing = {"plan de pagos", "financiamiento"}
         self.promotions = {"promociones", "descuento"}
         self.test_drive_visit = {normalize_user_text(s) for s in TEST_DRIVE_VISIT_SIGNALS}
+        self.cheapest = {normalize_user_text(s) for s in CHEAPEST_PRICE_SIGNALS}
 
     def test_contains_signal_phrase_respects_word_boundaries(self) -> None:
         self.assertTrue(contains_signal_phrase("quiero plan de pagos", "plan de pagos"))
@@ -44,6 +46,14 @@ class CarSelectionFallbackTests(unittest.TestCase):
         self.assertTrue(looks_like_feature_request("busco modelo 2020", self.features))
         self.assertTrue(looks_like_feature_request("quiero color rojo", self.features))
         self.assertFalse(looks_like_feature_request("hola", self.features))
+
+    def test_is_cheapest_price_request_detects_superlatives(self) -> None:
+        self.assertTrue(is_cheapest_price_request("cual es el auto mas economico?", self.cheapest))
+        self.assertTrue(is_cheapest_price_request("el mas barato de la lista", self.cheapest))
+        self.assertTrue(is_cheapest_price_request("quiero el de menor precio", self.cheapest))
+        self.assertTrue(is_cheapest_price_request("algo mas accesible", self.cheapest))
+        self.assertFalse(is_cheapest_price_request("que carros tienes", self.cheapest))
+        self.assertFalse(is_cheapest_price_request("entre 100 mil y 200 mil", self.cheapest))
 
     def test_looks_like_specific_vehicle_request_uses_injected_dependencies(self) -> None:
         result = looks_like_specific_vehicle_request(

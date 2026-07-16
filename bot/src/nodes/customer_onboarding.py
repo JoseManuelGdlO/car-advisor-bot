@@ -307,7 +307,7 @@ def customer_onboarding(state: clientState) -> clientState:
         commercial_resume = ""
         if candidate and _looks_like_commercial_not_name(candidate):
             commercial_resume = candidate
-        elif extracted.get("is_refusal") and remainder:
+        elif extracted.get("is_refusal") and remainder and not _looks_like_not_a_name(remainder):
             commercial_resume = remainder
         if commercial_resume:
             state["pending_onboarding_user_message"] = commercial_resume

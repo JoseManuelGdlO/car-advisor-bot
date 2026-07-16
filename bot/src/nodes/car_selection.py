@@ -24,6 +24,7 @@ from src.services.llm_responses import (
     generate_verified_user_message,
 )
 from src.services.car_selection_fallback import (
+    is_cheapest_price_request,
     is_financing_request,
     is_general_request,
     is_promotions_request,
@@ -36,6 +37,8 @@ from src.services.car_selection_fallback import (
     user_asks_for_technical_sheet,
 )
 from src.tools.vehicles import (
+    _coerce_price,
+    _extract_price_filters,
     canonicalize_with_typo_support,
     detect_vehicle_filters,
     fetch_vehicle_by_id,
@@ -54,6 +57,7 @@ from src.utils.formatters import (
     sort_vehicles_by_outbound_priority,
 )
 from src.utils.signals import (
+    CHEAPEST_PRICE_SIGNALS,
     FEATURE_SIGNALS,
     FINANCING_SIGNALS,
     GENERAL_SIGNALS,
@@ -83,6 +87,7 @@ def _normalize_signal_set(values: set[str]) -> set[str]:
 
 _GENERAL_SIGNALS_NORMALIZED = _normalize_signal_set(GENERAL_SIGNALS)
 _FEATURE_SIGNALS_NORMALIZED = _normalize_signal_set(FEATURE_SIGNALS)
+_CHEAPEST_PRICE_SIGNALS_NORMALIZED = _normalize_signal_set(CHEAPEST_PRICE_SIGNALS)
 _FINANCING_SIGNALS_NORMALIZED = _normalize_signal_set(FINANCING_SIGNALS)
 _PROMOTIONS_SIGNALS_NORMALIZED = _normalize_signal_set(PROMOTIONS_SIGNALS)
 _TEST_DRIVE_VISIT_SIGNALS_NORMALIZED = _normalize_signal_set(TEST_DRIVE_VISIT_SIGNALS)
@@ -850,6 +855,121 @@ def _respond_with_requirement_matches(
     return append_assistant_message(state, message)
 
 
+def _refine_requirement_matches_with_pending(
+    state: clientState,
+    matched: list[dict[str, Any]],
+    *,
+    source: str,
+) -> list[dict[str, Any]]:
+    """Si hay candidatos pendientes, prioriza los matches que ya estaban en esa lista.
+
+    El usuario suele estar refinando la lista mostrada (ej. 'que sea automatico'); solo
+    si ningun match pertenece a los pendientes se conserva el resultado del catalogo completo.
+    """
+
+    pending = state.get("last_vehicle_candidates") or []
+    if not isinstance(pending, list) or not pending or not matched:
+        return matched
+    pending_ids = {
+        str(item.get("id", "")).strip()
+        for item in pending
+        if isinstance(item, dict) and str(item.get("id", "")).strip()
+    }
+    if not pending_ids:
+        return matched
+    refined = [
+        item
+        for item in matched
+        if isinstance(item, dict) and str(item.get("id", "")).strip() in pending_ids
+    ]
+    if refined:
+        _debug(
+            f"{source}_requirement_refined_from_pending",
+            pending=len(pending_ids),
+            matched=len(matched),
+            refined=len(refined),
+        )
+        return refined
+    return matched
+
+
+def _vehicles_for_price_ranking(
+    state: clientState,
+    vehicles: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Prioriza candidatos pendientes; si no hay, usa inventario available."""
+
+    pending = state.get("last_vehicle_candidates") or []
+    if isinstance(pending, list):
+        from_pending = [item for item in pending if isinstance(item, dict)]
+        if from_pending:
+            return from_pending
+    available = [
+        item
+        for item in vehicles
+        if isinstance(item, dict) and str(item.get("status", "")).strip().lower() == "available"
+    ]
+    if available:
+        return available
+    return [item for item in vehicles if isinstance(item, dict)]
+
+
+def _pick_lowest_price_vehicles(vehicles: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Devuelve el/los vehiculos con el precio numerico mas bajo."""
+
+    priced: list[tuple[int, dict[str, Any]]] = []
+    for item in vehicles:
+        if not isinstance(item, dict):
+            continue
+        price = _coerce_price(item.get("price"))
+        if price is None:
+            continue
+        priced.append((price, item))
+    if not priced:
+        return []
+    min_price = min(price for price, _ in priced)
+    return [item for price, item in priced if price == min_price]
+
+
+def _try_respond_cheapest_price_request(
+    state: clientState,
+    vehicles: list[dict[str, Any]],
+    user_text: str,
+    *,
+    source: str,
+) -> clientState | None:
+    """Si el mensaje pide el mas barato/economico, responde con min(price); si no, None."""
+
+    if not is_cheapest_price_request(user_text, _CHEAPEST_PRICE_SIGNALS_NORMALIZED):
+        return None
+    # Rangos numericos ("hasta 200 mil") siguen por detect_vehicle_filters.
+    price_filters = _extract_price_filters(user_text)
+    if price_filters:
+        _debug(f"{source}_cheapest_skipped_numeric_price_filter", filters=price_filters)
+        return None
+
+    pool = _vehicles_for_price_ranking(state, vehicles)
+    cheapest = _pick_lowest_price_vehicles(pool)
+    _debug(
+        f"{source}_cheapest_price_request",
+        pool=len(pool),
+        matches=len(cheapest),
+        match_ids=[str(item.get("id", "")).strip() for item in cheapest],
+    )
+    if not cheapest:
+        return None
+    if len(cheapest) == 1:
+        return _respond_with_vehicle_detail(state, cheapest[0])
+    return _respond_with_requirement_matches(
+        state,
+        cheapest,
+        user_text,
+        criterion_summary="menor precio",
+        all_vehicles=vehicles,
+        source=f"{source}_cheapest",
+    )
+
+
 def _try_respond_requirement_search(
     state: clientState,
     vehicles: list[dict[str, Any]],
@@ -866,6 +986,7 @@ def _try_respond_requirement_search(
     matched = result.get("matched_vehicles") or []
     if not isinstance(matched, list):
         matched = []
+    matched = _refine_requirement_matches_with_pending(state, matched, source=source)
     return _respond_with_requirement_matches(
         state,
         matched,
@@ -887,6 +1008,11 @@ def _respond_other_vehicles_with_optional_filters(
     _debug("other_vehicles_filters_detected", filters=filters)
     if filters:
         return _respond_with_filtered_search(state, filters, user_text, source="other_vehicles")
+    cheapest_state = _try_respond_cheapest_price_request(
+        state, vehicles, user_text, source="other_vehicles"
+    )
+    if cheapest_state is not None:
+        return cheapest_state
     requirement_state = _try_respond_requirement_search(
         state, vehicles, user_text, source="other_vehicles"
     )
@@ -1329,6 +1455,11 @@ def car_selection(state: clientState) -> clientState:
     if state.get("awaiting_purchase_confirmation"):
         previous_bot_message = str(state.get("last_bot_message", "")).strip()
         selected_car_name = str(state.get("selected_car", "")).strip()
+        cheapest_state = _try_respond_cheapest_price_request(
+            state, vehicles, user_text, source="purchase_confirmation"
+        )
+        if cheapest_state is not None:
+            return cheapest_state
         step_flags = classify_vehicle_step_flags(previous_bot_message, user_text, selected_car_name)
         _debug("vehicle_step_flags", **step_flags)
         if step_flags.get("wants_compare_two_vehicles"):
@@ -1475,6 +1606,10 @@ def car_selection(state: clientState) -> clientState:
     _debug("filters_detected", filters=filters)
     if filters:
         return _respond_with_filtered_search(state, filters, user_text, source="search")
+
+    cheapest_state = _try_respond_cheapest_price_request(state, vehicles, user_text, source="search")
+    if cheapest_state is not None:
+        return cheapest_state
 
     requirement_state = _try_respond_requirement_search(state, vehicles, user_text, source="search")
     if requirement_state is not None:
