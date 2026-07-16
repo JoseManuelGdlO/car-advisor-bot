@@ -133,6 +133,32 @@ _CATALOG_RATE_TERMS: frozenset[str] = frozenset(
     ("tasa", "enganche", "mensualidad", "mensualidades", "plazo", "plazos")
 )
 
+# Contexto que vuelve PERSONALIZADA una pregunta de enganche (calculo/caso propio).
+# Sin estos terminos, una duda de enganche es generica y se responde con el
+# mensaje publicado de enganche (downPaymentMessage), sin escalar a asesor.
+_ENGANCHE_PERSONALIZED_CONTEXT_SUBSTR: frozenset[str] = frozenset(
+    (
+        "mensualidad",
+        "mensualidades",
+        "pago mensual",
+        "pagaria",
+        "al mes",
+        "buro",
+        "aprueba",
+        "aprueban",
+        "mi caso",
+        "mi ingreso",
+        "mi historial",
+        "refinanciar",
+        "negociar",
+        "excepcion",
+        "menos enganche",
+        "menor enganche",
+        "bajar el enganche",
+        "sin enganche",
+    )
+)
+
 # Plazo concreto a la medida ("a 24 meses", "en 36 anios") junto a credito/plan.
 _CUSTOM_TERM_PLAZO_RE = re.compile(
     r"\b(?:a|en)\s+\d{1,3}\s*(?:meses?|anios?|anos?)\b",
@@ -285,6 +311,17 @@ def is_enganche_related_request(text: str) -> bool:
 
     normalized = normalize_user_text(text)
     return bool(normalized and "enganche" in normalized)
+
+
+def is_generic_down_payment_only_question(text: str) -> bool:
+    """True si solo pregunta el enganche en general, sin calculo ni caso personalizado."""
+
+    normalized = normalize_user_text(text)
+    if not normalized or "enganche" not in normalized:
+        return False
+    if _CUSTOM_TERM_PLAZO_RE.search(normalized):
+        return False
+    return not any(term in normalized for term in _ENGANCHE_PERSONALIZED_CONTEXT_SUBSTR)
 
 
 def resolve_down_payment_message(user_text: str) -> str | None:
@@ -445,6 +482,16 @@ def maybe_escalate_financing_detail(
     if is_vehicle_quote_without_financing_context(user_text):
         _app.info(
             "[financing_detail] skip_vehicle_quote_without_financing trigger=%s text_preview=%r",
+            trigger,
+            user_text[:80],
+        )
+        return None
+
+    # Enganche generico (sin calculo ni caso propio) con mensaje publicado configurado:
+    # lo responde el bot con el downPaymentMessage, no un asesor.
+    if is_generic_down_payment_only_question(user_text) and resolve_down_payment_message(user_text):
+        _app.info(
+            "[financing_detail] skip_generic_down_payment_question trigger=%s text_preview=%r",
             trigger,
             user_text[:80],
         )

@@ -175,6 +175,11 @@ function VehicleCardImage({ car }: { car: VehicleDto }) {
   const [broken, setBroken] = useState(false);
   const src = car.imageUrls?.[0] ? toMediaUrl(car.imageUrls[0]) : "";
 
+  // Si la URL cambia (p. ej. se sube una foto nueva), reintenta la carga.
+  useEffect(() => {
+    setBroken(false);
+  }, [src]);
+
   if (!src || broken) {
     return (
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-gradient-soft">
