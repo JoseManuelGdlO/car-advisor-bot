@@ -5,6 +5,7 @@ import {
 import { ApiError } from "../utils/errors.js";
 import { upsertConversationEvent } from "./conversationService.js";
 import { runBotChat } from "./botEngineClient.js";
+import { debounceAndFlush } from "./messageDebounceBuffer.js";
 import { isPhoneBlacklisted } from "./phoneBlacklistService.js";
 import { runWithWcToken } from "./wcAuthCache.js";
 import { wcClient } from "./wcClient.js";
@@ -159,15 +160,29 @@ export const ingestWhatsappConnectEvent = async ({ normalizedEvent, credentials:
       return { ok: true, conversationId: conversationResult.conversationId, repliesSent: 1, unsupportedMediaOnly: true };
     }
 
-    logWcWebhookDebug("pipeline: calling bot engine", { userId: normalizedEvent.externalUserId });
-    const botReplies = await runBotChat({
-      userId: normalizedEvent.externalUserId,
-      platform: "whatsapp",
+    logWcWebhookDebug("pipeline: calling bot engine (debounced)", { userId: normalizedEvent.externalUserId });
+    const { isFlushLeader, botReplies } = await debounceAndFlush({
+      key: `${normalizedEvent.ownerUserId}:whatsapp:${normalizedEvent.externalUserId}`,
       message: incomingMessage,
-      ownerUserId: normalizedEvent.ownerUserId,
-      conversationId: conversationResult.conversationId,
       adContext: normalizedEvent.adContext,
+      flush: ({ message, adContext }) =>
+        runBotChat({
+          userId: normalizedEvent.externalUserId,
+          platform: "whatsapp",
+          message,
+          ownerUserId: normalizedEvent.ownerUserId,
+          conversationId: conversationResult.conversationId,
+          adContext,
+        }),
     });
+
+    if (!isFlushLeader) {
+      logWcWebhookDebug("pipeline: debounced follower, skip outbound", {
+        providerEventId: normalizedEvent.eventId,
+      });
+      await markReceipt(receipt, "processed");
+      return { ok: true, debounced: true, conversationId: conversationResult.conversationId };
+    }
 
     logWcWebhook("pipeline: bot replies", { providerEventId: normalizedEvent.eventId, count: botReplies.length });
     for (const reply of botReplies) {

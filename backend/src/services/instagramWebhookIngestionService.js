@@ -5,6 +5,7 @@ import {
 import { ApiError } from "../utils/errors.js";
 import { upsertConversationEvent } from "./conversationService.js";
 import { runBotChat } from "./botEngineClient.js";
+import { debounceAndFlush } from "./messageDebounceBuffer.js";
 import { sendInstagramTextMessage } from "./metaInstagramClient.js";
 import { logIgWebhook, logIgWebhookDebug } from "../utils/instagramWebhookLog.js";
 
@@ -131,14 +132,27 @@ export const ingestInstagramMetaEvent = async ({ normalizedEvent, credentials })
       return { ok: true, conversationId: conversationResult.conversationId, repliesSent: 1, unsupportedMediaOnly: true };
     }
 
-    logIgWebhookDebug("pipeline: calling bot engine", { userId: normalizedEvent.externalUserId });
-    const botReplies = await runBotChat({
-      userId: normalizedEvent.externalUserId,
-      platform: "instagram",
+    logIgWebhookDebug("pipeline: calling bot engine (debounced)", { userId: normalizedEvent.externalUserId });
+    const { isFlushLeader, botReplies } = await debounceAndFlush({
+      key: `${normalizedEvent.ownerUserId}:instagram:${normalizedEvent.externalUserId}`,
       message: incomingMessage,
-      ownerUserId: normalizedEvent.ownerUserId,
-      conversationId: conversationResult.conversationId,
+      flush: ({ message }) =>
+        runBotChat({
+          userId: normalizedEvent.externalUserId,
+          platform: "instagram",
+          message,
+          ownerUserId: normalizedEvent.ownerUserId,
+          conversationId: conversationResult.conversationId,
+        }),
     });
+
+    if (!isFlushLeader) {
+      logIgWebhookDebug("pipeline: debounced follower, skip outbound", {
+        providerEventId: normalizedEvent.eventId,
+      });
+      await markReceipt(receipt, "processed");
+      return { ok: true, debounced: true, conversationId: conversationResult.conversationId };
+    }
 
     logIgWebhook("pipeline: bot replies", { providerEventId: normalizedEvent.eventId, count: botReplies.length });
     for (const reply of botReplies) {

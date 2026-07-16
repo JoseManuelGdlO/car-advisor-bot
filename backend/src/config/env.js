@@ -39,6 +39,11 @@ export const env = {
     defaultInboundChannel: must("BOT_DEFAULT_INBOUND_CHANNEL", "web"),
     /** URL base del servicio FastAPI del bot (sin slash final). */
     engineUrl: must("BOT_ENGINE_URL", "http://localhost:8000"),
+    /**
+     * Ventana de debounce (ms) para fusionar mensajes rápidos del mismo usuario
+     * antes de llamar al motor del bot (WhatsApp / Instagram).
+     */
+    messageDebounceMs: Math.max(0, Number(must("BOT_MESSAGE_DEBOUNCE_MS", "3000")) || 3000),
   },
   push: {
     firebaseProjectId: must("FIREBASE_PROJECT_ID", ""),
