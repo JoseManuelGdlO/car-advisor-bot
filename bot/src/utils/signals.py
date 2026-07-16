@@ -247,6 +247,35 @@ def is_greeting_only_message(text: str) -> bool:
         return len(stripped) < 4
     return False
 
+# Peticiones genericas de informacion (no comerciales concretas) que no son nombres.
+NOT_NAME_GENERIC_REQUEST_SUBSTR: frozenset[str] = frozenset(
+    (
+        "quiero mas informacion",
+        "quiero informacion",
+        "mas informacion",
+        "necesito informacion",
+        "me puedes dar informacion",
+        "me pueden dar informacion",
+        "quisiera informacion",
+        "quisiera mas informacion",
+        "dame informacion",
+        "informacion por favor",
+    )
+)
+
+
+def looks_like_greeting_or_generic_not_name(text: str) -> bool:
+    """True si el texto parece saludo o peticion generica de info, no un nombre propio."""
+
+    from src.tools.vehicles import normalize_user_text
+
+    normalized = normalize_user_text(text)
+    if not normalized:
+        return False
+    if is_greeting_only_message(text) or is_simple_greeting(text):
+        return True
+    return any(term in normalized for term in NOT_NAME_GENERIC_REQUEST_SUBSTR)
+
 FINANCING_PLANES_COMBO_SUFFIXES: frozenset[str] = frozenset(
     ("financ", "credito", "mensual", "enganche", "tasa", "interes")
 )

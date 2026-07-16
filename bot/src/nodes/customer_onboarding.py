@@ -14,7 +14,12 @@ from src.state import clientState
 from src.tools.database import sync_customer_info_to_backend
 from src.tools.vehicles import normalize_user_text
 from src.utils.app_logging import get_app_logger, log_flow_trace
-from src.utils.signals import is_business_faq_question, is_greeting_only_message, is_simple_greeting
+from src.utils.signals import (
+    is_business_faq_question,
+    is_greeting_only_message,
+    is_simple_greeting,
+    looks_like_greeting_or_generic_not_name,
+)
 from src.utils.state_helpers import append_assistant_message, latest_user_message
 
 _log = get_app_logger("customer_onboarding")
@@ -83,9 +88,13 @@ def _looks_like_commercial_not_name(user_message: str) -> bool:
 
 
 def _looks_like_not_a_name(user_message: str) -> bool:
-    """True si el mensaje es consulta comercial o FAQ de negocio, no un nombre propio."""
+    """True si el mensaje es consulta comercial, FAQ, saludo o peticion generica, no un nombre."""
 
-    return _looks_like_commercial_not_name(user_message) or is_business_faq_question(user_message)
+    return (
+        _looks_like_commercial_not_name(user_message)
+        or looks_like_greeting_or_generic_not_name(user_message)
+        or is_business_faq_question(user_message)
+    )
 
 
 def _sanitize_name_extraction(extracted: dict[str, Any], user_message: str) -> dict[str, Any]:

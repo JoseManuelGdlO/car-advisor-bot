@@ -183,6 +183,66 @@ class CustomerOnboardingTests(GraphTestCase):
         self.assertNotIn("nombre", updated.get("customer_info", {}))
         self.assertIn("¿En qué te puedo ayudar hoy?", updated["messages"][-1]["content"])
 
+    def test_sanitize_rejects_greeting_extracted_as_name(self) -> None:
+        state = with_user_message(initial_state(), "Hola")
+        state["customer_info"] = {}
+        state["awaiting_customer_name"] = True
+        state["onboarding_greeting_done"] = False
+        state["messages"] = [
+            {"role": "user", "content": "hola", "type": "HumanMessage"},
+            {
+                "role": "assistant",
+                "content": "Bienvenido. ¿Cómo te llamas?",
+                "type": "AIMessage",
+            },
+            {"role": "user", "content": "Hola", "type": "HumanMessage"},
+        ]
+        state["last_bot_message"] = "Bienvenido. ¿Cómo te llamas?"
+
+        with (
+            patch(
+                "src.nodes.customer_onboarding.extract_customer_name",
+                return_value={"nombre": "Hola", "is_refusal": False, "mensaje_restante": None},
+            ),
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertFalse(updated.get("awaiting_customer_name"))
+        self.assertNotIn("nombre", updated.get("customer_info", {}))
+
+    def test_sanitize_rejects_generic_info_request_as_name(self) -> None:
+        state = with_user_message(initial_state(), "Quiero más información")
+        state["customer_info"] = {}
+        state["awaiting_customer_name"] = True
+        state["onboarding_greeting_done"] = False
+        state["messages"] = [
+            {"role": "user", "content": "hola", "type": "HumanMessage"},
+            {
+                "role": "assistant",
+                "content": "Bienvenido. ¿Cómo te llamas?",
+                "type": "AIMessage",
+            },
+            {"role": "user", "content": "Quiero más información", "type": "HumanMessage"},
+        ]
+        state["last_bot_message"] = "Bienvenido. ¿Cómo te llamas?"
+
+        with (
+            patch(
+                "src.nodes.customer_onboarding.extract_customer_name",
+                return_value={
+                    "nombre": "Quiero Más Información",
+                    "is_refusal": False,
+                    "mensaje_restante": None,
+                },
+            ),
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertFalse(updated.get("awaiting_customer_name"))
+        self.assertNotIn("nombre", updated.get("customer_info", {}))
+
     def test_commercial_intent_without_name_resumes_pending_flow(self) -> None:
         state = initial_state()
         state["customer_info"] = {}
