@@ -6,9 +6,11 @@ import { useAuth } from "@/context/AuthContext";
 import { crmApi, type BotSettingsDto } from "@/services/crm";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { FormErrorAlert } from "@/components/FormErrorAlert";
 import { normalizeApiError } from "@/lib/formErrors";
+
 
 type BehaviorForm = Pick<
   BotSettingsDto,
@@ -49,6 +51,11 @@ export default function ConfigComportamientoBot() {
 
   const [form, setForm] = useState<BehaviorForm>(DEFAULT_FORM);
   const [error, setError] = useState<string | null>(null);
+  const [settingsHydrated, setSettingsHydrated] = useState(false);
+  const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [reminderMessage, setReminderMessage] = useState("");
+  const [reminderHours, setReminderHours] = useState("");
+  const [reminderOncePerConversation, setReminderOncePerConversation] = useState(false);
 
   useEffect(() => {
     if (!data) return;
@@ -63,7 +70,25 @@ export default function ConfigComportamientoBot() {
       downPaymentMessage: data.downPaymentMessage ?? "",
       visitIncentiveMessage: data.visitIncentiveMessage ?? "",
     });
+    setReminderEnabled(Boolean(data.reminderEnabled));
+    setReminderMessage(data.reminderMessage ?? "");
+    setReminderHours(data.reminderHours != null ? String(data.reminderHours) : "");
+    setReminderOncePerConversation(Boolean(data.reminderOncePerConversation));
+    setSettingsHydrated(true);
   }, [data]);
+
+  const parsedReminderHours = (() => {
+    const trimmed = reminderHours.trim();
+    if (!trimmed) return null;
+    const n = Number(trimmed);
+    if (!Number.isInteger(n) || n < 1 || n > 720) return null;
+    return n;
+  })();
+  const reminderHoursInvalid = reminderHours.trim() !== "" && parsedReminderHours === null;
+  const normalizedReminderMessage = reminderMessage.trim() || null;
+  const reminderMessageMissing = reminderEnabled && !normalizedReminderMessage;
+  const reminderHoursMissing = reminderEnabled && parsedReminderHours === null;
+  const reminderInvalid = reminderHoursInvalid || reminderMessageMissing || reminderHoursMissing;
 
   const saveMutation = useMutation({
     mutationFn: async () =>
@@ -77,6 +102,15 @@ export default function ConfigComportamientoBot() {
         faqFallbackMessage: form.faqFallbackMessage,
         downPaymentMessage: form.downPaymentMessage.trim() || null,
         visitIncentiveMessage: form.visitIncentiveMessage.trim() || null,
+        reminderEnabled,
+        // Al desactivar, solo se envía el switch; el resto se omite para conservar lo guardado.
+        ...(reminderEnabled
+          ? {
+              reminderMessage: normalizedReminderMessage,
+              reminderHours: parsedReminderHours,
+              reminderOncePerConversation,
+            }
+          : {}),
       }),
     onSuccess: () => {
       setError(null);
@@ -99,9 +133,21 @@ export default function ConfigComportamientoBot() {
       data.welcomeMessage !== form.welcomeMessage ||
       data.faqFallbackMessage !== form.faqFallbackMessage ||
       (data.downPaymentMessage ?? "") !== form.downPaymentMessage ||
-      (data.visitIncentiveMessage ?? "") !== form.visitIncentiveMessage
+      (data.visitIncentiveMessage ?? "") !== form.visitIncentiveMessage ||
+      Boolean(data.reminderEnabled) !== reminderEnabled ||
+      (reminderEnabled &&
+        ((data.reminderMessage ?? null) !== normalizedReminderMessage ||
+          (data.reminderHours ?? null) !== parsedReminderHours ||
+          Boolean(data.reminderOncePerConversation) !== reminderOncePerConversation))
     );
-  }, [data, form]);
+  }, [
+    data,
+    form,
+    reminderEnabled,
+    reminderOncePerConversation,
+    normalizedReminderMessage,
+    parsedReminderHours,
+  ]);
 
   return (
     <>
@@ -216,6 +262,80 @@ export default function ConfigComportamientoBot() {
         </div>
 
         <div className="bg-card rounded-2xl p-4 shadow-card border border-border space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold">Recordatorio de seguimiento</p>
+              <p className="text-xs text-muted-foreground">
+                Si el último mensaje es del bot y no hay escalación, envía este texto tras el plazo.
+              </p>
+            </div>
+            <Switch
+              checked={reminderEnabled}
+              onCheckedChange={setReminderEnabled}
+              disabled={isLoading || !settingsHydrated}
+              aria-label="Recordatorio activado"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-muted-foreground" htmlFor="bot-reminder-message">
+              Mensaje de recordatorio
+            </label>
+            <Textarea
+              id="bot-reminder-message"
+              rows={3}
+              value={reminderMessage}
+              onChange={(e) => setReminderMessage(e.target.value)}
+              placeholder="Ej. ¿Sigues interesado? Estoy aquí para ayudarte."
+              disabled={!reminderEnabled || isLoading || !settingsHydrated}
+              maxLength={2000}
+              aria-invalid={reminderMessageMissing}
+            />
+            {reminderMessageMissing ? (
+              <p className="text-xs text-destructive">Escribe el mensaje de recordatorio para poder activarlo.</p>
+            ) : null}
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-muted-foreground" htmlFor="bot-reminder-hours">
+              Horas para el recordatorio
+            </label>
+            <Input
+              id="bot-reminder-hours"
+              type="number"
+              min={1}
+              max={720}
+              step={1}
+              inputMode="numeric"
+              value={reminderHours}
+              onChange={(e) => setReminderHours(e.target.value)}
+              placeholder="Ej. 24"
+              disabled={!reminderEnabled || isLoading || !settingsHydrated}
+              aria-invalid={reminderHoursInvalid}
+            />
+            {reminderHoursInvalid ? (
+              <p className="text-xs text-destructive">Introduce un entero entre 1 y 720.</p>
+            ) : reminderHoursMissing ? (
+              <p className="text-xs text-destructive">Indica las horas para poder activar el recordatorio.</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">Entre 1 y 720 horas desde el último mensaje del bot.</p>
+            )}
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium">Una sola vez por conversación</p>
+              <p className="text-xs text-muted-foreground">
+                Si está apagado, puede enviarse de nuevo en cada período de silencio.
+              </p>
+            </div>
+            <Switch
+              checked={reminderOncePerConversation}
+              onCheckedChange={setReminderOncePerConversation}
+              disabled={!reminderEnabled || isLoading || !settingsHydrated}
+              aria-label="Una sola vez por conversación"
+            />
+          </div>
+        </div>
+
+        <div className="bg-card rounded-2xl p-4 shadow-card border border-border space-y-3">
           <div className="flex items-center gap-2">
             <MessageCircleHeart className="w-5 h-5 text-primary" />
             <p className="text-sm font-semibold">Personalidad conversacional</p>
@@ -276,7 +396,7 @@ export default function ConfigComportamientoBot() {
 
         <FormErrorAlert title="No se pudo guardar el comportamiento" message={error} className="mx-1" />
 
-        <Button className="w-full" disabled={!token || isLoading || saveMutation.isPending || !hasChanges} onClick={() => saveMutation.mutate()}>
+        <Button className="w-full" disabled={!token || isLoading || saveMutation.isPending || !hasChanges || reminderInvalid} onClick={() => saveMutation.mutate()}>
           <Save className="w-4 h-4 mr-2" />
           {saveMutation.isPending ? "Guardando..." : "Guardar comportamiento"}
         </Button>

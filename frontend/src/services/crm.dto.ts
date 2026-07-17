@@ -78,6 +78,10 @@ export type BotSettingsDto = {
   faqFallbackMessage: string;
   downPaymentMessage: string | null;
   visitIncentiveMessage: string | null;
+  reminderEnabled: boolean;
+  reminderMessage: string | null;
+  reminderHours: number | null;
+  reminderOncePerConversation: boolean;
   calendarSchedulingUrl: string;
 };
 

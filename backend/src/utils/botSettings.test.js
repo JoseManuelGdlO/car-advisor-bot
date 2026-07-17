@@ -125,3 +125,24 @@ test("normalizeBotSettingsPayload rejects visitIncentiveMessage longer than max 
     ApiError
   );
 });
+
+test("normalizeBotSettingsPayload accepts reminder settings", () => {
+  const result = normalizeBotSettingsPayload({
+    reminderEnabled: true,
+    reminderMessage: "  ¿Sigues ahí?  ",
+    reminderHours: 24,
+    reminderOncePerConversation: true,
+  });
+  assert.deepEqual(result, {
+    reminderEnabled: true,
+    reminderMessage: "¿Sigues ahí?",
+    reminderHours: 24,
+    reminderOncePerConversation: true,
+  });
+});
+
+test("normalizeBotSettingsPayload rejects invalid reminderHours", () => {
+  assert.throws(() => normalizeBotSettingsPayload({ reminderHours: 0 }), ApiError);
+  assert.throws(() => normalizeBotSettingsPayload({ reminderHours: 721 }), ApiError);
+  assert.throws(() => normalizeBotSettingsPayload({ reminderHours: 1.5 }), ApiError);
+});

@@ -50,5 +50,10 @@ export default function ConversationModel(sequelize) {
       allowNull: true,
       field: "handoff_by_user_id",
     },
+    lastReminderAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: "last_reminder_at",
+    },
   });
 }

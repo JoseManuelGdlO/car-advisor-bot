@@ -1,6 +1,7 @@
 import { app } from "./app.js";
 import { env } from "./config/env.js";
 import { sequelize } from "./config/database.js";
+import { startBotReminderWorker } from "./services/botReminderService.js";
 
 // Bootstrapping principal del backend: DB -> sync -> HTTP listen.
 const start = async () => {
@@ -12,6 +13,7 @@ const start = async () => {
   // Bind explícito para contenedores (Docker/EasyPanel).
   app.listen(env.port, "0.0.0.0", () => {
     console.log(`Backend listening on http://0.0.0.0:${env.port}`);
+    startBotReminderWorker();
   });
 };
 

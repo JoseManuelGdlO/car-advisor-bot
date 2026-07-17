@@ -78,5 +78,27 @@ export default function BotSettingModel(sequelize) {
       allowNull: true,
       field: "visit_incentive_message",
     },
+    reminderEnabled: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      field: "reminder_enabled",
+    },
+    reminderMessage: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      field: "reminder_message",
+    },
+    reminderHours: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      field: "reminder_hours",
+    },
+    reminderOncePerConversation: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      field: "reminder_once_per_conversation",
+    },
   });
 }

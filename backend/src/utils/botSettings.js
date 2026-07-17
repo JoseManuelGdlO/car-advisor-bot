@@ -182,6 +182,40 @@ export const normalizeBotSettingsPayload = (payload) => {
     }
     next.visitIncentiveMessage = normalizedVisitIncentive || null;
   }
+  if (payload.reminderEnabled !== undefined) {
+    if (typeof payload.reminderEnabled !== "boolean") {
+      throw new ApiError(400, "reminderEnabled must be boolean");
+    }
+    next.reminderEnabled = payload.reminderEnabled;
+  }
+  if (payload.reminderMessage !== undefined) {
+    if (payload.reminderMessage !== null && typeof payload.reminderMessage !== "string") {
+      throw new ApiError(400, "reminderMessage must be a string or null");
+    }
+    const normalizedReminder =
+      payload.reminderMessage === null ? null : payload.reminderMessage.trim();
+    if (normalizedReminder && normalizedReminder.length > BOT_MESSAGE_MAX_LENGTH) {
+      throw new ApiError(400, `reminderMessage max length is ${BOT_MESSAGE_MAX_LENGTH}`);
+    }
+    next.reminderMessage = normalizedReminder || null;
+  }
+  if (payload.reminderHours !== undefined) {
+    if (payload.reminderHours !== null) {
+      const hours = Number(payload.reminderHours);
+      if (!Number.isInteger(hours) || hours < 1 || hours > 720) {
+        throw new ApiError(400, "reminderHours must be an integer between 1 and 720, or null");
+      }
+      next.reminderHours = hours;
+    } else {
+      next.reminderHours = null;
+    }
+  }
+  if (payload.reminderOncePerConversation !== undefined) {
+    if (typeof payload.reminderOncePerConversation !== "boolean") {
+      throw new ApiError(400, "reminderOncePerConversation must be boolean");
+    }
+    next.reminderOncePerConversation = payload.reminderOncePerConversation;
+  }
   return next;
 };
 
@@ -204,6 +238,16 @@ export const toBotSettingsDto = (row) => ({
     typeof row?.visitIncentiveMessage === "string" && row.visitIncentiveMessage.trim()
       ? row.visitIncentiveMessage
       : null,
+  reminderEnabled: Boolean(row?.reminderEnabled ?? false),
+  reminderMessage:
+    typeof row?.reminderMessage === "string" && row.reminderMessage.trim()
+      ? row.reminderMessage
+      : null,
+  reminderHours: (() => {
+    const hours = Number(row?.reminderHours);
+    return Number.isInteger(hours) && hours >= 1 && hours <= 720 ? hours : null;
+  })(),
+  reminderOncePerConversation: Boolean(row?.reminderOncePerConversation ?? false),
 });
 
 const getNowParts = (timezone, date = new Date()) => {

@@ -279,11 +279,14 @@ const getConversationContext = async ({ ownerUserId, conversationId }) => {
   });
 };
 
-const persistSellerMessage = async ({ ownerUserId, conversationId, channel, text, phone }) => {
+const ALLOWED_OUTBOUND_FROM = new Set(["seller", "assistant", "bot"]);
+
+const persistOutboundMessage = async ({ ownerUserId, conversationId, channel, text, phone, from = "seller" }) => {
+  const sender = ALLOWED_OUTBOUND_FROM.has(from) ? from : "seller";
   const msg = await Message.create({
     ownerUserId,
     conversationId,
-    from: "seller",
+    from: sender,
     text: String(text || "").trim(),
     platform: channel,
     phone: String(phone || "").trim() || null,
@@ -299,7 +302,12 @@ const persistSellerMessage = async ({ ownerUserId, conversationId, channel, text
   return msg;
 };
 
-export const sendConversationTextMessage = async ({ ownerUserId, conversationId, text }) => {
+export const sendConversationTextMessage = async ({
+  ownerUserId,
+  conversationId,
+  text,
+  senderRole = "seller",
+}) => {
   const normalizedText = String(text || "").trim();
   if (!normalizedText) throw new ApiError(400, "text is required");
   const conversation = await getOwnedConversation({ ownerUserId, conversationId });
@@ -339,12 +347,13 @@ export const sendConversationTextMessage = async ({ ownerUserId, conversationId,
     throw new ApiError(400, `Outbound send is not supported for channel: ${channel}`);
   }
 
-  return persistSellerMessage({
+  return persistOutboundMessage({
     ownerUserId,
     conversationId,
     channel,
     text: normalizedText,
     phone: recipient,
+    from: senderRole,
   });
 };
 
@@ -405,7 +414,7 @@ export const sendConversationAttachmentMessage = async ({
   }
 
   const storedText = normalizedCaption ? `${normalizedCaption}\n${url}` : `[Imagen] ${url}`;
-  return persistSellerMessage({
+  return persistOutboundMessage({
     ownerUserId,
     conversationId,
     channel,

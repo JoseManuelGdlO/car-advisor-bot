@@ -44,6 +44,8 @@ export const env = {
      * antes de llamar al motor del bot (WhatsApp / Instagram).
      */
     messageDebounceMs: Math.max(0, Number(must("BOT_MESSAGE_DEBOUNCE_MS", "6000")) || 6000),
+    /** Intervalo del poller de recordatorios por inactividad (ms). */
+    reminderPollMs: Math.max(60_000, Number(must("BOT_REMINDER_POLL_MS", "300000")) || 300_000),
   },
   push: {
     firebaseProjectId: must("FIREBASE_PROJECT_ID", ""),
