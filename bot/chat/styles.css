@@ -345,6 +345,7 @@ body {
     text-align: left;
     line-height: 1.35;
     transition: background 0.2s, border-color 0.2s;
+    margin-bottom: 8px;
 }
 
 .btn-sidebar:hover:not(:disabled) {

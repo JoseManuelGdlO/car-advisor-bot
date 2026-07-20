@@ -19,9 +19,11 @@ const CHAT_OWNERS_REVISION = "2026-07-09-suzuki-delsy";
 const OWNER_STORAGE_KEY = "chat_owner_user_id";
 const OWNER_REVISION_STORAGE_KEY = "chat_owner_revision";
 
+const TEST_AD_GREETING = "Hola!, Quiero más información";
+
 /** Payload CTWA de prueba: Suzuki Swift Boostergreen 2026. */
 const TEST_AD_CAMPAIGN_SWIFT = {
-  message: "Hola, me interesa este auto",
+  message: TEST_AD_GREETING,
   ad_context: {
     isAd: true,
     title: "Suzuki Swift Boostergreen 2026",
@@ -31,8 +33,106 @@ const TEST_AD_CAMPAIGN_SWIFT = {
     sourceApp: "facebook",
     ctwaClid: "test-ctwa-clid-swift-boostergreen",
     mediaUrl: null,
-    greetingMessageBody: "Hola, me interesa este auto",
+    greetingMessageBody: TEST_AD_GREETING,
   },
+};
+
+/** Payload CTWA: Suzuki Dzire (vacaciones, seguro + placas). */
+const TEST_AD_CAMPAIGN_DZIRE = {
+  message: TEST_AD_GREETING,
+  ad_context: {
+    isAd: true,
+    title: "Suzuki Durango ☀️🚗 Estas vacaciones viaja con comodidad",
+    body:
+      "☀️🚗 Estas vacaciones viaja con comodidad, ahorro y la emoción de estrenar.\n\n" +
+      "Llévate tu Suzuki Dzire con increíbles beneficios:\n" +
+      "🎁 Incluye:\n✅ 1 año de seguro\n✅ Placas gratis\n\n" +
+      "Disfruta cada kilómetro con quien más quieres y haz de estas vacaciones un viaje inolvidable.\n\n" +
+      "¡Te esperamos para que estrenes hoy mismo!\n\n" +
+      "📍Suzuki Durango en nuestra nueva ubicación\n" +
+      "Blvd. Francisco Villa 1727 Cd. Industrial, Guadalupe. 34220\n\n" +
+      "Ponte en contacto con nosotros:\n📲(618) 119 8246\nó mándanos un inbox",
+    sourceId: "test-ad-dzire-vacaciones",
+    sourceUrl: "https://fb.me/test-dzire-vacaciones",
+    sourceApp: "facebook",
+    ctwaClid: "test-ctwa-clid-dzire-vacaciones",
+    mediaUrl: null,
+    greetingMessageBody: TEST_AD_GREETING,
+  },
+};
+
+/** Payload CTWA: Suzuki Fronx BoosterGreen (vacaciones, desde $454,990). */
+const TEST_AD_CAMPAIGN_FRONX = {
+  message: TEST_AD_GREETING,
+  ad_context: {
+    isAd: true,
+    title: "Suzuki Durango ☀️🏖️ Estas vacaciones estrena la aventura",
+    body:
+      "☀️🏖️ Estas vacaciones estrena la aventura que siempre has querido.\n\n" +
+      "Con la Suzuki Fronx BoosterGreen, cada viaje comienza con más estilo, tecnología y eficiencia.\n\n" +
+      "🚗 Precio desde $454,990\n" +
+      "🎁 Además llévate:\n✅ 1 año de seguro\n✅ Tanque lleno\n✅ Placas gratis\n\n" +
+      "Prepara las maletas, elige el destino… ¡nosotros te ayudamos con el resto!\n\n" +
+      "➡️ Ven y estrena estas vacaciones:\n" +
+      "📍Suzuki Durango en nuestra nueva ubicación\n" +
+      "Blvd. Francisco Villa 1727 Cd. Industrial, Guadalupe. 34220\n\n" +
+      "Ponte en contacto con nosotros:\n📲(618) 119 8246\nó mándanos un inbox",
+    sourceId: "test-ad-fronx-boostergreen-vacaciones",
+    sourceUrl: "https://fb.me/test-fronx-boostergreen",
+    sourceApp: "facebook",
+    ctwaClid: "test-ctwa-clid-fronx-boostergreen",
+    mediaUrl: null,
+    greetingMessageBody: TEST_AD_GREETING,
+  },
+};
+
+/** Payload CTWA: Jimny 5-door (texto parcial de campaña). */
+const TEST_AD_CAMPAIGN_JIMNY = {
+  message: TEST_AD_GREETING,
+  ad_context: {
+    isAd: true,
+    title: "Suzuki Jimny 5-door",
+    body:
+      "🚗🇲🇽🇯🇵  Hay aventuras que no se cuentan...\n" +
+      "Se viven con JIMNY 5-door. 🤩🤘",
+    sourceId: "test-ad-jimny-5door",
+    sourceUrl: "https://fb.me/test-jimny-5door",
+    sourceApp: "facebook",
+    ctwaClid: "test-ctwa-clid-jimny-5door",
+    mediaUrl: null,
+    greetingMessageBody: TEST_AD_GREETING,
+  },
+};
+
+/**
+ * Payload CTWA: anuncio de servicio / taller (sin modelo de venta).
+ * Útil para probar skip_no_vehicle_match.
+ */
+const TEST_AD_CAMPAIGN_SERVICIO = {
+  message: TEST_AD_GREETING,
+  ad_context: {
+    isAd: true,
+    title: "Suzuki Durango 🛠️✨ No lo pienses más",
+    body:
+      "Suzuki Durango 🛠️✨ No lo pienses más, dale a tu SUZUKI el cuidado que merece.\n \n" +
+      "Agenda  tu servicio de mantenimiento \n" +
+      "📲 618 158 7539\n" +
+      "ó mándanos un inbox Te damos la bienvenida. Completa el siguiente formulario para registrarte.",
+    sourceId: "test-ad-suzuki-servicio",
+    sourceUrl: "https://fb.me/test-suzuki-servicio",
+    sourceApp: "facebook",
+    ctwaClid: "test-ctwa-clid-suzuki-servicio",
+    mediaUrl: null,
+    greetingMessageBody: TEST_AD_GREETING,
+  },
+};
+
+const TEST_AD_CAMPAIGNS = {
+  swift: TEST_AD_CAMPAIGN_SWIFT,
+  dzire: TEST_AD_CAMPAIGN_DZIRE,
+  fronx: TEST_AD_CAMPAIGN_FRONX,
+  jimny: TEST_AD_CAMPAIGN_JIMNY,
+  servicio: TEST_AD_CAMPAIGN_SERVICIO,
 };
 
 class ChatInterface {
@@ -44,7 +144,9 @@ class ChatInterface {
     this.userInput = document.getElementById("user-input");
     this.sendBtn = document.getElementById("send-btn");
     this.resetBtn = document.getElementById("reset-btn");
-    this.simulateAdBtn = document.getElementById("simulate-ad-btn");
+    this.simulateAdButtons = Array.from(
+      document.querySelectorAll("[data-ad-campaign]")
+    );
     this.typingIndicator = document.getElementById("typing-indicator");
     this.statusElement = document.getElementById("status");
     this.charCount = document.getElementById("char-count");
@@ -100,10 +202,11 @@ class ChatInterface {
       void this.resetConversation();
     });
 
-    if (this.simulateAdBtn) {
-      this.simulateAdBtn.addEventListener("click", (event) => {
+    for (const btn of this.simulateAdButtons) {
+      btn.addEventListener("click", (event) => {
         event.preventDefault();
-        void this.simulateAdCampaign();
+        const key = btn.getAttribute("data-ad-campaign");
+        this.simulateAdCampaign(key);
       });
     }
 
@@ -191,15 +294,16 @@ class ChatInterface {
     return payload;
   }
 
-  simulateAdCampaign() {
-    const campaign = TEST_AD_CAMPAIGN_SWIFT;
+  simulateAdCampaign(campaignKey = "swift") {
+    const campaign = TEST_AD_CAMPAIGNS[campaignKey] || TEST_AD_CAMPAIGN_SWIFT;
     // Solo prellena el mensaje y deja armado el contexto CTWA; se envía al presionar enviar.
     this.armedAdContext = campaign.ad_context;
     this.userInput.value = campaign.message;
     this.updateCharCount();
     this.autoResize();
     this.userInput.focus();
-    this.setStatus("Campaña CTWA lista — presiona enviar", "#fde68a");
+    const label = campaign.ad_context?.title || campaignKey;
+    this.setStatus(`Campaña CTWA lista (${label}) — presiona enviar`, "#fde68a");
   }
 
   hasChatMessages() {
@@ -620,8 +724,8 @@ class ChatInterface {
   setInputState(enabled) {
     this.userInput.disabled = !enabled;
     this.sendBtn.disabled = !enabled;
-    if (this.simulateAdBtn) {
-      this.simulateAdBtn.disabled = !enabled;
+    for (const btn of this.simulateAdButtons) {
+      btn.disabled = !enabled;
     }
 
     if (enabled) {
