@@ -1428,8 +1428,24 @@ def car_selection(state: clientState) -> clientState:
     try:
         vehicles = fetch_vehicles()
         _debug("catalog_loaded", total_vehicles=len(vehicles))
-    except Exception:
-        _debug("catalog_fetch_error")
+    except Exception as exc:
+        response = getattr(exc, "response", None)
+        status_code = getattr(response, "status_code", None)
+        response_text = ""
+        if response is not None:
+            response_text = str(getattr(response, "text", "") or "").strip()
+        _log.warning(
+            "[car_selection] catalog_fetch_error | status_code=%r error=%s response=%r",
+            status_code,
+            exc,
+            response_text[:300],
+        )
+        _debug(
+            "catalog_fetch_error",
+            status_code=status_code,
+            error=str(exc),
+            response=response_text[:300],
+        )
         message = generate_verified_user_message(
             mode="operational",
             verified_facts_block="operacion: fetch_vehicles_catalogo\nexito: false\n",

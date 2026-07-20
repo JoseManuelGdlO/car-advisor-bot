@@ -30,6 +30,53 @@ class VehicleResolverTests(TestCase):
         self.assertIsNotNone(resolved)
         self.assertEqual(resolved.get("id"), "veh-2")
 
+    def test_resolver_picks_preferred_among_same_model_when_enabled(self) -> None:
+        matches = [
+            {
+                "id": "veh-expensive",
+                "model": "Dzire",
+                "status": "available",
+                "price": 320000,
+                "outboundPriority": 2,
+            },
+            {
+                "id": "veh-cheap",
+                "model": "Dzire",
+                "status": "available",
+                "price": 300000,
+                "outboundPriority": 1,
+            },
+        ]
+        with (
+            patch("src.tools.vehicles.fetch_vehicles", return_value=matches),
+            patch("src.tools.vehicles.detect_vehicle_filters", return_value={"model": "Dzire"}),
+            patch("src.tools.vehicles.search_vehicles", return_value=matches),
+        ):
+            resolved = resolve_single_vehicle_from_text(
+                "quiero el dzire",
+                prefer_available=True,
+                pick_from_multiple=True,
+            )
+        self.assertIsNotNone(resolved)
+        self.assertEqual(resolved.get("id"), "veh-cheap")
+
+    def test_resolver_does_not_pick_across_different_models(self) -> None:
+        matches = [
+            {"id": "veh-a", "model": "Dzire", "status": "available", "price": 300000},
+            {"id": "veh-b", "model": "Swift", "status": "available", "price": 280000},
+        ]
+        with (
+            patch("src.tools.vehicles.fetch_vehicles", return_value=matches),
+            patch("src.tools.vehicles.detect_vehicle_filters", return_value={"brand": "Suzuki"}),
+            patch("src.tools.vehicles.search_vehicles", return_value=matches),
+        ):
+            resolved = resolve_single_vehicle_from_text(
+                "quiero un suzuki",
+                prefer_available=True,
+                pick_from_multiple=True,
+            )
+        self.assertIsNone(resolved)
+
 
 class WhatsappMarkerHelpersTests(TestCase):
     def test_normalize_image_url_for_chat_builds_absolute_url(self) -> None:

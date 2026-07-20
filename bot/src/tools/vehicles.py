@@ -16,6 +16,7 @@ from src.utils.app_logging import get_app_logger, log_flow_trace
 from src.utils.prompts import build_vehicle_filter_extraction_prompt
 
 _price_filters_log = get_app_logger("vehicles")
+_vehicles_log = _price_filters_log
 
 
 def _vehicles_api_base_url() -> str:
@@ -31,6 +32,31 @@ def _vehicles_api_headers() -> dict[str, str]:
     if not token:
         return {}
     return {"Authorization": f"Bearer {token}"}
+
+
+def _log_vehicles_request_failure(
+    operation: str,
+    *,
+    endpoint: str,
+    params: dict[str, Any] | None,
+    exc: BaseException,
+) -> None:
+    """Registra fallo HTTP al backend con status, query y cuerpo de respuesta."""
+
+    response = getattr(exc, "response", None)
+    status_code = getattr(response, "status_code", None)
+    response_text = ""
+    if response is not None:
+        response_text = str(getattr(response, "text", "") or "").strip()
+    _vehicles_log.warning(
+        "[vehicles] %s failed | endpoint=%r status_code=%r params=%r error=%s response=%r",
+        operation,
+        endpoint,
+        status_code,
+        params,
+        exc,
+        response_text[:300],
+    )
 
 
 def _public_images_base_url() -> str:
@@ -85,14 +111,24 @@ def fetch_vehicles() -> list[dict[str, Any]]:
     """Obtiene catalogo de vehiculos completo desde backend."""
 
     url = f"{_vehicles_api_base_url()}/vehicles"
-    response = requests.get(
-        url,
-        headers=_vehicles_api_headers(),
-        params=_vehicles_owner_params() or None,
-        timeout=6,
-    )
-    response.raise_for_status()
-    return _normalize_vehicles_payload(response.json())
+    params = _vehicles_owner_params() or None
+    try:
+        response = requests.get(
+            url,
+            headers=_vehicles_api_headers(),
+            params=params,
+            timeout=6,
+        )
+        response.raise_for_status()
+        return _normalize_vehicles_payload(response.json())
+    except requests.RequestException as exc:
+        _log_vehicles_request_failure(
+            "fetch_vehicles",
+            endpoint=url,
+            params=params,
+            exc=exc,
+        )
+        raise
 
 
 def search_vehicles(filters: dict[str, Any]) -> list[dict[str, Any]]:
@@ -113,14 +149,133 @@ def search_vehicles(filters: dict[str, Any]) -> list[dict[str, Any]]:
     return _normalize_vehicles_payload(response.json())
 
 
+def candidates_share_same_model_family(candidates: list[dict[str, Any]]) -> bool:
+    """True si todos los candidatos comparten la misma familia de modelo (primer token)."""
+
+    heads: set[str] = set()
+    for item in candidates:
+        if not isinstance(item, dict):
+            continue
+        model_norm = normalize_user_text(str(item.get("model", "")).strip())
+        if not model_norm:
+            return False
+        heads.add(model_norm.split()[0])
+    return len(heads) == 1
+
+
+def pick_preferred_vehicle(candidates: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Elige un vehiculo: outboundPriority ASC (1 primero), luego precio mas bajo."""
+
+    from src.utils.formatters import sort_vehicles_by_outbound_priority
+
+    valid = [item for item in candidates if isinstance(item, dict)]
+    if not valid:
+        return None
+    if len(valid) == 1:
+        return valid[0]
+
+    ordered = sort_vehicles_by_outbound_priority(valid)
+    top = ordered[0]
+    try:
+        top_priority = int(top.get("outboundPriority", 0) or 0)
+    except (TypeError, ValueError):
+        top_priority = 0
+
+    same_priority: list[dict[str, Any]] = []
+    for item in ordered:
+        try:
+            priority = int(item.get("outboundPriority", 0) or 0)
+        except (TypeError, ValueError):
+            priority = 0
+        if priority == top_priority:
+            same_priority.append(item)
+
+    def price_sort_key(item: dict[str, Any]) -> tuple[int, float]:
+        price = _coerce_price(item.get("price"))
+        if price is None:
+            return (1, 0.0)
+        return (0, float(price))
+
+    return min(same_priority, key=price_sort_key)
+
+
+def find_catalog_models_in_text(text: str, vehicles: list[dict[str, Any]]) -> list[str]:
+    """Modelos del catalogo mencionados en texto (frase completa o token inicial largo)."""
+
+    normalized_text = normalize_user_text(text)
+    if not normalized_text:
+        return []
+    models = sorted(
+        {str(item.get("model", "")).strip() for item in vehicles if str(item.get("model", "")).strip()},
+        key=lambda name: len(normalize_user_text(name)),
+        reverse=True,
+    )
+    found: list[str] = []
+    found_norms: set[str] = set()
+    for model in models:
+        norm_model = normalize_user_text(model)
+        if not norm_model or norm_model in found_norms:
+            continue
+        if _term_matches_as_whole_words(normalized_text, norm_model):
+            found.append(model)
+            found_norms.add(norm_model)
+            continue
+        head = norm_model.split()[0]
+        # "Dzire" debe matchear catalogo "DZIRE BOOSTERGREEN".
+        if len(head) >= 4 and _term_matches_as_whole_words(normalized_text, head):
+            found.append(model)
+            found_norms.add(norm_model)
+    return found
+
+
+def resolve_vehicles_matching_catalog_models(
+    text: str,
+    catalog: list[dict[str, Any]],
+    *,
+    prefer_available: bool,
+) -> list[dict[str, Any]]:
+    """Filtra catalogo por modelos mencionados en el texto."""
+
+    models = find_catalog_models_in_text(text, catalog)
+    if not models:
+        return []
+    model_norms = {normalize_user_text(model) for model in models}
+    heads = {norm.split()[0] for norm in model_norms if norm}
+
+    matched: list[dict[str, Any]] = []
+    for item in catalog:
+        if not isinstance(item, dict):
+            continue
+        model_norm = normalize_user_text(str(item.get("model", "")).strip())
+        if not model_norm:
+            continue
+        head = model_norm.split()[0]
+        if (
+            model_norm in model_norms
+            or any(model_norm == norm or model_norm.startswith(f"{norm} ") for norm in model_norms)
+            or (head in heads and len(head) >= 4)
+        ):
+            matched.append(item)
+
+    if prefer_available:
+        available = [item for item in matched if str(item.get("status", "")).strip().lower() == "available"]
+        return available or matched
+    return matched
+
+
 def resolve_single_vehicle_from_text(
     user_text: str,
     *,
     prefer_available: bool,
     require_brand_or_model: bool = False,
     catalog: list[dict[str, Any]] | None = None,
+    pick_from_multiple: bool = False,
 ) -> dict[str, Any] | None:
-    """Resuelve un unico vehiculo a partir de texto libre."""
+    """Resuelve un unico vehiculo a partir de texto libre.
+
+    Con pick_from_multiple=True, si hay varios candidatos de la misma familia de modelo
+    (o el filtro ya trae model), elige uno por prioridad/precio en lugar de abortar.
+    """
 
     normalized_text = str(user_text or "").strip()
     if not normalized_text:
@@ -146,6 +301,10 @@ def resolve_single_vehicle_from_text(
         candidates = available or candidates
     if len(candidates) == 1:
         return candidates[0]
+    if pick_from_multiple and candidates:
+        has_model_filter = bool(str(filters.get("model", "")).strip())
+        if has_model_filter or candidates_share_same_model_family(candidates):
+            return pick_preferred_vehicle(candidates)
     return None
 
 

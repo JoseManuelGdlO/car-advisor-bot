@@ -10,6 +10,7 @@ from src.utils.ad_campaign_shortcut import (
     ad_matching_text,
     apply_ad_campaign_shortcut,
     can_apply_ad_campaign_shortcut,
+    resolve_vehicle_from_ad_context,
 )
 from tests.test_helpers import GraphTestCase, initial_state, with_user_message
 
@@ -26,6 +27,47 @@ _VEHICLE = {
     "model": "Versa",
     "year": 2020,
     "status": "available",
+    "price": 180000,
+}
+
+_DZIRE_CATALOG = [
+    {
+        "id": "veh-dzire-a",
+        "brand": "Suzuki",
+        "model": "DZIRE BOOSTERGREEN",
+        "year": 2026,
+        "status": "available",
+        "price": 320000,
+        "outboundPriority": 2,
+    },
+    {
+        "id": "veh-dzire-b",
+        "brand": "Suzuki",
+        "model": "DZIRE BOOSTERGREEN",
+        "year": 2026,
+        "status": "available",
+        "price": 300000,
+        "outboundPriority": 1,
+    },
+    {
+        "id": "veh-swift",
+        "brand": "Suzuki",
+        "model": "Swift",
+        "year": 2026,
+        "status": "available",
+        "price": 280000,
+        "outboundPriority": 1,
+    },
+]
+
+_DURANGO_DZIRE_AD = {
+    "isAd": True,
+    "title": "Suzuki Durango ☀️🚗 Estas vacaciones viaja con comodidad",
+    "body": (
+        "Llévate tu Suzuki Dzire con increíbles beneficios:\n"
+        "🎁 Incluye:\n✅ 1 año de seguro\n✅ Placas gratis"
+    ),
+    "greetingMessageBody": "¡Hola! Quiero más información\nPrecio?",
 }
 
 
@@ -62,8 +104,8 @@ class AdCampaignShortcutUnitTests(unittest.TestCase):
         state = initial_state()
         state["onboarding_greeting_done"] = False
         with patch(
-            "src.utils.ad_campaign_shortcut.resolve_single_vehicle_from_text",
-            return_value=_VEHICLE,
+            "src.utils.ad_campaign_shortcut.resolve_vehicle_from_ad_context",
+            return_value=(_VEHICLE, "full"),
         ):
             applied = apply_ad_campaign_shortcut(state, dict(_AD_CONTEXT))
         self.assertTrue(applied)
@@ -78,9 +120,12 @@ class AdCampaignShortcutUnitTests(unittest.TestCase):
 
     def test_apply_shortcut_skips_without_match(self) -> None:
         state = initial_state()
-        with patch(
-            "src.utils.ad_campaign_shortcut.resolve_single_vehicle_from_text",
-            return_value=None,
+        with (
+            patch(
+                "src.utils.ad_campaign_shortcut.resolve_vehicle_from_ad_context",
+                return_value=(None, "no_match"),
+            ),
+            patch("src.utils.ad_campaign_shortcut.fetch_vehicles", return_value=[]),
         ):
             applied = apply_ad_campaign_shortcut(
                 state,
@@ -96,8 +141,8 @@ class AdCampaignShortcutUnitTests(unittest.TestCase):
         state["ad_campaign_shortcut_applied"] = True
         state["selected_vehicle_id"] = "veh-old"
         with patch(
-            "src.utils.ad_campaign_shortcut.resolve_single_vehicle_from_text",
-            return_value=_VEHICLE,
+            "src.utils.ad_campaign_shortcut.resolve_vehicle_from_ad_context",
+            return_value=(_VEHICLE, "full"),
         ) as resolve_mock:
             applied = apply_ad_campaign_shortcut(state, dict(_AD_CONTEXT))
         self.assertTrue(applied)
@@ -112,8 +157,8 @@ class AdCampaignShortcutUnitTests(unittest.TestCase):
         state["selected_car"] = "Otro auto"
         state["awaiting_purchase_confirmation"] = True
         with patch(
-            "src.utils.ad_campaign_shortcut.resolve_single_vehicle_from_text",
-            return_value=_VEHICLE,
+            "src.utils.ad_campaign_shortcut.resolve_vehicle_from_ad_context",
+            return_value=(_VEHICLE, "full"),
         ) as resolve_mock:
             applied = apply_ad_campaign_shortcut(state, dict(_AD_CONTEXT))
         self.assertTrue(applied)
@@ -134,8 +179,8 @@ class AdCampaignShortcutUnitTests(unittest.TestCase):
         state["financing_plan_candidates"] = [{"id": "plan-1"}]
         state["promotion_candidates"] = [{"id": "promo-1"}]
         with patch(
-            "src.utils.ad_campaign_shortcut.resolve_single_vehicle_from_text",
-            return_value=_VEHICLE,
+            "src.utils.ad_campaign_shortcut.resolve_vehicle_from_ad_context",
+            return_value=(_VEHICLE, "full"),
         ):
             applied = apply_ad_campaign_shortcut(state, dict(_AD_CONTEXT))
         self.assertTrue(applied)
@@ -147,6 +192,90 @@ class AdCampaignShortcutUnitTests(unittest.TestCase):
         self.assertEqual(state.get("selected_promotion_id"), "")
         self.assertEqual(state.get("financing_plan_candidates"), [])
         self.assertEqual(state.get("promotion_candidates"), [])
+
+    def test_resolve_prefers_body_when_title_not_in_catalog(self) -> None:
+        with (
+            patch(
+                "src.utils.ad_campaign_shortcut.resolve_single_vehicle_from_text",
+                return_value=None,
+            ),
+            patch(
+                "src.utils.ad_campaign_shortcut.fetch_vehicles",
+                return_value=_DZIRE_CATALOG,
+            ),
+        ):
+            vehicle, source = resolve_vehicle_from_ad_context(dict(_DURANGO_DZIRE_AD))
+        self.assertIsNotNone(vehicle)
+        assert vehicle is not None
+        self.assertEqual(vehicle.get("id"), "veh-dzire-b")
+        self.assertIn("body", source)
+
+    def test_resolve_picks_preferred_among_same_model(self) -> None:
+        with (
+            patch(
+                "src.utils.ad_campaign_shortcut.resolve_single_vehicle_from_text",
+                return_value=None,
+            ),
+            patch(
+                "src.utils.ad_campaign_shortcut.fetch_vehicles",
+                return_value=_DZIRE_CATALOG,
+            ),
+        ):
+            vehicle, _source = resolve_vehicle_from_ad_context(
+                {
+                    "isAd": True,
+                    "title": "Suzuki Dzire",
+                    "body": "Estrena Dzire con beneficios",
+                    "greetingMessageBody": None,
+                }
+            )
+        self.assertIsNotNone(vehicle)
+        assert vehicle is not None
+        # outboundPriority 1 y luego precio mas bajo
+        self.assertEqual(vehicle.get("id"), "veh-dzire-b")
+
+    def test_fallback_preserves_vehicle_context_without_skipping_name(self) -> None:
+        state = initial_state()
+        state["onboarding_greeting_done"] = False
+        state["selected_vehicle_id"] = ""
+        with (
+            patch(
+                "src.utils.ad_campaign_shortcut.resolve_vehicle_from_ad_context",
+                return_value=(None, "no_match"),
+            ),
+            patch(
+                "src.utils.ad_campaign_shortcut.fetch_vehicles",
+                return_value=_DZIRE_CATALOG,
+            ),
+        ):
+            applied = apply_ad_campaign_shortcut(state, dict(_DURANGO_DZIRE_AD))
+        self.assertFalse(applied)
+        self.assertFalse(state.get("ad_campaign_shortcut"))
+        self.assertFalse(state.get("onboarding_greeting_done"))
+        self.assertEqual(state.get("intent"), "vehicle_catalog")
+        self.assertEqual(state.get("selected_vehicle_id"), "veh-dzire-b")
+        self.assertIn("DZIRE", str(state.get("selected_car") or "").upper())
+        self.assertTrue(state.get("show_selected_vehicle_detail_once"))
+
+    def test_fallback_keeps_context_through_onboarding_name_ask(self) -> None:
+        state = with_user_message(initial_state(), "¡Hola! Quiero más información\nPrecio?")
+        state["customer_info"] = {}
+        state["onboarding_greeting_done"] = False
+        state["intent"] = "vehicle_catalog"
+        state["selected_vehicle_id"] = "veh-dzire-b"
+        state["selected_car"] = "Suzuki DZIRE BOOSTERGREEN 2026"
+        state["show_selected_vehicle_detail_once"] = True
+
+        with patch(
+            "src.nodes.customer_onboarding.classify_onboarding_first_message",
+            return_value={"tiene_intencion_comercial": True},
+        ):
+            updated = customer_onboarding(state)
+
+        self.assertTrue(updated.get("awaiting_customer_name"))
+        self.assertEqual(updated.get("selected_vehicle_id"), "veh-dzire-b")
+        self.assertEqual(updated.get("intent"), "vehicle_catalog")
+        self.assertIn("Precio", str(updated.get("pending_onboarding_user_message") or ""))
 
 
 class AdCampaignOnboardingTests(unittest.TestCase):
@@ -237,8 +366,8 @@ class AdCampaignGraphFlowTests(GraphTestCase):
         state["ad_campaign_shortcut"] = False
 
         with patch(
-            "src.utils.ad_campaign_shortcut.resolve_single_vehicle_from_text",
-            return_value=_VEHICLE,
+            "src.utils.ad_campaign_shortcut.resolve_vehicle_from_ad_context",
+            return_value=(_VEHICLE, "full"),
         ):
             applied = apply_ad_campaign_shortcut(state, dict(_AD_CONTEXT))
         self.assertTrue(applied)

@@ -65,6 +65,9 @@ class clientState(TypedDict, total=False):
     - onboarding_welcome_sent_this_turn: True si onboarding acaba de enviar bienvenida y el router no debe duplicarla.
     - ad_campaign_shortcut: True en el turno CTWA con vehiculo resuelto (salta onboarding a car_selection).
     - ad_campaign_shortcut_applied: True tras aplicar el atajo en algun turno; no bloquea reaplicar si llega otro ad.
+      Si el match estricto falla pero el ad menciona un modelo de catalogo, se puede conservar
+      selected_vehicle_id/intent/show_selected_vehicle_detail_once sin activar ad_campaign_shortcut
+      (pide nombre y reanuda el flujo comercial con ese contexto).
     """
 
     messages: list[dict[str, Any]]
