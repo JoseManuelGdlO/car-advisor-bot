@@ -21,6 +21,12 @@ class BusinessFaqHeuristicTests(unittest.TestCase):
         self.assertTrue(is_business_faq_question("Quiero la dirección del área de servicio"))
         self.assertTrue(is_business_faq_question("¿Venden refacciones?"))
 
+    def test_detects_used_or_seminuevos_policy_question(self) -> None:
+        self.assertTrue(is_business_faq_question("Tendrán seminuevos saludos"))
+        self.assertTrue(is_business_faq_question("Tienen autos seminuevos?"))
+        self.assertTrue(is_business_faq_question("¿Manejan autos usados?"))
+        self.assertTrue(is_business_faq_question("Venden carros de segunda?"))
+
     def test_does_not_detect_purchase_confirmation(self) -> None:
         self.assertFalse(is_business_faq_question("Sí, quiero comprarlo"))
 
@@ -50,6 +56,32 @@ class IntentCheckerBusinessFaqTests(unittest.TestCase):
             "ask_more_images": False,
             "wants_other_vehicles": False,
             "confirm_purchase": True,
+            "reject_purchase": False,
+        }
+        with (
+            patch("src.nodes.intent_checker.classify_vehicle_step_flags", return_value=vehicle_flags) as mock_vehicle,
+            patch(
+                "src.nodes.intent_checker.classify_faq_interrupt_flags",
+                return_value={"interrumpir_por_faq": True},
+            ) as mock_faq,
+        ):
+            out = intent_checker(dict(state))
+
+        mock_vehicle.assert_not_called()
+        mock_faq.assert_called_once()
+        self.assertTrue(out.get("is_faq_interrupt"))
+        self.assertEqual(out.get("current_node"), "faq")
+        self.assertEqual(out.get("resume_to_step"), "car_selection")
+
+    def test_seminuevos_question_not_blocked_by_wants_other_vehicles(self) -> None:
+        state = self._purchase_confirmation_state("Tendrán seminuevos saludos")
+        vehicle_flags = {
+            "ask_promotions": False,
+            "ask_financing": False,
+            "ask_images": False,
+            "ask_more_images": False,
+            "wants_other_vehicles": True,
+            "confirm_purchase": False,
             "reject_purchase": False,
         }
         with (

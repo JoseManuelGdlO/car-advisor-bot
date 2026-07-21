@@ -15,8 +15,7 @@ class PurchaseFlowTests(GraphTestCase):
         state["selected_vehicle_id"] = "veh-1"
         state["awaiting_purchase_confirmation"] = True
         state["last_bot_message"] = (
-            "¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? "
-            "También puedes pedir ver fotos o imágenes del vehículo. 🚗✨"
+            "¿Te gustaría agendar una prueba de manejo o ver este vehículo en persona? 🚗✨"
         )
         state = with_user_message(state, "quiero una prubea de maneja")
 
@@ -74,8 +73,7 @@ class PurchaseFlowTests(GraphTestCase):
         state["selected_vehicle_id"] = "veh-1"
         state["awaiting_purchase_confirmation"] = True
         state["last_bot_message"] = (
-            "¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? "
-            "También puedes pedir ver fotos o imágenes del vehículo. 🚗✨"
+            "¿Te gustaría agendar una prueba de manejo o ver este vehículo en persona? 🚗✨"
         )
         state = with_user_message(state, "Quiero una prueba")
 
@@ -293,8 +291,7 @@ class PurchaseFlowTests(GraphTestCase):
         state["awaiting_purchase_confirmation"] = True
         state["vehicle_images_last_batch"] = []
         state["last_bot_message"] = (
-            "¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? "
-            "También puedes pedir ver más imágenes del mismo."
+            "¿Te gustaría agendar una prueba de manejo o ver este vehículo en persona? 🚗✨"
         )
         state = with_user_message(state, "cuantos kilometros tiene?")
 
@@ -344,8 +341,7 @@ class PurchaseFlowTests(GraphTestCase):
         state["awaiting_purchase_confirmation"] = True
         state["vehicle_images_last_batch"] = []
         state["last_bot_message"] = (
-            "¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? "
-            "También puedes pedir ver más imágenes del mismo."
+            "¿Te gustaría agendar una prueba de manejo o ver este vehículo en persona? 🚗✨"
         )
         state = with_user_message(state, "dame la ficha tecnica")
 
@@ -398,8 +394,7 @@ class PurchaseFlowTests(GraphTestCase):
         state["awaiting_purchase_confirmation"] = True
         state["vehicle_images_last_batch"] = []
         state["last_bot_message"] = (
-            "¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? "
-            "También puedes pedir ver más imágenes del mismo."
+            "¿Te gustaría agendar una prueba de manejo o ver este vehículo en persona? 🚗✨"
         )
         state = with_user_message(state, "Cuáles son las dimensiones del vehículo?")
 
@@ -452,8 +447,7 @@ class PurchaseFlowTests(GraphTestCase):
         state["awaiting_purchase_confirmation"] = True
         state["vehicle_images_last_batch"] = []
         state["last_bot_message"] = (
-            "¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? "
-            "También puedes pedir ver más imágenes del mismo."
+            "¿Te gustaría agendar una prueba de manejo o ver este vehículo en persona? 🚗✨"
         )
         state = with_user_message(state, "dame la ficha tecnica")
 
@@ -498,8 +492,7 @@ class PurchaseFlowTests(GraphTestCase):
         state["selected_vehicle_id"] = "veh-ram"
         state["awaiting_purchase_confirmation"] = True
         state["last_bot_message"] = (
-            "¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? "
-            "También puedes pedir ver más imágenes del mismo."
+            "¿Te gustaría agendar una prueba de manejo o ver este vehículo en persona? 🚗✨"
         )
         state = with_user_message(state, "Antes quiero ver el modelo nissan versa")
 

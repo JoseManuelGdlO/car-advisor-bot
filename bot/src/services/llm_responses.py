@@ -1006,11 +1006,11 @@ def generate_lead_capture_scheduling_message(
 def generate_vehicle_purchase_question(*, images_invite_mode: str = "none") -> str:
     """Genera pregunta de cierre (interes en prueba de manejo o visita en persona) anclada a reglas literales.
 
-    images_invite_mode: "none" | "first" | "more"
+    images_invite_mode: "none" | "more"
     """
 
     mode = (images_invite_mode or "none").strip().lower()
-    if mode not in {"none", "first", "more"}:
+    if mode not in {"none", "more"}:
         mode = "none"
     common_rules = (
         "prohibido: fechas, horas, dias, lugar, disponibilidad de agenda, coordinar cita\n"
@@ -1022,26 +1022,12 @@ def generate_vehicle_purchase_question(*, images_invite_mode: str = "none") -> s
             "instruccion_sistema: El usuario puede confirmar interes en prueba de manejo o ver el vehiculo en persona, "
             "o pedir ver mas imagenes del mismo.\n"
             + common_rules
-            + "texto_base_literal: ¿Te gustaría agendar una prueba de manejo o ver este vehículo en persona? "
-            "También puedes pedir ver más imágenes del mismo. 🚗✨\n"
+            + "texto_base_literal: ¿Te gustaría agendar una prueba de manejo o ver este vehículo en persona? 🚗✨\n"
             "permite_emojis: si (maximo 2)\n"
         )
         fallback = (
             "¿Te gustaría agendar una prueba de manejo o ver este vehículo en persona? "
             "También puedes pedir ver más imágenes del mismo. 🚗✨"
-        )
-    elif mode == "first":
-        literal = (
-            "instruccion_sistema: El usuario puede confirmar interes en prueba de manejo o ver el vehiculo en persona, "
-            "o pedir ver fotos/imagenes del vehiculo (primer envio).\n"
-            + common_rules
-            + "texto_base_literal: ¿Te gustaría agendar una prueba de manejo o ver este vehículo en persona? "
-            "También puedes pedir ver fotos o imágenes del vehículo. 🚗✨\n"
-            "permite_emojis: si (maximo 2)\n"
-        )
-        fallback = (
-            "¿Te gustaría agendar una prueba de manejo o ver este vehículo en persona? "
-            "También puedes pedir ver fotos o imágenes del vehículo. 🚗✨"
         )
     else:
         literal = (

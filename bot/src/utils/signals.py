@@ -364,6 +364,15 @@ BUSINESS_GENERAL_FAQ_SUBSTR: frozenset[str] = frozenset(
         "politica de devolucion",
         "telefono de la agencia",
         "telefono de oficina",
+        "seminuevo",
+        "seminuevos",
+        "usado",
+        "usados",
+        "autos usados",
+        "carros usados",
+        "vehiculos usados",
+        "autos de segunda",
+        "carros de segunda",
     )
 )
 

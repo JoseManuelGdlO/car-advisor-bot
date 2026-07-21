@@ -284,12 +284,10 @@ def _build_whatsapp_image_marker_block(state: clientState, vehicle_id: str, imag
 
 
 def _purchase_images_invite_mode(state: clientState) -> str:
-    """Modo de invitación a fotos en pregunta de cierre: none | first | more."""
+    """Modo de invitación a fotos en pregunta de cierre: none | more."""
 
     if state.get("vehicle_images_last_batch"):
         return "more"
-    if str(state.get("selected_vehicle_id", "")).strip():
-        return "first"
     return "none"
 
 
