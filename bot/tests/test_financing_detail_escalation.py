@@ -740,6 +740,91 @@ class TestFinancingNodeEscalation(unittest.TestCase):
             [m.get("content") for m in out.get("messages", [])],
         )
 
+    def test_financing_node_generic_enganche_skips_plan_listing(self) -> None:
+        state = _state_with_bot_exchange(
+            user="Cuanto es el enganche minimo para hacer el carro",
+            bot="Te muestro el Jimny.",
+        )
+        state["selected_vehicle_id"] = "65498f55-bd22-4738-b3fa-07d43d6fe956"
+        state["selected_car"] = "Suzuki JIMNY 3-Puertas 2027 2027"
+        global_plan = {
+            "id": "plan-global",
+            "name": "Plan Global",
+            "lender": "Banco",
+            "active": True,
+            "vehicles": [{"id": "other", "brand": "Suzuki", "model": "Swift", "status": "available"}],
+        }
+        with (
+            patch(
+                "src.nodes.financing.classify_financing_step_flags",
+                return_value={
+                    "ask_promotions": False,
+                    "ask_other_vehicles": False,
+                    "ask_financing_with_vehicle": True,
+                    "wants_compare_two_plans": False,
+                    "select_plan": False,
+                    "ask_plan_vehicle_info": False,
+                    "reject_financing_keep_purchase": False,
+                    "ask_explicit_plan": False,
+                },
+            ),
+            patch(
+                "src.utils.financing_advisor_notify.get_bot_settings",
+                return_value={"downPaymentMessage": "El enganche minimo para un carro es de 15%"},
+            ),
+            patch("src.nodes.financing.fetch_financing_plans_by_vehicle") as by_vehicle_mock,
+            patch("src.nodes.financing.fetch_financing_plans", return_value=[global_plan]) as global_mock,
+        ):
+            out = financing(dict(state))
+        by_vehicle_mock.assert_not_called()
+        global_mock.assert_not_called()
+        self.assertFalse(out.get("awaiting_financing_plan_selection"))
+        contents = [m.get("content") for m in out.get("messages", [])]
+        self.assertIn("El enganche minimo para un carro es de 15%", contents)
+        self.assertTrue(all("Plan Global" not in str(c) for c in contents))
+
+    def test_financing_node_vehicle_without_plans_does_not_fall_through(self) -> None:
+        state = _state_with_bot_exchange(
+            user="Que planes de financiamiento tiene este carro?",
+            bot="Te muestro el Jimny.",
+        )
+        state["selected_vehicle_id"] = "65498f55-bd22-4738-b3fa-07d43d6fe956"
+        state["selected_car"] = "Suzuki JIMNY 3-Puertas 2027 2027"
+        global_plan = {
+            "id": "plan-global",
+            "name": "Plan Global",
+            "lender": "Banco",
+            "active": True,
+            "vehicles": [{"id": "other", "brand": "Suzuki", "model": "Swift", "status": "available"}],
+        }
+        with (
+            patch(
+                "src.nodes.financing.classify_financing_step_flags",
+                return_value={
+                    "ask_promotions": False,
+                    "ask_other_vehicles": False,
+                    "ask_financing_with_vehicle": True,
+                    "wants_compare_two_plans": False,
+                    "select_plan": False,
+                    "ask_plan_vehicle_info": False,
+                    "reject_financing_keep_purchase": False,
+                    "ask_explicit_plan": False,
+                },
+            ),
+            patch("src.nodes.financing.fetch_financing_plans_by_vehicle", return_value=[]),
+            patch("src.nodes.financing.fetch_financing_plans", return_value=[global_plan]) as global_mock,
+            patch(
+                "src.nodes.financing.generate_verified_user_message",
+                side_effect=lambda **kw: kw["fallback"],
+            ),
+        ):
+            out = financing(dict(state))
+        global_mock.assert_not_called()
+        self.assertFalse(out.get("awaiting_financing_plan_selection"))
+        last = str(out.get("messages", [])[-1].get("content", ""))
+        self.assertIn("no tiene planes de financiamiento asignados", last)
+        self.assertNotIn("Plan Global", last)
+
 
 class TestFaqNodeFinancingEscalation(unittest.TestCase):
     def test_faq_escalates_non_business_financing_question(self) -> None:

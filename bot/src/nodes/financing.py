@@ -35,7 +35,9 @@ from src.utils.vehicle_images import reset_vehicle_images_state
 from src.utils.app_logging import get_app_logger, log_flow_trace
 from src.utils.financing_advisor_notify import (
     append_down_payment_faq_if_applicable,
+    is_generic_down_payment_only_question,
     maybe_escalate_financing_detail,
+    resolve_down_payment_message,
 )
 from src.utils.state_helpers import append_assistant_message, latest_user_message
 
@@ -631,6 +633,11 @@ def financing(state: clientState) -> clientState:
         _debug("route_change", next_node="car_selection", reason="catalog_requested")
         return state
 
+    # Enganche generico: solo FAQ publicada, sin listar planes ni catalogo global.
+    if is_generic_down_payment_only_question(user_text) and resolve_down_payment_message(user_text):
+        _debug("generic_down_payment_faq_only", user_text=user_text)
+        return append_down_payment_faq_if_applicable(state, user_text)
+
     if state.get("awaiting_financing_vehicle_selection"):
         selected_vehicle = _pick_vehicle_for_plan(state, user_text)
         if not selected_vehicle:
@@ -1034,6 +1041,34 @@ def financing(state: clientState) -> clientState:
                 fallback_semantic=f"Claro, para {selected_car or 'este vehiculo'} si tenemos opciones de pago a plazos.",
             )
             return _return_plan_listing(state, question, user_text)
+
+        # Vehículo seleccionado sin planes vinculados: no caer al catálogo global.
+        _debug(
+            "plans_for_vehicle_empty",
+            selected_vehicle_id=selected_vehicle_id,
+            selected_car=selected_car,
+        )
+        asked_for_plans = bool(
+            step_flags.get("ask_financing_with_vehicle") or step_flags.get("ask_explicit_plan")
+        )
+        if asked_for_plans:
+            message = generate_verified_user_message(
+                mode="operational",
+                verified_facts_block=(
+                    "operacion: fetch_financing_plans_by_vehicle\n"
+                    "resultado: lista_vacia\n"
+                    f"vehicle_id: {selected_vehicle_id}\n"
+                    f"vehicle_etiqueta: {selected_car or 'este vehiculo'}\n"
+                ),
+                user_message=user_text,
+                fallback=(
+                    f"Por ahora {selected_car or 'este vehiculo'} no tiene planes de "
+                    "financiamiento asignados. Te invitamos a visitarnos en nuestra sucursal para que te ayudemos con tu consulta."
+                ),
+                temperature=0.35,
+            )
+            return append_assistant_message(state, message)
+        return append_down_payment_faq_if_applicable(state, user_text)
 
     try:
         plans = fetch_financing_plans()
