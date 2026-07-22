@@ -758,12 +758,20 @@ def _respond_available_list(
     )
     available_list = format_available_vehicles_grouped(sorted_vehicles)
     user_q = latest_user_message(state)
+    criterion = str(failed_requirement_criterion or "").strip().lower()
+    # Catalogo general: intro fija (sin prosa LLM ni oferta de comparar).
+    if not unavailable_request and not criterion:
+        message = (
+            "Para mandarte la ficha correcta, dime qué modelo te interesa:\n\n"
+            f"{available_list}"
+        )
+        return append_assistant_message(state, message)
+
     verified_lines = [
         f"consulta_usuario: {user_q}",
-        f"consulta_especifica_sin_stock_conocido: {str(unavailable_request or bool(failed_requirement_criterion)).lower()}",
+        f"consulta_especifica_sin_stock_conocido: {str(unavailable_request or bool(criterion)).lower()}",
         f"vehiculos_disponibles_contados: {available_count}",
     ]
-    criterion = str(failed_requirement_criterion or "").strip()
     if criterion:
         verified_lines.append(f"criterio_sin_coincidencias: {criterion}")
     verified_lines.extend(
@@ -772,7 +780,7 @@ def _respond_available_list(
             "LISTADO_INVENTARIO_AGRUPADO:",
             available_list,
             "",
-            "cierre_sugerido_literal: Si quieres, te ayudo a comparar cual te conviene mas.",
+            "intro_sugerido_literal: Para mandarte la ficha correcta, dime qué modelo te interesa:",
         ]
     )
     verified = "\n".join(verified_lines)
@@ -780,7 +788,10 @@ def _respond_available_list(
         mode="catalog_availability",
         verified_facts_block=verified,
         user_message=user_q,
-        fallback=available_list,
+        fallback=(
+            "Para mandarte la ficha correcta, dime qué modelo te interesa:\n\n"
+            f"{available_list}"
+        ),
         temperature=0.42,
     )
     return append_assistant_message(state, message)

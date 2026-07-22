@@ -644,5 +644,11 @@ class CarSelectionSmokeTests(GraphTestCase):
         ):
             updated = self.graph.invoke(state)
         self.assertEqual(updated.get("current_node"), "car_selection")
-        self.assertIn("Nissan", str(updated["messages"][-1]["content"]))
+        answer = str(updated["messages"][-1]["content"])
+        self.assertIn("Para mandarte la ficha correcta, dime qué modelo te interesa:", answer)
+        self.assertIn("🚗 Nissan:", answer)
+        self.assertIn("• Versa 2011", answer)
+        self.assertIn("🚗 Dodge:", answer)
+        self.assertIn("• Ram 2015", answer)
+        self.assertNotIn("te ayudo a comparar", answer.lower())
 
