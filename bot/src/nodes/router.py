@@ -155,17 +155,6 @@ def router(state: clientState) -> clientState:
     if llm_intent in _VALID_ROUTER_LABELS:
         if state.get("onboarding_welcome_sent_this_turn"):
             state["onboarding_welcome_sent_this_turn"] = False
-        # FAQ diferida en captura de nombre: el pending comercial va primero.
-        if (
-            llm_intent == "FAQ"
-            and str(state.get("deferred_faq_user_message", "")).strip()
-            and str(state.get("onboarding_resume_user_message", "")).strip()
-        ):
-            _debug_router(
-                "defer_faq_prefer_commercial",
-                resume=str(state.get("onboarding_resume_user_message", ""))[:120],
-            )
-            llm_intent = "VEHICLE_CATALOG"
         _debug_router("resolved_intent", resolved=llm_intent, reason="llm_classifier")
         if llm_intent == "FINANCING":
             escalated = maybe_escalate_financing_detail(state, trigger="router_financing_intent")

@@ -6,7 +6,7 @@ Este documento define el diagrama de estados del flujo conversacional actual. El
 
 ## Estados
 
-- `customer_onboarding`: bienvenida inicial y captura del nombre del cliente.
+- `customer_onboarding`: gate de bienvenida (`welcomeMessage` literal una vez); siempre continúa a `intent_checker`.
 - `intent_checker`: detecta si la entrada interrumpe un flujo activo con FAQ.
 - `router`: clasifica la intencion principal y decide nodo destino.
 - `car_selection`: explora catalogo, filtra, compara dos vehiculos (sin cambiar `selected_vehicle_id` hasta nueva eleccion) y permite avanzar a compra.
@@ -29,8 +29,7 @@ Este documento define el diagrama de estados del flujo conversacional actual. El
 ```mermaid
 stateDiagram-v2
     [*] --> customer_onboarding
-    customer_onboarding --> intent_checker: onboarding_complete
-    customer_onboarding --> [*]: welcome_or_name_request
+    customer_onboarding --> intent_checker: always
 
     intent_checker --> faq: user_interrupts_with_faq
     intent_checker --> router: continue_flow
@@ -66,6 +65,8 @@ stateDiagram-v2
 
 ## Condiciones de transicion
 
+- `customer_onboarding -> intent_checker`:
+  - siempre, tras enviar bienvenida si faltaba o en passthrough.
 - `intent_checker -> faq`:
   - cuando detecta FAQ interruptiva y guarda `resume_to_step`.
 - `router -> car_selection`:
@@ -83,3 +84,4 @@ stateDiagram-v2
 
 - `current_node` indica la etapa activa tras cada turno.
 - `reply` contiene el texto listo para mostrarse al usuario.
+

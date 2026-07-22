@@ -52,7 +52,7 @@ flowchart TD
 | Silencio total | `bot_disabled` | H | No invoca grafo ni LLM |
 | Handoff CRM | `should_auto_reply is False` | H | Persiste inbound, no responde |
 | Turno activo | `graph.invoke` | — | Ejecuta nodos en cadena según transiciones |
-| Limpieza | `clear_onboarding_resume` | H | Borra `onboarding_resume_user_message` tras el turno |
+| Limpieza | `clear_onboarding_resume` | H | Borra `onboarding_welcome_sent_this_turn` tras el turno |
 | Salida | `_collect_tail_ai_messages` | H | Une mensajes assistant con `<<BOT_MSG_BREAK>>` |
 
 ---
@@ -70,8 +70,7 @@ START → customer_onboarding → intent_checker → (router | faq | nodo activo
 ```mermaid
 flowchart TD
     start([START]) --> onboarding[customer_onboarding]
-    onboarding -->|onboarding_turn_complete| endTurn([END])
-    onboarding -->|continuar| intentChecker[intent_checker]
+    onboarding -->|siempre| intentChecker[intent_checker]
     intentChecker -->|is_faq_interrupt| faq[faq]
     intentChecker -->|reanudar nodo activo| domainResume["car_selection / financing / promotions / lead_capture"]
     intentChecker -->|sin interrupcion| router[router]
@@ -88,7 +87,7 @@ flowchart TD
 
 | Función | Nodo origen | Lee en estado | Destinos posibles |
 |---------|-------------|---------------|-------------------|
-| `_route_after_customer_onboarding` | `customer_onboarding` | `onboarding_turn_complete` | `intent_checker`, `END` |
+| `_route_after_customer_onboarding` | `customer_onboarding` | — | `intent_checker` |
 | `_route_after_intent_checker` | `intent_checker` | `current_node`, `is_faq_interrupt` | `faq`, `router`, `lead_capture`, `car_selection`, `financing`, `promotions` |
 | `_route_from_router` | `router` | `current_node` | `car_selection`, `lead_capture`, `faq`, `financing`, `promotions`, `END` |
 | `_route_after_car_selection` | `car_selection` | `current_node` | `lead_capture`, `financing`, `promotions`, `END` |
@@ -106,46 +105,32 @@ flowchart TD
 
 Archivo: [`bot/src/nodes/customer_onboarding.py`](../src/nodes/customer_onboarding.py)
 
-**Propósito:** bienvenida inicial y captura del nombre del cliente antes del flujo comercial.
+**Propósito:** gate de bienvenida inicial. Envía el texto literal de `welcomeMessage` una sola vez y cede el flujo a `intent_checker` sin clasificar intención.
 
-**Patrón dominante:** **H → L** (estado y turno primero; LLM para extraer nombre y redactar bienvenida).
+**Patrón dominante:** **H** (lectura de bandera + setting; sin LLM).
 
 ```mermaid
 flowchart TD
-    entry[customer_onboarding] --> awaiting{awaiting_customer_name?}
-    awaiting -->|si| extractName["extract_customer_name L"]
-    extractName -->|nombre ok| syncDB["sync_customer_info_to_backend DB"]
-    syncDB --> resume["_resume_pending_flow H"]
-    extractName -->|rechazo o sin nombre| proceedWithoutName["_proceed_without_name H"]
-    awaiting -->|no| knownName{nombre conocido + greeting_done?}
-    knownName -->|si| passthrough["restaurar current_node H"]
-    knownName -->|no| firstTurn{primer turno usuario?}
-    firstTurn -->|nombre CRM| welcomeKnown["generate_welcome_with_known_name L"]
-    firstTurn -->|sin nombre| savePending["classify_onboarding_first_message L"]
-    savePending --> welcomeAsk["generate_welcome_and_name_request L"]
-    welcomeKnown --> commercialIntent{tiene_intencion_comercial L?}
-    commercialIntent -->|no| endTurn[onboarding_turn_complete END]
-    commercialIntent -->|si| continueFlow[continua a intent_checker]
-    welcomeAsk --> endTurn
-    resume -->|pending message| continueFlow
-    resume -->|sin pending| endTurn
-    passthrough --> continueFlow
+    entry[customer_onboarding] --> greetingDone{onboarding_greeting_done?}
+    greetingDone -->|si| passthrough[passthrough]
+    greetingDone -->|no| welcome["append welcomeMessage literal H"]
+    welcome --> markDone["onboarding_greeting_done + welcome_sent_this_turn"]
+    markDone --> intentChecker[intent_checker]
+    passthrough --> intentChecker
 ```
 
 | Paso | Función | Tipo | Descripción |
 |------|---------|------|-------------|
-| 1 | `_customer_name_from_state` | H | Nombre ya en `customer_info` o CRM |
-| 2 | `_is_first_user_turn` | H | `user_count == 1` y sin mensajes assistant |
-| 3 | `extract_customer_name` | L | Si `awaiting_customer_name`: extrae nombre, rechazo o `mensaje_restante` |
-| 4 | `classify_onboarding_first_message` | L | Detecta intención comercial en primer turno o saludo |
-| 5 | `generate_welcome_with_known_name` / `generate_welcome_and_name_request` | L | Texto de bienvenida personalizado |
-| Salida | `onboarding_turn_complete` | H | `True` → turno termina en END; `False` → pasa a `intent_checker` |
+| 1 | `onboarding_greeting_done` | H | Si ya se envió bienvenida → passthrough |
+| 2 | `_welcome_message_from_settings` | H | Lee `welcomeMessage` literal (fallback mínimo con `botName` si vacío) |
+| 3 | `append_assistant_message` | H | Publica bienvenida y marca flags |
+| Salida | `_route_after_customer_onboarding` | H | **Siempre** → `intent_checker` |
 
 **Casos clave:**
 
-- Nombre conocido + solo saludo → genera bienvenida y **termina el turno** (`END`).
-- Sin nombre en primer turno → pide nombre, guarda intención comercial en `pending_onboarding_user_message` si aplica, **termina turno**.
-- Tras capturar nombre con mensaje pendiente → pone texto en `onboarding_resume_user_message`; `latest_user_message` lo usa en el mismo `invoke` para los nodos siguientes.
+- Primer turno → bienvenida literal + continúa a `intent_checker` (FAQ, catálogo, CTWA, etc. los decide el resto del grafo).
+- Turnos siguientes con `onboarding_greeting_done` → no reenvía bienvenida.
+- CTWA: el shortcut prepara vehículo/`current_node=car_selection` **sin** marcar greeting done; onboarding puede enviar bienvenida y `intent_checker` retoma `car_selection`.
 
 ---
 
@@ -508,13 +493,9 @@ sequenceDiagram
     participant R as router
 
     U->>O: "Hola, quiero ver SUVs"
-    O->>O: pending_onboarding_user_message guardado H
-    O->>U: bienvenida + pedir nombre L
-    U->>O: "Carlos"
-    O->>O: extract_customer_name L
-    O->>O: onboarding_resume_user_message = mensaje original
-    O->>IC: continua mismo invoke
-    IC->>R: procesa "quiero ver SUVs"
+    O->>U: welcomeMessage literal H
+    O->>IC: siempre continua
+    IC->>R: procesa mensaje original
     R->>R: clasifica → car_selection
 ```
 
@@ -533,7 +514,7 @@ sequenceDiagram
 | Nodo | ¿Quién va primero? | Clasificación | Generación de texto | Datos |
 |------|-------------------|---------------|---------------------|-------|
 | `server` | H | — | — | DB |
-| `customer_onboarding` | H → L | — | L (bienvenida, nombre) | DB sync nombre |
+| `customer_onboarding` | H | — | H (welcomeMessage literal) | settings |
 | `intent_checker` | H (early exit) → L | L | L (ack asesor, fijo) | DB evento asesor |
 | `router` | H (banderas) → L | L (`classify_router_intent`) | L (`other`) | — |
 | `faq` | DB + H | — | L | DB FAQ |
@@ -553,9 +534,8 @@ Archivo: [`bot/src/state.py`](../src/state.py)
 |---------|----------|
 | `current_node` | Enrutamiento del grafo y `_route_*` |
 | `intent` | Contexto para router y reanudación |
-| `onboarding_turn_complete` | Si el turno termina tras onboarding |
-| `awaiting_customer_name` | Captura de nombre en curso |
-| `onboarding_resume_user_message` | Reprocesar primer mensaje tras nombre |
+| `onboarding_greeting_done` | Bienvenida inicial ya enviada |
+| `onboarding_welcome_sent_this_turn` | Evita duplicar bienvenida en router el mismo invoke |
 | `is_faq_interrupt` | Modo FAQ interruptiva |
 | `resume_to_step` | Nodo a restaurar tras FAQ |
 | `skip_car_prompt` / `skip_lead_prompt` | Saltar nodo en turno interrumpido |
@@ -586,7 +566,7 @@ Archivo: [`bot/src/state.py`](../src/state.py)
 
 | Categoría | Funciones en `llm_responses.py` |
 |-----------|--------------------------------|
-| Router / onboarding | `classify_router_intent`, `generate_other_response`, `extract_customer_name`, `generate_welcome_*` |
+| Router / onboarding | `classify_router_intent`, `generate_other_response` |
 | Interrupciones | `classify_faq_interrupt_flags`, `classify_vehicle_step_flags` |
 | FAQ | `generate_faq_user_turn`, `generate_faq_resume_transition` |
 | Vehículos | `classify_vehicle_comparison_payload`, `classify_purchase_confirmation_intent`, `extract_vehicle_pending_selection_payload`, `generate_vehicle_*` |

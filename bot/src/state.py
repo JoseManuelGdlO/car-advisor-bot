@@ -56,18 +56,13 @@ class clientState(TypedDict, total=False):
       (tras ack de asesor humano desde intent_checker).
     - conversation_id: UUID de conversacion CRM para handoff y persistencia.
     - bot_disabled: True tras notificar handoff; el servidor no invoca el grafo en turnos siguientes.
-    - awaiting_customer_name: True mientras esperamos que el usuario comparta su nombre.
-    - onboarding_greeting_done: True tras enviar la bienvenida inicial (con o sin nombre conocido).
-    - onboarding_turn_complete: True cuando el nodo onboarding genero respuesta y debe terminar el turno.
-    - pending_onboarding_user_message: primer mensaje del usuario con intencion comercial mientras faltaba el nombre.
-    - onboarding_resume_user_message: mensaje del usuario a procesar tras capturar el nombre.
-    - deferred_faq_user_message: FAQ detectada en captura de nombre; se responde tras el flujo comercial del mismo turno.
+    - onboarding_greeting_done: True tras enviar la bienvenida inicial (welcomeMessage).
+    - deferred_faq_user_message: FAQ diferida para responder tras un flujo comercial del mismo turno.
     - onboarding_welcome_sent_this_turn: True si onboarding acaba de enviar bienvenida y el router no debe duplicarla.
-    - ad_campaign_shortcut: True en el turno CTWA con vehiculo resuelto (salta onboarding a car_selection).
+    - ad_campaign_shortcut: True en el turno CTWA con vehiculo resuelto (current_node=car_selection).
     - ad_campaign_shortcut_applied: True tras aplicar el atajo en algun turno; no bloquea reaplicar si llega otro ad.
       Si el match estricto falla pero el ad menciona un modelo de catalogo, se puede conservar
-      selected_vehicle_id/intent/show_selected_vehicle_detail_once sin activar ad_campaign_shortcut
-      (pide nombre y reanuda el flujo comercial con ese contexto).
+      selected_vehicle_id/intent/show_selected_vehicle_detail_once sin activar ad_campaign_shortcut.
     """
 
     messages: list[dict[str, Any]]
@@ -122,11 +117,7 @@ class clientState(TypedDict, total=False):
     suppress_commercial_node_once: bool
     conversation_id: str
     bot_disabled: bool
-    awaiting_customer_name: bool
     onboarding_greeting_done: bool
-    onboarding_turn_complete: bool
-    pending_onboarding_user_message: str
-    onboarding_resume_user_message: str
     deferred_faq_user_message: str
     onboarding_welcome_sent_this_turn: bool
     ad_campaign_shortcut: bool

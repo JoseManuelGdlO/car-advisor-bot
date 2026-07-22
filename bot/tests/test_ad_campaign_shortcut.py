@@ -115,8 +115,7 @@ class AdCampaignShortcutUnitTests(unittest.TestCase):
         self.assertEqual(state.get("selected_car"), "Nissan Versa 2020")
         self.assertEqual(state.get("current_node"), "car_selection")
         self.assertTrue(state.get("show_selected_vehicle_detail_once"))
-        self.assertTrue(state.get("onboarding_greeting_done"))
-        self.assertFalse(state.get("awaiting_customer_name"))
+        self.assertFalse(state.get("onboarding_greeting_done"))
 
     def test_apply_shortcut_skips_without_match(self) -> None:
         state = initial_state()
@@ -234,7 +233,7 @@ class AdCampaignShortcutUnitTests(unittest.TestCase):
         # outboundPriority 1 y luego precio mas bajo
         self.assertEqual(vehicle.get("id"), "veh-dzire-b")
 
-    def test_fallback_preserves_vehicle_context_without_skipping_name(self) -> None:
+    def test_fallback_preserves_vehicle_context_without_skipping_welcome(self) -> None:
         state = initial_state()
         state["onboarding_greeting_done"] = False
         state["selected_vehicle_id"] = ""
@@ -257,7 +256,7 @@ class AdCampaignShortcutUnitTests(unittest.TestCase):
         self.assertIn("DZIRE", str(state.get("selected_car") or "").upper())
         self.assertTrue(state.get("show_selected_vehicle_detail_once"))
 
-    def test_fallback_keeps_context_through_onboarding_name_ask(self) -> None:
+    def test_fallback_keeps_context_through_onboarding_welcome(self) -> None:
         state = with_user_message(initial_state(), "¡Hola! Quiero más información\nPrecio?")
         state["customer_info"] = {}
         state["onboarding_greeting_done"] = False
@@ -267,19 +266,21 @@ class AdCampaignShortcutUnitTests(unittest.TestCase):
         state["show_selected_vehicle_detail_once"] = True
 
         with patch(
-            "src.nodes.customer_onboarding.classify_onboarding_first_message",
-            return_value={"tiene_intencion_comercial": True},
+            "src.nodes.customer_onboarding.get_bot_settings",
+            return_value={"welcomeMessage": "Bienvenido.", "botName": "AutoBot"},
         ):
             updated = customer_onboarding(state)
 
-        self.assertTrue(updated.get("awaiting_customer_name"))
+        self.assertTrue(updated.get("onboarding_greeting_done"))
+        self.assertTrue(updated.get("onboarding_welcome_sent_this_turn"))
         self.assertEqual(updated.get("selected_vehicle_id"), "veh-dzire-b")
         self.assertEqual(updated.get("intent"), "vehicle_catalog")
-        self.assertIn("Precio", str(updated.get("pending_onboarding_user_message") or ""))
+        assistant = [m for m in updated["messages"] if m.get("role") == "assistant"]
+        self.assertEqual(assistant[0]["content"], "Bienvenido.")
 
 
 class AdCampaignOnboardingTests(unittest.TestCase):
-    def test_onboarding_skips_name_capture_for_ad_shortcut(self) -> None:
+    def test_onboarding_sends_welcome_then_preserves_car_selection(self) -> None:
         state = with_user_message(initial_state(), "Hola! Quiero más información")
         state["customer_info"] = {}
         state["onboarding_greeting_done"] = False
@@ -289,18 +290,22 @@ class AdCampaignOnboardingTests(unittest.TestCase):
         state["current_node"] = "car_selection"
         state["show_selected_vehicle_detail_once"] = True
 
-        updated = customer_onboarding(state)
+        with patch(
+            "src.nodes.customer_onboarding.get_bot_settings",
+            return_value={"welcomeMessage": "Bienvenido CTWA.", "botName": "AutoBot"},
+        ):
+            updated = customer_onboarding(state)
 
-        self.assertFalse(updated.get("onboarding_turn_complete"))
         self.assertEqual(updated.get("current_node"), "car_selection")
         self.assertTrue(updated.get("onboarding_greeting_done"))
-        self.assertFalse(updated.get("awaiting_customer_name"))
+        self.assertTrue(updated.get("onboarding_welcome_sent_this_turn"))
         assistant_msgs = [m for m in updated.get("messages", []) if m.get("role") == "assistant"]
-        self.assertEqual(assistant_msgs, [])
+        self.assertEqual(len(assistant_msgs), 1)
+        self.assertEqual(assistant_msgs[0]["content"], "Bienvenido CTWA.")
 
 
 class AdCampaignGraphFlowTests(GraphTestCase):
-    def test_graph_skips_onboarding_and_shows_vehicle_detail(self) -> None:
+    def test_graph_sends_welcome_and_shows_vehicle_detail(self) -> None:
         state = with_user_message(initial_state(), "Hola! Quiero más información")
         state["customer_info"] = {}
         state["onboarding_greeting_done"] = False
@@ -325,6 +330,10 @@ class AdCampaignGraphFlowTests(GraphTestCase):
         }
 
         with (
+            patch(
+                "src.nodes.customer_onboarding.get_bot_settings",
+                return_value={"welcomeMessage": "Bienvenido CTWA.", "botName": "AutoBot"},
+            ),
             patch("src.nodes.car_selection.fetch_vehicles", return_value=[vehicle_detail]),
             patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=vehicle_detail),
             patch(
@@ -340,13 +349,14 @@ class AdCampaignGraphFlowTests(GraphTestCase):
             updated = self.graph.invoke(state)
 
         self.assertEqual(updated.get("current_node"), "car_selection")
-        self.assertFalse(updated.get("awaiting_customer_name"))
+        self.assertTrue(updated.get("onboarding_greeting_done"))
         self.assertTrue(updated.get("awaiting_purchase_confirmation"))
         assistant_texts = [
             str(m.get("content", ""))
             for m in updated.get("messages", [])
             if m.get("role") == "assistant"
         ]
+        self.assertEqual(assistant_texts[0], "Bienvenido CTWA.")
         self.assertTrue(
             any("Nissan Versa 2020" in t for t in assistant_texts),
             msg="debe responder con detalle del vehiculo del anuncio",

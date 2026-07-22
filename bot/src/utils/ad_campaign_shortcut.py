@@ -97,7 +97,7 @@ def _activate_full_shortcut(
     matching_text: str,
     source: str,
 ) -> bool:
-    """Activa atajo completo: selecciona vehiculo y salta captura de nombre."""
+    """Activa atajo completo: selecciona vehiculo y apunta a car_selection."""
 
     vehicle_id = str(vehicle.get("id") or "").strip()
     if not vehicle_id:
@@ -112,9 +112,6 @@ def _activate_full_shortcut(
     state["show_selected_vehicle_detail_once"] = True
     state["ad_campaign_shortcut"] = True
     state["ad_campaign_shortcut_applied"] = True
-    state["onboarding_greeting_done"] = True
-    state["awaiting_customer_name"] = False
-    state["onboarding_turn_complete"] = False
     _debug(
         "applied",
         selected_vehicle_id=vehicle_id,

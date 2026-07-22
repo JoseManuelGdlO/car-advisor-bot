@@ -141,9 +141,6 @@ def _try_financing_detail_escalation_from_checker(
 
     if current_node not in _FINANCING_ESCALATION_NODES:
         return None
-    # Reanudacion post-onboarding: dejar listar catalogo en financing y escalar ahi (post-planes).
-    if str(state.get("onboarding_resume_user_message", "")).strip():
-        return None
     escalated = maybe_escalate_financing_detail(
         state,
         trigger=f"intent_checker_{trigger_suffix}",
@@ -172,13 +169,6 @@ def intent_checker(state: clientState) -> clientState:
     current_node = str(state.get("current_node", "router"))
     # El intent_checker corre antes del router: fuera de flujo no debe marcar FAQ interruptiva.
     if current_node in {"", "start", "router", "faq"}:
-        state["is_faq_interrupt"] = False
-        return state
-
-    # FAQ diferida tras captura de nombre: primero el pending comercial, luego el nodo faq.
-    if str(state.get("deferred_faq_user_message", "")).strip() and str(
-        state.get("onboarding_resume_user_message", "")
-    ).strip():
         state["is_faq_interrupt"] = False
         return state
 
