@@ -40,8 +40,8 @@ flowchart TD
     autoReply -->|si| suppressed["respuesta suprimida"]
     autoReply -->|no| appendUser["messages.append user"]
     appendUser --> invoke["graph.invoke state"]
-    invoke --> clearResume["clear_onboarding_resume"]
-    clearResume --> persistOut["push_assistant + upsert_bot_session_state DB"]
+    invoke --> clearFlags["clear_onboarding_turn_flags"]
+    clearFlags --> persistOut["push_assistant + upsert_bot_session_state DB"]
     persistOut --> reply["ChatResponse reply + current_node"]
 ```
 
@@ -52,7 +52,7 @@ flowchart TD
 | Silencio total | `bot_disabled` | H | No invoca grafo ni LLM |
 | Handoff CRM | `should_auto_reply is False` | H | Persiste inbound, no responde |
 | Turno activo | `graph.invoke` | — | Ejecuta nodos en cadena según transiciones |
-| Limpieza | `clear_onboarding_resume` | H | Borra `onboarding_welcome_sent_this_turn` tras el turno |
+| Limpieza | `clear_onboarding_turn_flags` | H | Borra `onboarding_welcome_sent_this_turn` tras el turno |
 | Salida | `_collect_tail_ai_messages` | H | Une mensajes assistant con `<<BOT_MSG_BREAK>>` |
 
 ---

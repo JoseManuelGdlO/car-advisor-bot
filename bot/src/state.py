@@ -57,7 +57,6 @@ class clientState(TypedDict, total=False):
     - conversation_id: UUID de conversacion CRM para handoff y persistencia.
     - bot_disabled: True tras notificar handoff; el servidor no invoca el grafo en turnos siguientes.
     - onboarding_greeting_done: True tras enviar la bienvenida inicial (welcomeMessage).
-    - deferred_faq_user_message: FAQ diferida para responder tras un flujo comercial del mismo turno.
     - onboarding_welcome_sent_this_turn: True si onboarding acaba de enviar bienvenida y el router no debe duplicarla.
     - ad_campaign_shortcut: True en el turno CTWA con vehiculo resuelto (current_node=car_selection).
     - ad_campaign_shortcut_applied: True tras aplicar el atajo en algun turno; no bloquea reaplicar si llega otro ad.
@@ -118,7 +117,6 @@ class clientState(TypedDict, total=False):
     conversation_id: str
     bot_disabled: bool
     onboarding_greeting_done: bool
-    deferred_faq_user_message: str
     onboarding_welcome_sent_this_turn: bool
     ad_campaign_shortcut: bool
     ad_campaign_shortcut_applied: bool

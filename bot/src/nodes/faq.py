@@ -91,14 +91,7 @@ def faq(state: clientState) -> clientState:
     """Responde preguntas frecuentes y retorna al flujo principal cuando aplica."""
 
     state["current_node"] = "faq"
-    deferred_faq = str(state.get("deferred_faq_user_message", "")).strip()
-    if deferred_faq:
-        question = deferred_faq
-        state["deferred_faq_user_message"] = ""
-        # Tras flujo comercial del mismo turno: responder como FAQ standalone.
-        state["is_faq_interrupt"] = False
-    else:
-        question = latest_user_message(state)
+    question = latest_user_message(state)
 
     escalated = maybe_escalate_financing_detail(state, trigger="faq_node_entry", user_message=question)
     if escalated is not None:
