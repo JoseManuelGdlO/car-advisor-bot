@@ -222,7 +222,10 @@ _VERIFIED_MODE_INSTRUCTIONS: dict[str, str] = {
         "Si DATOS_VERIFICADOS incluye criterio_sin_coincidencias, di claramente que no hay vehiculos que cumplan ese "
         "criterio y muestra el listado disponible; NO preguntes si quiere ver todos ni ofrezcas mostrar el catalogo despues.\n"
         "Si DATOS_VERIFICADOS contiene un listado de vehiculos, COPIALO TAL CUAL en tu respuesta en una seccion clara "
-        "(mismas lineas y datos); puedes agregar antes o despues una frase breve de contexto sin contradecir el listado.\n"
+        "(mismas lineas y datos).\n"
+        "Si DATOS_VERIFICADOS incluye intro_sugerido_literal, usa ESA frase literal justo antes del listado; "
+        "NO inventes otra introduccion generica (evita 'Aqui tienes los modelos disponibles').\n"
+        "NO ofrezcas ayuda para comparar modelos ni agregues frases de cierre sobre comparar.\n"
         "Si el listado indica que no hay vehiculos, dilo con naturalidad sin inventar unidades.\n"
         "No inventes marcas, modelos, precios ni anos que no aparezcan en DATOS_VERIFICADOS.\n"
         "Devuelve UNICAMENTE el mensaje para el usuario, sin titulos ni prefijos tipo 'Respuesta:'."
@@ -233,7 +236,7 @@ _VERIFIED_MODE_INSTRUCTIONS: dict[str, str] = {
         "Usa exclusivamente hechos que puedas inferir del bloque DATOS_VERIFICADOS (resumen o banderas); "
         "NO copies ni enumeres el listado de vehiculos ni lineas numeradas del bloque; NO repitas precios ni tablas.\n"
         "Si el usuario busco algo no disponible, reconocelo solo si consta en DATOS_VERIFICADOS.\n"
-        "Cierra invitando a elegir un modelo o a pedir ayuda para comparar.\n"
+        "Cierra invitando a elegir un modelo. NO ofrezcas ayuda para comparar.\n"
         "Devuelve UNICAMENTE el texto puente, sin titulos ni prefijos."
     ),
     "inventory_candidates": (

@@ -35,7 +35,16 @@ class CarSelectionFormattersTests(unittest.TestCase):
             {"brand": "suzuki", "model": "fronx", "year": 2026, "status": "available", "outboundPriority": 3},
         ]
         output = format_available_vehicles_grouped(vehicles)
-        self.assertIn("Swift, Dzire, Fronx", output)
+        # Una sola marca: no se menciona el nombre; un modelo por linea.
+        self.assertEqual(output, "🚗 Swift 2026\n🚗 Dzire 2026\n🚗 Fronx 2026")
+
+    def test_format_available_vehicles_grouped_shows_brand_when_multiple(self) -> None:
+        vehicles = [
+            {"brand": "suzuki", "model": "swift", "year": 2026, "status": "available", "outboundPriority": 1},
+            {"brand": "nissan", "model": "versa", "year": 2011, "status": "available", "outboundPriority": 2},
+        ]
+        output = format_available_vehicles_grouped(vehicles)
+        self.assertEqual(output, "🚗 Suzuki:\n• Swift 2026\n🚗 Nissan:\n• Versa 2011")
 
     def test_format_vehicle_name_includes_year_when_available(self) -> None:
         self.assertEqual(format_vehicle_name({"brand": "Nissan", "model": "Versa", "year": 2011}), "Nissan Versa 2011")

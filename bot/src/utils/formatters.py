@@ -241,7 +241,11 @@ def format_images_bulleted_list(images: list[str], resolve_url_fn: Callable[[str
 
 
 def format_available_vehicles_grouped(vehicles: list[dict[str, Any]]) -> str:
-    """Agrupa disponibles por marca y modelo; agrega año cuando hay repetidos."""
+    """Agrupa disponibles por marca; un modelo por linea.
+
+    Si todos los vehiculos son de la misma marca, omite el nombre de la marca.
+    Si un modelo tiene varios anios, lista cada anio en su propia linea.
+    """
 
     available = [
         item
@@ -251,33 +255,40 @@ def format_available_vehicles_grouped(vehicles: list[dict[str, Any]]) -> str:
     if not available:
         return "No tengo vehiculos disponibles en este momento. Si quieres, puedo ayudarte a buscar por otra caracteristica."
 
-    brands: dict[str, dict[str, list[int]]] = {}
+    # brand -> modelos en orden de aparicion (prioridad outbound ya aplicada)
+    brands: dict[str, list[str]] = {}
+    seen_per_brand: dict[str, set[str]] = {}
     for item in available:
         brand = _title_or_default(item.get("brand"), fallback="")
         model = _title_or_default(item.get("model"), fallback="")
         if not brand or not model:
             continue
-        if brand not in brands:
-            brands[brand] = {}
-        if model not in brands[brand]:
-            brands[brand][model] = []
         year = item.get("year")
-        if isinstance(year, int):
-            brands[brand][model].append(year)
+        label = model
+        if isinstance(year, int) and str(year) not in model:
+            label = f"{model} {year}"
+        if brand not in brands:
+            brands[brand] = []
+            seen_per_brand[brand] = set()
+        key = label.lower()
+        if key in seen_per_brand[brand]:
+            continue
+        seen_per_brand[brand].add(key)
+        brands[brand].append(label)
 
+    if not brands:
+        return "No tengo vehiculos disponibles en este momento. Si quieres, puedo ayudarte a buscar por otra caracteristica."
+
+    omit_brand = len(brands) == 1
     lines: list[str] = []
-    for brand, models_map in brands.items():
-        models_lines: list[str] = []
-        for model, years in models_map.items():
-            unique_years = sorted(set(years))
-            if len(unique_years) > 1:
-                years_text = ", ".join(str(year) for year in unique_years)
-                models_lines.append(f"{model} ({years_text})")
-            else:
-                models_lines.append(model)
-        if models_lines:
-            emoji = "🚗"
-            lines.append(f"{emoji} {brand}: {', '.join(models_lines)}")
+    for brand, models in brands.items():
+        if omit_brand:
+            for model in models:
+                lines.append(f"🚗 {model}")
+        else:
+            lines.append(f"🚗 {brand}:")
+            for model in models:
+                lines.append(f"• {model}")
 
     return "\n".join(lines)
 
