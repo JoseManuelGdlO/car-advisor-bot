@@ -350,7 +350,8 @@ class AdCampaignGraphFlowTests(GraphTestCase):
 
         self.assertEqual(updated.get("current_node"), "car_selection")
         self.assertTrue(updated.get("onboarding_greeting_done"))
-        self.assertTrue(updated.get("awaiting_purchase_confirmation"))
+        self.assertTrue(updated.get("awaiting_purchase_preferences"))
+        self.assertFalse(updated.get("awaiting_purchase_confirmation"))
         assistant_texts = [
             str(m.get("content", ""))
             for m in updated.get("messages", [])
@@ -358,8 +359,8 @@ class AdCampaignGraphFlowTests(GraphTestCase):
         ]
         self.assertEqual(assistant_texts[0], "Bienvenido CTWA.")
         self.assertTrue(
-            any("Nissan Versa 2020" in t for t in assistant_texts),
-            msg="debe responder con detalle del vehiculo del anuncio",
+            any("Automático o Estándar" in t for t in assistant_texts),
+            msg="debe pedir preferencias del vehiculo del anuncio",
         )
         joined = "\n".join(assistant_texts).lower()
         self.assertNotIn("como te llamas", joined)
@@ -419,9 +420,10 @@ class AdCampaignGraphFlowTests(GraphTestCase):
             if m.get("role") == "assistant"
         ]
         joined = "\n".join(assistant_texts)
+        self.assertTrue(updated.get("awaiting_purchase_preferences"))
         self.assertTrue(
-            any("Nissan Versa 2020" in t for t in assistant_texts),
-            msg="debe mostrar ficha del vehiculo del anuncio mid-sesion",
+            any("Automático o Estándar" in t for t in assistant_texts),
+            msg="debe pedir preferencias del vehiculo del anuncio mid-sesion",
         )
         self.assertNotIn("Hola de nuevo", joined)
 

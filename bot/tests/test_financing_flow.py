@@ -174,7 +174,8 @@ class FinancingFlowTests(GraphTestCase):
             updated = self.graph.invoke(state)
 
         self.assertEqual(updated.get("current_node"), "car_selection")
-        self.assertTrue(updated.get("awaiting_purchase_confirmation"))
+        self.assertTrue(updated.get("awaiting_purchase_preferences"))
+        self.assertFalse(updated.get("awaiting_purchase_confirmation"))
         self.assertFalse(updated.get("show_selected_vehicle_detail_once"))
         self.assertTrue(updated.get("awaiting_financing_plan_selection"))
         assistant_texts = [
@@ -183,8 +184,8 @@ class FinancingFlowTests(GraphTestCase):
             if m.get("role") == "assistant"
         ]
         self.assertTrue(
-            any("informacion completa del Suzuki Jimny" in t for t in assistant_texts),
-            msg="car_selection debe generar el detalle conversacional del vehiculo",
+            any("Automático o Estándar" in t for t in assistant_texts),
+            msg="car_selection debe pedir preferencias antes del detalle",
         )
 
     def test_financing_requests_promotions_routes_to_promotions_not_faq(self) -> None:
@@ -340,13 +341,15 @@ class FinancingFlowTests(GraphTestCase):
         ):
             updated = self.graph.invoke(state)
 
-        self.assertEqual(updated.get("vehicle_images_last_batch"), ["/img/dzire-1.jpg"])
+        self.assertTrue(updated.get("awaiting_purchase_preferences"))
+        self.assertEqual(updated.get("vehicle_images_last_batch") or [], [])
         assistant_texts = [
             str(m.get("content", ""))
             for m in updated.get("messages", [])
             if m.get("role") == "assistant"
         ]
-        self.assertTrue(any("/img/dzire-1.jpg" in t for t in assistant_texts))
+        self.assertTrue(any("Automático o Estándar" in t for t in assistant_texts))
+        self.assertFalse(any("/img/dzire-1.jpg" in t for t in assistant_texts))
 
     def test_financing_plan_selection_via_llm_extract_advances_flow(self) -> None:
         jimny_plan = {
@@ -635,6 +638,18 @@ class FinancingFlowTests(GraphTestCase):
             )
             stack.enter_context(
                 patch(
+                    "src.nodes.car_selection._llm_vehicle_image_flags",
+                    return_value={"ask_images": False, "ask_more_images": False},
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "src.nodes.car_selection.generate_vehicle_purchase_question",
+                    return_value="¿Te interesa agendar una prueba de manejo?",
+                )
+            )
+            stack.enter_context(
+                patch(
                     "src.nodes.car_selection.generate_verified_user_message",
                     side_effect=lambda **kw: kw["fallback"],
                 )
@@ -698,6 +713,9 @@ class FinancingFlowTests(GraphTestCase):
 
             state = self.graph.invoke(with_user_message(state, "tienes carros versa?"))
             state = self.graph.invoke(with_user_message(state, "Cómo es el nissan versa 2011?"))
+            self.assertTrue(state.get("awaiting_purchase_preferences"))
+            state = self.graph.invoke(with_user_message(state, "automatico y financiado"))
+            self.assertTrue(state.get("awaiting_purchase_confirmation"))
             state = self.graph.invoke(with_user_message(state, "dónde estan ubicados?"))
             self.assertIn("colegio REX", state["messages"][-1]["content"])
 

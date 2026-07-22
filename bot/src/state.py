@@ -23,6 +23,10 @@ class clientState(TypedDict, total=False):
     - skip_car_prompt / skip_lead_prompt.
     - resume_to_step: paso de retorno despues de FAQ interruptiva.
     - is_faq_interrupt: indica si FAQ interrumpio el flujo principal.
+    - awaiting_purchase_preferences: espera transmision (automatico/estandar) y pago (contado/financiado)
+      tras seleccionar vehiculo, antes de mostrar detalle.
+    - selected_transmission: preferencia de transmision ("automatico" | "estandar" | "").
+    - selected_payment_type: preferencia de pago ("contado" | "financiado" | "").
     - awaiting_purchase_confirmation: espera una respuesta si/no tras mostrar detalle.
     - last_vehicle_candidates: candidatos previos para desambiguar seleccion.
     - vehicle_images_cursor: cursor para paginacion de imagenes del vehiculo seleccionado.
@@ -76,6 +80,9 @@ class clientState(TypedDict, total=False):
     skip_lead_prompt: bool
     resume_to_step: str
     is_faq_interrupt: bool
+    awaiting_purchase_preferences: bool
+    selected_transmission: str
+    selected_payment_type: str
     awaiting_purchase_confirmation: bool
     platform: str
     user_id: str

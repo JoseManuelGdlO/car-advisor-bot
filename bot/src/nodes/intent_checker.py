@@ -184,6 +184,12 @@ def intent_checker(state: clientState) -> clientState:
         state["intent"] = "lead_capture"
         return state
 
+    # Durante preferencias post-seleccion, no interrumpir por FAQ: el usuario responde
+    # transmision/pago (p. ej. "financiado") y debe quedar en car_selection.
+    if current_node == "car_selection" and bool(state.get("awaiting_purchase_preferences")):
+        state["is_faq_interrupt"] = False
+        return state
+
     # En confirmacion de compra, las FAQ de negocio se evaluan antes que el clasificador
     # de vehiculo. confirm_purchase no bloquea FAQ: horarios/ubicacion no son cierre comercial.
     if (
@@ -206,7 +212,8 @@ def intent_checker(state: clientState) -> clientState:
         current_node,
         last_ai,
         last_user,
-        awaiting_purchase_confirmation=bool(state.get("awaiting_purchase_confirmation")),
+        awaiting_purchase_confirmation=bool(state.get("awaiting_purchase_confirmation"))
+        or bool(state.get("awaiting_purchase_preferences")),
         pending_vehicle_count=pending_n,
     )
 

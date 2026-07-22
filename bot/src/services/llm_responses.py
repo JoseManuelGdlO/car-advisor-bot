@@ -28,6 +28,7 @@ from src.utils.prompts import (
     build_promotion_selection_classifier_prompt,
     build_other_response_prompt,
     build_purchase_confirmation_classifier_prompt,
+    build_purchase_preferences_classifier_prompt,
     build_selected_vehicle_qa_prompt,
     build_router_intent_classifier_prompt,
     build_vehicle_comparison_conversation_prompt,
@@ -933,6 +934,40 @@ def classify_purchase_confirmation_intent(previous_bot_message: str, user_messag
             temperature=0.0,
         )
         return "UNKNOWN"
+
+
+def classify_purchase_preferences(previous_bot_message: str, user_message: str) -> dict[str, str]:
+    """Clasifica preferencias post-seleccion: transmission y payment_type (determinista, T=0)."""
+
+    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
+    out = {"transmission": "UNKNOWN", "payment_type": "UNKNOWN"}
+    valid_transmission = {"AUTOMATICO", "ESTANDAR", "UNKNOWN"}
+    valid_payment = {"CONTADO", "FINANCIADO", "UNKNOWN"}
+    try:
+        settings = get_bot_settings()
+        llm = ChatOpenAI(model=model_name, temperature=0)
+        prompt = build_purchase_preferences_classifier_prompt(
+            previous_bot_message=previous_bot_message,
+            user_message=user_message,
+            bot_settings=settings,
+        )
+        parsed = _parse_json_object_from_llm(str(llm.invoke(prompt).content or ""))
+        if not parsed:
+            return out
+        transmission = str(parsed.get("transmission", "UNKNOWN")).strip().upper()
+        payment_type = str(parsed.get("payment_type", "UNKNOWN")).strip().upper()
+        out["transmission"] = transmission if transmission in valid_transmission else "UNKNOWN"
+        out["payment_type"] = payment_type if payment_type in valid_payment else "UNKNOWN"
+        return out
+    except Exception as exc:
+        _log_llm_invoke_failure(
+            "classify_purchase_preferences",
+            exc,
+            model_name=model_name,
+            prompt_kind="purchase_preferences_classifier",
+            temperature=0.0,
+        )
+        return out
 
 
 def classify_financing_plan_selection_intent(
