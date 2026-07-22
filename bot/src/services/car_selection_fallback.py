@@ -298,7 +298,11 @@ _TECHNICAL_SHEET_REQUEST_SIGNALS = (
 
 
 def user_asks_for_technical_sheet(user_text: str) -> bool:
-    """True si el usuario pide explicitamente la ficha tecnica PDF del vehiculo."""
+    """True si el usuario pide explicitamente la ficha tecnica PDF del vehiculo.
+
+    El PDF no se auto-adjunta al mostrar detalle ni en QA generico; solo con esta
+    heuristica o junto a un pedido de imagenes (ver car_selection).
+    """
 
     normalized = normalize_user_text(user_text)
     if not normalized:

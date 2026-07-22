@@ -32,7 +32,8 @@ class clientState(TypedDict, total=False):
     - vehicle_images_cursor: cursor para paginacion de imagenes del vehiculo seleccionado.
     - vehicle_images_has_more: indica si hay mas imagenes por pedir al backend.
     - vehicle_images_last_batch: ultimo lote de URLs de imagenes enviado al usuario (vacio = aun no se enviaron fotos).
-    - technical_sheet_delivered_vehicle_id: id del vehiculo al que ya se le envio la ficha tecnica PDF en esta sesion.
+    - technical_sheet_delivered_vehicle_id: id del vehiculo al que ya se le envio la ficha tecnica PDF en esta sesion
+      (solo bajo pedido explicito o junto a un pedido de imagenes; no se adjunta al mostrar detalle).
     - user_id: identificador de conversacion (en web/whatsapp suele ser el telefono).
     - owner_user_id: UUID del tenant (vendedor). Obligatorio en /chat con token global antes de leer catálogo; viene del webhook o body.
     - lead_capture_done: True cuando ya se compartio el enlace de agenda, se notifico interes y el bot quedo desactivado.

@@ -440,19 +440,51 @@ def _mark_technical_sheet_delivered(state: clientState, vehicle_id: str) -> None
         state["technical_sheet_delivered_vehicle_id"] = normalized
 
 
-def _should_attach_technical_sheet(state: clientState, vehicle_id: str, user_text: str) -> bool:
-    """True si aun no se envio la ficha de este vehiculo, o el usuario la pide de nuevo."""
+def _should_attach_technical_sheet(
+    state: clientState,
+    vehicle_id: str,
+    user_text: str,
+    *,
+    with_images: bool = False,
+) -> bool:
+    """True si pide la ficha PDF, o si va con imagenes y aun no se entrego para este vehiculo."""
     current_id = str(vehicle_id or "").strip()
     if not current_id:
         return False
-    already_delivered = str(state.get("technical_sheet_delivered_vehicle_id", "")).strip() == current_id
-    if not already_delivered:
+    if user_asks_for_technical_sheet(user_text):
         return True
-    return user_asks_for_technical_sheet(user_text)
+    if not with_images:
+        return False
+    already_delivered = str(state.get("technical_sheet_delivered_vehicle_id", "")).strip() == current_id
+    return not already_delivered
+
+
+def _append_technical_sheet_if_needed(
+    state: clientState,
+    blocks: list[str],
+    *,
+    user_text: str,
+    with_images: bool = False,
+    detail: dict[str, Any] | None = None,
+) -> None:
+    """Adjunta el PDF de ficha tecnica a blocks cuando el gating lo permite."""
+    vehicle_id = str(state.get("selected_vehicle_id", "")).strip()
+    if isinstance(detail, dict):
+        detail_id = str(detail.get("id", "")).strip()
+        if detail_id:
+            vehicle_id = detail_id
+    if not _should_attach_technical_sheet(state, vehicle_id, user_text, with_images=with_images):
+        return
+    resolved = detail if isinstance(detail, dict) else fetch_vehicle_by_id(vehicle_id)
+    if not isinstance(resolved, dict):
+        return
+    sheet_msg = _build_technical_sheet_message(state, resolved)
+    if sheet_msg:
+        blocks.append(sheet_msg)
 
 
 def _respond_with_first_images(state: clientState) -> clientState:
-    """Entrega primer lote de imágenes del vehículo seleccionado."""
+    """Entrega primer lote de imágenes del vehículo seleccionado (y ficha PDF si aplica)."""
 
     vehicle_id = str(state.get("selected_vehicle_id", "")).strip()
     if not vehicle_id:
@@ -467,7 +499,14 @@ def _respond_with_first_images(state: clientState) -> clientState:
         format_block_fn=_format_images_block,
         whatsapp_block_fn=_build_whatsapp_image_marker_block,
     )
-    return append_assistant_message(state, message)
+    blocks = [message]
+    _append_technical_sheet_if_needed(
+        state,
+        blocks,
+        user_text=latest_user_message(state),
+        with_images=True,
+    )
+    return _append_assistant_blocks(state, blocks)
 
 
 def _respond_with_more_images(state: clientState) -> clientState:
@@ -518,7 +557,14 @@ def _respond_with_more_images(state: clientState) -> clientState:
         format_block_fn=_format_images_block,
         whatsapp_block_fn=_build_whatsapp_image_marker_block,
     )
-    return append_assistant_message(state, message)
+    blocks = [message]
+    _append_technical_sheet_if_needed(
+        state,
+        blocks,
+        user_text=latest_user_message(state),
+        with_images=True,
+    )
+    return _append_assistant_blocks(state, blocks)
 
 
 def _build_technical_sheet_message(state: clientState, detail: dict[str, Any]) -> str:
@@ -597,10 +643,7 @@ def _respond_selected_vehicle_inventory_qa(state: clientState, user_text: str) -
     state["awaiting_purchase_confirmation"] = True
     _debug("answered_inventory_qa_while_awaiting_confirmation", vehicle_id=vehicle_id)
     blocks = [body]
-    if _should_attach_technical_sheet(state, vehicle_id, user_text):
-        sheet_msg = _build_technical_sheet_message(state, detail)
-        if sheet_msg:
-            blocks.append(sheet_msg)
+    _append_technical_sheet_if_needed(state, blocks, user_text=user_text, detail=detail)
     blocks.append(question)
     return _append_assistant_blocks(state, blocks)
 
@@ -773,6 +816,7 @@ def _respond_with_selected_vehicle_detail_and_purchase_question(state: clientSta
     if not vehicle_id:
         _debug("selected_vehicle_detail_missing_id")
         state["awaiting_purchase_confirmation"] = False
+        _clear_purchase_preferences(state)
         return append_assistant_message(
             state,
             "No pude identificar ese vehiculo. Te muestro disponibles.",
@@ -781,6 +825,7 @@ def _respond_with_selected_vehicle_detail_and_purchase_question(state: clientSta
     if not detail:
         _debug("selected_vehicle_detail_not_found", vehicle_id=vehicle_id)
         state["awaiting_purchase_confirmation"] = False
+        _clear_purchase_preferences(state)
         return append_assistant_message(
             state,
             "No pude obtener el detalle de ese carro en este momento. Te muestro otras opciones disponibles.",
@@ -799,11 +844,7 @@ def _respond_with_selected_vehicle_detail_and_purchase_question(state: clientSta
     )
     detail_narrative = generate_vehicle_detail_conversation(state["selected_car"], grounded_vehicle_facts)
     purchase_question = _build_purchase_question(state)
-    blocks: list[str] = [detail_narrative]
-    sheet_msg = _build_technical_sheet_message(state, detail)
-    if sheet_msg:
-        blocks.append(sheet_msg)
-    blocks.append(purchase_question)
+    blocks: list[str] = [detail_narrative, purchase_question]
 
     state["awaiting_purchase_preferences"] = False
     state["awaiting_purchase_confirmation"] = True

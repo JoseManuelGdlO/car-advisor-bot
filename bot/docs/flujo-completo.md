@@ -149,7 +149,9 @@ flowchart TD
     earlyExit -->|no| purchaseConfirm{car_selection + awaiting_purchase_confirmation?}
     purchaseConfirm -->|si| vehicleFlags["classify_vehicle_step_flags L"]
     vehicleFlags -->|flags comerciales| noInterrupt
-    purchaseConfirm -->|no| faqFlags["classify_faq_interrupt_flags L"]
+    purchaseConfirm -->|no| purchasePrefs{car_selection + awaiting_purchase_preferences?}
+    purchasePrefs -->|si| noInterrupt
+    purchasePrefs -->|no| faqFlags["classify_faq_interrupt_flags L"]
     faqFlags --> promoOverride{promotions + detalle vehiculo H?}
     promoOverride -->|si| noInterrupt
     promoOverride -->|no| scheduling{test drive + vehiculo H?}
@@ -186,7 +188,7 @@ Archivo: [`bot/src/nodes/router.py`](../src/nodes/router.py)
 
 ```mermaid
 flowchart TD
-    entry[router] --> h1{awaiting_purchase OR pending_candidates H}
+    entry[router] --> h1{awaiting_purchase_prefs_or_confirm OR pending_candidates H}
     h1 -->|si| carSel[car_selection]
     h1 -->|no| h2{intent previo vehicle/financing/promotions H}
     h2 -->|vehicle_catalog| carSel
@@ -205,7 +207,7 @@ flowchart TD
 
 | Orden | Condición | Destino |
 |-------|-----------|---------|
-| 1 | `awaiting_purchase_confirmation` o `last_vehicle_candidates` | `car_selection` |
+| 1 | `awaiting_purchase_preferences`, `awaiting_purchase_confirmation` o `last_vehicle_candidates` | `car_selection` |
 | 2 | `intent` previo `vehicle_catalog` / `financing` / `promotions` con texto | Mantiene nodo comercial |
 | 3 | Saludo post-onboarding (`is_greeting_only_message`) | `intent=other`, END |
 | 4 | Texto vacío | `generate_other_response` → END |
@@ -274,7 +276,31 @@ Archivo: [`bot/src/nodes/car_selection.py`](../src/nodes/car_selection.py)
 | `skip_car_prompt` | H | Salta ejecución (turno FAQ interrumpido) |
 | `fetch_vehicles` | DB | Carga catálogo completo |
 
+#### Sub-flujo A0: preferencias de compra (`awaiting_purchase_preferences`)
+
+Tras seleccionar un vehículo (`_respond_with_vehicle_detail`), el bot **no** muestra aún la narrativa de detalle ni el PDF. Primero pide:
+
+1. Transmisión (`automatico` / `estandar`)
+2. Tipo de pago (`contado` / `financiado`)
+
+| Orden | Función | Tipo |
+|-------|---------|------|
+| 1 | `detect_transmission_preference` / `detect_payment_type_preference` | H |
+| 2 | `classify_purchase_preferences` | L (si hay conflicto o ambigüedad) |
+| 3 | Completas → `_respond_with_selected_vehicle_detail_and_purchase_question` | L narrativa |
+
+Campos: `selected_transmission`, `selected_payment_type`, `awaiting_purchase_preferences`.
+
 #### Sub-flujo A: confirmación de compra (`awaiting_purchase_confirmation`)
+
+Al completar preferencias se envía la **narrativa** de detalle + pregunta de prueba de manejo. El **PDF** de ficha técnica (`technicalSheetUrl` → `<<WC_DOCUMENT_JSON>>` o link web) **no** se adjunta aquí.
+
+El PDF solo se envía cuando:
+
+1. Pedido explícito (`user_asks_for_technical_sheet` en `car_selection_fallback`), o
+2. Pedido de imágenes (`ask_images` / `ask_more_images` / `VER_MAS_IMAGENES`) → imágenes **y** PDF si hay URL y aún no se entregó para ese `vehicle_id` (re-pedido explícito de ficha sí permite reenvío).
+
+Tracking: `technical_sheet_delivered_vehicle_id` (se resetea al cambiar de vehículo).
 
 ```mermaid
 flowchart TD
@@ -283,16 +309,16 @@ flowchart TD
     flags -->|ask_promotions| promNode[promotions]
     flags -->|confirm_purchase OR test_drive H| leadNode[lead_capture]
     flags -->|ask_financing OR financing H| finNode[financing]
-    flags -->|ask_images OR first_images H| firstImg[imagenes primer lote DB]
-    flags -->|ask_more_images| moreImg[imagenes siguiente lote DB]
-    flags -->|specs request H| inventoryQA["generate_selected_vehicle_qa_response L"]
+    flags -->|ask_images| firstImg["imagenes + PDF si URL"]
+    flags -->|ask_more_images| moreImg["mas imagenes + PDF si no entregado"]
+    flags -->|specs request H| inventoryQA["QA L; PDF solo si pide ficha"]
     flags -->|wants_other_vehicles| otherList[listado]
     flags -->|reject_purchase| availableList[listado]
     flags -->|sin match claro| purchaseIntent["classify_purchase_confirmation_intent L"]
     purchaseIntent -->|SI| leadNode
     purchaseIntent -->|NO| availableList
     purchaseIntent -->|VER_MAS_IMAGENES| moreImg
-    purchaseIntent -->|PREGUNTA_MODELO / VER_MODELO| detailFlow[detalle vehiculo]
+    purchaseIntent -->|PREGUNTA_MODELO / VER_MODELO| detailFlow[detalle o QA]
     purchaseIntent -->|desconocido| repregunta["generate_vehicle_purchase_question L"]
 ```
 
@@ -540,7 +566,10 @@ Archivo: [`bot/src/state.py`](../src/state.py)
 | `resume_to_step` | Nodo a restaurar tras FAQ |
 | `skip_car_prompt` / `skip_lead_prompt` | Saltar nodo en turno interrumpido |
 | `suppress_commercial_node_once` | Saltar nodo comercial tras ack asesor |
-| `awaiting_purchase_confirmation` | Sub-flujo de cierre en car_selection |
+| `awaiting_purchase_preferences` | Espera transmisión + tipo de pago tras seleccionar vehículo |
+| `selected_transmission` / `selected_payment_type` | Preferencias capturadas antes del detalle |
+| `awaiting_purchase_confirmation` | Sub-flujo de cierre en car_selection (post-detalle) |
+| `technical_sheet_delivered_vehicle_id` | PDF de ficha ya enviado (solo bajo pedido o junto a imágenes) |
 | `last_vehicle_candidates` | Lista pendiente de desambiguar |
 | `awaiting_financing_plan_selection` | Esperando elección de plan |
 | `awaiting_financing_vehicle_selection` | Esperando vehículo dentro del plan |
@@ -569,7 +598,7 @@ Archivo: [`bot/src/state.py`](../src/state.py)
 | Router / onboarding | `classify_router_intent`, `generate_other_response` |
 | Interrupciones | `classify_faq_interrupt_flags`, `classify_vehicle_step_flags` |
 | FAQ | `generate_faq_user_turn`, `generate_faq_resume_transition` |
-| Vehículos | `classify_vehicle_comparison_payload`, `classify_purchase_confirmation_intent`, `extract_vehicle_pending_selection_payload`, `generate_vehicle_*` |
+| Vehículos | `classify_vehicle_comparison_payload`, `classify_purchase_confirmation_intent`, `classify_purchase_preferences`, `extract_vehicle_pending_selection_payload`, `generate_vehicle_*` |
 | Financiamiento | `classify_financing_step_flags`, `classify_financing_plan_comparison_payload`, `extract_financing_plan_selection_payload`, `classify_financing_plan_selection_intent` |
 | Promociones | `classify_promotions_step_flags`, `classify_promotion_comparison_payload`, `extract_promotion_selection_payload`, `classify_promotion_selection_intent` |
 | Lead | `classify_lead_capture_navigation`, `generate_lead_capture_scheduling_message` |

@@ -48,7 +48,7 @@ Las variables de entorno se fusionan al importar el paquete `tests` (ver `tests/
 
 **Rol:** integración — flujo de catálogo y primer contacto con promociones.
 
-**Cubre:** answer-first en catálogo cuando el clasificador devuelve `VEHICLE_CATALOG`; enrutamiento a `faq` cuando devuelve `FAQ`; solicitud de promociones desde el inicio; detalle de vehículo con/sin imágenes; multiturno saludo → modelos → selección → datos; filtros por rango de precio; cambio a “otros vehículos” durante confirmación de compra; smoke mínimo “¿qué carros tienes?”.
+**Cubre:** answer-first en catálogo cuando el clasificador devuelve `VEHICLE_CATALOG`; enrutamiento a `faq` cuando devuelve `FAQ`; solicitud de promociones desde el inicio; detalle de vehículo con/sin imágenes; multiturno saludo → modelos → selección → preferencias (transmisión/pago) → narrativa de detalle **sin** PDF automático; pedido de fotos que co-envía ficha PDF si hay `technicalSheetUrl`; filtros por rango de precio; cambio a “otros vehículos” durante confirmación de compra; smoke mínimo “¿qué carros tienes?”.
 
 **Clases:** `VehicleCatalogFlowTests`, `CarSelectionSmokeTests`.
 
@@ -56,9 +56,9 @@ Las variables de entorno se fusionan al importar el paquete `tests` (ver `tests/
 
 ### `test_purchase_flow.py`
 
-**Rol:** integración — confirmación de compra, más imágenes y rutas relacionadas.
+**Rol:** integración — confirmación de compra, más imágenes, ficha PDF y rutas relacionadas.
 
-**Cubre:** “sí” a compra en el mismo turno hacia `lead_capture`; clasificador de paso para más imágenes con y sin stock; preguntas de precio/modelo/km mientras se espera confirmación; vista de modelo; que “más imágenes” no se desvíe a FAQ en ese contexto.
+**Cubre:** “sí” a compra en el mismo turno hacia `lead_capture`; clasificador de paso para más imágenes con y sin stock; pedido de fotos que adjunta PDF (WhatsApp `<<WC_DOCUMENT_JSON>>`) y omisión si ya se entregó; preguntas de precio/modelo/km mientras se espera confirmación **sin** auto-adjuntar PDF; pedido explícito “dame la ficha tecnica” que sí envía el documento; vista de modelo; que “más imágenes” no se desvíe a FAQ en ese contexto.
 
 ---
 
@@ -114,7 +114,7 @@ Las variables de entorno se fusionan al importar el paquete `tests` (ver `tests/
 
 **Rol:** unitario — helpers en `src.services.car_selection_fallback` (señales y detección de tipo de mensaje).
 
-**Cubre:** límites de palabra en frases señal; petición general de catálogo; solicitud de año/característica; vehículo específico con dependencias inyectadas; más imágenes / financiamiento / promociones; specs del vehículo seleccionado mismo vs cambio de unidad.
+**Cubre:** límites de palabra en frases señal; petición general de catálogo; solicitud de año/característica; vehículo específico con dependencias inyectadas; más imágenes / financiamiento / promociones; pedido explícito de ficha técnica PDF (`user_asks_for_technical_sheet`); preferencias de transmisión/pago; specs del vehículo seleccionado mismo vs cambio de unidad.
 
 ---
 
