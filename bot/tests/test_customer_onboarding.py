@@ -66,7 +66,7 @@ class CustomerOnboardingWelcomeTests(unittest.TestCase):
         state = initial_state()
         state["onboarding_greeting_done"] = True
         self.assertEqual(_route_after_customer_onboarding(state), "intent_checker")
-        state["deferred_faq_user_message"] = "donde estan ubicados?"
+        state["onboarding_greeting_done"] = False
         self.assertEqual(_route_after_customer_onboarding(state), "intent_checker")
 
 

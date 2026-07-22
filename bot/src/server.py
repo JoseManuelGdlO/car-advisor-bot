@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from src.graph import build_graph
 from src.context.tenant_context import reset_owner_user_id, set_owner_user_id
-from src.utils.state_helpers import clear_onboarding_resume
+from src.utils.state_helpers import clear_onboarding_turn_flags
 from src.utils.ad_campaign_shortcut import apply_ad_campaign_shortcut
 from src.tools.database import (
     delete_bot_session,
@@ -234,7 +234,6 @@ def _build_initial_state() -> dict[str, Any]:
         "conversation_id": "",
         "bot_disabled": False,
         "onboarding_greeting_done": False,
-        "deferred_faq_user_message": "",
         "onboarding_welcome_sent_this_turn": False,
         "ad_campaign_shortcut": False,
         "ad_campaign_shortcut_applied": False,
@@ -413,7 +412,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
         updated_state = graph.invoke(state)
         # Consumir bandera de atajo para no reaplicarla en turnos siguientes.
         updated_state["ad_campaign_shortcut"] = False
-        clear_onboarding_resume(updated_state)
+        clear_onboarding_turn_flags(updated_state)
         updated_messages = list(updated_state.get("messages", []))
 
         # Capa 2: persistir mensajes assistant en backend (fuente de verdad).

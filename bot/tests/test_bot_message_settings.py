@@ -53,8 +53,8 @@ class BotMessageSettingsTests(unittest.TestCase):
 
     def test_faq_interrupt_prompt_rejects_name_as_human_advisor(self) -> None:
         prompt = build_faq_interrupt_flags_prompt(
-            current_node="customer_onboarding",
-            last_bot_message="Mucho gusto, Javier.",
+            current_node="car_selection",
+            last_bot_message="¿En qué te puedo ayudar?",
             user_message="Con Javier",
             awaiting_purchase_confirmation=False,
             pending_vehicle_count=0,

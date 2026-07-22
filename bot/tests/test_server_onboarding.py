@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 
 from src.server import app
-from src.utils.state_helpers import clear_onboarding_resume
+from src.utils.state_helpers import clear_onboarding_turn_flags
 
 
 class _InMemorySessionStore:
@@ -36,12 +36,12 @@ class _InMemorySessionStore:
             self.conversation_id = conversation_id
 
 
-class ClearOnboardingResumeTests(unittest.TestCase):
+class ClearOnboardingTurnFlagsTests(unittest.TestCase):
     def test_clears_welcome_sent_flag(self) -> None:
         state: dict[str, object] = {
             "onboarding_welcome_sent_this_turn": True,
         }
-        clear_onboarding_resume(state)
+        clear_onboarding_turn_flags(state)
         self.assertFalse(state["onboarding_welcome_sent_this_turn"])
 
 

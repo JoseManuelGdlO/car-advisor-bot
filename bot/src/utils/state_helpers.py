@@ -20,7 +20,7 @@ def effective_user_message(state: clientState) -> str:
     return latest_user_message(state)
 
 
-def clear_onboarding_resume(state: clientState) -> None:
+def clear_onboarding_turn_flags(state: clientState) -> None:
     """Limpia flags intra-turno de onboarding tras el invoke."""
 
     state["onboarding_welcome_sent_this_turn"] = False

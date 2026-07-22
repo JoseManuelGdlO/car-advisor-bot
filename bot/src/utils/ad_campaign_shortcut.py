@@ -208,7 +208,7 @@ def resolve_vehicle_from_ad_context(
 def _preserve_ad_vehicle_context(state: dict[str, Any], ad_context: dict[str, Any]) -> bool:
     """Si el atajo falló pero el ad menciona modelo(s) de catalogo, conserva contexto comercial.
 
-    No salta la captura de nombre: deja selected_vehicle_id/intent para reanudar tras onboarding.
+    Deja selected_vehicle_id/intent para que el flujo comercial continue tras onboarding.
     """
 
     try:

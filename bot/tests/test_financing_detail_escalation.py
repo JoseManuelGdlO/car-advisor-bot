@@ -439,8 +439,8 @@ class TestMaybeEscalateFinancingDetail(unittest.TestCase):
     def test_skips_vehicle_cotizar_even_if_llm_would_escalate(self) -> None:
         state = _state_with_bot_exchange(
             user="Quiero cotizar el Swift",
-            bot="Hola, ¿con quién tengo el gusto?",
-            node="customer_onboarding",
+            bot="Bienvenido. ¿En qué te puedo ayudar?",
+            node="start",
         )
         with patch(
             "src.utils.financing_advisor_notify.classify_financing_detail_escalation",
@@ -503,11 +503,11 @@ class TestIntentCheckerFinancingEscalation(unittest.TestCase):
         escalate_mock.assert_not_called()
         self.assertTrue(out.get("is_faq_interrupt"))
 
-    def test_customer_onboarding_buro_question_routes_to_faq(self) -> None:
+    def test_car_selection_buro_question_routes_to_faq(self) -> None:
         state = _state_with_bot_exchange(
             user="revisan buro de credito",
-            bot="Hola Javier, en que te ayudo?",
-            node="customer_onboarding",
+            bot="Aqui tienes los modelos disponibles.",
+            node="car_selection",
         )
         with (
             patch(
@@ -527,15 +527,15 @@ class TestIntentCheckerFinancingEscalation(unittest.TestCase):
             out = intent_checker(dict(state))
         self.assertTrue(out.get("is_faq_interrupt"))
         self.assertEqual(out.get("current_node"), "faq")
-        self.assertEqual(out.get("resume_to_step"), "customer_onboarding")
+        self.assertEqual(out.get("resume_to_step"), "car_selection")
 
-    def test_customer_onboarding_does_not_escalate_affirmative_bureau_followup(self) -> None:
-        """En customer_onboarding no se escala aqui; listar/escalar ocurre luego en financing."""
+    def test_start_node_does_not_escalate_affirmative_bureau_followup(self) -> None:
+        """Fuera de nodos comerciales (p. ej. start tras onboarding) no se escala aqui."""
 
         state = _state_with_bot_exchange(
             user="Si por favor",
             bot="Te gustaria que te explique como funciona el proceso de revision del buro de credito?",
-            node="customer_onboarding",
+            node="start",
         )
         with (
             patch(
@@ -555,7 +555,7 @@ class TestIntentCheckerFinancingEscalation(unittest.TestCase):
         escalate_mock.assert_not_called()
         self.assertFalse(out.get("financing_detail_push_sent"))
         self.assertFalse(out.get("bot_disabled"))
-        self.assertEqual(out.get("current_node"), "customer_onboarding")
+        self.assertEqual(out.get("current_node"), "start")
 
 
 class TestFinancingCreditFaqLayer1(unittest.TestCase):
@@ -682,7 +682,7 @@ class TestFinancingNodeEscalation(unittest.TestCase):
     def test_financing_node_escalates_after_plan_listing(self) -> None:
         state = _state_with_bot_exchange(
             user="cual es el enganche para un suzuki y como quedarian los pagos",
-            bot="Mucho gusto, Julio.",
+            bot="Estos son los planes disponibles.",
         )
         state["owner_user_id"] = "owner-uuid"
         sample_plan = {
@@ -714,7 +714,7 @@ class TestFinancingNodeEscalation(unittest.TestCase):
 
         state = _state_with_bot_exchange(
             user="De cuanto es el enganche para un carro?",
-            bot="Mucho gusto, Julio.",
+            bot="Estos son los planes disponibles.",
         )
         with (
             patch("src.nodes.financing.maybe_escalate_financing_detail", return_value=None),
