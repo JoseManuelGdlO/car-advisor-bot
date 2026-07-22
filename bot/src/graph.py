@@ -186,20 +186,8 @@ def _route_after_lead_capture(state: clientState) -> str:
 
 
 def _route_after_customer_onboarding(state: clientState) -> str:
-    """Termina el turno si onboarding genero respuesta; si no, continua el flujo."""
+    """Tras la bienvenida (o passthrough), siempre continua a intent_checker."""
 
-    if state.get("onboarding_turn_complete"):
-        _log_transition("customer_onboarding", "end", "bienvenida o captura de nombre")
-        return "end"
-    # FAQ sola (primer mensaje o durante captura de nombre) sin pending comercial.
-    if _has_deferred_faq(state) and not str(state.get("onboarding_resume_user_message", "")).strip():
-        _log_transition("customer_onboarding", "faq", "faq diferida sin comercial")
-        return "faq"
-    if str(state.get("current_node", "")).strip() == "faq" and not str(
-        state.get("onboarding_resume_user_message", "")
-    ).strip():
-        _log_transition("customer_onboarding", "faq", "faq durante captura de nombre")
-        return "faq"
     _log_transition("customer_onboarding", "intent_checker")
     return "intent_checker"
 
@@ -223,8 +211,6 @@ def build_graph():
         _route_after_customer_onboarding,
         {
             "intent_checker": "intent_checker",
-            "faq": "faq",
-            "end": END,
         },
     )
     graph.add_conditional_edges(

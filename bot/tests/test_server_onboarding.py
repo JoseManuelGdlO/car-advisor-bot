@@ -1,4 +1,4 @@
-"""Integracion HTTP /chat: onboarding en dos turnos con intencion comercial pendiente."""
+"""Integracion HTTP /chat: bienvenida + flujo comercial en el mismo turno."""
 
 from __future__ import annotations
 
@@ -37,17 +37,15 @@ class _InMemorySessionStore:
 
 
 class ClearOnboardingResumeTests(unittest.TestCase):
-    def test_preserves_pending_message_across_turns(self) -> None:
-        state: dict[str, str] = {
-            "onboarding_resume_user_message": "quiero ver el jimny",
-            "pending_onboarding_user_message": "hola quiero ver el jimny",
+    def test_clears_welcome_sent_flag(self) -> None:
+        state: dict[str, object] = {
+            "onboarding_welcome_sent_this_turn": True,
         }
         clear_onboarding_resume(state)
-        self.assertEqual(state["onboarding_resume_user_message"], "")
-        self.assertEqual(state["pending_onboarding_user_message"], "hola quiero ver el jimny")
+        self.assertFalse(state["onboarding_welcome_sent_this_turn"])
 
 
-class TestChatOnboardingTwoTurns(unittest.TestCase):
+class TestChatOnboardingSameTurn(unittest.TestCase):
     def setUp(self) -> None:
         self.client = TestClient(app)
         self.session_store = _InMemorySessionStore()
@@ -71,23 +69,14 @@ class TestChatOnboardingTwoTurns(unittest.TestCase):
         side_effect=lambda **kw: kw.get("fallback", ""),
     )
     @patch("src.nodes.router.classify_router_intent", return_value="VEHICLE_CATALOG")
-    @patch("src.nodes.customer_onboarding.sync_customer_info_to_backend")
     @patch(
-        "src.nodes.customer_onboarding.extract_customer_name",
-        return_value={"nombre": "Javier", "is_refusal": False, "mensaje_restante": ""},
-    )
-    @patch(
-        "src.nodes.customer_onboarding.generate_welcome_and_name_request",
-        return_value="¡Hola! ¿Cómo te llamas?",
-    )
-    @patch(
-        "src.nodes.customer_onboarding.classify_onboarding_first_message",
-        return_value={"tiene_intencion_comercial": True},
+        "src.nodes.customer_onboarding.get_bot_settings",
+        return_value={"welcomeMessage": "Bienvenido a la agencia.", "botName": "AutoBot"},
     )
     @patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False})
     @patch("src.server.upsert_bot_session_state")
     @patch("src.server.fetch_active_bot_session")
-    def test_commercial_intent_then_name_resumes_vehicle_flow(
+    def test_commercial_intent_continues_after_welcome_same_turn(
         self,
         mock_fetch: MagicMock,
         mock_upsert: MagicMock,
@@ -97,23 +86,13 @@ class TestChatOnboardingTwoTurns(unittest.TestCase):
         mock_upsert.side_effect = self.session_store.upsert
 
         first = self._chat("hola para preguntar por jimny de 5 puertas")
-        self.assertIn("¿Cómo te llamas?", first["reply"])
+        self.assertIn("Bienvenido a la agencia.", first["reply"])
+        self.assertNotIn("cómo te llamas", first["reply"].lower())
+        self.assertNotIn("como te llamas", first["reply"].lower())
         self.assertIsNotNone(self.session_store.state)
         assert self.session_store.state is not None
-        self.assertEqual(
-            self.session_store.state.get("pending_onboarding_user_message"),
-            "hola para preguntar por jimny de 5 puertas",
-        )
-        self.assertTrue(self.session_store.state.get("awaiting_customer_name"))
-        self.assertEqual(self.session_store.state.get("onboarding_resume_user_message"), "")
-
-        second = self._chat("Con javier")
-        self.assertIn("Mucho gusto, Javier", second["reply"])
-        assert self.session_store.state is not None
-        self.assertEqual(self.session_store.state.get("pending_onboarding_user_message"), "")
-        self.assertEqual(self.session_store.state.get("onboarding_resume_user_message"), "")
+        self.assertTrue(self.session_store.state.get("onboarding_greeting_done"))
         self.assertEqual(self.session_store.state.get("current_node"), "car_selection")
-        self.assertEqual(self.session_store.state.get("customer_info", {}).get("nombre"), "Javier")
 
 
 if __name__ == "__main__":

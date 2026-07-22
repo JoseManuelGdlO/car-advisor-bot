@@ -6,11 +6,8 @@ from src.state import clientState
 
 
 def latest_user_message(state: clientState) -> str:
-    """Obtiene el mensaje de usuario relevante (reanuda intencion pendiente si aplica)."""
+    """Obtiene el ultimo mensaje de usuario del historial."""
 
-    resume = str(state.get("onboarding_resume_user_message", "")).strip()
-    if resume:
-        return resume
     for message in reversed(state.get("messages", [])):
         if message.get("role") == "user":
             return str(message.get("content", "")).strip()
@@ -24,13 +21,8 @@ def effective_user_message(state: clientState) -> str:
 
 
 def clear_onboarding_resume(state: clientState) -> None:
-    """Limpia el mensaje de reanudacion intra-turno tras onboarding.
+    """Limpia flags intra-turno de onboarding tras el invoke."""
 
-    `pending_onboarding_user_message` se conserva entre turnos HTTP hasta que
-    `_resume_pending_flow` lo consume al capturar el nombre del cliente.
-    """
-
-    state["onboarding_resume_user_message"] = ""
     state["onboarding_welcome_sent_this_turn"] = False
 
 

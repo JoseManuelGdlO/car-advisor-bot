@@ -39,15 +39,13 @@ from src.utils.prompts import (
     build_vehicle_requirement_match_prompt,
     build_vehicle_step_flags_prompt,
     build_promotions_step_flags_prompt,
-    build_extract_customer_name_prompt,
-    build_onboarding_first_message_classifier_prompt,
     build_financing_step_flags_prompt,
     build_financing_detail_escalation_prompt,
     build_lead_capture_navigation_classifier_prompt,
     build_settings_block,
     build_verified_user_message_prompt,
 )
-from src.utils.signals import is_greeting_only_message, is_simple_greeting
+from src.utils.signals import is_simple_greeting
 
 from src.utils.app_logging import get_app_logger
 
@@ -503,26 +501,6 @@ def _coerce_to_bool(value: Any) -> bool:
     return False
 
 
-_NAME_REQUEST_FROM_WELCOME_PATTERNS: tuple[str, ...] = (
-    r",?\s*¿?\s*con qui[eé]n tengo el gusto\??",
-    r",?\s*¿?\s*c[oó]mo te llamas\??",
-    r",?\s*¿?\s*cu[aá]l es tu nombre\??",
-    r",?\s*¿?\s*a nombre de qui[eé]n\??",
-    r",?\s*para poder atenderte mejor\??",
-)
-
-
-def strip_name_request_from_welcome_message(text: str) -> str:
-    """Quita frases que piden el nombre del cliente de un mensaje de bienvenida."""
-
-    cleaned = str(text or "").strip()
-    if not cleaned:
-        return ""
-    for pattern in _NAME_REQUEST_FROM_WELCOME_PATTERNS:
-        cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE)
-    return cleaned.rstrip(" ,;").strip()
-
-
 def _optional_setting_text(settings: dict[str, Any], key: str) -> str | None:
     """Lee un setting opcional del tenant sin fallback."""
 
@@ -543,163 +521,6 @@ def _faq_insufficient_facts_block(
 
     base = f"situacion: {situation}\nmensaje_base_literal_para_tono: {tone_base}\n"
     return append_bot_message_templates_to_verified_block(base, settings)
-
-
-def generate_welcome_and_name_request(*, user_message: str = "") -> str:
-    """Genera bienvenida inicial pidiendo el nombre, anclada a welcomeMessage."""
-
-    settings = get_bot_settings()
-    welcome = _optional_setting_text(settings, "welcomeMessage")
-    bot_name = _optional_setting_text(settings, "botName") or "CarAdvisor"
-    fallback = (
-        f"Hola, soy {bot_name}. Me da gusto ayudarte. "
-        "¿Cómo te llamas para poder atenderte mejor?"
-    )
-    if welcome:
-        fallback = f"{welcome} ¿Cómo te llamas?"
-    verified = build_settings_block(settings) or "CONFIGURACION_NEGOCIO: (sin campos extra)"
-    verified = append_bot_message_templates_to_verified_block(verified, settings)
-    verified = append_business_profile_to_verified_block(verified, get_business_profile())
-    return generate_verified_user_message(
-        mode="welcome_and_name_request",
-        verified_facts_block=verified,
-        user_message=user_message,
-        fallback=fallback,
-        temperature=0.45,
-    )
-
-
-def generate_welcome_with_known_name(customer_name: str, *, user_message: str = "") -> str:
-    """Genera bienvenida personalizada con el nombre del cliente."""
-
-    name = str(customer_name or "").strip()
-    settings = get_bot_settings()
-    welcome_raw = _optional_setting_text(settings, "welcomeMessage")
-    welcome = strip_name_request_from_welcome_message(welcome_raw) if welcome_raw else None
-    bot_name = _optional_setting_text(settings, "botName") or "CarAdvisor"
-    fallback = f"Hola {name}, " + (welcome or f"soy {bot_name} y estoy aqui para ayudarte con vehiculos.")
-    verified = build_settings_block(settings) or "CONFIGURACION_NEGOCIO: (sin campos extra)"
-    if welcome:
-        verified = (
-            f"{verified}\n\nMENSAJES_PREDEFINIDOS_VERIFICADOS:\n"
-            f"- mensaje_bienvenida_literal: {welcome}\n"
-            "- nota: el nombre del cliente ya es conocido; NO vuelvas a pedir el nombre."
-        )
-    else:
-        verified = append_bot_message_templates_to_verified_block(verified, settings)
-    verified = append_business_profile_to_verified_block(verified, get_business_profile())
-    verified = f"nombre_cliente: {name}\n{verified}"
-    return generate_verified_user_message(
-        mode="welcome_with_known_name",
-        verified_facts_block=verified,
-        user_message=user_message,
-        fallback=fallback,
-        temperature=0.45,
-    )
-
-
-def _heuristic_message_without_name(user_message: str, nombre: str) -> str:
-    """Quita el nombre y prefijos introductorios del mensaje del usuario."""
-
-    text = str(user_message or "").strip()
-    name = str(nombre or "").strip()
-    if not text or not name:
-        return text
-    lowered = text.lower()
-    for prefix in ("me llamo", "soy", "mi nombre es", "me dicen"):
-        if lowered.startswith(prefix):
-            text = text[len(prefix) :].lstrip(" :,-.")
-            lowered = text.lower()
-            break
-    if lowered.startswith("con "):
-        text = text[4:].lstrip()
-    pattern = re.compile(re.escape(name), re.IGNORECASE)
-    text = pattern.sub("", text, count=1).strip(" ,.-:;")
-    return text.strip()
-
-
-def _heuristic_customer_name(user_message: str) -> str | None:
-    """Fallback minimo si el LLM no esta disponible."""
-
-    raw = str(user_message or "").strip()
-    if not raw:
-        return None
-    lowered = raw.lower()
-    skip_prefixes = ("me llamo", "soy", "mi nombre es", "me dicen")
-    for prefix in skip_prefixes:
-        if lowered.startswith(prefix):
-            raw = raw[len(prefix) :].strip(" :,-.")
-            break
-    words = [w for w in raw.split() if w.isalpha()]
-    if not words or len(words) > 4:
-        return None
-    if len("".join(words)) < 2:
-        return None
-    return " ".join(word[:1].upper() + word[1:].lower() for word in words if word)
-
-
-def classify_onboarding_first_message(user_message: str) -> dict[str, bool]:
-    """Clasifica si el primer mensaje del usuario trae intencion comercial o es solo cortesia."""
-
-    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
-    out: dict[str, bool] = {"tiene_intencion_comercial": False}
-    try:
-        settings = get_bot_settings()
-        llm = ChatOpenAI(model=model_name, temperature=0)
-        prompt = build_onboarding_first_message_classifier_prompt(user_message, settings)
-        parsed = _parse_json_object_from_llm(str(llm.invoke(prompt).content or ""))
-        if isinstance(parsed, dict):
-            out["tiene_intencion_comercial"] = _coerce_to_bool(parsed.get("tiene_intencion_comercial"))
-            return out
-    except Exception as exc:
-        _log_llm_invoke_failure(
-            "classify_onboarding_first_message",
-            exc,
-            model_name=model_name,
-            prompt_kind="onboarding_first_message_classifier",
-            temperature=0.0,
-        )
-    out["tiene_intencion_comercial"] = not is_greeting_only_message(user_message)
-    return out
-
-
-def extract_customer_name(previous_bot_message: str, user_message: str) -> dict[str, Any]:
-    """Extrae nombre del usuario via LLM; heuristica solo como fallback."""
-
-    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
-    out: dict[str, Any] = {"nombre": None, "is_refusal": False, "mensaje_restante": None}
-    try:
-        settings = get_bot_settings()
-        llm = ChatOpenAI(model=model_name, temperature=0)
-        prompt = build_extract_customer_name_prompt(previous_bot_message, user_message, settings)
-        parsed = _parse_json_object_from_llm(str(llm.invoke(prompt).content or ""))
-        if isinstance(parsed, dict):
-            nombre = parsed.get("nombre")
-            if nombre is not None and str(nombre).strip().lower() not in ("null", "none", ""):
-                cleaned = str(nombre).strip()
-                if 2 <= len(cleaned) <= 80:
-                    out["nombre"] = cleaned
-            out["is_refusal"] = bool(parsed.get("is_refusal"))
-            remainder = parsed.get("mensaje_restante")
-            if remainder is not None and str(remainder).strip().lower() not in ("null", "none", ""):
-                out["mensaje_restante"] = str(remainder).strip()
-            elif out["nombre"]:
-                out["mensaje_restante"] = _heuristic_message_without_name(user_message, str(out["nombre"]))
-            if out["nombre"]:
-                return out
-    except Exception as exc:
-        _log_llm_invoke_failure(
-            "extract_customer_name",
-            exc,
-            model_name=model_name,
-            prompt_kind="extract_customer_name",
-            temperature=0,
-        )
-    heuristic = _heuristic_customer_name(user_message)
-    if heuristic:
-        out["nombre"] = heuristic
-        out["mensaje_restante"] = _heuristic_message_without_name(user_message, heuristic)
-    return out
 
 
 def generate_other_response(
