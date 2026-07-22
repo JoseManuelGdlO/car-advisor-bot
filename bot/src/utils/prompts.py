@@ -565,6 +565,38 @@ def build_purchase_confirmation_classifier_prompt(
     )
 
 
+def build_purchase_preferences_classifier_prompt(
+    previous_bot_message: str,
+    user_message: str,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Prompt clasificador determinista para transmision y forma de pago post-seleccion."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    previous = previous_bot_message.strip() or "(sin mensaje previo)"
+    current = user_message.strip() or "(mensaje vacio)"
+    return (
+        f"{system_prompt}\n\n"
+        "CLASIFICADOR_PREFERENCIAS_COMPRA:\n"
+        "El bot pregunto transmision (Automatico o Estandar) y forma de pago (contado o financiado).\n"
+        "Con el mensaje previo del bot y la respuesta del usuario, clasifica ambas preferencias.\n"
+        "Responde SOLO con un objeto JSON en una sola linea, sin markdown, con este formato exacto:\n"
+        '{"transmission":"<ETIQUETA>","payment_type":"<ETIQUETA>"}\n'
+        "Etiquetas validas de transmission: AUTOMATICO, ESTANDAR, UNKNOWN.\n"
+        "Etiquetas validas de payment_type: CONTADO, FINANCIADO, UNKNOWN.\n"
+        "Reglas:\n"
+        "- Usa el contexto del mensaje previo del bot para resolver ambiguedad.\n"
+        "- Si el usuario menciona ambas opciones de una misma pregunta (ej. automatico y estandar), "
+        "elige la que el contexto indique como preferencia final; si no hay evidencia clara, UNKNOWN.\n"
+        "- Sinonimos: automatica/CVT/TA => AUTOMATICO; manual/stick => ESTANDAR; "
+        "efectivo/cash/de contado => CONTADO; credito/a meses/financiamiento => FINANCIADO.\n"
+        "- No inventes: si no hay evidencia para un campo, usa UNKNOWN en ese campo.\n"
+        "- El usuario puede responder ambas preguntas en un solo mensaje.\n\n"
+        f"Mensaje previo del bot: {previous}\n"
+        f"Mensaje del usuario: {current}\n"
+    )
+
+
 def build_financing_plan_selection_classifier_prompt(
     previous_bot_message: str,
     user_message: str,

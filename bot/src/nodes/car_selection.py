@@ -10,8 +10,8 @@ from src.state import clientState
 
 from src.services.llm_responses import (
     _coerce_to_bool,
-    classify_financing_step_flags,
     classify_purchase_confirmation_intent,
+    classify_purchase_preferences,
     classify_vehicle_comparison_payload,
     classify_vehicle_requirement_matches,
     classify_vehicle_step_flags,
@@ -24,6 +24,8 @@ from src.services.llm_responses import (
     generate_verified_user_message,
 )
 from src.services.car_selection_fallback import (
+    detect_payment_type_preference,
+    detect_transmission_preference,
     is_cheapest_price_request,
     is_financing_request,
     is_general_request,
@@ -296,6 +298,100 @@ def _build_purchase_question(state: clientState) -> str:
     return generate_vehicle_purchase_question(images_invite_mode=_purchase_images_invite_mode(state))
 
 
+def _build_purchase_preferences_message(selected_car: str) -> str:
+    """Mensaje fijo post-seleccion: transmision + forma de pago (sin LLM)."""
+
+    model = str(selected_car or "").strip() or "modelo elegido"
+    return (
+        f"¡Excelente elección! El {model} tenemos excelentes promociones este mes.\n"
+        "Ya tengo la ficha lista para ti.\n"
+        "Solo 2 datos rápidos para mandarte la versión correcta:\n\n"
+        "1. ¿Lo buscas Automático o Estándar?\n"
+        "2. ¿Sería de contado o financiado?\n"
+        "Por favor contesta ambas preguntas en un mismo mensaje"
+    )
+
+
+def _build_purchase_preferences_reask_message(
+    *,
+    need_transmission: bool,
+    need_payment: bool,
+) -> str:
+    """Repregunta fija solo por los campos faltantes."""
+
+    if need_transmission and need_payment:
+        return (
+            "Necesito ambos datos en un mismo mensaje:\n"
+            "1. ¿Lo buscas Automático o Estándar?\n"
+            "2. ¿Sería de contado o financiado?"
+        )
+    if need_transmission:
+        return "Me falta un dato: ¿lo buscas Automático o Estándar?"
+    return "Me falta un dato: ¿sería de contado o financiado?"
+
+
+def _clear_purchase_preferences(state: clientState) -> None:
+    """Limpia preferencias post-seleccion y su bandera de espera."""
+
+    state["awaiting_purchase_preferences"] = False
+    state["selected_transmission"] = ""
+    state["selected_payment_type"] = ""
+
+
+def _normalize_preference_value(value: str | None, *, kind: str) -> str:
+    """Normaliza etiquetas de preferencia a valores de estado o cadena vacia."""
+
+    raw = str(value or "").strip().lower()
+    if kind == "transmission":
+        if raw in {"automatico", "automatic"}:
+            return "automatico"
+        if raw in {"estandar", "standard", "manual"}:
+            return "estandar"
+        return ""
+    if raw in {"contado", "cash"}:
+        return "contado"
+    if raw in {"financiado", "financing"}:
+        return "financiado"
+    return ""
+
+
+def _resolve_purchase_preferences(
+    user_text: str,
+    previous_bot_message: str,
+) -> tuple[str, str]:
+    """Resuelve transmision y pago: heuristica primero, LLM si falta o hay conflicto."""
+
+    transmission_h = detect_transmission_preference(user_text)
+    payment_h = detect_payment_type_preference(user_text)
+    transmission = _normalize_preference_value(
+        transmission_h if transmission_h not in {None, "conflict"} else "",
+        kind="transmission",
+    )
+    payment = _normalize_preference_value(
+        payment_h if payment_h not in {None, "conflict"} else "",
+        kind="payment",
+    )
+    needs_llm = (
+        transmission_h in {None, "conflict"}
+        or payment_h in {None, "conflict"}
+    )
+    if not needs_llm:
+        return transmission, payment
+
+    classified = classify_purchase_preferences(previous_bot_message, user_text)
+    if not transmission:
+        transmission = _normalize_preference_value(
+            str(classified.get("transmission", "")).lower(),
+            kind="transmission",
+        )
+    if not payment:
+        payment = _normalize_preference_value(
+            str(classified.get("payment_type", "")).lower(),
+            kind="payment",
+        )
+    return transmission, payment
+
+
 def _build_no_more_images_message() -> str:
     """Genera mensaje cuando no hay mas imagenes por mostrar."""
 
@@ -546,7 +642,7 @@ def _pick_vehicle_from_filters(
 
 
 def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, Any]) -> clientState:
-    """Abre detalle de vehículo y re-sincroniza estado de compra/promos/financiamiento."""
+    """Selecciona vehiculo y pide preferencias (transmision + pago) con mensaje fijo."""
     vehicle_id = str(vehicle_summary.get("id", "")).strip()
     previous_vehicle_id = str(state.get("selected_vehicle_id", "")).strip()
     has_selected_financing_plan = bool(str(state.get("selected_financing_plan_id", "")).strip())
@@ -623,6 +719,7 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
             temperature=0.35,
         )
         state["awaiting_purchase_confirmation"] = False
+        _clear_purchase_preferences(state)
         state["last_vehicle_candidates"] = []
         return append_assistant_message(state, message)
     detail = fetch_vehicle_by_id(vehicle_id)
@@ -640,21 +737,57 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
             temperature=0.35,
         )
         state["awaiting_purchase_confirmation"] = False
+        _clear_purchase_preferences(state)
         state["last_vehicle_candidates"] = []
         return append_assistant_message(state, message)
 
     state["selected_vehicle_id"] = vehicle_id
     state["selected_car"] = format_vehicle_name(detail)
     state["last_vehicle_candidates"] = []
-    state["awaiting_purchase_confirmation"] = True
+    state["awaiting_purchase_confirmation"] = False
+    state["awaiting_purchase_preferences"] = True
+    state["selected_transmission"] = ""
+    state["selected_payment_type"] = ""
     _reset_vehicle_images_state(state)
     _reset_technical_sheet_delivery(state)
     _debug(
         "vehicle_selected",
         selected_vehicle_id=state["selected_vehicle_id"],
         selected_car=state["selected_car"],
-        next_step="awaiting_purchase_confirmation",
+        next_step="awaiting_purchase_preferences",
     )
+
+    blocks: list[str] = []
+    if financing_removed_notice:
+        blocks.append(financing_removed_notice)
+    if promotion_removed_notice:
+        blocks.append(promotion_removed_notice)
+    blocks.append(_build_purchase_preferences_message(state["selected_car"]))
+    return _append_assistant_blocks(state, blocks)
+
+
+def _respond_with_selected_vehicle_detail_and_purchase_question(state: clientState) -> clientState:
+    """Envia ficha/narrativa del vehiculo seleccionado y pregunta de prueba de manejo."""
+
+    vehicle_id = str(state.get("selected_vehicle_id", "")).strip()
+    if not vehicle_id:
+        _debug("selected_vehicle_detail_missing_id")
+        state["awaiting_purchase_confirmation"] = False
+        return append_assistant_message(
+            state,
+            "No pude identificar ese vehiculo. Te muestro disponibles.",
+        )
+    detail = fetch_vehicle_by_id(vehicle_id)
+    if not detail:
+        _debug("selected_vehicle_detail_not_found", vehicle_id=vehicle_id)
+        state["awaiting_purchase_confirmation"] = False
+        return append_assistant_message(
+            state,
+            "No pude obtener el detalle de ese carro en este momento. Te muestro otras opciones disponibles.",
+        )
+
+    if not str(state.get("selected_car", "")).strip():
+        state["selected_car"] = format_vehicle_name(detail)
 
     platform = str(state.get("platform", "web")).strip().lower() or "web"
     user_text = latest_user_message(state)
@@ -666,17 +799,14 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
     )
     detail_narrative = generate_vehicle_detail_conversation(state["selected_car"], grounded_vehicle_facts)
     purchase_question = _build_purchase_question(state)
-    first_block = detail_narrative
-    blocks: list[str] = []
-    if financing_removed_notice:
-        blocks.append(financing_removed_notice)
-    if promotion_removed_notice:
-        blocks.append(promotion_removed_notice)
-    blocks.append(first_block)
+    blocks: list[str] = [detail_narrative]
     sheet_msg = _build_technical_sheet_message(state, detail)
     if sheet_msg:
         blocks.append(sheet_msg)
     blocks.append(purchase_question)
+
+    state["awaiting_purchase_preferences"] = False
+    state["awaiting_purchase_confirmation"] = True
     previous_bot_message = str(state.get("last_bot_message", "")).strip()
     selected_car_name = str(state.get("selected_car", "")).strip()
     image_flags = _llm_vehicle_image_flags(
@@ -684,23 +814,6 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
         previous_bot_message=previous_bot_message,
         selected_car_name=selected_car_name,
     )
-    if state.get("awaiting_financing_plan_selection"):
-        financing_flags = classify_financing_step_flags(
-            previous_bot_message=previous_bot_message,
-            user_message=user_text,
-            selected_vehicle_name=selected_car_name,
-            has_selected_vehicle=bool(str(state.get("selected_vehicle_id", "")).strip()),
-            has_selected_promotion=bool(str(state.get("selected_promotion_id", "")).strip()),
-            awaiting_plan_selection=True,
-            awaiting_vehicle_selection=bool(state.get("awaiting_financing_vehicle_selection")),
-            numbered_plan_lines="",
-        )
-        if financing_flags.get("ask_plan_vehicle_info"):
-            _debug(
-                "vehicle_detail_financing_plan_info",
-                ask_images=image_flags.get("ask_images"),
-                ask_more_images=image_flags.get("ask_more_images"),
-            )
     if image_flags.get("ask_images"):
         _debug("vehicle_detail_same_turn_first_images", vehicle_id=vehicle_id)
         _append_assistant_blocks(state, blocks)
@@ -712,6 +825,48 @@ def _respond_with_vehicle_detail(state: clientState, vehicle_summary: dict[str, 
             return _respond_with_more_images(state)
         return _respond_with_first_images(state)
     return _append_assistant_blocks(state, blocks)
+
+
+def _handle_awaiting_purchase_preferences(state: clientState, user_text: str) -> clientState:
+    """Procesa respuestas de transmision/pago tras seleccionar vehiculo."""
+
+    previous_bot_message = str(state.get("last_bot_message", "")).strip()
+    existing_transmission = _normalize_preference_value(
+        str(state.get("selected_transmission", "")),
+        kind="transmission",
+    )
+    existing_payment = _normalize_preference_value(
+        str(state.get("selected_payment_type", "")),
+        kind="payment",
+    )
+    transmission, payment = _resolve_purchase_preferences(user_text, previous_bot_message)
+    if not transmission and existing_transmission:
+        transmission = existing_transmission
+    if not payment and existing_payment:
+        payment = existing_payment
+
+    state["selected_transmission"] = transmission
+    state["selected_payment_type"] = payment
+    _debug(
+        "purchase_preferences_resolved",
+        transmission=transmission or None,
+        payment_type=payment or None,
+    )
+
+    need_transmission = not transmission
+    need_payment = not payment
+    if need_transmission or need_payment:
+        state["awaiting_purchase_preferences"] = True
+        return append_assistant_message(
+            state,
+            _build_purchase_preferences_reask_message(
+                need_transmission=need_transmission,
+                need_payment=need_payment,
+            ),
+        )
+
+    state["awaiting_purchase_preferences"] = False
+    return _respond_with_selected_vehicle_detail_and_purchase_question(state)
 
 
 def _top_vehicle_candidates(
@@ -741,6 +896,7 @@ def _respond_available_list(
 ) -> clientState:
     """Muestra inventario disponible y limpia contexto de selección previa."""
     state["awaiting_purchase_confirmation"] = False
+    _clear_purchase_preferences(state)
     sorted_vehicles = sort_vehicles_by_outbound_priority(vehicles)
     state["last_vehicle_candidates"] = _top_vehicle_candidates(sorted_vehicles, available_only=True)
     state["selected_vehicle_id"] = ""
@@ -854,6 +1010,7 @@ def _respond_with_requirement_matches(
         temperature=0.42,
     )
     state["awaiting_purchase_confirmation"] = False
+    _clear_purchase_preferences(state)
     state["selected_vehicle_id"] = ""
     state["selected_car"] = ""
     state["vehicle_comparison_ctx"] = {}
@@ -1430,6 +1587,7 @@ def car_selection(state: clientState) -> clientState:
         "entry",
         user_text=user_text,
         normalized_text=normalized_text,
+        awaiting_purchase_preferences=bool(state.get("awaiting_purchase_preferences")),
         awaiting_purchase_confirmation=bool(state.get("awaiting_purchase_confirmation")),
         has_pending_candidates=bool(state.get("last_vehicle_candidates")),
     )
@@ -1468,14 +1626,28 @@ def car_selection(state: clientState) -> clientState:
         state["show_selected_vehicle_detail_once"] = False
         selected_vehicle_id = str(state.get("selected_vehicle_id", "")).strip()
         if selected_vehicle_id:
-            selected_detail = fetch_vehicle_by_id(selected_vehicle_id)
-            if isinstance(selected_detail, dict):
+            prefs_done = bool(
+                _normalize_preference_value(str(state.get("selected_transmission", "")), kind="transmission")
+                and _normalize_preference_value(str(state.get("selected_payment_type", "")), kind="payment")
+            )
+            if prefs_done and not state.get("awaiting_purchase_preferences"):
                 _debug(
                     "show_selected_vehicle_detail_once",
                     selected_vehicle_id=selected_vehicle_id,
                     selected_car=state.get("selected_car", ""),
                 )
+                return _respond_with_selected_vehicle_detail_and_purchase_question(state)
+            selected_detail = fetch_vehicle_by_id(selected_vehicle_id)
+            if isinstance(selected_detail, dict):
+                _debug(
+                    "show_selected_vehicle_preferences_once",
+                    selected_vehicle_id=selected_vehicle_id,
+                    selected_car=state.get("selected_car", ""),
+                )
                 return _respond_with_vehicle_detail(state, selected_detail)
+
+    if state.get("awaiting_purchase_preferences"):
+        return _handle_awaiting_purchase_preferences(state, user_text)
 
     if state.get("awaiting_purchase_confirmation"):
         previous_bot_message = str(state.get("last_bot_message", "")).strip()

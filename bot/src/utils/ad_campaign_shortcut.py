@@ -63,6 +63,9 @@ def can_apply_ad_campaign_shortcut(
 def _reset_commercial_progress_for_ad(state: dict[str, Any]) -> None:
     """Limpia flags/candidatos mid-sesion para dejar el turno en ficha de vehiculo."""
 
+    state["awaiting_purchase_preferences"] = False
+    state["selected_transmission"] = ""
+    state["selected_payment_type"] = ""
     state["awaiting_purchase_confirmation"] = False
     state["awaiting_financing_plan_selection"] = False
     state["awaiting_financing_vehicle_selection"] = False

@@ -4,6 +4,8 @@ import unittest
 
 from src.services.car_selection_fallback import (
     contains_signal_phrase,
+    detect_payment_type_preference,
+    detect_transmission_preference,
     is_cheapest_price_request,
     is_financing_request,
     is_first_images_request,
@@ -158,6 +160,20 @@ class CarSelectionFallbackTests(unittest.TestCase):
         )
         self.assertTrue(same_vehicle)
         self.assertTrue(unresolved_vehicle)
+
+    def test_detect_transmission_preference_clear_and_conflict(self) -> None:
+        self.assertEqual(detect_transmission_preference("lo quiero automatico"), "automatico")
+        self.assertEqual(detect_transmission_preference("mejor estandar"), "estandar")
+        self.assertEqual(detect_transmission_preference("caja manual por favor"), "estandar")
+        self.assertEqual(detect_transmission_preference("automatico o estandar no se"), "conflict")
+        self.assertIsNone(detect_transmission_preference("me interesa el color rojo"))
+
+    def test_detect_payment_type_preference_clear_and_conflict(self) -> None:
+        self.assertEqual(detect_payment_type_preference("seria de contado"), "contado")
+        self.assertEqual(detect_payment_type_preference("pago en efectivo"), "contado")
+        self.assertEqual(detect_payment_type_preference("financiado a meses"), "financiado")
+        self.assertEqual(detect_payment_type_preference("contado o financiado"), "conflict")
+        self.assertIsNone(detect_payment_type_preference("quiero ver fotos"))
 
 
 if __name__ == "__main__":

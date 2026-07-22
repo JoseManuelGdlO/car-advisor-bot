@@ -100,20 +100,18 @@ class VehicleCatalogFlowTests(GraphTestCase):
                     patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
                     patch("src.nodes.car_selection.search_vehicles", return_value=vehicles),
                     patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=vehicles[0]),
-                    patch(
-                        "src.nodes.car_selection.generate_vehicle_detail_conversation",
-                        return_value="Detalle del vehiculo: Nissan Versa 2004, color blanco.",
-                    ),
                 ):
                     updated = self.graph.invoke(state)
 
                 self.assertEqual(updated.get("current_node"), "car_selection")
                 self.assertEqual(updated.get("selected_vehicle_id"), "veh-1")
-                self.assertTrue(updated.get("awaiting_purchase_confirmation"))
+                self.assertTrue(updated.get("awaiting_purchase_preferences"))
+                self.assertFalse(updated.get("awaiting_purchase_confirmation"))
                 assistant_texts = [str(m.get("content", "")) for m in updated.get("messages", []) if m.get("role") == "assistant"]
                 joined = "\n".join(assistant_texts)
-                self.assertIn("Detalle del vehiculo:", joined)
-                self.assertIn("Nissan Versa", joined)
+                self.assertIn("Excelente elección", joined)
+                self.assertIn("Automático o Estándar", joined)
+                self.assertIn("contado o financiado", joined)
                 self.assertNotIn("/img/1.jpg", joined)
 
     def test_vehicle_detail_without_images_on_request_uses_no_images_copy(self) -> None:
@@ -140,6 +138,16 @@ class VehicleCatalogFlowTests(GraphTestCase):
             patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
             patch("src.nodes.car_selection.search_vehicles", return_value=vehicles),
             patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=vehicles[0]),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertTrue(updated.get("awaiting_purchase_preferences"))
+
+        state = with_user_message(updated, "automatico y de contado")
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=vehicles[0]),
             patch(
                 "src.nodes.car_selection.generate_vehicle_detail_conversation",
                 return_value="Detalle del vehiculo: Nissan Versa 2004, color blanco.",
@@ -152,11 +160,16 @@ class VehicleCatalogFlowTests(GraphTestCase):
                 "src.nodes.car_selection.generate_vehicle_purchase_question",
                 return_value="¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? 🚗✨",
             ),
+            patch(
+                "src.nodes.car_selection._llm_vehicle_image_flags",
+                return_value={"ask_images": False, "ask_more_images": False},
+            ),
         ):
             updated = self.graph.invoke(state)
 
         assistant_messages = [msg.get("content", "") for msg in updated.get("messages", []) if msg.get("role") == "assistant"]
         joined = "\n".join(assistant_messages)
+        self.assertTrue(updated.get("awaiting_purchase_confirmation"))
         self.assertNotIn("Lamentablemente no tenemos imagenes de este vehiculo", joined)
 
         state = with_user_message(updated, "muestrame fotos del versa")
@@ -282,6 +295,32 @@ class VehicleCatalogFlowTests(GraphTestCase):
                 "src.nodes.car_selection.generate_verified_user_message",
                 side_effect=lambda **kw: kw["fallback"],
             ),
+            patch(
+                "src.nodes.car_selection._llm_vehicle_image_flags",
+                return_value={"ask_images": False, "ask_more_images": False},
+            ),
+            patch(
+                "src.nodes.car_selection.generate_vehicle_purchase_question",
+                return_value="¿Te interesa agendar una prueba de manejo?",
+            ),
+            patch(
+                "src.nodes.car_selection.classify_vehicle_step_flags",
+                return_value={
+                    "ask_promotions": False,
+                    "ask_financing": False,
+                    "ask_images": False,
+                    "ask_more_images": False,
+                    "wants_compare_two_vehicles": False,
+                    "wants_other_vehicles": False,
+                    "confirm_purchase": False,
+                    "reject_purchase": False,
+                },
+            ),
+            patch("src.nodes.car_selection.classify_purchase_confirmation_intent", return_value="PREGUNTA_MODELO"),
+            patch(
+                "src.nodes.car_selection.generate_selected_vehicle_qa_response",
+                return_value="Datos del Nissan Versa 2011.",
+            ),
         ):
             state = self.graph.invoke(with_user_message(state, "hola"))
             self.assertEqual(state.get("intent"), "other")
@@ -292,6 +331,13 @@ class VehicleCatalogFlowTests(GraphTestCase):
 
             state = self.graph.invoke(with_user_message(state, "selecciono el nissan versa 2011"))
             self.assertEqual(state.get("selected_vehicle_id"), "veh-versa-2011")
+            self.assertTrue(state.get("awaiting_purchase_preferences"))
+            self.assertFalse(state.get("awaiting_purchase_confirmation"))
+
+            state = self.graph.invoke(with_user_message(state, "automatico y de contado"))
+            self.assertEqual(state.get("selected_vehicle_id"), "veh-versa-2011")
+            self.assertEqual(state.get("selected_transmission"), "automatico")
+            self.assertEqual(state.get("selected_payment_type"), "contado")
             self.assertTrue(state.get("awaiting_purchase_confirmation"))
 
             state = self.graph.invoke(with_user_message(state, "dame los datos del modelo"))
@@ -361,9 +407,9 @@ class VehicleCatalogFlowTests(GraphTestCase):
             updated = self.graph.invoke(state)
 
         self.assertEqual(updated.get("selected_vehicle_id"), "veh-versa")
-        # Al encontrar un match único se muestra detalle del nuevo vehículo y se vuelve
-        # a esperar confirmación de compra para esa unidad.
-        self.assertTrue(updated.get("awaiting_purchase_confirmation"))
+        # Al encontrar un match único se pide preferencias (transmision/pago) antes del detalle.
+        self.assertTrue(updated.get("awaiting_purchase_preferences"))
+        self.assertFalse(updated.get("awaiting_purchase_confirmation"))
         mocked_search.assert_called_once_with({"minPrice": 100000, "maxPrice": 200000})
 
     def test_requirement_search_filters_by_description_platform(self) -> None:
@@ -413,7 +459,8 @@ class VehicleCatalogFlowTests(GraphTestCase):
         self.assertIn("Swift", str(updated.get("selected_car", "")))
         mocked_requirement.assert_called_once()
         mocked_search.assert_not_called()
-        self.assertTrue(updated.get("awaiting_purchase_confirmation"))
+        self.assertTrue(updated.get("awaiting_purchase_preferences"))
+        self.assertFalse(updated.get("awaiting_purchase_confirmation"))
 
     def test_requirement_search_filters_by_passengers_metadata(self) -> None:
         five_seater = {
@@ -459,7 +506,8 @@ class VehicleCatalogFlowTests(GraphTestCase):
 
         self.assertEqual(updated.get("selected_vehicle_id"), "veh-ertiga")
         self.assertIn("Ertiga", str(updated.get("selected_car", "")))
-        self.assertTrue(updated.get("awaiting_purchase_confirmation"))
+        self.assertTrue(updated.get("awaiting_purchase_preferences"))
+        self.assertFalse(updated.get("awaiting_purchase_confirmation"))
 
     def test_requirement_search_no_matches_lists_available_directly(self) -> None:
         vehicles = [
@@ -574,7 +622,8 @@ class VehicleCatalogFlowTests(GraphTestCase):
 
         self.assertEqual(updated.get("selected_vehicle_id"), "veh-versa")
         self.assertIn("Versa", str(updated.get("selected_car", "")))
-        self.assertTrue(updated.get("awaiting_purchase_confirmation"))
+        self.assertTrue(updated.get("awaiting_purchase_preferences"))
+        self.assertFalse(updated.get("awaiting_purchase_confirmation"))
         mocked_requirement.assert_not_called()
         mocked_search.assert_not_called()
 
@@ -622,6 +671,130 @@ class VehicleCatalogFlowTests(GraphTestCase):
         self.assertEqual(updated.get("selected_vehicle_id"), "veh-swift")
         mocked_step_flags.assert_not_called()
         mocked_confirm.assert_not_called()
+
+    def test_purchase_preferences_complete_then_shows_detail(self) -> None:
+        vehicles = [
+            {
+                "id": "veh-1",
+                "brand": "Nissan",
+                "model": "Versa",
+                "year": 2020,
+                "status": "available",
+                "price": 180000,
+            }
+        ]
+        state = initial_state()
+        state["current_node"] = "car_selection"
+        state["intent"] = "vehicle_catalog"
+        state["selected_vehicle_id"] = "veh-1"
+        state["selected_car"] = "Nissan Versa 2020"
+        state["awaiting_purchase_preferences"] = True
+        state["last_bot_message"] = (
+            "¡Excelente elección! El Nissan Versa 2020 tenemos excelentes promociones este mes.\n"
+            "1. ¿Lo buscas Automático o Estándar?\n"
+            "2. ¿Sería de contado o financiado?"
+        )
+        state = with_user_message(state, "automatico y de contado")
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=vehicles[0]),
+            patch(
+                "src.nodes.car_selection.generate_vehicle_detail_conversation",
+                return_value="Detalle del Nissan Versa 2020.",
+            ),
+            patch(
+                "src.nodes.car_selection.generate_vehicle_purchase_question",
+                return_value="¿Te interesa agendar una prueba de manejo?",
+            ),
+            patch(
+                "src.nodes.car_selection._llm_vehicle_image_flags",
+                return_value={"ask_images": False, "ask_more_images": False},
+            ),
+            patch("src.nodes.car_selection.classify_purchase_preferences") as mocked_llm,
+        ):
+            updated = self.graph.invoke(state)
+
+        mocked_llm.assert_not_called()
+        self.assertEqual(updated.get("selected_transmission"), "automatico")
+        self.assertEqual(updated.get("selected_payment_type"), "contado")
+        self.assertFalse(updated.get("awaiting_purchase_preferences"))
+        self.assertTrue(updated.get("awaiting_purchase_confirmation"))
+        joined = "\n".join(
+            str(m.get("content", "")) for m in updated.get("messages", []) if m.get("role") == "assistant"
+        )
+        self.assertIn("Detalle del Nissan Versa 2020", joined)
+        self.assertIn("prueba de manejo", joined)
+
+    def test_purchase_preferences_conflict_uses_llm_classifier(self) -> None:
+        vehicles = [
+            {
+                "id": "veh-1",
+                "brand": "Nissan",
+                "model": "Versa",
+                "year": 2020,
+                "status": "available",
+            }
+        ]
+        state = initial_state()
+        state["current_node"] = "car_selection"
+        state["intent"] = "vehicle_catalog"
+        state["selected_vehicle_id"] = "veh-1"
+        state["selected_car"] = "Nissan Versa 2020"
+        state["awaiting_purchase_preferences"] = True
+        state["last_bot_message"] = "1. ¿Lo buscas Automático o Estándar?\n2. ¿Sería de contado o financiado?"
+        state = with_user_message(state, "automatico o estandar, y de contado")
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=vehicles[0]),
+            patch(
+                "src.nodes.car_selection.classify_purchase_preferences",
+                return_value={"transmission": "AUTOMATICO", "payment_type": "CONTADO"},
+            ),
+            patch(
+                "src.nodes.car_selection.generate_vehicle_detail_conversation",
+                return_value="Detalle del Versa.",
+            ),
+            patch(
+                "src.nodes.car_selection.generate_vehicle_purchase_question",
+                return_value="¿Prueba de manejo?",
+            ),
+            patch(
+                "src.nodes.car_selection._llm_vehicle_image_flags",
+                return_value={"ask_images": False, "ask_more_images": False},
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertEqual(updated.get("selected_transmission"), "automatico")
+        self.assertEqual(updated.get("selected_payment_type"), "contado")
+        self.assertTrue(updated.get("awaiting_purchase_confirmation"))
+
+    def test_purchase_preferences_incomplete_reasks(self) -> None:
+        vehicles = [{"id": "veh-1", "brand": "Nissan", "model": "Versa", "year": 2020, "status": "available"}]
+        state = initial_state()
+        state["current_node"] = "car_selection"
+        state["intent"] = "vehicle_catalog"
+        state["selected_vehicle_id"] = "veh-1"
+        state["selected_car"] = "Nissan Versa 2020"
+        state["awaiting_purchase_preferences"] = True
+        state["last_bot_message"] = "1. ¿Lo buscas Automático o Estándar?\n2. ¿Sería de contado o financiado?"
+        state = with_user_message(state, "automatico")
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch(
+                "src.nodes.car_selection.classify_purchase_preferences",
+                return_value={"transmission": "AUTOMATICO", "payment_type": "UNKNOWN"},
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertTrue(updated.get("awaiting_purchase_preferences"))
+        self.assertEqual(updated.get("selected_transmission"), "automatico")
+        self.assertEqual(updated.get("selected_payment_type"), "")
+        self.assertIn("contado o financiado", updated["messages"][-1]["content"])
 
 
 class CarSelectionSmokeTests(GraphTestCase):

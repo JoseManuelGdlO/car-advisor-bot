@@ -108,11 +108,16 @@ def router(state: clientState) -> clientState:
         user_text=user_text,
         normalized_text=text,
         previous_intent=state.get("intent", ""),
+        awaiting_purchase_preferences=bool(state.get("awaiting_purchase_preferences")),
         awaiting_purchase_confirmation=bool(state.get("awaiting_purchase_confirmation")),
         pending_candidates=bool(state.get("last_vehicle_candidates")),
     )
 
-    if state.get("awaiting_purchase_confirmation") or state.get("last_vehicle_candidates"):
+    if (
+        state.get("awaiting_purchase_preferences")
+        or state.get("awaiting_purchase_confirmation")
+        or state.get("last_vehicle_candidates")
+    ):
         state["intent"] = "vehicle_catalog"
         state["current_node"] = "car_selection"
         _debug_router("route_to_car_selection", reason="state_flags")

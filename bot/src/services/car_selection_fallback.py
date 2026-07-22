@@ -155,6 +155,76 @@ def is_financing_request(user_text: str, financing_signals_normalized: set[str])
     return any(contains_signal_phrase(normalized, signal) for signal in financing_signals_normalized)
 
 
+_AUTOMATIC_TRANSMISSION_SIGNALS: tuple[str, ...] = (
+    "automatico",
+    "automatica",
+    "caja automatica",
+    "transmision automatica",
+    "cvt",
+    "ta",
+)
+
+_STANDARD_TRANSMISSION_SIGNALS: tuple[str, ...] = (
+    "estandar",
+    "manual",
+    "caja manual",
+    "transmision manual",
+    "stick",
+)
+
+_CONTADO_PAYMENT_SIGNALS: tuple[str, ...] = (
+    "contado",
+    "de contado",
+    "efectivo",
+    "cash",
+    "pago de contado",
+)
+
+_FINANCIADO_PAYMENT_SIGNALS: tuple[str, ...] = (
+    "financiado",
+    "financiamiento",
+    "financiar",
+    "a credito",
+    "credito",
+    "a meses",
+    "mensualidades",
+)
+
+
+def detect_transmission_preference(user_text: str) -> str | None:
+    """Detecta preferencia de transmision: automatico, estandar, conflict o None."""
+
+    normalized = normalize_user_text(user_text)
+    if not normalized:
+        return None
+    has_auto = any(contains_signal_phrase(normalized, signal) for signal in _AUTOMATIC_TRANSMISSION_SIGNALS)
+    has_standard = any(contains_signal_phrase(normalized, signal) for signal in _STANDARD_TRANSMISSION_SIGNALS)
+    if has_auto and has_standard:
+        return "conflict"
+    if has_auto:
+        return "automatico"
+    if has_standard:
+        return "estandar"
+    return None
+
+
+def detect_payment_type_preference(user_text: str) -> str | None:
+    """Detecta preferencia de pago: contado, financiado, conflict o None."""
+
+    normalized = normalize_user_text(user_text)
+    if not normalized:
+        return None
+    has_contado = any(contains_signal_phrase(normalized, signal) for signal in _CONTADO_PAYMENT_SIGNALS)
+    has_financiado = any(contains_signal_phrase(normalized, signal) for signal in _FINANCIADO_PAYMENT_SIGNALS)
+    if has_contado and has_financiado:
+        return "conflict"
+    if has_contado:
+        return "contado"
+    if has_financiado:
+        return "financiado"
+    return None
+
+
 _COLOR_QUESTION_SIGNALS: tuple[str, ...] = (
     "color",
     "de que color",
