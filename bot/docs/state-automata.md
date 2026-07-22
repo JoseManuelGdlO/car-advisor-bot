@@ -9,7 +9,7 @@ Este documento define el diagrama de estados del flujo conversacional actual. El
 - `customer_onboarding`: gate de bienvenida (`welcomeMessage` literal una vez); siempre continúa a `intent_checker`.
 - `intent_checker`: detecta si la entrada interrumpe un flujo activo con FAQ.
 - `router`: clasifica la intencion principal y decide nodo destino.
-- `car_selection`: explora catalogo, filtra, compara dos vehiculos (sin cambiar `selected_vehicle_id` hasta nueva eleccion) y permite avanzar a compra.
+- `car_selection`: explora catalogo, filtra, compara dos vehiculos (sin cambiar `selected_vehicle_id` hasta nueva eleccion), captura preferencias de transmision/pago y permite avanzar a compra. La narrativa de detalle se muestra tras preferencias; el PDF de ficha tecnica solo bajo pedido explicito o junto a un pedido de imagenes.
 - `financing`: consulta planes financieros y cruza con vehiculos.
 - `promotions`: consulta promociones y cruza con vehiculos aplicables.
 - `lead_capture`: comparte enlace de Google Calendar para agendar prueba de manejo o visita, notifica al asesor y desactiva el bot.
@@ -21,8 +21,9 @@ Este documento define el diagrama de estados del flujo conversacional actual. El
 - `user_requests_catalog`: usuario pide ver inventario o filtrar vehiculos.
 - `user_requests_financing`: usuario pregunta por pagos, credito o enganche.
 - `user_requests_promotions`: usuario pregunta por promociones o descuentos.
-- `user_selects_car`: usuario confirma interes en un vehiculo.
+- `user_selects_car`: usuario confirma interes en un vehiculo (luego preferencias transmision/pago antes del detalle).
 - `user_confirms_visit_interest`: usuario confirma interes en prueba de manejo o visita (desde car_selection/financing/promotions).
+- `user_asks_images_or_technical_sheet`: pedido de fotos (LLM) o ficha PDF (heuristica); las fotos co-envian el PDF si hay URL.
 
 ## Diagrama
 
@@ -48,7 +49,7 @@ stateDiagram-v2
     car_selection --> financing: user_requests_financing
     car_selection --> promotions: user_requests_promotions
     car_selection --> lead_capture: confirm_purchase_flow
-    car_selection --> [*]: render_catalog_or_vehicle_detail
+    car_selection --> [*]: render_catalog_preferences_or_detail
 
     financing --> car_selection: select_plan_and_view_vehicles
     financing --> lead_capture: confirm_vehicle_interest

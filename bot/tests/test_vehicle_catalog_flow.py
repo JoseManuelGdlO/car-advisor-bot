@@ -176,6 +176,7 @@ class VehicleCatalogFlowTests(GraphTestCase):
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
             patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=vehicles[0]),
             patch(
                 "src.utils.vehicle_images.fetch_vehicle_images",
                 return_value={"images": [], "hasMore": False, "mode": "top"},
@@ -215,6 +216,7 @@ class VehicleCatalogFlowTests(GraphTestCase):
                 "engine": "1.6",
                 "color": "blanco",
                 "description": "",
+                "technicalSheetUrl": "/uploads/autobot/versa-ficha.pdf",
             }
         ]
         state = initial_state()
@@ -227,6 +229,7 @@ class VehicleCatalogFlowTests(GraphTestCase):
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
             patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=vehicles[0]),
             patch(
                 "src.nodes.car_selection.classify_vehicle_step_flags",
                 return_value={
@@ -248,7 +251,11 @@ class VehicleCatalogFlowTests(GraphTestCase):
             updated = self.graph.invoke(state)
 
         self.assertEqual(updated.get("vehicle_images_last_batch"), ["/img/1.jpg", "/img/2.jpg"])
-        self.assertIn("/img/1.jpg", updated["messages"][-1]["content"])
+        contents = [m["content"] for m in updated["messages"] if m.get("role") == "assistant"]
+        joined = "\n".join(contents)
+        self.assertIn("/img/1.jpg", joined)
+        self.assertIn("versa-ficha.pdf", joined)
+        self.assertEqual(updated.get("technical_sheet_delivered_vehicle_id"), "veh-1")
 
     def test_multiturn_greeting_models_selection_and_model_details_flow(self) -> None:
         versa_2011 = {
@@ -681,6 +688,7 @@ class VehicleCatalogFlowTests(GraphTestCase):
                 "year": 2020,
                 "status": "available",
                 "price": 180000,
+                "technicalSheetUrl": "/uploads/autobot/versa-ficha.pdf",
             }
         ]
         state = initial_state()
@@ -725,6 +733,10 @@ class VehicleCatalogFlowTests(GraphTestCase):
         )
         self.assertIn("Detalle del Nissan Versa 2020", joined)
         self.assertIn("prueba de manejo", joined)
+        self.assertNotIn("versa-ficha.pdf", joined)
+        self.assertNotIn("ficha técnica", joined.lower())
+        self.assertNotIn("<<WC_DOCUMENT_JSON>>", joined)
+        self.assertEqual(updated.get("technical_sheet_delivered_vehicle_id"), "")
 
     def test_purchase_preferences_conflict_uses_llm_classifier(self) -> None:
         vehicles = [

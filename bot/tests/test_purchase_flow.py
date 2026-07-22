@@ -436,6 +436,72 @@ class PurchaseFlowTests(GraphTestCase):
         self.assertNotIn("ficha técnica", joined.lower())
         self.assertEqual(updated.get("technical_sheet_delivered_vehicle_id"), "veh-dzire")
 
+    def test_pregunta_modelo_skips_technical_sheet_when_not_yet_delivered(self) -> None:
+        """QA generica no adjunta PDF aunque la ficha nunca se haya enviado."""
+        state = initial_state()
+        state["platform"] = "web"
+        state["current_node"] = "car_selection"
+        state["intent"] = "vehicle_catalog"
+        state["selected_car"] = "Suzuki Dzire 2026"
+        state["selected_vehicle_id"] = "veh-dzire"
+        state["technical_sheet_delivered_vehicle_id"] = ""
+        state["awaiting_purchase_confirmation"] = True
+        state["vehicle_images_last_batch"] = []
+        state["last_bot_message"] = (
+            "¿Te gustaría agendar una prueba de manejo o ver este vehículo en persona? 🚗✨"
+        )
+        state = with_user_message(state, "cuantos kilometros tiene?")
+
+        vehicles = [{"id": "veh-dzire", "brand": "Suzuki", "model": "Dzire", "year": 2026, "status": "available"}]
+        dzire_detail = {
+            "id": "veh-dzire",
+            "brand": "Suzuki",
+            "model": "Dzire",
+            "year": 2026,
+            "status": "available",
+            "price": 312990,
+            "km": 0,
+            "transmission": "manual",
+            "engine": "1.2",
+            "color": "blanco",
+            "description": "Sedan eficiente",
+            "technicalSheetUrl": "/uploads/autobot/dzire-ficha.pdf",
+        }
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=dzire_detail),
+            patch(
+                "src.nodes.car_selection.classify_vehicle_step_flags",
+                return_value={
+                    "ask_promotions": False,
+                    "ask_financing": False,
+                    "ask_images": False,
+                    "ask_more_images": False,
+                    "wants_compare_two_vehicles": False,
+                    "wants_other_vehicles": False,
+                    "confirm_purchase": False,
+                    "reject_purchase": False,
+                },
+            ),
+            patch(
+                "src.nodes.car_selection.classify_purchase_confirmation_intent",
+                return_value="PREGUNTA_MODELO",
+            ),
+            patch(
+                "src.nodes.car_selection.generate_selected_vehicle_qa_response",
+                return_value="Es un vehiculo nuevo (0 km).",
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        contents = [m["content"] for m in updated["messages"] if m.get("role") == "assistant"]
+        joined = "\n".join(contents)
+        self.assertIn("0 km", joined)
+        self.assertNotIn("dzire-ficha.pdf", joined)
+        self.assertNotIn("ficha técnica", joined.lower())
+        self.assertEqual(updated.get("technical_sheet_delivered_vehicle_id"), "")
+
     def test_pregunta_modelo_skips_technical_sheet_when_missing(self) -> None:
         state = initial_state()
         state["platform"] = "whatsapp"
@@ -541,16 +607,28 @@ class PurchaseFlowTests(GraphTestCase):
 
     def test_purchase_classifier_first_images_fetches_top_batch(self) -> None:
         state = initial_state()
+        state["platform"] = "whatsapp"
+        state["user_id"] = "5215512345678"
         state["current_node"] = "car_selection"
         state["selected_car"] = "Nissan Versa 2004"
         state["selected_vehicle_id"] = "veh-1"
         state["awaiting_purchase_confirmation"] = True
+        state["technical_sheet_delivered_vehicle_id"] = ""
         state = with_user_message(state, "muestrame fotos del auto")
 
         vehicles = [{"id": "veh-1", "brand": "Nissan", "model": "Versa", "year": 2004, "status": "available"}]
+        detail = {
+            "id": "veh-1",
+            "brand": "Nissan",
+            "model": "Versa",
+            "year": 2004,
+            "status": "available",
+            "technicalSheetUrl": "/uploads/autobot/versa-ficha.pdf",
+        }
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
             patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=detail),
             patch(
                 "src.nodes.car_selection.classify_vehicle_step_flags",
                 return_value={
@@ -572,7 +650,62 @@ class PurchaseFlowTests(GraphTestCase):
             updated = self.graph.invoke(state)
 
         self.assertEqual(updated.get("vehicle_images_last_batch"), ["/img/1.jpg"])
-        self.assertIn("/img/1.jpg", updated["messages"][-1]["content"])
+        contents = [m["content"] for m in updated["messages"] if m.get("role") == "assistant"]
+        joined = "\n".join(contents)
+        self.assertIn("/img/1.jpg", joined)
+        document_blocks = [content for content in contents if "<<WC_DOCUMENT_JSON>>" in content]
+        self.assertEqual(len(document_blocks), 1)
+        self.assertIn("versa-ficha.pdf", document_blocks[0])
+        self.assertEqual(updated.get("technical_sheet_delivered_vehicle_id"), "veh-1")
+
+    def test_purchase_classifier_first_images_skips_sheet_when_already_delivered(self) -> None:
+        state = initial_state()
+        state["platform"] = "web"
+        state["current_node"] = "car_selection"
+        state["selected_car"] = "Nissan Versa 2004"
+        state["selected_vehicle_id"] = "veh-1"
+        state["awaiting_purchase_confirmation"] = True
+        state["technical_sheet_delivered_vehicle_id"] = "veh-1"
+        state = with_user_message(state, "muestrame fotos del auto")
+
+        vehicles = [{"id": "veh-1", "brand": "Nissan", "model": "Versa", "year": 2004, "status": "available"}]
+        detail = {
+            "id": "veh-1",
+            "brand": "Nissan",
+            "model": "Versa",
+            "year": 2004,
+            "status": "available",
+            "technicalSheetUrl": "/uploads/autobot/versa-ficha.pdf",
+        }
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=detail),
+            patch(
+                "src.nodes.car_selection.classify_vehicle_step_flags",
+                return_value={
+                    "ask_promotions": False,
+                    "ask_financing": False,
+                    "ask_images": True,
+                    "ask_more_images": False,
+                    "wants_compare_two_vehicles": False,
+                    "wants_other_vehicles": False,
+                    "confirm_purchase": False,
+                    "reject_purchase": False,
+                },
+            ),
+            patch(
+                "src.utils.vehicle_images.fetch_vehicle_images",
+                return_value={"images": ["/img/1.jpg"], "nextCursor": 1, "hasMore": False, "mode": "top"},
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        joined = "\n".join(m["content"] for m in updated["messages"] if m.get("role") == "assistant")
+        self.assertIn("/img/1.jpg", joined)
+        self.assertNotIn("versa-ficha.pdf", joined)
+        self.assertNotIn("ficha técnica", joined.lower())
+        self.assertEqual(updated.get("technical_sheet_delivered_vehicle_id"), "veh-1")
 
     def test_more_images_reply_does_not_route_to_faq_when_awaiting_confirmation(self) -> None:
         state = initial_state()
