@@ -1278,6 +1278,16 @@ def _respond_other_vehicles_with_optional_filters(
 ) -> clientState:
     """Resuelve `ver otros`: aplica filtros del turno o vuelve a listado general."""
 
+    # Salir del vehiculo actual antes de buscar/listar otros. Si la busqueda filtrada
+    # queda vacia o con varios matches, no debe quedar awaiting_purchase_preferences.
+    state["awaiting_purchase_confirmation"] = False
+    _clear_purchase_preferences(state)
+    state["selected_vehicle_id"] = ""
+    state["selected_car"] = ""
+    state["vehicle_comparison_ctx"] = {}
+    _reset_vehicle_images_state(state)
+    _reset_technical_sheet_delivery(state)
+
     filters = detect_vehicle_filters(user_text, vehicles)
     _debug("other_vehicles_filters_detected", filters=filters)
     if filters:
@@ -1327,6 +1337,9 @@ def _respond_with_filtered_search(
 
     if not filtered:
         _debug(f"{source}_search_empty", filters=filters)
+        # Busqueda sin resultados: no dejar al usuario atrapado en preferencias/confirmacion.
+        state["awaiting_purchase_confirmation"] = False
+        _clear_purchase_preferences(state)
         price_hint = _price_hint_from_filters(filters)
         message = generate_verified_user_message(
             mode="inventory_search_empty",
@@ -1377,6 +1390,11 @@ def _respond_with_filtered_search(
                 ),
                 temperature=0.35,
             )
+    # Multi-match: candidatos pendientes reemplazan seleccion/preferencias previas.
+    state["awaiting_purchase_confirmation"] = False
+    _clear_purchase_preferences(state)
+    state["selected_vehicle_id"] = ""
+    state["selected_car"] = ""
     state["last_vehicle_candidates"] = _top_vehicle_candidates(filtered)
     _debug(f"{source}_pending_candidates_saved", count=len(state["last_vehicle_candidates"]))
     return append_assistant_message(state, message)
@@ -1763,7 +1781,6 @@ def car_selection(state: clientState) -> clientState:
         _debug("purchase_preferences_vehicle_step_flags", **step_flags)
         # Escapes: no forzar transmision/pago si el usuario quiere salir al catalogo.
         if step_flags.get("wants_other_vehicles"):
-            state["awaiting_purchase_confirmation"] = False
             return _respond_other_vehicles_with_optional_filters(state, vehicles, user_text)
         if step_flags.get("reject_purchase"):
             return _respond_available_list(state, vehicles)
@@ -1815,7 +1832,6 @@ def car_selection(state: clientState) -> clientState:
         ):
             return _respond_selected_vehicle_inventory_qa(state, user_text)
         if step_flags.get("wants_other_vehicles"):
-            state["awaiting_purchase_confirmation"] = False
             return _respond_other_vehicles_with_optional_filters(state, vehicles, user_text)
         if step_flags.get("reject_purchase"):
             return _respond_available_list(state, vehicles)
