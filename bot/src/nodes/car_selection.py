@@ -1688,6 +1688,16 @@ def car_selection(state: clientState) -> clientState:
                 return _respond_with_vehicle_detail(state, selected_detail)
 
     if state.get("awaiting_purchase_preferences"):
+        previous_bot_message = str(state.get("last_bot_message", "")).strip()
+        selected_car_name = str(state.get("selected_car", "")).strip()
+        step_flags = classify_vehicle_step_flags(previous_bot_message, user_text, selected_car_name)
+        _debug("purchase_preferences_vehicle_step_flags", **step_flags)
+        # Escapes: no forzar transmision/pago si el usuario quiere salir al catalogo.
+        if step_flags.get("wants_other_vehicles"):
+            state["awaiting_purchase_confirmation"] = False
+            return _respond_other_vehicles_with_optional_filters(state, vehicles, user_text)
+        if step_flags.get("reject_purchase"):
+            return _respond_available_list(state, vehicles)
         return _handle_awaiting_purchase_preferences(state, user_text)
 
     if state.get("awaiting_purchase_confirmation"):

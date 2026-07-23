@@ -285,11 +285,22 @@ Tras seleccionar un vehículo (`_respond_with_vehicle_detail`), el bot **no** mu
 
 | Orden | Función | Tipo |
 |-------|---------|------|
+| 0 | `classify_vehicle_step_flags` | L — escapes: `wants_other_vehicles` / `reject_purchase` → catálogo |
 | 1 | `detect_transmission_preference` / `detect_payment_type_preference` | H |
 | 2 | `classify_purchase_preferences` | L (si hay conflicto o ambigüedad) |
 | 3 | Completas → `_respond_with_selected_vehicle_detail_and_purchase_question` | L narrativa |
 
 Campos: `selected_transmission`, `selected_payment_type`, `awaiting_purchase_preferences`.
+
+```mermaid
+flowchart TD
+    prefs[awaiting_purchase_preferences] --> flags["classify_vehicle_step_flags L"]
+    flags -->|wants_other_vehicles| otherList[listado filtrado o general]
+    flags -->|reject_purchase| availableList[listado]
+    flags -->|sin escape| resolve["heuristica + classify_purchase_preferences L"]
+    resolve -->|faltan campos| reask[repregunta fija]
+    resolve -->|completas| detail["_respond_with_selected_vehicle_detail_and_purchase_question"]
+```
 
 #### Sub-flujo A: confirmación de compra (`awaiting_purchase_confirmation`)
 

@@ -703,10 +703,21 @@ class VehicleCatalogFlowTests(GraphTestCase):
             "2. ¿Sería de contado o financiado?"
         )
         state = with_user_message(state, "automatico y de contado")
+        neutral_step_flags = {
+            "ask_promotions": False,
+            "ask_financing": False,
+            "ask_images": False,
+            "ask_more_images": False,
+            "wants_compare_two_vehicles": False,
+            "wants_other_vehicles": False,
+            "confirm_purchase": False,
+            "reject_purchase": False,
+        }
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
             patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
             patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=vehicles[0]),
+            patch("src.nodes.car_selection.classify_vehicle_step_flags", return_value=neutral_step_flags),
             patch(
                 "src.nodes.car_selection.generate_vehicle_detail_conversation",
                 return_value="Detalle del Nissan Versa 2020.",
@@ -756,10 +767,21 @@ class VehicleCatalogFlowTests(GraphTestCase):
         state["awaiting_purchase_preferences"] = True
         state["last_bot_message"] = "1. ¿Lo buscas Automático o Estándar?\n2. ¿Sería de contado o financiado?"
         state = with_user_message(state, "automatico o estandar, y de contado")
+        neutral_step_flags = {
+            "ask_promotions": False,
+            "ask_financing": False,
+            "ask_images": False,
+            "ask_more_images": False,
+            "wants_compare_two_vehicles": False,
+            "wants_other_vehicles": False,
+            "confirm_purchase": False,
+            "reject_purchase": False,
+        }
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
             patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
             patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=vehicles[0]),
+            patch("src.nodes.car_selection.classify_vehicle_step_flags", return_value=neutral_step_flags),
             patch(
                 "src.nodes.car_selection.classify_purchase_preferences",
                 return_value={"transmission": "AUTOMATICO", "payment_type": "CONTADO"},
@@ -793,9 +815,20 @@ class VehicleCatalogFlowTests(GraphTestCase):
         state["awaiting_purchase_preferences"] = True
         state["last_bot_message"] = "1. ¿Lo buscas Automático o Estándar?\n2. ¿Sería de contado o financiado?"
         state = with_user_message(state, "automatico")
+        neutral_step_flags = {
+            "ask_promotions": False,
+            "ask_financing": False,
+            "ask_images": False,
+            "ask_more_images": False,
+            "wants_compare_two_vehicles": False,
+            "wants_other_vehicles": False,
+            "confirm_purchase": False,
+            "reject_purchase": False,
+        }
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
             patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.classify_vehicle_step_flags", return_value=neutral_step_flags),
             patch(
                 "src.nodes.car_selection.classify_purchase_preferences",
                 return_value={"transmission": "AUTOMATICO", "payment_type": "UNKNOWN"},
@@ -807,6 +840,86 @@ class VehicleCatalogFlowTests(GraphTestCase):
         self.assertEqual(updated.get("selected_transmission"), "automatico")
         self.assertEqual(updated.get("selected_payment_type"), "")
         self.assertIn("contado o financiado", updated["messages"][-1]["content"])
+
+    def test_purchase_preferences_other_vehicles_escapes(self) -> None:
+        vehicles = [
+            {"id": "veh-1", "brand": "Nissan", "model": "Versa", "year": 2020, "status": "available"},
+            {"id": "veh-2", "brand": "Toyota", "model": "Corolla", "year": 2021, "status": "available"},
+        ]
+        state = initial_state()
+        state["current_node"] = "car_selection"
+        state["intent"] = "vehicle_catalog"
+        state["selected_vehicle_id"] = "veh-1"
+        state["selected_car"] = "Nissan Versa 2020"
+        state["awaiting_purchase_preferences"] = True
+        state["selected_transmission"] = "automatico"
+        state["last_bot_message"] = "1. ¿Lo buscas Automático o Estándar?\n2. ¿Sería de contado o financiado?"
+        state = with_user_message(state, "muéstrame otros modelos")
+        escape_flags = {
+            "ask_promotions": False,
+            "ask_financing": False,
+            "ask_images": False,
+            "ask_more_images": False,
+            "wants_compare_two_vehicles": False,
+            "wants_other_vehicles": True,
+            "confirm_purchase": False,
+            "reject_purchase": False,
+        }
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.classify_vehicle_step_flags", return_value=escape_flags),
+            patch("src.nodes.car_selection.classify_purchase_preferences") as mocked_prefs,
+            patch(
+                "src.nodes.car_selection._llm_vehicle_image_flags",
+                return_value={"ask_images": False, "ask_more_images": False},
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        mocked_prefs.assert_not_called()
+        self.assertFalse(updated.get("awaiting_purchase_preferences"))
+        self.assertEqual(updated.get("selected_transmission"), "")
+        self.assertEqual(updated.get("selected_payment_type"), "")
+        self.assertEqual(updated.get("selected_vehicle_id"), "")
+        self.assertEqual(updated.get("selected_car"), "")
+        self.assertIn("Corolla", updated["messages"][-1]["content"])
+
+    def test_purchase_preferences_reject_escapes_to_catalog(self) -> None:
+        vehicles = [
+            {"id": "veh-1", "brand": "Nissan", "model": "Versa", "year": 2020, "status": "available"},
+            {"id": "veh-2", "brand": "Honda", "model": "Civic", "year": 2019, "status": "available"},
+        ]
+        state = initial_state()
+        state["current_node"] = "car_selection"
+        state["intent"] = "vehicle_catalog"
+        state["selected_vehicle_id"] = "veh-1"
+        state["selected_car"] = "Nissan Versa 2020"
+        state["awaiting_purchase_preferences"] = True
+        state["last_bot_message"] = "1. ¿Lo buscas Automático o Estándar?\n2. ¿Sería de contado o financiado?"
+        state = with_user_message(state, "mejor no, ya no me interesa")
+        escape_flags = {
+            "ask_promotions": False,
+            "ask_financing": False,
+            "ask_images": False,
+            "ask_more_images": False,
+            "wants_compare_two_vehicles": False,
+            "wants_other_vehicles": False,
+            "confirm_purchase": False,
+            "reject_purchase": True,
+        }
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.classify_vehicle_step_flags", return_value=escape_flags),
+            patch("src.nodes.car_selection.classify_purchase_preferences") as mocked_prefs,
+        ):
+            updated = self.graph.invoke(state)
+
+        mocked_prefs.assert_not_called()
+        self.assertFalse(updated.get("awaiting_purchase_preferences"))
+        self.assertEqual(updated.get("selected_vehicle_id"), "")
+        self.assertIn("Civic", updated["messages"][-1]["content"])
 
 
 class CarSelectionSmokeTests(GraphTestCase):
