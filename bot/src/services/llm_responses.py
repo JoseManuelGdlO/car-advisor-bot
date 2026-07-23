@@ -47,6 +47,11 @@ from src.utils.prompts import (
     build_settings_block,
     build_verified_user_message_prompt,
 )
+from src.utils.purchase_flow_messages import (
+    LEAD_CONTACT_FOLLOWUP_WHATSAPP_CALL,
+    contact_preference_resume_message,
+    purchase_preferences_resume_message,
+)
 from src.utils.signals import is_simple_greeting
 
 from src.utils.app_logging import get_app_logger
@@ -823,50 +828,6 @@ def generate_lead_capture_scheduling_message(
         user_message="",
         fallback=fallback,
         temperature=0.35,
-    )
-
-
-def generate_vehicle_purchase_question(*, images_invite_mode: str = "none") -> str:
-    """Genera pregunta de cierre (interes en prueba de manejo o visita en persona) anclada a reglas literales.
-
-    images_invite_mode: "none" | "more"
-    """
-
-    mode = (images_invite_mode or "none").strip().lower()
-    if mode not in {"none", "more"}:
-        mode = "none"
-    common_rules = (
-        "prohibido: fechas, horas, dias, lugar, disponibilidad de agenda, coordinar cita\n"
-        "solo_pregunta_interes: si (respuesta esperada: si, no, o pedir fotos/imagenes si aplica)\n"
-        "el_equipo_dara_seguimiento: si (el bot no agenda ni confirma horarios)\n"
-    )
-    if mode == "more":
-        literal = (
-            "instruccion_sistema: El usuario puede confirmar interes en prueba de manejo o ver el vehiculo en persona, "
-            "o pedir ver mas imagenes del mismo.\n"
-            + common_rules
-            + "texto_base_literal: ¿Te gustaría agendar una prueba de manejo o ver este vehículo en persona? 🚗✨\n"
-            "permite_emojis: si (maximo 2)\n"
-        )
-        fallback = (
-            "¿Te gustaría agendar una prueba de manejo o ver este vehículo en persona? "
-            "También puedes pedir ver más imágenes del mismo. 🚗✨"
-        )
-    else:
-        literal = (
-            "instruccion_sistema: El usuario puede confirmar interes en prueba de manejo o ver el vehiculo en persona "
-            "(sin opcion de imagenes en este turno).\n"
-            + common_rules
-            + "texto_base_literal: ¿Te gustaría agendar una prueba de manejo o ver este vehículo en persona? 🚗✨\n"
-            "permite_emojis: si (maximo 2)\n"
-        )
-        fallback = "¿Te gustaría agendar una prueba de manejo o ver este vehículo en persona? 🚗✨"
-    return generate_verified_user_message(
-        mode="purchase_question",
-        verified_facts_block=literal,
-        user_message="",
-        fallback=fallback,
-        temperature=0.7,
     )
 
 
@@ -1877,10 +1838,15 @@ def _faq_resume_flow_snapshot(state: clientState) -> dict[str, str | bool | int]
     selected_car = str(state.get("selected_car", "")).strip()
     pending = state.get("last_vehicle_candidates")
     pending_n = len(pending) if isinstance(pending, list) else 0
+    contact_method = str(state.get("contact_method", "")).strip().lower()
     return {
         "selected_car": selected_car,
         "has_selected_car": bool(selected_car),
+        "awaiting_purchase_preferences": bool(state.get("awaiting_purchase_preferences")),
+        "selected_transmission": str(state.get("selected_transmission", "")).strip(),
+        "selected_payment_type": str(state.get("selected_payment_type", "")).strip(),
         "awaiting_purchase_confirmation": bool(state.get("awaiting_purchase_confirmation")),
+        "contact_method": contact_method,
         "pending_vehicle_candidates": pending_n,
         "financing_plan_name": str(state.get("selected_financing_plan_name", "")).strip(),
         "has_financing_plan": bool(str(state.get("selected_financing_plan_name", "")).strip()),
@@ -1897,19 +1863,34 @@ def _faq_resume_flow_snapshot(state: clientState) -> dict[str, str | bool | int]
     }
 
 
+def _faq_resume_fixed_literal(snapshot: dict[str, str | bool | int]) -> str | None:
+    """Literales fijos para pasos awaiting_purchase_*; None si debe usarse LLM/fallback."""
+
+    if snapshot.get("awaiting_purchase_preferences"):
+        return purchase_preferences_resume_message()
+    if snapshot.get("awaiting_purchase_confirmation"):
+        return contact_preference_resume_message()
+    return None
+
+
 def _faq_resume_step_context(step: str, snapshot: dict[str, str | bool | int]) -> str:
     car = str(snapshot.get("selected_car", "")).strip()
+    contact_method = str(snapshot.get("contact_method", "")).strip().lower()
     if step == "car_selection":
+        if snapshot.get("awaiting_purchase_preferences"):
+            suffix = f" del vehiculo ya elegido ({car})" if car else ""
+            return f"captura de preferencias de transmision y pago{suffix}"
         if car and snapshot.get("awaiting_purchase_confirmation"):
-            return (
-                f"confirmacion de interes en prueba de manejo o visita del vehiculo ya elegido ({car})"
-            )
+            return f"preferencia de contacto (whatsapp, llamada o cita) para el vehiculo ya elegido ({car})"
         if car:
             return f"seguimiento del vehiculo ya elegido ({car}); no reiniciar busqueda en catalogo"
         if int(snapshot.get("pending_vehicle_candidates", 0)) > 0:
             return "desambiguacion entre candidatos de vehiculo ya listados"
         return "busqueda o seleccion inicial en catalogo"
     if step == "lead_capture":
+        if contact_method in {"whatsapp", "call"}:
+            car_bit = f" para el vehiculo ({car})" if car else ""
+            return f"seguimiento de contacto por {contact_method}{car_bit}; no hablar de agenda"
         if car:
             return f"agenda de prueba de manejo o visita para el vehiculo ({car})"
         return "agenda de prueba de manejo o visita"
@@ -1946,10 +1927,18 @@ def _faq_resume_flow_facts_block(snapshot: dict[str, str | bool | int]) -> str:
     car = str(snapshot.get("selected_car", "")).strip() or "(ninguno)"
     plan = str(snapshot.get("financing_plan_name", "")).strip() or "(ninguno)"
     promo = str(snapshot.get("promotion_title", "")).strip() or "(ninguno)"
+    transmission = str(snapshot.get("selected_transmission", "")).strip() or "(ninguno)"
+    payment = str(snapshot.get("selected_payment_type", "")).strip() or "(ninguno)"
+    contact_method = str(snapshot.get("contact_method", "")).strip() or "(ninguno)"
     return "\n".join(
         [
             f"vehiculo_seleccionado: {car}",
+            f"esperando_preferencias_compra: {str(bool(snapshot.get('awaiting_purchase_preferences'))).lower()}",
+            f"transmision_seleccionada: {transmission}",
+            f"tipo_pago_seleccionado: {payment}",
+            f"esperando_preferencia_contacto: {str(bool(snapshot.get('awaiting_purchase_confirmation'))).lower()}",
             f"esperando_confirmacion_compra: {str(bool(snapshot.get('awaiting_purchase_confirmation'))).lower()}",
+            f"metodo_contacto: {contact_method}",
             f"candidatos_vehiculo_pendientes: {int(snapshot.get('pending_vehicle_candidates', 0))}",
             f"plan_financiamiento_seleccionado: {plan}",
             f"esperando_seleccion_plan: {str(bool(snapshot.get('awaiting_financing_plan_selection'))).lower()}",
@@ -1967,16 +1956,17 @@ def _faq_resume_transition_fallback(
     resume_to_step: str,
     snapshot: dict[str, str | bool | int],
 ) -> str:
+    fixed = _faq_resume_fixed_literal(snapshot)
+    if fixed:
+        return fixed
+
     step = str(resume_to_step or "").strip()
     car = str(snapshot.get("selected_car", "")).strip()
     plan = str(snapshot.get("financing_plan_name", "")).strip()
     promo = str(snapshot.get("promotion_title", "")).strip()
+    contact_method = str(snapshot.get("contact_method", "")).strip().lower()
 
     if step == "car_selection":
-        if car and snapshot.get("awaiting_purchase_confirmation"):
-            return (
-                f"¿Seguimos con tu interés en {car} para una prueba de manejo o visita en persona?"
-            )
         if car:
             return f"¿Te gustaría seguir con {car} o ver más detalles del mismo?"
         if int(snapshot.get("pending_vehicle_candidates", 0)) > 0:
@@ -1984,6 +1974,8 @@ def _faq_resume_transition_fallback(
         return _FAQ_RESUME_TRANSITION_FALLBACKS["car_selection"]
 
     if step == "lead_capture":
+        if contact_method in {"whatsapp", "call"}:
+            return LEAD_CONTACT_FOLLOWUP_WHATSAPP_CALL
         if car:
             return f"¿Seguimos con el enlace para agendar tu prueba de manejo o visita con el {car}?"
         return _FAQ_RESUME_TRANSITION_FALLBACKS["lead_capture"]
@@ -2028,6 +2020,10 @@ def generate_faq_resume_transition(
 
     step = str(resume_to_step or "car_selection").strip() or "car_selection"
     snapshot = _faq_resume_flow_snapshot(state or {})
+    fixed = _faq_resume_fixed_literal(snapshot)
+    if fixed:
+        return fixed
+
     fallback = _faq_resume_transition_fallback(step, snapshot)
     last_bot = str(last_bot_message or "").strip()
     if not last_bot:
@@ -2053,6 +2049,7 @@ def generate_faq_resume_transition(
         fallback=fallback,
         temperature=0.4,
     )
+
 
 
 def generate_faq_user_turn(

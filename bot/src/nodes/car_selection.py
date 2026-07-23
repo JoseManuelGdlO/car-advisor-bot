@@ -52,6 +52,7 @@ from src.tools.vehicles import (
     normalize_user_text,
     search_vehicles,
 )
+from src.utils.purchase_flow_messages import CONTACT_PREFERENCE_MESSAGE
 from src.utils.formatters import (
     format_available_vehicles_grouped,
     format_candidate_options,
@@ -328,13 +329,6 @@ def _build_whatsapp_image_marker_block(state: clientState, vehicle_id: str, imag
     """Genera marcadores JSON para envío de imágenes por WhatsApp."""
     return build_whatsapp_images_block(state, vehicle_id, images)
 
-
-CONTACT_PREFERENCE_MESSAGE = (
-    "Un asesor profesional te va a contactar en menos de 10 minutos para darte, precios, "
-    "colores disponibles y promo de Julio.\n"
-    "¿Prefieres que te contacte por aquí por WhatsApp, por llamada o deseas agendar una cita?\n"
-    "Por favor responde: whatsapp, llamada o cita"
-)
 
 _CONTACT_METHOD_LABEL_TO_VALUE = {
     "WHATSAPP": "whatsapp",
