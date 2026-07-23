@@ -5,7 +5,7 @@ import logging
 from src.state import clientState
 from src.tools.vehicles import normalize_user_text
 
-from src.services.car_selection_fallback import is_test_drive_or_visit_request
+from src.services.car_selection_fallback import detect_contact_method, is_test_drive_or_visit_request
 from src.services.llm_responses import (
     classify_faq_interrupt_flags,
     classify_financing_step_flags,
@@ -190,6 +190,14 @@ def intent_checker(state: clientState) -> clientState:
     if current_node == "car_selection" and bool(state.get("awaiting_purchase_preferences")):
         state["is_faq_interrupt"] = False
         return state
+
+    # Preferencia clara de contacto (whatsapp/llamada/cita, p. ej. "marquenme")
+    # debe resolverse en car_selection, no como asesor humano ni FAQ.
+    if current_node == "car_selection" and bool(state.get("awaiting_purchase_confirmation")):
+        contact = detect_contact_method(last_user)
+        if contact and contact != "conflict":
+            state["is_faq_interrupt"] = False
+            return state
 
     # En confirmacion de compra, las FAQ de negocio se evaluan antes que el clasificador
     # de vehiculo. confirm_purchase no bloquea FAQ: horarios/ubicacion no son cierre comercial.

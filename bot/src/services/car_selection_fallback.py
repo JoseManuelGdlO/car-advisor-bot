@@ -248,11 +248,18 @@ _CALL_CONTACT_SIGNALS: tuple[str, ...] = (
     "llamar",
     "llamenme",
     "llameme",
+    "llamame",
     "me llamen",
+    "marquenme",
+    "marque me",
+    "me marquen",
+    "me marque",
+    "marqueme",
     "por telefono",
     "telefono",
     "call",
     "phone",
+    "fonaso"
 )
 
 _APPOINTMENT_CONTACT_SIGNALS: tuple[str, ...] = (

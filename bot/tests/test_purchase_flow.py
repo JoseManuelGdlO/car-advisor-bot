@@ -203,7 +203,9 @@ class PurchaseFlowTests(GraphTestCase):
         self.assertEqual(updated["messages"][-1]["content"], "Perfecto! gracias")
         payload = event_mock.call_args.args[0]
         self.assertEqual(payload["contact_method"], "whatsapp")
-        self.assertEqual(payload["message"], "Prefiere contacto por WhatsApp")
+        self.assertTrue(str(payload["message"]).startswith("Cliente interesado en:"))
+        self.assertIn("Nissan Versa 2004", payload["message"])
+        self.assertIn("purchase_preferences", payload)
 
     def test_call_preference_routes_to_lead_capture_thanks(self) -> None:
         state = initial_state()

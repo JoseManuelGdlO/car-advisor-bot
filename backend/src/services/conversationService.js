@@ -71,6 +71,7 @@ export const upsertConversationEvent = async ({
   customerInfo = {},
   financingSelection = {},
   promotionSelection = {},
+  purchasePreferences = {},
   contactMethod = null,
 }) => {
   // Servicio compartido que centraliza reglas de persistencia y auto-reply por canal.
@@ -181,11 +182,19 @@ export const upsertConversationEvent = async ({
       ? currentNotes.promotion_selection
       : {};
   const mergedPromotion = isNonEmptyObject(promotionSelection) ? { ...prevPromotion, ...promotionSelection } : { ...prevPromotion };
+  const prevPurchasePreferences =
+    currentNotes && typeof currentNotes === "object" && currentNotes.purchase_preferences && typeof currentNotes.purchase_preferences === "object"
+      ? currentNotes.purchase_preferences
+      : {};
+  const mergedPurchasePreferences = isNonEmptyObject(purchasePreferences)
+    ? { ...prevPurchasePreferences, ...purchasePreferences }
+    : { ...prevPurchasePreferences };
   const mergedNotes = {
     ...currentNotes,
     ...(Object.keys(mergedCustomerInfo).length ? { customer_info: mergedCustomerInfo } : {}),
     ...(Object.keys(mergedFinancing).length ? { financing_selection: mergedFinancing } : {}),
     ...(Object.keys(mergedPromotion).length ? { promotion_selection: mergedPromotion } : {}),
+    ...(Object.keys(mergedPurchasePreferences).length ? { purchase_preferences: mergedPurchasePreferences } : {}),
   };
   const leadFieldUpdates = {
     interestedIn: selectedCar || lead.interestedIn,
@@ -431,9 +440,9 @@ export const sendConversationAttachmentMessage = async ({
   });
 };
 
-/** Elimina financing_selection y promotion_selection de notes; conserva customer_info. */
+/** Elimina financing_selection, promotion_selection y purchase_preferences de notes; conserva customer_info. */
 export const buildNotesWithoutCommercialSelections = (notes) => {
-  const emptyResult = { notes: null, hadFinancing: false, hadPromotion: false };
+  const emptyResult = { notes: null, hadFinancing: false, hadPromotion: false, hadPurchasePreferences: false };
   if (!notes) return emptyResult;
   let parsed;
   try {
@@ -445,15 +454,18 @@ export const buildNotesWithoutCommercialSelections = (notes) => {
 
   const hadFinancing = Boolean(isNonEmptyObject(parsed.financing_selection));
   const hadPromotion = Boolean(isNonEmptyObject(parsed.promotion_selection));
+  const hadPurchasePreferences = Boolean(isNonEmptyObject(parsed.purchase_preferences));
   const nextNotes = { ...parsed };
   delete nextNotes.financing_selection;
   delete nextNotes.promotion_selection;
+  delete nextNotes.purchase_preferences;
 
   const keys = Object.keys(nextNotes);
   return {
     notes: keys.length > 0 ? JSON.stringify(nextNotes) : null,
     hadFinancing,
     hadPromotion,
+    hadPurchasePreferences,
   };
 };
 
@@ -546,9 +558,9 @@ export const releaseBotControlForExternalUser = async ({ ownerUserId, userId, pl
   return { released: true, conversationId: conv.id };
 };
 
-/** Limpia vehiculo de interes, financiamiento y promocion asociados al lead CRM. */
+/** Limpia vehiculo de interes, financiamiento, promocion y preferencias de compra del lead CRM. */
 export const clearLeadCommercialAssociationsForExternalUser = async ({ ownerUserId, userId, platform }) => {
-  const defaultDetails = { vehicle: false, financing: false, promotion: false };
+  const defaultDetails = { vehicle: false, financing: false, promotion: false, purchasePreferences: false };
   const emptyResult = { cleared: false, clientLeadId: null, details: defaultDetails };
 
   if (!ownerUserId) throw new ApiError(500, "owner user is not configured");
@@ -564,8 +576,9 @@ export const clearLeadCommercialAssociationsForExternalUser = async ({ ownerUser
   if (!lead) return emptyResult;
 
   const hadVehicle = Boolean(String(lead.interestedIn || "").trim());
-  const { notes: newNotes, hadFinancing, hadPromotion } = buildNotesWithoutCommercialSelections(lead.notes);
-  const hadAnything = hadVehicle || hadFinancing || hadPromotion;
+  const { notes: newNotes, hadFinancing, hadPromotion, hadPurchasePreferences } =
+    buildNotesWithoutCommercialSelections(lead.notes);
+  const hadAnything = hadVehicle || hadFinancing || hadPromotion || hadPurchasePreferences;
   if (!hadAnything) {
     return { cleared: false, clientLeadId: lead.id, details: defaultDetails };
   }
@@ -582,6 +595,7 @@ export const clearLeadCommercialAssociationsForExternalUser = async ({ ownerUser
       vehicle: hadVehicle,
       financing: hadFinancing,
       promotion: hadPromotion,
+      purchasePreferences: hadPurchasePreferences,
     },
   };
 };
