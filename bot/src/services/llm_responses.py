@@ -29,6 +29,7 @@ from src.utils.prompts import (
     build_other_response_prompt,
     build_purchase_confirmation_classifier_prompt,
     build_purchase_preferences_classifier_prompt,
+    build_contact_method_classifier_prompt,
     build_selected_vehicle_qa_prompt,
     build_router_intent_classifier_prompt,
     build_vehicle_comparison_conversation_prompt,
@@ -968,6 +969,35 @@ def classify_purchase_preferences(previous_bot_message: str, user_message: str) 
             temperature=0.0,
         )
         return out
+
+
+def classify_contact_method(previous_bot_message: str, user_message: str) -> str:
+    """Clasifica preferencia de contacto: WHATSAPP | CALL | APPOINTMENT | UNKNOWN (T=0)."""
+
+    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
+    try:
+        settings = get_bot_settings()
+        llm = ChatOpenAI(model=model_name, temperature=0)
+        prompt = build_contact_method_classifier_prompt(
+            previous_bot_message=previous_bot_message,
+            user_message=user_message,
+            bot_settings=settings,
+        )
+        content = llm.invoke(prompt).content
+        normalized = str(content or "").strip().upper()
+        for label in ("WHATSAPP", "CALL", "APPOINTMENT", "UNKNOWN"):
+            if re.search(rf"\b{re.escape(label)}\b", normalized):
+                return label
+        return "UNKNOWN"
+    except Exception as exc:
+        _log_llm_invoke_failure(
+            "classify_contact_method",
+            exc,
+            model_name=model_name,
+            prompt_kind="contact_method_classifier",
+            temperature=0.0,
+        )
+        return "UNKNOWN"
 
 
 def classify_financing_plan_selection_intent(

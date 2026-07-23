@@ -4,6 +4,7 @@ import unittest
 
 from src.services.car_selection_fallback import (
     contains_signal_phrase,
+    detect_contact_method,
     detect_payment_type_preference,
     detect_transmission_preference,
     is_cheapest_price_request,
@@ -174,6 +175,15 @@ class CarSelectionFallbackTests(unittest.TestCase):
         self.assertEqual(detect_payment_type_preference("financiado a meses"), "financiado")
         self.assertEqual(detect_payment_type_preference("contado o financiado"), "conflict")
         self.assertIsNone(detect_payment_type_preference("quiero ver fotos"))
+
+    def test_detect_contact_method_clear_and_conflict(self) -> None:
+        self.assertEqual(detect_contact_method("por whatsapp"), "whatsapp")
+        self.assertEqual(detect_contact_method("por aqui"), "whatsapp")
+        self.assertEqual(detect_contact_method("mejor por llamada"), "call")
+        self.assertEqual(detect_contact_method("quiero agendar una cita"), "appointment")
+        self.assertEqual(detect_contact_method("quiero una prubea de maneja"), "appointment")
+        self.assertEqual(detect_contact_method("whatsapp o llamada"), "conflict")
+        self.assertIsNone(detect_contact_method("cuanto cuesta"))
 
 
 if __name__ == "__main__":

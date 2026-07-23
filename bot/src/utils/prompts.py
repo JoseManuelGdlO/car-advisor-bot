@@ -597,6 +597,35 @@ def build_purchase_preferences_classifier_prompt(
     )
 
 
+def build_contact_method_classifier_prompt(
+    previous_bot_message: str,
+    user_message: str,
+    bot_settings: dict[str, Any] | None,
+) -> str:
+    """Prompt clasificador para preferencia de contacto post-seleccion."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    previous = previous_bot_message.strip() or "(sin mensaje previo)"
+    current = user_message.strip() or "(mensaje vacio)"
+    return (
+        f"{system_prompt}\n\n"
+        "CLASIFICADOR_METODO_CONTACTO:\n"
+        "El bot pregunto como prefiere ser contactado: WhatsApp (por aqui/por mensaje), "
+        "llamada telefonica, o agendar una cita.\n"
+        "Con el mensaje previo del bot y la respuesta del usuario, clasifica UNA preferencia.\n"
+        "Responde SOLO con una de estas etiquetas exactas: WHATSAPP, CALL, APPOINTMENT, UNKNOWN.\n"
+        "Reglas:\n"
+        "- WHATSAPP: por aqui, por mensaje, whatsapp, wsp, wa, este chat/canal.\n"
+        "- CALL: llamada, llamar, telefono, me llamen, call.\n"
+        "- APPOINTMENT: cita, agendar, visita, ver en persona, prueba de manejo.\n"
+        "- Si menciona mas de una opcion sin dejar clara la preferencia final, UNKNOWN.\n"
+        "- Un 'si' solo (sin indicar canal) no basta: UNKNOWN.\n"
+        "- No inventes: sin evidencia clara usa UNKNOWN.\n\n"
+        f"Mensaje previo del bot: {previous}\n"
+        f"Mensaje del usuario: {current}\n"
+    )
+
+
 def build_financing_plan_selection_classifier_prompt(
     previous_bot_message: str,
     user_message: str,
@@ -767,6 +796,11 @@ def build_vehicle_step_flags_prompt(
         "No uses ask_images si solo habla de ver el vehiculo en persona o agendar prueba de manejo.\n"
         "- ask_more_images=true cuando pide mas fotos/imagenes del vehiculo actual despues de un envio previo (mas fotos, siguientes imagenes).\n"
         "- Si es claramente primer pedido de fotos, ask_images=true y ask_more_images=false.\n"
+        "- Si el mensaje SOLO indica preferencia de transmision y/o forma de pago "
+        "(ej. 'manual', 'estandar', 'automatico', 'CVT', 'cash', 'contado', 'credito', 'financiado', "
+        "'manual en cash', 'automatico de contado', 'estandar y credito'), "
+        "fuerza ask_images=false, ask_more_images=false y confirm_purchase=false. "
+        "Eso NO es pedido de fotos ni confirmacion de compra; es respuesta de preferencias.\n"
         "- wants_other_vehicles=true cuando quiere ver otro modelo/u otro carro/catalogo sin pedir comparacion explícita.\n"
         "- wants_other_vehicles=false si solo pide datos/ficha/informacion/especificaciones/caracteristicas del modelo o vehiculo "
         "ya mostrado (ej. 'dame los datos del modelo', 'muestrame la ficha') sin pedir otro carro ni el catalogo.\n"

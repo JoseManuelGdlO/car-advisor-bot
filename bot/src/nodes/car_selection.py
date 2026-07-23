@@ -10,6 +10,7 @@ from src.state import clientState
 
 from src.services.llm_responses import (
     _coerce_to_bool,
+    classify_contact_method,
     classify_purchase_confirmation_intent,
     classify_purchase_preferences,
     classify_vehicle_comparison_payload,
@@ -20,15 +21,17 @@ from src.services.llm_responses import (
     generate_vehicle_candidates_selection_message,
     generate_vehicle_comparison_conversation,
     generate_vehicle_detail_conversation,
-    generate_vehicle_purchase_question,
     generate_verified_user_message,
 )
 from src.services.car_selection_fallback import (
+    detect_contact_method,
     detect_payment_type_preference,
     detect_transmission_preference,
     is_cheapest_price_request,
     is_financing_request,
+    is_first_images_request,
     is_general_request,
+    is_more_images_request,
     is_promotions_request,
     is_selected_vehicle_specs_request,
     is_test_drive_or_visit_request,
@@ -62,7 +65,9 @@ from src.utils.signals import (
     CHEAPEST_PRICE_SIGNALS,
     FEATURE_SIGNALS,
     FINANCING_SIGNALS,
+    FIRST_IMAGES_SIGNALS,
     GENERAL_SIGNALS,
+    MORE_IMAGES_SIGNALS,
     NO_MORE_IMAGES_MESSAGE,
     PROMOTIONS_SIGNALS,
     TEST_DRIVE_VISIT_SIGNALS,
@@ -93,12 +98,54 @@ _CHEAPEST_PRICE_SIGNALS_NORMALIZED = _normalize_signal_set(CHEAPEST_PRICE_SIGNAL
 _FINANCING_SIGNALS_NORMALIZED = _normalize_signal_set(FINANCING_SIGNALS)
 _PROMOTIONS_SIGNALS_NORMALIZED = _normalize_signal_set(PROMOTIONS_SIGNALS)
 _TEST_DRIVE_VISIT_SIGNALS_NORMALIZED = _normalize_signal_set(TEST_DRIVE_VISIT_SIGNALS)
+_FIRST_IMAGES_SIGNALS_NORMALIZED = _normalize_signal_set(FIRST_IMAGES_SIGNALS)
+_MORE_IMAGES_SIGNALS_NORMALIZED = _normalize_signal_set(MORE_IMAGES_SIGNALS)
 
 
 def _debug(event: str, **payload: Any) -> None:
     """Trazas del flujo; payload completo solo con LOG_LEVEL=debug."""
 
     log_flow_trace(_log, "car_selection", event, **payload)
+
+
+def _user_asks_images_heuristically(user_text: str) -> bool:
+    """True si hay señal heuristica de pedido de fotos (primer lote o mas)."""
+
+    if is_first_images_request(
+        user_text,
+        _FIRST_IMAGES_SIGNALS_NORMALIZED,
+        more_images_signals_normalized=_MORE_IMAGES_SIGNALS_NORMALIZED,
+    ):
+        return True
+    return is_more_images_request(user_text, _MORE_IMAGES_SIGNALS_NORMALIZED)
+
+
+def _message_is_purchase_prefs_without_images(user_text: str) -> bool:
+    """True si el mensaje indica transmision/pago y no pide fotos explicitamente."""
+
+    has_transmission = detect_transmission_preference(user_text) is not None
+    has_payment = detect_payment_type_preference(user_text) is not None
+    if not (has_transmission or has_payment):
+        return False
+    return not _user_asks_images_heuristically(user_text)
+
+
+def _effective_vehicle_image_flags(user_text: str, flags: dict[str, Any]) -> dict[str, bool]:
+    """Aplica guardrail: preferencias de compra sin señales de fotos no disparan imagenes."""
+
+    ask_images = _coerce_to_bool(flags.get("ask_images"))
+    ask_more_images = _coerce_to_bool(flags.get("ask_more_images"))
+    if not (ask_images or ask_more_images):
+        return {"ask_images": False, "ask_more_images": False}
+    if _message_is_purchase_prefs_without_images(user_text):
+        _debug(
+            "image_flags_suppressed_purchase_prefs",
+            user_text=user_text,
+            ask_images=ask_images,
+            ask_more_images=ask_more_images,
+        )
+        return {"ask_images": False, "ask_more_images": False}
+    return {"ask_images": ask_images, "ask_more_images": ask_more_images}
 
 
 def _llm_vehicle_image_flags(
@@ -110,10 +157,7 @@ def _llm_vehicle_image_flags(
     """Detecta pedidos de imagenes via clasificador LLM del paso de vehiculo."""
 
     vehicle_flags = classify_vehicle_step_flags(previous_bot_message, user_text, selected_car_name)
-    return {
-        "ask_images": _coerce_to_bool(vehicle_flags.get("ask_images")),
-        "ask_more_images": _coerce_to_bool(vehicle_flags.get("ask_more_images")),
-    }
+    return _effective_vehicle_image_flags(user_text, vehicle_flags)
 
 
 PendingSelectionResult = dict[str, Any] | list[dict[str, Any]] | None
@@ -285,17 +329,46 @@ def _build_whatsapp_image_marker_block(state: clientState, vehicle_id: str, imag
     return build_whatsapp_images_block(state, vehicle_id, images)
 
 
-def _purchase_images_invite_mode(state: clientState) -> str:
-    """Modo de invitación a fotos en pregunta de cierre: none | more."""
+CONTACT_PREFERENCE_MESSAGE = (
+    "Un asesor profesional te va a contactar en menos de 10 minutos para darte, precios, "
+    "colores disponibles y promo de Julio.\n"
+    "¿Prefieres que te contacte por aquí por WhatsApp, por llamada o deseas agendar una cita?\n"
+    "Por favor responde: whatsapp, llamada o cita"
+)
 
-    if state.get("vehicle_images_last_batch"):
-        return "more"
-    return "none"
+_CONTACT_METHOD_LABEL_TO_VALUE = {
+    "WHATSAPP": "whatsapp",
+    "CALL": "call",
+    "APPOINTMENT": "appointment",
+}
 
 
 def _build_purchase_question(state: clientState) -> str:
-    """Genera pregunta de cierre comercial según contexto de imágenes."""
-    return generate_vehicle_purchase_question(images_invite_mode=_purchase_images_invite_mode(state))
+    """Mensaje fijo de preferencia de contacto post-detalle."""
+
+    _ = state  # firma estable para callers existentes
+    return CONTACT_PREFERENCE_MESSAGE
+
+
+def _resolve_contact_method(user_text: str, previous_bot_message: str) -> str:
+    """Heuristica primero; LLM si falta o hay conflicto. Devuelve whatsapp|call|appointment|''."""
+
+    heuristic = detect_contact_method(user_text)
+    if heuristic and heuristic != "conflict":
+        return heuristic
+    classified = classify_contact_method(previous_bot_message, user_text)
+    return _CONTACT_METHOD_LABEL_TO_VALUE.get(classified, "")
+
+
+def _route_to_lead_capture(state: clientState, *, contact_method: str, reason: str) -> clientState:
+    """Cierra confirmacion, guarda metodo de contacto y enruta a lead_capture."""
+
+    state["awaiting_purchase_confirmation"] = False
+    state["contact_method"] = contact_method
+    state["current_node"] = "lead_capture"
+    state["intent"] = "lead_capture"
+    _debug("route_change", next_node="lead_capture", reason=reason, contact_method=contact_method)
+    return state
 
 
 def _build_purchase_preferences_message(selected_car: str) -> str:
@@ -1691,6 +1764,8 @@ def car_selection(state: clientState) -> clientState:
         previous_bot_message = str(state.get("last_bot_message", "")).strip()
         selected_car_name = str(state.get("selected_car", "")).strip()
         step_flags = classify_vehicle_step_flags(previous_bot_message, user_text, selected_car_name)
+        image_flags = _effective_vehicle_image_flags(user_text, step_flags)
+        step_flags = {**step_flags, **image_flags}
         _debug("purchase_preferences_vehicle_step_flags", **step_flags)
         # Escapes: no forzar transmision/pago si el usuario quiere salir al catalogo.
         if step_flags.get("wants_other_vehicles"):
@@ -1709,6 +1784,8 @@ def car_selection(state: clientState) -> clientState:
         if cheapest_state is not None:
             return cheapest_state
         step_flags = classify_vehicle_step_flags(previous_bot_message, user_text, selected_car_name)
+        image_flags = _effective_vehicle_image_flags(user_text, step_flags)
+        step_flags = {**step_flags, **image_flags}
         _debug("vehicle_step_flags", **step_flags)
         if step_flags.get("wants_compare_two_vehicles"):
             numbered = format_candidate_options(state.get("last_vehicle_candidates") or [])
@@ -1732,24 +1809,6 @@ def car_selection(state: clientState) -> clientState:
             state["intent"] = "promotions"
             _debug("route_change", next_node="promotions", reason="llm_flags")
             return state
-        if step_flags.get("confirm_purchase") or is_test_drive_or_visit_request(
-            user_text,
-            _TEST_DRIVE_VISIT_SIGNALS_NORMALIZED,
-        ):
-            state["awaiting_purchase_confirmation"] = False
-            state["current_node"] = "lead_capture"
-            state["intent"] = "lead_capture"
-            _debug(
-                "route_change",
-                next_node="lead_capture",
-                reason="test_drive_or_visit" if not step_flags.get("confirm_purchase") else "llm_flags",
-            )
-            return state
-        if step_flags.get("ask_financing") or is_financing_request(user_text, _FINANCING_SIGNALS_NORMALIZED):
-            state["awaiting_purchase_confirmation"] = False
-            state["current_node"] = "financing"
-            _debug("route_change", next_node="financing", reason="financing_request")
-            return state
         if step_flags.get("ask_images"):
             return _respond_with_first_images(state)
         if step_flags.get("ask_more_images"):
@@ -1766,6 +1825,30 @@ def car_selection(state: clientState) -> clientState:
             return _respond_other_vehicles_with_optional_filters(state, vehicles, user_text)
         if step_flags.get("reject_purchase"):
             return _respond_available_list(state, vehicles)
+
+        # Preferencia de contacto por heuristica (sin LLM) antes de otros clasificadores.
+        contact_h = detect_contact_method(user_text)
+        if contact_h and contact_h != "conflict":
+            return _route_to_lead_capture(
+                state,
+                contact_method=contact_h,
+                reason="contact_method_heuristic",
+            )
+
+        # Cita/prueba gana a financiamiento en este paso.
+        if is_test_drive_or_visit_request(user_text, _TEST_DRIVE_VISIT_SIGNALS_NORMALIZED):
+            return _route_to_lead_capture(
+                state,
+                contact_method="appointment",
+                reason="test_drive_or_visit",
+            )
+
+        if step_flags.get("ask_financing") or is_financing_request(user_text, _FINANCING_SIGNALS_NORMALIZED):
+            state["awaiting_purchase_confirmation"] = False
+            state["current_node"] = "financing"
+            _debug("route_change", next_node="financing", reason="financing_request")
+            return state
+
         decision = classify_purchase_confirmation_intent(previous_bot_message, user_text)
         _debug(
             "purchase_confirmation_classified",
@@ -1793,12 +1876,23 @@ def car_selection(state: clientState) -> clientState:
             return _respond_available_list(state, vehicles)
         if decision == "NO":
             return _respond_available_list(state, vehicles)
-        if decision == "SI":
-            state["awaiting_purchase_confirmation"] = False
-            state["current_node"] = "lead_capture"
-            _debug("route_change", next_node="lead_capture")
-            return state
-        _debug("purchase_confirmation_unknown", user_text=user_text)
+
+        # LLM de contacto solo si heuristica fallo/conflicto y no hubo otra salida.
+        contact_method = _resolve_contact_method(user_text, previous_bot_message)
+        if contact_method:
+            return _route_to_lead_capture(
+                state,
+                contact_method=contact_method,
+                reason="contact_method",
+            )
+
+        # SI / confirm_purchase / UNKNOWN sin canal claro: repregunta preferencia de contacto.
+        _debug(
+            "purchase_confirmation_unknown",
+            user_text=user_text,
+            confirm_purchase=bool(step_flags.get("confirm_purchase")),
+            decision=decision,
+        )
         question = _build_purchase_question(state)
         return append_assistant_message(state, question)
 

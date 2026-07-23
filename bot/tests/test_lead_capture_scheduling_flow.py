@@ -20,6 +20,7 @@ class LeadCaptureSchedulingFlowTests(unittest.TestCase):
         state["selected_vehicle_id"] = "veh-civic"
         state["owner_user_id"] = "owner-uuid-test"
         state["user_id"] = "session-scheduling"
+        state["contact_method"] = "appointment"
 
         scheduling_text = (
             f"Perfecto. Para agendar tu prueba de manejo o ver Honda Civic 2020 en persona:\n\n"
@@ -58,6 +59,52 @@ class LeadCaptureSchedulingFlowTests(unittest.TestCase):
         self.assertEqual(payload["from"], "system")
         self.assertEqual(payload["customer_info"], {})
         self.assertEqual(payload["selected_car"], "Honda Civic 2020")
+        self.assertEqual(payload["contact_method"], "appointment")
+
+    def test_whatsapp_contact_method_sends_thanks_without_calendar(self) -> None:
+        state = initial_state()
+        state["current_node"] = "lead_capture"
+        state["intent"] = "lead_capture"
+        state["selected_car"] = "Honda Civic 2020"
+        state["selected_vehicle_id"] = "veh-civic"
+        state["owner_user_id"] = "owner-uuid-test"
+        state["user_id"] = "session-whatsapp"
+        state["contact_method"] = "whatsapp"
+
+        with (
+            patch("src.nodes.lead_capture.classify_lead_capture_navigation", return_value=""),
+            patch("src.nodes.lead_capture.notify_advisor") as notify_mock,
+            patch("src.nodes.lead_capture.push_event_to_backend") as event_mock,
+            patch("src.nodes.lead_capture.deactivate_bot", side_effect=lambda s, **_: {**s, "bot_disabled": True}),
+        ):
+            s = lead_capture(with_user_message(state, "por whatsapp"))
+
+        self.assertTrue(s.get("lead_capture_done"))
+        self.assertEqual(s["messages"][-1]["content"], "Perfecto! gracias")
+        self.assertNotIn(DEFAULT_CALENDAR_SCHEDULING_URL, s["messages"][-1]["content"])
+        notify_mock.assert_called_once()
+        payload = event_mock.call_args.args[0]
+        self.assertEqual(payload["contact_method"], "whatsapp")
+        self.assertEqual(payload["message"], "Prefiere contacto por WhatsApp")
+
+    def test_call_contact_method_sends_thanks_without_calendar(self) -> None:
+        state = initial_state()
+        state["current_node"] = "lead_capture"
+        state["selected_car"] = "Honda Civic 2020"
+        state["contact_method"] = "call"
+        state["owner_user_id"] = "owner-uuid-test"
+        state["user_id"] = "session-call"
+
+        with (
+            patch("src.nodes.lead_capture.classify_lead_capture_navigation", return_value=""),
+            patch("src.nodes.lead_capture.notify_advisor"),
+            patch("src.nodes.lead_capture.push_event_to_backend") as event_mock,
+            patch("src.nodes.lead_capture.deactivate_bot", side_effect=lambda s, **_: {**s, "bot_disabled": True}),
+        ):
+            s = lead_capture(with_user_message(state, "llamada"))
+
+        self.assertEqual(s["messages"][-1]["content"], "Perfecto! gracias")
+        self.assertEqual(event_mock.call_args.args[0]["contact_method"], "call")
 
     def test_already_done_does_not_repeat_link(self) -> None:
         state = initial_state()
