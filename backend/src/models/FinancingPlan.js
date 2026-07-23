@@ -29,6 +29,16 @@ export default function FinancingPlanModel(sequelize) {
       allowNull: false,
       field: "max_term_months",
     },
+    minDownPaymentPercent: {
+      type: DataTypes.DECIMAL(5, 2),
+      allowNull: true,
+      field: "min_down_payment_percent",
+    },
+    minTermMonths: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      field: "min_term_months",
+    },
     active: {
       type: DataTypes.BOOLEAN,
       allowNull: false,

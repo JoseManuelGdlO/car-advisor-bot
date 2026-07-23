@@ -82,8 +82,37 @@ class FinancingFlowTests(GraphTestCase):
         self.assertIn("Financiamiento Shilo", reply)
         self.assertIn(FAQ_SOFT_CATALOG_CLOSE, reply)
         self.assertNotIn(CONTACT_PREFERENCE_MESSAGE_SHORT, reply)
+        self.assertNotIn("Enganche minimo", reply)
+        self.assertNotIn("Plazo minimo", reply)
         self.assertFalse(updated.get("awaiting_purchase_confirmation"))
         persist_mock.assert_called_once()
+
+    def test_lists_optional_min_fields_when_present(self) -> None:
+        state = initial_state()
+        state["user_id"] = "5512345678"
+        state["current_node"] = "financing"
+        state["intent"] = "financing"
+        state = with_user_message(state, "tienen financiamiento?")
+        plan = {
+            **_PLAN,
+            "minDownPaymentPercent": "20",
+            "minTermMonths": 12,
+        }
+
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.intent_checker.maybe_escalate_financing_detail", return_value=None),
+            patch("src.nodes.financing.maybe_escalate_financing_detail", return_value=None),
+            patch("src.nodes.financing.fetch_financing_plans", return_value=[plan]),
+            patch("src.nodes.financing.persist_commercial_selection_to_backend"),
+        ):
+            updated = self.graph.invoke(state)
+
+        reply = str(updated["messages"][-1]["content"])
+        self.assertIn("Enganche minimo", reply)
+        self.assertIn("20.00%", reply)
+        self.assertIn("Plazo minimo", reply)
+        self.assertIn("12 meses", reply)
 
     def test_mid_purchase_preferences_reasks_prefs(self) -> None:
         state = initial_state()

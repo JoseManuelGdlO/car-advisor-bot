@@ -9,6 +9,8 @@ from src.utils.formatters import (
     format_available_vehicles_grouped,
     format_candidate_options,
     format_financing_plan_comparison,
+    format_financing_plans,
+    format_financing_plans_for_vehicle,
     format_images_bulleted_list,
     format_promotion_comparison,
     format_two_vehicle_comparison_grounding,
@@ -347,6 +349,115 @@ class TestFormatFinancingPlanComparison(unittest.TestCase):
         self.assertIn("Plan B", out)
         self.assertIn("12.50%", out)
         self.assertIn("10.00%", out)
+        self.assertNotIn("Enganche minimo", out)
+        self.assertNotIn("Plazo minimo", out)
+
+    def test_comparison_includes_optional_min_fields_when_present(self) -> None:
+        plan_a = {
+            "name": "Plan A",
+            "lender": "Banco X",
+            "rate": "12.5",
+            "showRate": True,
+            "minDownPaymentPercent": "20",
+            "minTermMonths": 12,
+            "maxTermMonths": 48,
+            "requirements": [],
+            "vehicles": [],
+            "active": True,
+        }
+        plan_b = {
+            "name": "Plan B",
+            "lender": "Banco Y",
+            "rate": "10",
+            "showRate": True,
+            "minDownPaymentPercent": None,
+            "minTermMonths": None,
+            "maxTermMonths": 60,
+            "requirements": [],
+            "vehicles": [],
+            "active": True,
+        }
+        out = format_financing_plan_comparison(plan_a, plan_b, platform="web")
+        self.assertIn("Enganche minimo", out)
+        self.assertIn("20.00%", out)
+        self.assertIn("Plazo minimo", out)
+        self.assertIn("12 meses", out)
+
+
+class TestFormatFinancingPlansOptionalMins(unittest.TestCase):
+    def _plan(self, **overrides: object) -> dict:
+        base = {
+            "name": "Plan A",
+            "lender": "BBVA",
+            "rate": "14.5",
+            "showRate": True,
+            "maxTermMonths": 48,
+            "active": True,
+            "requirements": [],
+            "vehicles": [
+                {"brand": "Nissan", "model": "Versa", "year": 2020, "status": "available"}
+            ],
+        }
+        base.update(overrides)
+        return base
+
+    def test_omits_min_fields_when_empty(self) -> None:
+        out = format_financing_plans([self._plan()], platform="web")
+        self.assertNotIn("Enganche minimo", out)
+        self.assertNotIn("Plazo minimo", out)
+        self.assertIn("Plazo maximo", out)
+
+    def test_includes_min_fields_when_present(self) -> None:
+        out = format_financing_plans(
+            [self._plan(minDownPaymentPercent="15.5", minTermMonths=24)],
+            platform="web",
+        )
+        self.assertIn("Enganche minimo", out)
+        self.assertIn("15.50%", out)
+        self.assertIn("Plazo minimo", out)
+        self.assertIn("24 meses", out)
+
+    def test_includes_requirement_description(self) -> None:
+        out = format_financing_plans(
+            [
+                self._plan(
+                    requirements=[
+                        {
+                            "title": "Requisitos Credito",
+                            "description": (
+                                "Identificacion oficial INE. "
+                                "Ultimos 3 estados de cuenta bancarios de ingresos. "
+                                "Comprobante de domicilio"
+                            ),
+                        }
+                    ]
+                )
+            ],
+            platform="web",
+        )
+        self.assertIn("Requisitos Credito", out)
+        self.assertIn("Identificacion oficial INE", out)
+        self.assertIn("Comprobante de domicilio", out)
+
+    def test_vehicle_listing_includes_optional_mins(self) -> None:
+        out = format_financing_plans_for_vehicle(
+            "Nissan Versa 2020",
+            [self._plan(minDownPaymentPercent=20, minTermMonths=12)],
+            platform="web",
+        )
+        self.assertIn("Enganche minimo", out)
+        self.assertIn("20.00%", out)
+        self.assertIn("Plazo minimo", out)
+        self.assertIn("12 meses", out)
+
+    def test_vehicle_listing_omits_empty_mins(self) -> None:
+        out = format_financing_plans_for_vehicle(
+            "Nissan Versa 2020",
+            [self._plan(minDownPaymentPercent=None, minTermMonths="")],
+            platform="web",
+        )
+        self.assertNotIn("Enganche minimo", out)
+        self.assertNotIn("Plazo minimo", out)
 
 
 class TestFormatPromotionComparison(unittest.TestCase):

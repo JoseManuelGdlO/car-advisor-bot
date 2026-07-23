@@ -28,6 +28,8 @@ type PlanFormState = {
   lender: string;
   rate: string;
   maxTermMonths: string;
+  minDownPaymentPercent: string;
+  minTermMonths: string;
   active: boolean;
   showRate: boolean;
 };
@@ -37,6 +39,8 @@ const emptyForm: PlanFormState = {
   lender: "",
   rate: "",
   maxTermMonths: "48",
+  minDownPaymentPercent: "",
+  minTermMonths: "",
   active: true,
   showRate: true,
 };
@@ -108,6 +112,9 @@ export default function ConfigFinanciamiento() {
       lender: plan.lender,
       rate: String(plan.rate),
       maxTermMonths: String(plan.maxTermMonths),
+      minDownPaymentPercent:
+        plan.minDownPaymentPercent != null ? String(plan.minDownPaymentPercent) : "",
+      minTermMonths: plan.minTermMonths != null ? String(plan.minTermMonths) : "",
       active: plan.active,
       showRate: plan.showRate,
     });
@@ -124,6 +131,10 @@ export default function ConfigFinanciamiento() {
       lender: form.lender.trim(),
       rate: Number(form.rate),
       maxTermMonths: Number(form.maxTermMonths),
+      minDownPaymentPercent: form.minDownPaymentPercent.trim()
+        ? Number(form.minDownPaymentPercent)
+        : null,
+      minTermMonths: form.minTermMonths.trim() ? Number(form.minTermMonths) : null,
       active: form.active,
       showRate: form.showRate,
     };
@@ -453,6 +464,45 @@ export default function ConfigFinanciamiento() {
                       </div>
                     </div>
                   </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="plan-min-down">Mínimo enganche</Label>
+                      <div className="relative">
+                        <Input
+                          id="plan-min-down"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="20"
+                          className="pr-8"
+                          value={form.minDownPaymentPercent}
+                          onChange={(e) =>
+                            setForm((old) => ({ ...old, minDownPaymentPercent: e.target.value }))
+                          }
+                        />
+                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                          %
+                        </span>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="plan-min-term">Plazo mínimo</Label>
+                      <div className="relative">
+                        <Input
+                          id="plan-min-term"
+                          type="number"
+                          min="1"
+                          placeholder="12"
+                          className="pr-14"
+                          value={form.minTermMonths}
+                          onChange={(e) => setForm((old) => ({ ...old, minTermMonths: e.target.value }))}
+                        />
+                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                          meses
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                   <div className="space-y-2">
                     <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
                       <div className="min-w-0">
@@ -505,7 +555,12 @@ export default function ConfigFinanciamiento() {
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">{plan.lender}</p>
                 <p className="text-xs mt-1">
-                  {plan.showRate ? `${Number(plan.rate).toFixed(2)}%` : "Tasa oculta"} · Hasta {plan.maxTermMonths} meses
+                  {plan.showRate ? `${Number(plan.rate).toFixed(2)}%` : "Tasa oculta"} · Hasta{" "}
+                  {plan.maxTermMonths} meses
+                  {plan.minDownPaymentPercent != null
+                    ? ` · Enganche desde ${Number(plan.minDownPaymentPercent).toFixed(2)}%`
+                    : ""}
+                  {plan.minTermMonths != null ? ` · Desde ${plan.minTermMonths} meses` : ""}
                 </p>
               </div>
               <div className="flex items-center gap-1">

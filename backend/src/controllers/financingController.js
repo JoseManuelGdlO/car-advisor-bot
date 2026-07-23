@@ -50,13 +50,24 @@ export const listFinancingPlans = async (req, res) => {
 
 export const createFinancingPlan = async (req, res) => {
   // Crea plan base y lo retorna con asociaciones incluidas.
-  const { name, lender, rate, maxTermMonths, active = true, showRate = true } = req.body;
+  const {
+    name,
+    lender,
+    rate,
+    maxTermMonths,
+    minDownPaymentPercent = null,
+    minTermMonths = null,
+    active = true,
+    showRate = true,
+  } = req.body;
   const row = await FinancingPlan.create({
     ownerUserId: req.auth.userId,
     name,
     lender,
     rate,
     maxTermMonths,
+    minDownPaymentPercent,
+    minTermMonths,
     active,
     showRate,
   });
@@ -92,8 +103,26 @@ export const getFinancingPlanByVehicleId = async (req, res) => {
 export const updateFinancingPlan = async (req, res) => {
   // Actualiza campos editables del plan.
   const row = await getOwnedPlan(req.auth.userId, req.params.id);
-  const { name, lender, rate, maxTermMonths, active, showRate } = req.body;
-  await row.update({ name, lender, rate, maxTermMonths, active, showRate });
+  const {
+    name,
+    lender,
+    rate,
+    maxTermMonths,
+    minDownPaymentPercent,
+    minTermMonths,
+    active,
+    showRate,
+  } = req.body;
+  await row.update({
+    name,
+    lender,
+    rate,
+    maxTermMonths,
+    minDownPaymentPercent,
+    minTermMonths,
+    active,
+    showRate,
+  });
   const updated = await FinancingPlan.findByPk(row.id, { include: planInclude });
   return res.json(updated);
 };
