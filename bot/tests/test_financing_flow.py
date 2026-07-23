@@ -163,8 +163,8 @@ class FinancingFlowTests(GraphTestCase):
             patch("src.nodes.car_selection.fetch_vehicles", return_value=[jimny_vehicle]),
             patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=jimny_vehicle),
             patch(
-                "src.nodes.car_selection.generate_vehicle_detail_conversation",
-                return_value="Aqui tienes la informacion completa del Suzuki Jimny.",
+                "src.nodes.car_selection.generate_vehicle_detail_pitch_copy",
+                return_value={"tagline": "", "closing": "Aqui tienes la informacion completa del Suzuki Jimny."},
             ),
             patch(
                 "src.nodes.car_selection.generate_verified_user_message",
@@ -327,8 +327,8 @@ class FinancingFlowTests(GraphTestCase):
             patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=dzire_vehicle),
             patch("src.nodes.car_selection.classify_vehicle_step_flags", return_value=vehicle_step_flags),
             patch(
-                "src.nodes.car_selection.generate_vehicle_detail_conversation",
-                return_value="Aqui tienes la informacion completa del Suzuki Dzire.",
+                "src.nodes.car_selection.generate_vehicle_detail_pitch_copy",
+                return_value={"tagline": "", "closing": "Aqui tienes la informacion completa del Suzuki Dzire."},
             ),
             patch(
                 "src.nodes.car_selection.generate_verified_user_message",
@@ -632,8 +632,11 @@ class FinancingFlowTests(GraphTestCase):
             )
             stack.enter_context(
                 patch(
-                    "src.nodes.car_selection.generate_vehicle_detail_conversation",
-                    return_value="Aqui tienes la información completa del Nissan Versa 2011. 😊",
+                    "src.nodes.car_selection.generate_vehicle_detail_pitch_copy",
+                    return_value={
+                        "tagline": "",
+                        "closing": "Aqui tienes la información completa del Nissan Versa 2011. 😊",
+                    },
                 )
             )
             stack.enter_context(

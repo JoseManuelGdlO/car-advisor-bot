@@ -733,8 +733,8 @@ class PurchaseFlowTests(GraphTestCase):
             patch("src.nodes.car_selection.search_vehicles", return_value=[versa_detail]),
             patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=versa_detail),
             patch(
-                "src.nodes.car_selection.generate_vehicle_detail_conversation",
-                return_value="Detalle del vehiculo: Nissan Versa 2011.",
+                "src.nodes.car_selection.generate_vehicle_detail_pitch_copy",
+                return_value={"tagline": "", "closing": "Detalle del vehiculo: Nissan Versa 2011."},
             ),
         ):
             updated = self.graph.invoke(state)
