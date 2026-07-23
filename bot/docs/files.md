@@ -10,8 +10,8 @@ Incluye historial de mensajes, nodo actual, selecciones del usuario y salida par
 La carpeta de nodos ahora esta separada por responsabilidad:
 
 - `car_selection`: unifica catalogo, filtros y detalle de vehiculos.
-- `financing`: manejo de planes financieros y seleccion de vehiculo por plan.
-- `promotions`: manejo de promociones y seleccion de vehiculo aplicable.
+- `financing`: respuesta informativa de planes (sin seleccion); follow-up segun paso hacia catalogo o contacto/lead.
+- `promotions`: respuesta informativa de promociones (sin seleccion); mismo patron de follow-up.
 - `lead_capture`: cierra segun `contact_method` (whatsapp/call → gracias; cita → enlace de agenda), notifica al asesor y desactiva el bot.
 - `faq`: respuesta corta para preguntas generales.
 - `intent_checker`: detecta interrupciones FAQ y marca reanudacion.
@@ -24,7 +24,7 @@ Declara y compila el `StateGraph(clientState)`:
 - `START -> intent_checker` como primera validacion de interrupciones.
 - `intent_checker` puede enviar a `faq`, retomar nodo previo o continuar a `router`.
 - Nodo `router` decide entre `car_selection`, `financing`, `promotions`, `lead_capture`, `faq` o `END`.
-- `car_selection`, `financing` y `promotions` tienen transiciones condicionales entre si y/o hacia `lead_capture`.
+- `car_selection`, `financing` y `promotions` tienen hops entre si; financing/promotions son one-shot informativos (END) salvo hop a catalogo/otro nodo.
 - `lead_capture` y `faq` finalizan en `END`.
 
 Para la suite de pruebas del bot (`bot/tests/`) y el propósito de cada módulo, ver [tests.md](tests.md).

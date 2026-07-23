@@ -38,17 +38,14 @@ class clientState(TypedDict, total=False):
     - user_id: identificador de conversacion (en web/whatsapp suele ser el telefono).
     - owner_user_id: UUID del tenant (vendedor). Obligatorio en /chat con token global antes de leer catálogo; viene del webhook o body.
     - lead_capture_done: True cuando ya se compartio el enlace de agenda, se notifico interes y el bot quedo desactivado.
-    - selected_financing_plan_*: datos del plan seleccionado por el usuario.
-    - financing_plan_candidates: lista temporal de planes para seleccion.
-    - financing_vehicle_candidates: lista temporal de vehiculos dentro del plan.
-    - awaiting_financing_plan_selection / awaiting_financing_vehicle_selection: banderas de paso.
+    - selected_financing_plan_*: ultimo plan mostrado (informativo; se persiste en CRM).
+    - financing_plan_candidates / financing_vehicle_candidates: legacy; ya no se usan en el flujo one-shot.
+    - awaiting_financing_plan_selection / awaiting_financing_vehicle_selection: legacy; siempre False.
     - show_selected_vehicle_detail_once: fuerza mostrar detalle del vehiculo ya seleccionado al entrar a car_selection.
-    - selected_promotion_*: promocion elegida/aplicable durante el flujo.
-    - promotion_candidates / promotion_vehicle_candidates: listas temporales para seleccion.
-    - awaiting_promotion_selection / awaiting_promotion_vehicle_selection / awaiting_promotion_vehicle_interest_confirmation:
-      banderas de paso para nodo promotions.
-    - awaiting_promotion_apply_confirmation: el bot mostro un resumen de una promo y espera confirmacion para avanzar.
-    - pending_financing_after_promotion: promotions aplico una promo y el mismo turno debe continuar en financing.
+    - selected_promotion_*: ultima promocion mostrada (informativo; se persiste en CRM).
+    - promotion_candidates / promotion_vehicle_candidates: legacy; ya no se usan.
+    - awaiting_promotion_*: legacy de seleccion multi-paso; siempre False.
+    - pending_financing_after_promotion: legacy; ya no se usa.
     - vehicle_comparison_ctx: contexto opcional para desambiguar comparacion de dos vehiculos
       (claves: other_query str, peer_resolved_id str opcional).
     - human_advisor_requested: True si el usuario pidio hablar con un asesor humano (CRM/UI).

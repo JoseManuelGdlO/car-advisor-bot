@@ -77,8 +77,8 @@ flowchart TD
     router --> domain["car_selection / financing / promotions / lead_capture / faq"]
     router -->|intent other sin nodo| endOther([END])
     car_selection -->|transiciones| nextCS["lead_capture / financing / promotions / END"]
-    financing -->|transiciones| nextFin["car_selection / lead_capture / promotions / END"]
-    promotions -->|transiciones| nextProm["car_selection / financing / lead_capture / END"]
+    financing -->|transiciones| nextFin["car_selection / promotions / END"]
+    promotions -->|transiciones| nextProm["car_selection / financing / END"]
     lead_capture -->|enlace agenda enviado| endLead([END])
     faq --> endFaq([END])
 ```
@@ -91,8 +91,8 @@ flowchart TD
 | `_route_after_intent_checker` | `intent_checker` | `current_node`, `is_faq_interrupt` | `faq`, `router`, `lead_capture`, `car_selection`, `financing`, `promotions` |
 | `_route_from_router` | `router` | `current_node` | `car_selection`, `lead_capture`, `faq`, `financing`, `promotions`, `END` |
 | `_route_after_car_selection` | `car_selection` | `current_node` | `lead_capture`, `financing`, `promotions`, `END` |
-| `_route_after_financing` | `financing` | `current_node` | `car_selection`, `lead_capture`, `promotions`, `END` |
-| `_route_after_promotions` | `promotions` | `current_node` | `car_selection`, `financing`, `lead_capture`, `END` |
+| `_route_after_financing` | `financing` | `current_node` | `car_selection`, `promotions`, `END` |
+| `_route_after_promotions` | `promotions` | `current_node` | `car_selection`, `financing`, `END` |
 | `_route_after_lead_capture` | `lead_capture` | `current_node` | `promotions`, `financing`, `car_selection`, `END` |
 
 **Nota importante:** cuando un nodo de dominio cambia `current_node` a otro nodo **sin generar respuesta** (solo redirección), el grafo continúa en el mismo `invoke` y ejecuta el nodo destino en cadena.
@@ -158,9 +158,7 @@ flowchart TD
     scheduling -->|si| leadCapture[current_node lead_capture]
     scheduling -->|no| humanAdvisor{quiere_asesor L OR heuristic H?}
     humanAdvisor -->|si| handleAdvisor["handle_human_advisor_request DB+L"]
-    humanAdvisor -->|no| financingNav{_financing_flow_allows_commercial_followup L?}
-    financingNav -->|si| noInterrupt
-    financingNav -->|no| faqDecision{interrumpir_por_faq L?}
+    humanAdvisor -->|no| faqDecision{interrumpir_por_faq L?}
     faqDecision -->|si| faqInterrupt["is_faq_interrupt true, current_node faq"]
     faqDecision -->|no| noInterrupt
 ```
@@ -170,10 +168,9 @@ flowchart TD
 | Early exit | nodo en `""`, `start`, `router`, `faq` o sin `last_ai` | H | No evalúa interrupción |
 | Confirmación compra | `classify_vehicle_step_flags` | L | Si hay flags comerciales, no marca FAQ |
 | FAQ interrupt | `classify_faq_interrupt_flags` | L | Flags: `interrumpir_por_faq`, `quiere_asesor_humano` |
-| Promo + detalle | `_is_vehicle_detail_request` | H | Override: no FAQ en flujo promociones |
+| Promo + detalle | `_is_vehicle_detail_request` | H | Override: no FAQ si hay promo mostrada |
 | Cita con vehículo | `is_test_drive_or_visit_request` | H | Redirige a `lead_capture` |
 | Asesor humano | `flags.quiere_asesor_humano` \| `human_advisor_heuristic_match` | L \| H | Push CRM + ack; puede activar `suppress_commercial_node_once` |
-| Navegación comercial en financing | `_financing_flow_allows_commercial_followup` | L | Bloquea desvío a FAQ durante selección de plan/vehículo |
 | Decisión FAQ | `flags.interrumpir_por_faq` | L | Guarda `resume_to_step`, activa `skip_car_prompt` / `skip_lead_prompt` |
 
 ---
@@ -385,41 +382,31 @@ En `lead_capture`: `whatsapp`/`call` → "Perfecto! gracias"; `appointment` → 
 
 Archivo: [`bot/src/nodes/financing.py`](../src/nodes/financing.py)
 
-**Propósito:** listar planes, seleccionar plan, elegir vehículo dentro del plan y avanzar a compra.
+**Propósito:** respuesta informativa de planes (estilo FAQ de enganche). No selecciona plan; persiste el plan mostrado en CRM y cierra con follow-up segun el paso.
 
-**Patrón dominante:** **L primero** (`classify_financing_step_flags` al inicio de cada turno).
+**Patrón dominante:** **H + DB** (sin LLM de selección).
 
 ```mermaid
 flowchart TD
-    entry[financing] --> flags["classify_financing_step_flags L"]
-    flags -->|ask_promotions| promNode[promotions]
-    flags -->|ask_other_vehicles| carNode[car_selection]
-    flags --> awaitingVehicle{awaiting_financing_vehicle_selection?}
-    awaitingVehicle -->|si| pickVehicle["_pick_vehicle_for_plan H"]
-    pickVehicle -->|ok| leadNode[lead_capture]
-    awaitingVehicle -->|no| awaitingPlan{awaiting_financing_plan_selection?}
-    awaitingPlan -->|si| comparePlans["classify_financing_plan_comparison_payload L"]
-    comparePlans --> selectPlan["extract_financing_plan_selection_payload L + _pick_plan_from_state H"]
-    selectPlan --> planVehicles[listar vehiculos del plan DB]
-    awaitingPlan -->|no| listPlans["fetch_financing_plans DB + format + L"]
+    entry[financing] --> escalate["maybe_escalate_financing_detail H/L"]
+    escalate -->|escalado| endEsc[END]
+    escalate -->|no| engache{enganche generico?}
+    engache -->|si| downPay["downPaymentMessage"]
+    engache -->|no| hop{promos u otros vehiculos H?}
+    hop -->|promos| promNode[promotions]
+    hop -->|catalogo| carNode[car_selection]
+    hop -->|no| fetch["fetch planes DB"]
+    fetch --> format["format_financing_plans*"]
+    format --> persist["persist financing_selection CRM"]
+    persist --> follow["commercial_info_follow_up H"]
+    follow --> endInfo["current_node=router END"]
 ```
 
-#### Sub-estados
-
-| Banderas | Flujo principal | H/L |
-|----------|-----------------|-----|
-| `awaiting_financing_plan_selection` | Comparar planes → seleccionar plan → vehículos del plan | L → L → H fallback → DB |
-| `awaiting_financing_vehicle_selection` | Elegir vehículo por nombre/número | H → `lead_capture` |
-| Sin banderas | Listar planes generales o por vehículo seleccionado | DB → L |
-
-#### Selección de plan (detalle H/L)
-
-| Orden | Función | Tipo |
-|-------|---------|------|
-| 1 | `step_flags.select_plan` | L |
-| 2 | `extract_financing_plan_selection_payload` | L |
-| 3 | `classify_financing_plan_selection_intent` (plan único) | L |
-| 4 | `_pick_plan_from_state` | H (fallback) |
+| Contexto | Follow-up | Efecto |
+|----------|-----------|--------|
+| `awaiting_purchase_preferences` | `PURCHASE_PREFERENCES_REASK_BOTH` | Retoma prefs |
+| Vehículo seleccionado / `awaiting_purchase_confirmation` | `CONTACT_PREFERENCE_MESSAGE` | Activa `awaiting_purchase_confirmation` |
+| Sin vehículo | `FAQ_SOFT_CATALOG_CLOSE` | Invita a modelos |
 
 ---
 
@@ -427,42 +414,21 @@ flowchart TD
 
 Archivo: [`bot/src/nodes/promotions.py`](../src/nodes/promotions.py)
 
-**Propósito:** listar promociones, aplicar explícitamente, elegir vehículo aplicable y confirmar interés.
+**Propósito:** respuesta informativa de promociones (mismo patrón que financing). No selecciona promo; persiste la promo mostrada en CRM.
 
-**Patrón dominante:** **L primero** (`classify_promotions_step_flags` al inicio).
+**Patrón dominante:** **H + DB**.
 
 ```mermaid
 flowchart TD
-    entry[promotions] --> navFlags["classify_promotions_step_flags L"]
-    navFlags -->|wants_compare| comparePromo["classify_promotion_comparison_payload L"]
-    navFlags -->|ask_financing| finNode[financing]
-    navFlags -->|ask_other_vehicles| carNode[car_selection]
-    navFlags --> interestConfirm{awaiting_promotion_vehicle_interest_confirmation?}
-    interestConfirm -->|si/no H+L| leadOrList[lead_capture o nueva lista]
-    interestConfirm -->|no| vehicleSelect{awaiting_promotion_vehicle_selection?}
-    vehicleSelect -->|si| pickVeh["_pick_vehicle_candidate H"]
-    vehicleSelect -->|no| promoSelect{awaiting_promotion_selection?}
-    promoSelect -->|si| pickPromo["H + extract_promotion_selection_payload L"]
-    pickPromo --> applyCheck["apply_promotion: flags L + _looks_like_explicit_apply H + classify_promotion_selection_intent L"]
-    promoSelect -->|no| listPromo["fetch_promotions DB + generate_promotion_listing_user_message L"]
+    entry[promotions] --> hop{financing u otros vehiculos H?}
+    hop -->|financing| finNode[financing]
+    hop -->|catalogo| carNode[car_selection]
+    hop -->|no| fetch["fetch promotions DB"]
+    fetch --> format["format_promotions"]
+    format --> persist["persist promotion_selection CRM"]
+    persist --> follow["commercial_info_follow_up H"]
+    follow --> endInfo["current_node=router END"]
 ```
-
-#### Confirmación de aplicar promoción
-
-Orden documentado en código:
-
-1. Señal LLM `apply_promotion` (flags)
-2. Heurística local `_looks_like_explicit_apply`
-3. Clasificador auxiliar `classify_promotion_selection_intent` (promoción única)
-
-#### Sub-estados
-
-| Banderas | Acción |
-|----------|--------|
-| `awaiting_promotion_selection` | Elegir promo de lista numerada |
-| `awaiting_promotion_apply_confirmation` | Resumen + pedir confirmación explícita |
-| `awaiting_promotion_vehicle_selection` | Elegir vehículo aplicable |
-| `awaiting_promotion_vehicle_interest_confirmation` | Sí/No con señales H + flags L |
 
 ---
 
@@ -567,8 +533,8 @@ sequenceDiagram
 | `router` | H (banderas) → L | L (`classify_router_intent`) | L (`other`) | — |
 | `faq` | DB + H | — | L | DB FAQ |
 | `car_selection` | H por rama; L en confirmación | L (flags, compra, comparación, pending) | L (detalle, QA, listados) | DB catálogo/imágenes |
-| `financing` | L (flags) → H fallback | L | L | DB planes |
-| `promotions` | L (flags) → H auxiliar | L | L | DB promociones |
+| `financing` | H + DB | — | H (listado + follow-up) | DB planes + persist CRM |
+| `promotions` | H + DB | — | H (listado + follow-up) | DB promociones + persist CRM |
 | `lead_capture` | H (guardas) → L | L (navegación) | L (agenda) | DB/API notify |
 | `human_advisor` | H \| L | — | H (ack fijo) | DB/API |
 
@@ -594,8 +560,9 @@ Archivo: [`bot/src/state.py`](../src/state.py)
 | `contact_method` | Preferencia de contacto: `whatsapp` \| `call` \| `appointment` |
 | `technical_sheet_delivered_vehicle_id` | PDF de ficha ya enviado (solo bajo pedido o junto a imágenes) |
 | `last_vehicle_candidates` | Lista pendiente de desambiguar |
-| `awaiting_financing_plan_selection` | Esperando elección de plan |
-| `awaiting_financing_vehicle_selection` | Esperando vehículo dentro del plan |
+| `selected_financing_plan_*` | Último plan mostrado (CRM) |
+| `selected_promotion_*` | Última promo mostrada (CRM) |
+| `awaiting_financing_*` / `awaiting_promotion_*` | Legacy; siempre False en flujo one-shot |
 | `awaiting_promotion_selection` | Esperando elección de promoción |
 | `awaiting_promotion_apply_confirmation` | Esperando confirmación de aplicar |
 | `lead_capture_done` / `bot_disabled` | Handoff completado |
@@ -622,7 +589,7 @@ Archivo: [`bot/src/state.py`](../src/state.py)
 | Interrupciones | `classify_faq_interrupt_flags`, `classify_vehicle_step_flags` |
 | FAQ | `generate_faq_user_turn`, `generate_faq_resume_transition` |
 | Vehículos | `classify_vehicle_comparison_payload`, `classify_purchase_confirmation_intent`, `classify_purchase_preferences`, `extract_vehicle_pending_selection_payload`, `generate_vehicle_*` |
-| Financiamiento | `classify_financing_step_flags`, `classify_financing_plan_comparison_payload`, `extract_financing_plan_selection_payload`, `classify_financing_plan_selection_intent` |
-| Promociones | `classify_promotions_step_flags`, `classify_promotion_comparison_payload`, `extract_promotion_selection_payload`, `classify_promotion_selection_intent` |
+| Financiamiento | `classify_financing_detail_escalation` (escalación asesor; sin classify/extract de planes) |
+| Promociones | — (nodo informativo sin LLM de selección) |
 | Lead | `classify_lead_capture_navigation`, `generate_lead_capture_scheduling_message` |
 | Genérico | `generate_verified_user_message` (usado en múltiples nodos) |

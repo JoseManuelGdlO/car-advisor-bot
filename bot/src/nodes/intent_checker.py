@@ -8,7 +8,6 @@ from src.tools.vehicles import normalize_user_text
 from src.services.car_selection_fallback import detect_contact_method, is_test_drive_or_visit_request
 from src.services.llm_responses import (
     classify_faq_interrupt_flags,
-    classify_financing_step_flags,
     classify_vehicle_step_flags,
 )
 from src.utils.human_advisor_notify import (
@@ -51,15 +50,9 @@ def _is_vehicle_detail_request(user_text: str) -> bool:
 
 
 def _promotions_flow_allows_vehicle_followup(state: clientState) -> bool:
-    """Hay contexto de promo activo donde un pedido de detalle de auto no debe escalarse a asesor."""
+    """Hay promo mostrada donde un pedido de detalle de auto no debe escalarse a asesor."""
 
-    return bool(
-        state.get("awaiting_promotion_vehicle_selection")
-        or state.get("awaiting_promotion_vehicle_interest_confirmation")
-        or state.get("awaiting_promotion_selection")
-        or state.get("awaiting_promotion_apply_confirmation")
-        or str(state.get("selected_promotion_id", "")).strip()
-    )
+    return bool(str(state.get("selected_promotion_id", "")).strip())
 
 
 def _has_selected_vehicle(state: clientState) -> bool:
@@ -89,39 +82,6 @@ _VEHICLE_STEP_FLAGS_BLOCKING_FAQ = (
     "wants_other_vehicles",
     "reject_purchase",
 )
-
-_FINANCING_COMMERCIAL_FLAG_KEYS = (
-    "ask_promotions",
-    "ask_other_vehicles",
-    "ask_financing_with_vehicle",
-    "wants_compare_two_plans",
-    "select_plan",
-    "ask_plan_vehicle_info",
-    "reject_financing_keep_purchase",
-)
-
-
-def _financing_flow_allows_commercial_followup(state: clientState, last_ai: str, last_user: str) -> bool:
-    """Prioriza navegacion comercial del paso financing frente a FAQ interruptiva (clasificador LLM)."""
-
-    if str(state.get("current_node", "")).strip() != "financing":
-        return False
-    if not (
-        state.get("awaiting_financing_plan_selection")
-        or state.get("awaiting_financing_vehicle_selection")
-    ):
-        return False
-    financing_flags = classify_financing_step_flags(
-        previous_bot_message=last_ai,
-        user_message=last_user,
-        selected_vehicle_name=str(state.get("selected_car", "")).strip(),
-        has_selected_vehicle=bool(str(state.get("selected_vehicle_id", "")).strip()),
-        has_selected_promotion=bool(str(state.get("selected_promotion_id", "")).strip()),
-        awaiting_plan_selection=bool(state.get("awaiting_financing_plan_selection")),
-        awaiting_vehicle_selection=bool(state.get("awaiting_financing_vehicle_selection")),
-        numbered_plan_lines="",
-    )
-    return any(financing_flags.get(key) for key in _FINANCING_COMMERCIAL_FLAG_KEYS)
 
 
 _FINANCING_ESCALATION_NODES = frozenset(
@@ -294,10 +254,6 @@ def intent_checker(state: clientState) -> clientState:
         clear_financing_credit_followup(state)
         if saved_node in _FINANCING_ESCALATION_NODES and len(state.get("messages", [])) > msgs_before:
             state["suppress_commercial_node_once"] = True
-        return state
-
-    if _financing_flow_allows_commercial_followup(state, last_ai, last_user):
-        state["is_faq_interrupt"] = False
         return state
 
     if flags.get("interrumpir_por_faq"):

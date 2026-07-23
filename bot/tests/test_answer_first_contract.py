@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+from src.utils.purchase_flow_messages import FAQ_SOFT_CATALOG_CLOSE
 from tests.test_helpers import GraphTestCase, initial_state, with_user_message
 
 
 class AnswerFirstContractTests(GraphTestCase):
-    def test_financing_uses_answer_first_contract(self) -> None:
+    def test_financing_lists_plans_informatively(self) -> None:
         plans = [
             {
                 "id": "plan-1",
@@ -23,20 +24,17 @@ class AnswerFirstContractTests(GraphTestCase):
         state = with_user_message(initial_state(), "tienen pagos a plazos?")
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.intent_checker.maybe_escalate_financing_detail", return_value=None),
+            patch("src.nodes.financing.maybe_escalate_financing_detail", return_value=None),
+            patch("src.nodes.router.classify_router_intent", return_value="FINANCING"),
             patch("src.nodes.financing.fetch_financing_plans", return_value=plans),
-            patch(
-                "src.nodes.financing.generate_financing_plans_user_message",
-                side_effect=lambda **kw: (
-                    "Si, manejamos pagos a plazos con tasa y plazo definidos; estos son los planes disponibles.\n\n"
-                    f"{kw.get('listing_block', '')}"
-                ),
-            ),
+            patch("src.nodes.financing.persist_commercial_selection_to_backend"),
         ):
             updated = self.graph.invoke(state)
 
         answer = str(updated["messages"][-1]["content"])
-        self.assertIn("manejamos pagos a plazos", answer.lower())
         self.assertIn("Shilo", answer)
+        self.assertIn(FAQ_SOFT_CATALOG_CLOSE, answer)
         self.assertTrue(
             "plan" in answer.lower()
             or "planes" in answer.lower()

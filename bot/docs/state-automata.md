@@ -10,8 +10,8 @@ Este documento define el diagrama de estados del flujo conversacional actual. El
 - `intent_checker`: detecta si la entrada interrumpe un flujo activo con FAQ.
 - `router`: clasifica la intencion principal y decide nodo destino.
 - `car_selection`: explora catalogo, filtra, compara dos vehiculos (sin cambiar `selected_vehicle_id` hasta nueva eleccion), captura preferencias de transmision/pago y permite avanzar a compra. La narrativa de detalle se muestra tras preferencias; el PDF de ficha tecnica solo bajo pedido explicito o junto a un pedido de imagenes.
-- `financing`: consulta planes financieros y cruza con vehiculos.
-- `promotions`: consulta promociones y cruza con vehiculos aplicables.
+- `financing`: respuesta informativa con planes (sin seleccion de plan); follow-up hacia catalogo o preferencia de contacto segun paso.
+- `promotions`: respuesta informativa con promociones (sin seleccion de promo); mismo patron de follow-up.
 - `lead_capture`: comparte enlace de Google Calendar para agendar prueba de manejo o visita, notifica al asesor y desactiva el bot.
 - `faq`: resuelve preguntas puntuales del usuario.
 
@@ -51,14 +51,13 @@ stateDiagram-v2
     car_selection --> lead_capture: confirm_purchase_flow
     car_selection --> [*]: render_catalog_preferences_or_detail
 
-    financing --> car_selection: select_plan_and_view_vehicles
-    financing --> lead_capture: confirm_vehicle_interest
-    financing --> [*]: render_financing_options
+    financing --> car_selection: hop_other_vehicles
+    financing --> promotions: ask_promotions
+    financing --> [*]: render_plans_plus_followup
 
-    promotions --> car_selection: select_promotion_and_view_vehicles
-    promotions --> financing: ask_financing_for_promo_vehicle
-    promotions --> lead_capture: confirm_promo_vehicle_interest
-    promotions --> [*]: render_promotions
+    promotions --> car_selection: hop_other_vehicles
+    promotions --> financing: ask_financing
+    promotions --> [*]: render_promos_plus_followup
 
     faq --> [*]: render_faq_response
     lead_capture --> [*]: scheduling_link_shown_and_handoff

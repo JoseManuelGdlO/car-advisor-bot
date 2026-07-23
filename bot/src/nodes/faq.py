@@ -27,6 +27,7 @@ from src.utils.purchase_flow_messages import (
     CONTACT_PREFERENCE_MESSAGE,
     FAQ_SOFT_CATALOG_CLOSE,
     PURCHASE_PREFERENCES_REASK_BOTH,
+    mid_purchase_close,
 )
 from src.utils.state_helpers import (
     append_assistant_message,
@@ -79,18 +80,6 @@ def is_faq_location_topic(user_question: str, faq_candidates: list[str]) -> bool
     return bool(context_blob) and any(term in context_blob for term in _FAQ_LOCATION_CONTEXT_TERMS)
 
 
-def _mid_purchase_close(state: Mapping[str, Any] | None) -> str:
-    """Cierre literal mid-compra: prefs o contacto; vacio si no aplica."""
-
-    if not state:
-        return ""
-    if bool(state.get("awaiting_purchase_preferences")):
-        return PURCHASE_PREFERENCES_REASK_BOTH
-    if bool(state.get("awaiting_purchase_confirmation")) and str(state.get("selected_car", "")).strip():
-        return CONTACT_PREFERENCE_MESSAGE
-    return ""
-
-
 def resolve_faq_follow_up(
     user_question: str,
     faq_candidates: list[str],
@@ -98,7 +87,7 @@ def resolve_faq_follow_up(
 ) -> tuple[str, str]:
     """Devuelve (cierre_literal, tema_cierre) segun tema FAQ y contexto de compra."""
 
-    mid_close = _mid_purchase_close(state)
+    mid_close = mid_purchase_close(state)
     if is_faq_hours_topic(user_question, faq_candidates):
         return mid_close, "horarios"
     if is_faq_location_topic(user_question, faq_candidates):

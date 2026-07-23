@@ -64,9 +64,9 @@ Las variables de entorno se fusionan al importar el paquete `tests` (ver `tests/
 
 ### `test_financing_flow.py`
 
-**Rol:** integración — nodo `financing` y transiciones hacia lead, catálogo o promociones.
+**Rol:** integración — nodo `financing` informativo (estilo FAQ).
 
-**Cubre:** rechazo de planes manteniendo intención de compra; pedido de catálogo desde financiamiento; pedido de promociones (no FAQ); múltiples vehículos hacia lead; escenario multiturno Versa + FAQ + plan + lead.
+**Cubre:** con vehículo → plan + `CONTACT_PREFERENCE_MESSAGE` + persist CRM; sin vehículo → plan + soft catálogo; mid-prefs → reask prefs; hop a promociones; turno siguiente whatsapp → `lead_capture`.
 
 ---
 
@@ -106,7 +106,7 @@ Las variables de entorno se fusionan al importar el paquete `tests` (ver `tests/
 
 **Rol:** integración — contratos de respuesta y prioridad de intención.
 
-**Cubre:** financiamiento responde primero y lista planes; pregunta híbrida (ubicación + Versa) sigue la etiqueta del clasificador LLM (`VEHICLE_CATALOG` → `car_selection`).
+**Cubre:** financiamiento lista planes de forma informativa + soft catálogo; pregunta híbrida (ubicación + Versa) sigue la etiqueta del clasificador LLM (`VEHICLE_CATALOG` → `car_selection`).
 
 ---
 
@@ -134,19 +134,11 @@ Las variables de entorno se fusionan al importar el paquete `tests` (ver `tests/
 
 ---
 
-### `test_promotions_step_flags.py`
+### `test_promotions_context_flow.py`
 
-**Rol:** unitario — `classify_promotions_step_flags` en `src.services.llm_responses`.
+**Rol:** integración — nodo `promotions` informativo (estilo FAQ).
 
-**Cubre:** flags `apply_promotion`, `ask_promotion_vehicle_info`, `ask_promotions` con `ChatOpenAI` sustituido por un LLM dummy determinista.
-
----
-
-### `test_promotion_pick_resolution.py`
-
-**Rol:** unitario — helpers internos del nodo `promotions` (`_pick_promotion_by_token_overlap`, `_resolve_promotion_from_extract`).
-
-**Cubre:** elección por solapamiento de tokens; resolución por índice o por consulta de título; `no_match`.
+**Cubre:** con vehículo → promo + contacto; sin vehículo → promo + soft catálogo; hop a financing.
 
 ---
 

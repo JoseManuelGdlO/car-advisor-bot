@@ -61,17 +61,14 @@ class VehicleCatalogFlowTests(GraphTestCase):
         state = with_user_message(initial_state(), "hola tienes promociones disponibles?")
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
-            # Catálogo vacío: validar solo enrutamiento a promotions y mensaje fallback.
+            patch("src.nodes.router.classify_router_intent", return_value="PROMOTIONS"),
             patch("src.nodes.promotions.fetch_promotions", return_value=[]),
-            patch(
-                "src.nodes.promotions.generate_verified_user_message",
-                side_effect=lambda **kw: kw["fallback"],
-            ),
+            patch("src.nodes.promotions.persist_commercial_selection_to_backend"),
         ):
             updated = self.graph.invoke(state)
 
-        self.assertEqual(updated.get("current_node"), "promotions")
-        self.assertEqual(updated.get("intent"), "promotions")
+        self.assertEqual(updated.get("current_node"), "router")
+        self.assertEqual(updated.get("intent"), "vehicle_catalog")
         self.assertIn("No hay promociones disponibles", str(updated["messages"][-1]["content"]))
 
     def test_vehicle_request_routes_to_car_selection_and_shows_detail(self) -> None:
