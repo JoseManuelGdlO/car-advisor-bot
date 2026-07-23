@@ -24,10 +24,10 @@ from src.utils.financing_credit_faq import (
     mark_financing_credit_followup_pending,
 )
 from src.utils.purchase_flow_messages import (
-    CONTACT_PREFERENCE_MESSAGE,
     FAQ_SOFT_CATALOG_CLOSE,
     PURCHASE_PREFERENCES_REASK_BOTH,
     mid_purchase_close,
+    take_contact_preference_message,
 )
 from src.utils.state_helpers import (
     append_assistant_message,
@@ -127,8 +127,8 @@ def faq(state: clientState) -> clientState:
             transition = PURCHASE_PREFERENCES_REASK_BOTH
             used_close = ""
         elif awaiting_contact:
-            # Mid-compra: retoma preferencia de contacto (no "agendar cita" generico).
-            transition = CONTACT_PREFERENCE_MESSAGE
+            # Mid-compra: retoma preferencia de contacto (corto si ya se pregunto).
+            transition = take_contact_preference_message(state)
             used_close = ""
         else:
             transition = generate_faq_resume_transition(

@@ -11,7 +11,7 @@ from src.services.llm_responses import (
 )
 from src.state import clientState
 from src.utils.purchase_flow_messages import (
-    CONTACT_PREFERENCE_MESSAGE,
+    CONTACT_PREFERENCE_MESSAGE_SHORT,
     LEAD_CONTACT_FOLLOWUP_WHATSAPP_CALL,
     PURCHASE_PREFERENCES_REASK_BOTH,
 )
@@ -62,7 +62,7 @@ class GenerateFaqResumeTransitionTests(unittest.TestCase):
             "awaiting_promotion_apply_confirmation": False,
         }
         out = _faq_resume_transition_fallback("car_selection", snapshot)
-        self.assertEqual(out, CONTACT_PREFERENCE_MESSAGE)
+        self.assertEqual(out, CONTACT_PREFERENCE_MESSAGE_SHORT)
 
     def test_preferences_fallback_uses_fixed_reask(self) -> None:
         snapshot = {
@@ -159,7 +159,7 @@ class GenerateFaqResumeTransitionTests(unittest.TestCase):
                 "awaiting_purchase_confirmation": True,
             },
         )
-        self.assertEqual(out, CONTACT_PREFERENCE_MESSAGE)
+        self.assertEqual(out, CONTACT_PREFERENCE_MESSAGE_SHORT)
         mock_verified.assert_not_called()
 
     @patch("src.services.llm_responses.generate_verified_user_message")
@@ -276,7 +276,7 @@ class FaqNodeResumeTransitionWiringTests(unittest.TestCase):
             "messages": [
                 {
                     "role": "assistant",
-                    "content": CONTACT_PREFERENCE_MESSAGE,
+                    "content": CONTACT_PREFERENCE_MESSAGE_SHORT,
                     "type": "AIMessage",
                 },
                 {"role": "user", "content": "¿dónde están?", "type": "HumanMessage"},
@@ -289,7 +289,7 @@ class FaqNodeResumeTransitionWiringTests(unittest.TestCase):
         }
         faq(state)
         mock_transition.assert_not_called()
-        self.assertEqual(mock_turn.call_args.kwargs["transition_literal"], CONTACT_PREFERENCE_MESSAGE)
+        self.assertEqual(mock_turn.call_args.kwargs["transition_literal"], CONTACT_PREFERENCE_MESSAGE_SHORT)
 
 
 if __name__ == "__main__":

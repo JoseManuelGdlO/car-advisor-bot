@@ -198,6 +198,7 @@ def _build_initial_state() -> dict[str, Any]:
         "selected_transmission": "",
         "selected_payment_type": "",
         "awaiting_purchase_confirmation": False,
+        "contact_preference_prompt_sent": False,
         "contact_method": "",
         "platform": DEFAULT_INBOUND_PLATFORM,
         "user_id": "",

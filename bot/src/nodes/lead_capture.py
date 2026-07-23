@@ -221,6 +221,7 @@ def _append_scheduling_message(
     selected_car: str,
     resuming: bool,
 ) -> clientState:
+    state = append_visit_incentive_if_configured(state)
     message = generate_lead_capture_scheduling_message(selected_car, resuming=resuming)
     return append_assistant_message(state, message)
 

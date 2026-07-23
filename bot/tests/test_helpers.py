@@ -31,6 +31,7 @@ def initial_state() -> dict:
         "selected_transmission": "",
         "selected_payment_type": "",
         "awaiting_purchase_confirmation": False,
+        "contact_preference_prompt_sent": False,
         "contact_method": "",
         "platform": "web",
         "user_id": "",

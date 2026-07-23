@@ -15,10 +15,11 @@ from src.tools.vehicles import normalize_user_text
 from src.utils.app_logging import get_app_logger, log_flow_trace
 from src.utils.formatters import format_promotions
 from src.utils.purchase_flow_messages import (
-    CONTACT_PREFERENCE_MESSAGE,
     FAQ_SOFT_CATALOG_CLOSE,
     PURCHASE_PREFERENCES_REASK_BOTH,
     commercial_info_follow_up,
+    is_contact_preference_message,
+    mark_contact_preference_prompt_sent,
 )
 from src.utils.signals import FINANCING_SIGNALS
 from src.utils.state_helpers import append_assistant_message, latest_user_message
@@ -123,9 +124,10 @@ def _apply_follow_up_routing(state: clientState, follow_up: str) -> None:
     if follow_up == PURCHASE_PREFERENCES_REASK_BOTH:
         state["awaiting_purchase_preferences"] = True
         return
-    if follow_up == CONTACT_PREFERENCE_MESSAGE:
+    if is_contact_preference_message(follow_up):
         state["awaiting_purchase_confirmation"] = True
         state["awaiting_purchase_preferences"] = False
+        mark_contact_preference_prompt_sent(state)
         return
     if follow_up == FAQ_SOFT_CATALOG_CLOSE and not str(state.get("selected_car", "")).strip():
         state["awaiting_purchase_confirmation"] = False

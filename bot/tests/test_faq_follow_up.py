@@ -6,7 +6,7 @@ from unittest.mock import patch
 from src.nodes.faq import is_faq_hours_topic, resolve_faq_follow_up
 from src.services.llm_responses import generate_faq_user_turn
 from src.utils.purchase_flow_messages import (
-    CONTACT_PREFERENCE_MESSAGE,
+    CONTACT_PREFERENCE_MESSAGE_SHORT,
     FAQ_SOFT_CATALOG_CLOSE,
     PURCHASE_PREFERENCES_REASK_BOTH,
 )
@@ -58,7 +58,7 @@ class FaqFollowUpTests(unittest.TestCase):
             },
         )
         self.assertEqual(topic, "horarios")
-        self.assertEqual(close, CONTACT_PREFERENCE_MESSAGE)
+        self.assertEqual(close, CONTACT_PREFERENCE_MESSAGE_SHORT)
 
     def test_location_mid_purchase_prefs_uses_preferences_reask(self) -> None:
         close, topic = resolve_faq_follow_up(

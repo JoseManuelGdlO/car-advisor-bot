@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from src.nodes.intent_checker import intent_checker
-from src.utils.purchase_flow_messages import CONTACT_PREFERENCE_MESSAGE
+from src.utils.purchase_flow_messages import CONTACT_PREFERENCE_MESSAGE_SHORT
 from src.utils.signals import is_business_faq_question
 from tests.test_helpers import GraphTestCase, initial_state, with_user_message
 
@@ -246,7 +246,7 @@ class BusinessFaqDuringPurchaseFlowTests(GraphTestCase):
 
         def capture_faq_turn(**kwargs: object) -> str:
             captured.update(kwargs)
-            return f"Estamos en Centro.\n\n{CONTACT_PREFERENCE_MESSAGE}"
+            return f"Estamos en Centro.\n\n{CONTACT_PREFERENCE_MESSAGE_SHORT}"
 
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": True}),
@@ -262,7 +262,7 @@ class BusinessFaqDuringPurchaseFlowTests(GraphTestCase):
         self.assertEqual(updated.get("current_node"), "car_selection")
         self.assertTrue(updated.get("awaiting_purchase_confirmation"))
         self.assertEqual(captured.get("faq_close_topic"), "ubicacion")
-        self.assertEqual(captured.get("transition_literal"), CONTACT_PREFERENCE_MESSAGE)
+        self.assertEqual(captured.get("transition_literal"), CONTACT_PREFERENCE_MESSAGE_SHORT)
         self.assertIn("whatsapp", updated["messages"][-1]["content"].lower())
         self.assertNotIn("¿te gustaría agendar una cita?", updated["messages"][-1]["content"].lower())
 

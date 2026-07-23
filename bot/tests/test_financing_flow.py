@@ -5,7 +5,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from src.utils.purchase_flow_messages import (
-    CONTACT_PREFERENCE_MESSAGE,
+    CONTACT_PREFERENCE_MESSAGE_SHORT,
     FAQ_SOFT_CATALOG_CLOSE,
     PURCHASE_PREFERENCES_REASK_BOTH,
 )
@@ -53,7 +53,7 @@ class FinancingFlowTests(GraphTestCase):
 
         reply = str(updated["messages"][-1]["content"])
         self.assertIn("Financiamiento Shilo", reply)
-        self.assertIn(CONTACT_PREFERENCE_MESSAGE, reply)
+        self.assertIn(CONTACT_PREFERENCE_MESSAGE_SHORT, reply)
         self.assertTrue(updated.get("awaiting_purchase_confirmation"))
         self.assertEqual(updated.get("selected_financing_plan_id"), "plan-1")
         self.assertEqual(updated.get("selected_financing_plan_name"), "Financiamiento Shilo")
@@ -81,7 +81,7 @@ class FinancingFlowTests(GraphTestCase):
         reply = str(updated["messages"][-1]["content"])
         self.assertIn("Financiamiento Shilo", reply)
         self.assertIn(FAQ_SOFT_CATALOG_CLOSE, reply)
-        self.assertNotIn(CONTACT_PREFERENCE_MESSAGE, reply)
+        self.assertNotIn(CONTACT_PREFERENCE_MESSAGE_SHORT, reply)
         self.assertFalse(updated.get("awaiting_purchase_confirmation"))
         persist_mock.assert_called_once()
 
@@ -148,11 +148,11 @@ class FinancingFlowTests(GraphTestCase):
         state["selected_financing_plan_id"] = "plan-1"
         state["selected_financing_plan_name"] = "Financiamiento Shilo"
         state["selected_financing_plan_lender"] = "BBVA"
-        state["last_bot_message"] = CONTACT_PREFERENCE_MESSAGE
+        state["last_bot_message"] = CONTACT_PREFERENCE_MESSAGE_SHORT
         state["messages"] = [
             {
                 "role": "assistant",
-                "content": f"Planes...\n\n{CONTACT_PREFERENCE_MESSAGE}",
+                "content": f"Planes...\n\n{CONTACT_PREFERENCE_MESSAGE_SHORT}",
                 "type": "AIMessage",
             }
         ]
