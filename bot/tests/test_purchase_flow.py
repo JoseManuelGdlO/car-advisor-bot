@@ -158,9 +158,10 @@ class PurchaseFlowTests(GraphTestCase):
         self.assertTrue(updated.get("awaiting_purchase_confirmation"))
         self.assertFalse(updated.get("lead_capture_done"))
         last = updated["messages"][-1]["content"]
-        self.assertIn("WhatsApp", last)
+        self.assertIn("whatsapp", last.lower())
         self.assertIn("llamada", last)
         self.assertIn("cita", last)
+        self.assertNotIn("10 minutos", last)
 
     def test_whatsapp_preference_routes_to_lead_capture_thanks(self) -> None:
         state = initial_state()

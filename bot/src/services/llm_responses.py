@@ -1302,7 +1302,7 @@ def _faq_resume_fixed_literal(snapshot: dict[str, str | bool | int]) -> str | No
     if snapshot.get("awaiting_purchase_preferences"):
         return purchase_preferences_resume_message()
     if snapshot.get("awaiting_purchase_confirmation"):
-        return contact_preference_resume_message()
+        return contact_preference_resume_message(snapshot)
     return None
 
 

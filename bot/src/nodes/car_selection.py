@@ -52,7 +52,7 @@ from src.tools.vehicles import (
     normalize_user_text,
     search_vehicles,
 )
-from src.utils.purchase_flow_messages import CONTACT_PREFERENCE_MESSAGE
+from src.utils.purchase_flow_messages import take_contact_preference_message
 from src.utils.formatters import (
     assemble_vehicle_detail_pitch,
     format_available_vehicles_grouped,
@@ -340,10 +340,9 @@ _CONTACT_METHOD_LABEL_TO_VALUE = {
 
 
 def _build_purchase_question(state: clientState) -> str:
-    """Mensaje fijo de preferencia de contacto post-detalle."""
+    """CTA de preferencia de contacto: largo la primera vez, corto en repreguntas."""
 
-    _ = state  # firma estable para callers existentes
-    return CONTACT_PREFERENCE_MESSAGE
+    return take_contact_preference_message(state)
 
 
 def _resolve_contact_method(user_text: str, previous_bot_message: str) -> str:

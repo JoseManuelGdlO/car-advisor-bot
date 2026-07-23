@@ -28,6 +28,7 @@ class clientState(TypedDict, total=False):
     - selected_transmission: preferencia de transmision ("automatico" | "estandar" | "").
     - selected_payment_type: preferencia de pago ("contado" | "financiado" | "").
     - awaiting_purchase_confirmation: espera preferencia de contacto (whatsapp/call/appointment) tras detalle.
+    - contact_preference_prompt_sent: True tras enviar al menos una vez el CTA de preferencia de contacto.
     - contact_method: como prefiere ser contactado ("whatsapp" | "call" | "appointment" | "").
     - last_vehicle_candidates: candidatos previos para desambiguar seleccion.
     - vehicle_images_cursor: cursor para paginacion de imagenes del vehiculo seleccionado.
@@ -83,6 +84,7 @@ class clientState(TypedDict, total=False):
     selected_transmission: str
     selected_payment_type: str
     awaiting_purchase_confirmation: bool
+    contact_preference_prompt_sent: bool
     contact_method: str
     platform: str
     user_id: str

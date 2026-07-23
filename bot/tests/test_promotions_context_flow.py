@@ -5,7 +5,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from src.utils.purchase_flow_messages import (
-    CONTACT_PREFERENCE_MESSAGE,
+    CONTACT_PREFERENCE_MESSAGE_SHORT,
     FAQ_SOFT_CATALOG_CLOSE,
 )
 from tests.test_helpers import GraphTestCase, initial_state, with_user_message
@@ -39,7 +39,7 @@ class PromotionsContextFlowTests(GraphTestCase):
 
         reply = str(updated["messages"][-1]["content"])
         self.assertIn("Bono de Descuento", reply)
-        self.assertIn(CONTACT_PREFERENCE_MESSAGE, reply)
+        self.assertIn(CONTACT_PREFERENCE_MESSAGE_SHORT, reply)
         self.assertTrue(updated.get("awaiting_purchase_confirmation"))
         self.assertEqual(updated.get("selected_promotion_id"), "promo-bono")
         self.assertEqual(updated.get("selected_promotion_title"), "Bono de Descuento")
@@ -67,7 +67,7 @@ class PromotionsContextFlowTests(GraphTestCase):
         reply = str(updated["messages"][-1]["content"])
         self.assertIn("Bono de Descuento", reply)
         self.assertIn(FAQ_SOFT_CATALOG_CLOSE, reply)
-        self.assertNotIn(CONTACT_PREFERENCE_MESSAGE, reply)
+        self.assertNotIn(CONTACT_PREFERENCE_MESSAGE_SHORT, reply)
 
     def test_financing_request_hops_to_financing(self) -> None:
         state = initial_state()
