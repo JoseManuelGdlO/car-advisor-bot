@@ -9,7 +9,7 @@ from tests.test_helpers import initial_state, with_user_message
 
 class TestRouterHybrid(unittest.TestCase):
     def test_unknown_llm_falls_back_to_other(self) -> None:
-        state = with_user_message(initial_state(), "donde se encuentran ubicados?")
+        state = with_user_message(initial_state(), "alguna duda rara sin match")
         with (
             patch("src.nodes.router.classify_router_intent", return_value="UNKNOWN"),
             patch("src.nodes.router.generate_other_response", return_value="Te ayudo en un momento."),
@@ -25,10 +25,28 @@ class TestRouterHybrid(unittest.TestCase):
         self.assertEqual(out.get("current_node"), "faq")
         self.assertEqual(out.get("intent"), "faq")
 
-    def test_hours_question_routes_via_llm_classifier(self) -> None:
+    def test_hours_question_routes_via_business_faq_heuristic(self) -> None:
         state = with_user_message(initial_state(), "si quiero saber el horario que manejan")
-        with patch("src.nodes.router.classify_router_intent", return_value="FAQ"):
+        with patch("src.nodes.router.classify_router_intent") as mock_cls:
             out = router(dict(state))
+        mock_cls.assert_not_called()
+        self.assertEqual(out.get("current_node"), "faq")
+        self.assertEqual(out.get("intent"), "faq")
+
+    def test_seminuevos_policy_routes_via_business_faq_heuristic(self) -> None:
+        state = with_user_message(initial_state(), "tienen carros seminuevos?")
+        with patch("src.nodes.router.classify_router_intent") as mock_cls:
+            out = router(dict(state))
+        mock_cls.assert_not_called()
+        self.assertEqual(out.get("current_node"), "faq")
+        self.assertEqual(out.get("intent"), "faq")
+
+    def test_seminuevos_heuristic_overrides_vehicle_catalog_sticky_intent(self) -> None:
+        state = with_user_message(initial_state(), "tienen autos seminuevos?")
+        state["intent"] = "vehicle_catalog"
+        with patch("src.nodes.router.classify_router_intent") as mock_cls:
+            out = router(dict(state))
+        mock_cls.assert_not_called()
         self.assertEqual(out.get("current_node"), "faq")
         self.assertEqual(out.get("intent"), "faq")
 

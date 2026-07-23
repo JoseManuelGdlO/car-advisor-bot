@@ -190,7 +190,9 @@ Archivo: [`bot/src/nodes/router.py`](../src/nodes/router.py)
 flowchart TD
     entry[router] --> h1{awaiting_purchase_prefs_or_confirm OR pending_candidates H}
     h1 -->|si| carSel[car_selection]
-    h1 -->|no| h2{intent previo vehicle/financing/promotions H}
+    h1 -->|no| hFaq{is_business_faq_question H}
+    hFaq -->|si| faqNode[faq]
+    hFaq -->|no| h2{intent previo vehicle/financing/promotions H}
     h2 -->|vehicle_catalog| carSel
     h2 -->|financing| finNode[financing]
     h2 -->|promotions| promNode[promotions]
@@ -208,9 +210,10 @@ flowchart TD
 | Orden | Condición | Destino |
 |-------|-----------|---------|
 | 1 | `awaiting_purchase_preferences`, `awaiting_purchase_confirmation` o `last_vehicle_candidates` | `car_selection` |
-| 2 | `intent` previo `vehicle_catalog` / `financing` / `promotions` con texto | Mantiene nodo comercial |
-| 3 | Saludo post-onboarding (`is_greeting_only_message`) | `intent=other`, END |
-| 4 | Texto vacío | `generate_other_response` → END |
+| 2 | `is_business_faq_question` (seminuevos/usados, horarios, ubicación, políticas) | `faq` |
+| 3 | `intent` previo `vehicle_catalog` / `financing` / `promotions` con texto | Mantiene nodo comercial |
+| 4 | Saludo post-onboarding (`is_greeting_only_message`) | `intent=other`, END |
+| 5 | Texto vacío | `generate_other_response` → END |
 
 #### Fase 2 — Clasificador LLM
 
@@ -223,9 +226,9 @@ flowchart TD
 
 **Notas:**
 
-- No hay reconciliación heurística ni fallback determinista si el LLM falla: la etiqueta del clasificador (o `other`) define el destino.
+- FAQ de negocio conocida (`is_business_faq_question`: seminuevos/usados, horarios, ubicación, etc.) se resuelve por heurística antes del sticky comercial y del LLM.
 - Escalación a asesor humano por heurística ocurre en `intent_checker`, no como early-exit en `router`.
-- Si el clasificador devuelve `FAQ`, el flujo va a `faq` aunque el mensaje mencione vehículos; `car_selection` solo se alcanza con `VEHICLE_CATALOG` o banderas de contexto.
+- Si el clasificador (o la heurística) resuelve `FAQ`, el flujo va a `faq` aunque el mensaje mencione vehículos; `car_selection` solo se alcanza con `VEHICLE_CATALOG` o banderas de contexto.
 
 Etiquetas válidas del clasificador: `VEHICLE_CATALOG`, `FAQ`, `FINANCING`, `PROMOTIONS`, `HUMAN_ADVISOR`.
 

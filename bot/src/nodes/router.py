@@ -8,7 +8,7 @@ from src.services.llm_responses import classify_router_intent, generate_other_re
 from src.tools.vehicles import normalize_user_text
 from src.utils.human_advisor_notify import handle_human_advisor_request
 from src.utils.financing_advisor_notify import maybe_escalate_financing_detail
-from src.utils.signals import is_greeting_only_message
+from src.utils.signals import is_business_faq_question, is_greeting_only_message
 from src.utils.app_logging import get_app_logger, log_flow_trace
 from src.utils.state_helpers import (
     append_assistant_message,
@@ -122,6 +122,13 @@ def router(state: clientState) -> clientState:
         state["current_node"] = "car_selection"
         _debug_router("route_to_car_selection", reason="state_flags")
         return state
+
+    # Politica del lote / FAQ de negocio (seminuevos, horarios, ubicacion, etc.)
+    # gana al sticky comercial y al clasificador LLM.
+    if text and is_business_faq_question(user_text):
+        if state.get("onboarding_welcome_sent_this_turn"):
+            state["onboarding_welcome_sent_this_turn"] = False
+        return _apply_router_resolution(state, "FAQ", reason="business_faq_heuristic")
 
     if state.get("intent") == "vehicle_catalog" and text:
         state["current_node"] = "car_selection"
