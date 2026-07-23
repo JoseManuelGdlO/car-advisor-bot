@@ -302,9 +302,9 @@ flowchart TD
     resolve -->|completas| detail["_respond_with_selected_vehicle_detail_and_purchase_question"]
 ```
 
-#### Sub-flujo A: confirmación de compra (`awaiting_purchase_confirmation`)
+#### Sub-flujo A: preferencia de contacto (`awaiting_purchase_confirmation`)
 
-Al completar preferencias se envía la **narrativa** de detalle + pregunta de prueba de manejo. El **PDF** de ficha técnica (`technicalSheetUrl` → `<<WC_DOCUMENT_JSON>>` o link web) **no** se adjunta aquí.
+Al completar preferencias se envía la **narrativa** de detalle + mensaje fijo de preferencia de contacto (WhatsApp / llamada / cita). El **PDF** de ficha técnica (`technicalSheetUrl` → `<<WC_DOCUMENT_JSON>>` o link web) **no** se adjunta aquí.
 
 El PDF solo se envía cuando:
 
@@ -318,21 +318,27 @@ flowchart TD
     confirm[awaiting_purchase_confirmation] --> flags["classify_vehicle_step_flags L"]
     flags -->|wants_compare| compareLLM["classify_vehicle_comparison_payload L"]
     flags -->|ask_promotions| promNode[promotions]
-    flags -->|confirm_purchase OR test_drive H| leadNode[lead_capture]
-    flags -->|ask_financing OR financing H| finNode[financing]
     flags -->|ask_images| firstImg["imagenes + PDF si URL"]
     flags -->|ask_more_images| moreImg["mas imagenes + PDF si no entregado"]
     flags -->|specs request H| inventoryQA["QA L; PDF solo si pide ficha"]
     flags -->|wants_other_vehicles| otherList[listado]
     flags -->|reject_purchase| availableList[listado]
-    flags -->|sin match claro| purchaseIntent["classify_purchase_confirmation_intent L"]
-    purchaseIntent -->|SI| leadNode
+    flags -->|sin match claro| contactH["detect_contact_method H"]
+    contactH -->|whatsapp_call_appointment| leadNode[lead_capture]
+    contactH -->|sin match| testDrive["test_drive H"]
+    testDrive -->|si| leadNode
+    testDrive -->|no| financingCheck["ask_financing OR financing H"]
+    financingCheck -->|si| finNode[financing]
+    financingCheck -->|no| purchaseIntent["classify_purchase_confirmation_intent L"]
     purchaseIntent -->|NO| availableList
     purchaseIntent -->|VER_MAS_IMAGENES| moreImg
     purchaseIntent -->|PREGUNTA_MODELO / VER_MODELO| detailFlow[detalle o QA]
-    purchaseIntent -->|desconocido| repregunta["generate_vehicle_purchase_question L"]
+    purchaseIntent -->|SI_o_desconocido| contactL["classify_contact_method L"]
+    contactL -->|resuelto| leadNode
+    contactL -->|UNKNOWN| repregunta["CONTACT_PREFERENCE_MESSAGE fijo"]
 ```
 
+En `lead_capture`: `whatsapp`/`call` → "Perfecto! gracias"; `appointment` → link de calendario. Se persiste `contact_method` en el lead.
 #### Sub-flujo B: selección de candidatos pendientes (`last_vehicle_candidates`)
 
 | Orden | Función | Tipo |
@@ -579,7 +585,8 @@ Archivo: [`bot/src/state.py`](../src/state.py)
 | `suppress_commercial_node_once` | Saltar nodo comercial tras ack asesor |
 | `awaiting_purchase_preferences` | Espera transmisión + tipo de pago tras seleccionar vehículo |
 | `selected_transmission` / `selected_payment_type` | Preferencias capturadas antes del detalle |
-| `awaiting_purchase_confirmation` | Sub-flujo de cierre en car_selection (post-detalle) |
+| `awaiting_purchase_confirmation` | Sub-flujo de cierre: espera preferencia de contacto post-detalle |
+| `contact_method` | Preferencia de contacto: `whatsapp` \| `call` \| `appointment` |
 | `technical_sheet_delivered_vehicle_id` | PDF de ficha ya enviado (solo bajo pedido o junto a imágenes) |
 | `last_vehicle_candidates` | Lista pendiente de desambiguar |
 | `awaiting_financing_plan_selection` | Esperando elección de plan |

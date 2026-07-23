@@ -1,4 +1,4 @@
-"""Nodo para agenda de prueba de manejo o visita via link de calendario."""
+"""Nodo de cierre: preferencia de contacto y, si aplica, link de calendario."""
 
 from __future__ import annotations
 
@@ -20,6 +20,10 @@ from src.utils.state_helpers import append_assistant_message, latest_user_messag
 
 _log = get_app_logger("lead_capture")
 
+CONTACT_THANKS_MESSAGE = "Perfecto! gracias"
+
+_VALID_CONTACT_METHODS = frozenset({"whatsapp", "call", "appointment"})
+
 
 def _debug(event: str, **payload: Any) -> None:
     """Trazas de depuracion; payload completo solo con LOG_LEVEL=debug."""
@@ -31,6 +35,13 @@ def _last_assistant_content(state: clientState) -> str:
     for m in reversed(state.get("messages", [])):
         if m.get("role") == "assistant":
             return str(m.get("content", ""))
+    return ""
+
+
+def _normalize_contact_method(raw: Any) -> str:
+    value = str(raw or "").strip().lower()
+    if value in _VALID_CONTACT_METHODS:
+        return value
     return ""
 
 
@@ -91,6 +102,31 @@ def _promotion_selection(state: clientState, selected_car: str) -> dict[str, Any
     return promotion_selection
 
 
+def _event_message_for_contact_method(contact_method: str) -> str:
+    if contact_method == "whatsapp":
+        return "Prefiere contacto por WhatsApp"
+    if contact_method == "call":
+        return "Prefiere contacto por llamada"
+    return "Se envió el enlace para agendar visita o prueba de manejo"
+
+
+def _push_body_for_contact_method(contact_method: str, *, display_phone: str, selected_car: str) -> str:
+    if contact_method == "whatsapp":
+        return f"{display_phone} prefiere contacto por WhatsApp sobre {selected_car}."
+    if contact_method == "call":
+        return f"{display_phone} prefiere contacto por llamada sobre {selected_car}."
+    return (
+        f"{display_phone} recibio el enlace para agendar prueba de manejo o visita "
+        f"de {selected_car}."
+    )
+
+
+def _push_title_for_contact_method(contact_method: str) -> str:
+    if contact_method in {"whatsapp", "call"}:
+        return "Interes en contacto de vehiculo"
+    return "Interes en agenda de vehiculo"
+
+
 def _notify_and_persist(
     state: clientState,
     *,
@@ -98,17 +134,20 @@ def _notify_and_persist(
     platform: str,
     user_id: str,
     owner_user_id: str,
+    contact_method: str,
 ) -> bool:
     """Envia evento CRM y push al owner; devuelve si notify_advisor tuvo exito."""
 
     uid = str(user_id or "").strip() or "lead"
     financing_selection = _financing_selection(state, selected_car)
     promotion_selection = _promotion_selection(state, selected_car)
+    resolved_method = contact_method or "appointment"
 
     _debug(
         "notify_payload_ready",
         selected_car=selected_car,
         owner_user_id=owner_user_id,
+        contact_method=resolved_method,
         financing_selection=financing_selection,
         promotion_selection=promotion_selection,
     )
@@ -116,12 +155,13 @@ def _notify_and_persist(
         {
             "user_id": uid,
             "platform": platform,
-            "message": "Se envió el enlace para agendar visita o prueba de manejo",
+            "message": _event_message_for_contact_method(resolved_method),
             "from": "system",
             "selected_car": selected_car,
             "customer_info": {},
             "financing_selection": financing_selection,
             "promotion_selection": promotion_selection,
+            "contact_method": resolved_method,
         }
     )
 
@@ -137,10 +177,11 @@ def _notify_and_persist(
             owner_user_id=owner_user_id,
             financing_selection=financing_selection or None,
             promotion_selection=promotion_selection or None,
-            push_title="Interes en agenda de vehiculo",
-            push_body=(
-                f"{display_phone} recibio el enlace para agendar prueba de manejo o visita "
-                f"de {selected_car}."
+            push_title=_push_title_for_contact_method(resolved_method),
+            push_body=_push_body_for_contact_method(
+                resolved_method,
+                display_phone=display_phone,
+                selected_car=selected_car,
             ),
         )
         _debug("notify_success")
@@ -160,6 +201,10 @@ def _append_scheduling_message(
     return append_assistant_message(state, message)
 
 
+def _append_thanks_message(state: clientState) -> clientState:
+    return append_assistant_message(state, CONTACT_THANKS_MESSAGE)
+
+
 def _no_vehicle_message(state: clientState, latest_user: str) -> clientState:
     return append_assistant_message(
         state,
@@ -175,24 +220,36 @@ def _no_vehicle_message(state: clientState, latest_user: str) -> clientState:
 
 def _already_done_message(state: clientState, selected_car: str, latest_user: str) -> clientState:
     name = selected_car or "tu vehiculo"
+    contact_method = _normalize_contact_method(state.get("contact_method"))
+    if contact_method in {"whatsapp", "call"}:
+        fallback = f"Ya registramos tu preferencia de contacto para {name}."
+        facts = (
+            "evento: lead_capture_ya_completado_en_estado\n"
+            f"vehiculo_seleccionado: {name}\n"
+            f"contact_method: {contact_method}\n"
+            "enlace_ya_compartido: false\n"
+        )
+    else:
+        fallback = f"Ya te compartimos el enlace para agendar tu cita con {name}."
+        facts = (
+            "evento: lead_capture_ya_completado_en_estado\n"
+            f"vehiculo_seleccionado: {name}\n"
+            "enlace_ya_compartido: true\n"
+        )
     return append_assistant_message(
         state,
         generate_verified_user_message(
             mode="operational",
-            verified_facts_block=(
-                "evento: lead_capture_ya_completado_en_estado\n"
-                f"vehiculo_seleccionado: {name}\n"
-                "enlace_ya_compartido: true\n"
-            ),
+            verified_facts_block=facts,
             user_message=latest_user,
-            fallback=f"Ya te compartimos el enlace para agendar tu cita con {name}.",
+            fallback=fallback,
             temperature=0.35,
         ),
     )
 
 
 def lead_capture(state: clientState) -> clientState:
-    """Comparte enlace de agenda para prueba de manejo o visita; notifica y desactiva el bot."""
+    """Cierra lead segun contact_method: gracias (whatsapp/call) o link de agenda (cita)."""
 
     state["current_node"] = "lead_capture"
     if state.get("suppress_commercial_node_once"):
@@ -205,11 +262,16 @@ def lead_capture(state: clientState) -> clientState:
     user_id = str(state.get("user_id", "")).strip()
     owner_user_id = str(state.get("owner_user_id", "")).strip()
     latest_user = latest_user_message(state)
+    contact_method = _normalize_contact_method(state.get("contact_method"))
+    if not contact_method:
+        contact_method = "appointment"
+        state["contact_method"] = contact_method
 
     _debug(
         "entry",
         selected_car=selected_car,
         platform=platform,
+        contact_method=contact_method,
         lead_capture_done=bool(state.get("lead_capture_done")),
         latest_user=latest_user,
     )
@@ -237,15 +299,32 @@ def lead_capture(state: clientState) -> clientState:
     if state.get("skip_lead_prompt"):
         state["skip_lead_prompt"] = False
 
-    state = _append_scheduling_message(state, selected_car=selected_car, resuming=resuming)
-    notify_success = _notify_and_persist(
-        state,
-        selected_car=selected_car,
-        platform=platform,
-        user_id=user_id,
-        owner_user_id=owner_user_id,
-    )
-    _debug("scheduling_link_shown", calendar_url=get_calendar_scheduling_url(), notify_success=notify_success)
+    if contact_method in {"whatsapp", "call"}:
+        state = _append_thanks_message(state)
+        notify_success = _notify_and_persist(
+            state,
+            selected_car=selected_car,
+            platform=platform,
+            user_id=user_id,
+            owner_user_id=owner_user_id,
+            contact_method=contact_method,
+        )
+        _debug("contact_thanks_shown", contact_method=contact_method, notify_success=notify_success)
+    else:
+        state = _append_scheduling_message(state, selected_car=selected_car, resuming=resuming)
+        notify_success = _notify_and_persist(
+            state,
+            selected_car=selected_car,
+            platform=platform,
+            user_id=user_id,
+            owner_user_id=owner_user_id,
+            contact_method=contact_method,
+        )
+        _debug(
+            "scheduling_link_shown",
+            calendar_url=get_calendar_scheduling_url(),
+            notify_success=notify_success,
+        )
 
     state["lead_capture_done"] = True
     state["current_node"] = "router"

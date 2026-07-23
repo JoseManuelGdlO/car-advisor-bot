@@ -180,6 +180,7 @@ def intent_checker(state: clientState) -> clientState:
     # Heuristica: cita/visita (incl. "direccion para ir") gana a FAQ y evita el LLM FAQ.
     if _should_route_scheduling_to_lead_capture(state, last_user):
         state["is_faq_interrupt"] = False
+        state["contact_method"] = "appointment"
         state["current_node"] = "lead_capture"
         state["intent"] = "lead_capture"
         return state

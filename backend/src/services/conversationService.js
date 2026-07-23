@@ -71,6 +71,7 @@ export const upsertConversationEvent = async ({
   customerInfo = {},
   financingSelection = {},
   promotionSelection = {},
+  contactMethod = null,
 }) => {
   // Servicio compartido que centraliza reglas de persistencia y auto-reply por canal.
   if (!ownerUserId) throw new ApiError(500, "owner user is not configured");
@@ -80,6 +81,11 @@ export const upsertConversationEvent = async ({
   const normalizedMessage = String(message || "").trim();
   const normalizedFrom = ["client", "bot", "seller", "user", "assistant", "system"].includes(messageFrom) ? messageFrom : "client";
   const isInboundClientMessage = normalizedFrom === "client" || normalizedFrom === "user";
+  const normalizedContactMethod = ["whatsapp", "call", "appointment"].includes(
+    String(contactMethod || "").trim().toLowerCase(),
+  )
+    ? String(contactMethod).trim().toLowerCase()
+    : null;
 
   if (!normalizedUserId) throw new ApiError(400, "user_id is required");
   if (!normalizedMessage) throw new ApiError(400, "message is required");
@@ -129,6 +135,7 @@ export const upsertConversationEvent = async ({
       phone: normalizedUserId,
       displayPhone: resolvedDisplayPhone,
       channel: inboundChannel,
+      contactMethod: normalizedContactMethod,
       interestedIn: selectedCar || "",
       status: "lead",
       lastMessage: isInboundClientMessage ? normalizedMessage : "",
@@ -186,6 +193,7 @@ export const upsertConversationEvent = async ({
     lastMessageAt: isInboundClientMessage ? new Date() : lead.lastMessageAt,
     notes: Object.keys(mergedNotes).length ? JSON.stringify(mergedNotes) : lead.notes,
   };
+  if (normalizedContactMethod) leadFieldUpdates.contactMethod = normalizedContactMethod;
   if (String(lead.phone) !== String(normalizedUserId)) leadFieldUpdates.phone = normalizedUserId;
   if (resolvedDisplayPhone) leadFieldUpdates.displayPhone = resolvedDisplayPhone;
   if (hasUsableCustomerInfo(customerInfo)) {

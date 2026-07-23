@@ -157,10 +157,6 @@ class VehicleCatalogFlowTests(GraphTestCase):
                 side_effect=lambda **kw: kw["fallback"],
             ),
             patch(
-                "src.nodes.car_selection.generate_vehicle_purchase_question",
-                return_value="¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? 🚗✨",
-            ),
-            patch(
                 "src.nodes.car_selection._llm_vehicle_image_flags",
                 return_value={"ask_images": False, "ask_more_images": False},
             ),
@@ -305,10 +301,6 @@ class VehicleCatalogFlowTests(GraphTestCase):
             patch(
                 "src.nodes.car_selection._llm_vehicle_image_flags",
                 return_value={"ask_images": False, "ask_more_images": False},
-            ),
-            patch(
-                "src.nodes.car_selection.generate_vehicle_purchase_question",
-                return_value="¿Te interesa agendar una prueba de manejo?",
             ),
             patch(
                 "src.nodes.car_selection.classify_vehicle_step_flags",
@@ -723,10 +715,6 @@ class VehicleCatalogFlowTests(GraphTestCase):
                 return_value="Detalle del Nissan Versa 2020.",
             ),
             patch(
-                "src.nodes.car_selection.generate_vehicle_purchase_question",
-                return_value="¿Te interesa agendar una prueba de manejo?",
-            ),
-            patch(
                 "src.nodes.car_selection._llm_vehicle_image_flags",
                 return_value={"ask_images": False, "ask_more_images": False},
             ),
@@ -743,11 +731,134 @@ class VehicleCatalogFlowTests(GraphTestCase):
             str(m.get("content", "")) for m in updated.get("messages", []) if m.get("role") == "assistant"
         )
         self.assertIn("Detalle del Nissan Versa 2020", joined)
-        self.assertIn("prueba de manejo", joined)
+        self.assertIn("WhatsApp", joined)
         self.assertNotIn("versa-ficha.pdf", joined)
         self.assertNotIn("ficha técnica", joined.lower())
         self.assertNotIn("<<WC_DOCUMENT_JSON>>", joined)
         self.assertEqual(updated.get("technical_sheet_delivered_vehicle_id"), "")
+
+    def test_purchase_preferences_ignores_false_positive_ask_images(self) -> None:
+        """Preferencias sola (sin señales de fotos) no deben enviar imagenes ni ficha."""
+
+        vehicles = [
+            {
+                "id": "veh-1",
+                "brand": "Suzuki",
+                "model": "Dzire",
+                "year": 2026,
+                "status": "available",
+                "price": 280000,
+                "technicalSheetUrl": "/uploads/autobot/dzire-ficha.pdf",
+            }
+        ]
+        state = initial_state()
+        state["current_node"] = "car_selection"
+        state["intent"] = "vehicle_catalog"
+        state["selected_vehicle_id"] = "veh-1"
+        state["selected_car"] = "Suzuki Dzire 2026"
+        state["awaiting_purchase_preferences"] = True
+        state["last_bot_message"] = (
+            "1. ¿Lo buscas Automático o Estándar?\n"
+            "2. ¿Sería de contado o financiado?"
+        )
+        state = with_user_message(state, "automatico de contado")
+        false_positive_image_flags = {
+            "ask_promotions": False,
+            "ask_financing": False,
+            "ask_images": True,
+            "ask_more_images": False,
+            "wants_compare_two_vehicles": False,
+            "wants_other_vehicles": False,
+            "confirm_purchase": False,
+            "reject_purchase": False,
+        }
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=vehicles[0]),
+            patch("src.nodes.car_selection.classify_vehicle_step_flags", return_value=false_positive_image_flags),
+            patch(
+                "src.nodes.car_selection.generate_vehicle_detail_conversation",
+                return_value="Detalle del Suzuki Dzire 2026.",
+            ),
+            patch("src.nodes.car_selection.classify_purchase_preferences") as mocked_llm,
+            patch("src.utils.vehicle_images.fetch_vehicle_images") as mocked_images,
+        ):
+            updated = self.graph.invoke(state)
+
+        mocked_llm.assert_not_called()
+        mocked_images.assert_not_called()
+        self.assertEqual(updated.get("selected_transmission"), "automatico")
+        self.assertEqual(updated.get("selected_payment_type"), "contado")
+        self.assertTrue(updated.get("awaiting_purchase_confirmation"))
+        joined = "\n".join(
+            str(m.get("content", "")) for m in updated.get("messages", []) if m.get("role") == "assistant"
+        )
+        self.assertIn("Detalle del Suzuki Dzire 2026", joined)
+        self.assertNotIn("dzire-ficha.pdf", joined)
+        self.assertNotIn("ficha técnica", joined.lower())
+        self.assertNotIn("<<WC_DOCUMENT_JSON>>", joined)
+        self.assertNotIn("<<WC_IMAGE_JSON>>", joined)
+        self.assertEqual(updated.get("technical_sheet_delivered_vehicle_id"), "")
+        self.assertFalse(updated.get("vehicle_images_last_batch"))
+
+    def test_purchase_preferences_with_explicit_images_still_sends_batch(self) -> None:
+        """Si pide fotos junto a preferencias, sí debe enviar imagenes (y ficha)."""
+
+        vehicles = [
+            {
+                "id": "veh-1",
+                "brand": "Suzuki",
+                "model": "Dzire",
+                "year": 2026,
+                "status": "available",
+                "technicalSheetUrl": "/uploads/autobot/dzire-ficha.pdf",
+            }
+        ]
+        state = initial_state()
+        state["platform"] = "web"
+        state["current_node"] = "car_selection"
+        state["intent"] = "vehicle_catalog"
+        state["selected_vehicle_id"] = "veh-1"
+        state["selected_car"] = "Suzuki Dzire 2026"
+        state["awaiting_purchase_preferences"] = True
+        state["last_bot_message"] = "1. ¿Lo buscas Automático o Estándar?\n2. ¿Sería de contado o financiado?"
+        state = with_user_message(state, "automatico de contado y mandame fotos")
+        step_flags = {
+            "ask_promotions": False,
+            "ask_financing": False,
+            "ask_images": True,
+            "ask_more_images": False,
+            "wants_compare_two_vehicles": False,
+            "wants_other_vehicles": False,
+            "confirm_purchase": False,
+            "reject_purchase": False,
+        }
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=vehicles[0]),
+            patch("src.nodes.car_selection.classify_vehicle_step_flags", return_value=step_flags),
+            patch(
+                "src.nodes.car_selection.generate_vehicle_detail_conversation",
+                return_value="Detalle del Suzuki Dzire 2026.",
+            ),
+            patch(
+                "src.utils.vehicle_images.fetch_vehicle_images",
+                return_value={"images": ["/img/dzire-1.jpg"], "nextCursor": 1, "hasMore": False, "mode": "top"},
+            ),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertEqual(updated.get("selected_transmission"), "automatico")
+        self.assertEqual(updated.get("selected_payment_type"), "contado")
+        self.assertEqual(updated.get("vehicle_images_last_batch"), ["/img/dzire-1.jpg"])
+        joined = "\n".join(
+            str(m.get("content", "")) for m in updated.get("messages", []) if m.get("role") == "assistant"
+        )
+        self.assertIn("/img/dzire-1.jpg", joined)
+        self.assertIn("dzire-ficha.pdf", joined)
+        self.assertEqual(updated.get("technical_sheet_delivered_vehicle_id"), "veh-1")
 
     def test_purchase_preferences_conflict_uses_llm_classifier(self) -> None:
         vehicles = [
@@ -789,10 +900,6 @@ class VehicleCatalogFlowTests(GraphTestCase):
             patch(
                 "src.nodes.car_selection.generate_vehicle_detail_conversation",
                 return_value="Detalle del Versa.",
-            ),
-            patch(
-                "src.nodes.car_selection.generate_vehicle_purchase_question",
-                return_value="¿Prueba de manejo?",
             ),
             patch(
                 "src.nodes.car_selection._llm_vehicle_image_flags",

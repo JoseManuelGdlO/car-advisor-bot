@@ -30,6 +30,11 @@ export default function ClientLeadModel(sequelize) {
       allowNull: false,
       defaultValue: "web",
     },
+    contactMethod: {
+      type: DataTypes.ENUM("whatsapp", "call", "appointment"),
+      allowNull: true,
+      field: "contact_method",
+    },
     status: {
       type: DataTypes.ENUM("lead", "negotiation", "sold", "lost", "eliminated"),
       allowNull: false,

@@ -264,6 +264,7 @@ class TestIntentCheckerHumanAdvisor(unittest.TestCase):
             out = intent_checker(dict(state))
         self.assertEqual(out.get("current_node"), "lead_capture")
         self.assertEqual(out.get("intent"), "lead_capture")
+        self.assertEqual(out.get("contact_method"), "appointment")
         self.assertFalse(out.get("human_advisor_push_sent"))
         self.assertFalse(out.get("suppress_commercial_node_once"))
 

@@ -61,6 +61,7 @@ class PurchaseFlowTests(GraphTestCase):
         self.assertEqual(updated.get("current_node"), "router")
         self.assertTrue(updated.get("lead_capture_done"))
         self.assertFalse(updated.get("awaiting_purchase_confirmation"))
+        self.assertEqual(updated.get("contact_method"), "appointment")
         last = updated["messages"][-1]["content"]
         self.assertIn("Toyota Corolla LE 2021", last)
         self.assertIn("calendar.app.google", last)
@@ -119,7 +120,7 @@ class PurchaseFlowTests(GraphTestCase):
         self.assertTrue(updated.get("lead_capture_done"))
         self.assertIn("calendar.app.google", updated["messages"][-1]["content"])
 
-    def test_purchase_yes_continues_to_lead_capture_same_turn(self) -> None:
+    def test_purchase_yes_without_contact_method_reasks_preference(self) -> None:
         state = initial_state()
         state["current_node"] = "car_selection"
         state["intent"] = "vehicle_catalog"
@@ -127,7 +128,7 @@ class PurchaseFlowTests(GraphTestCase):
         state["selected_vehicle_id"] = "veh-1"
         state["awaiting_purchase_confirmation"] = True
         state["last_bot_message"] = (
-            "¿Te interesa agendar una prueba de manejo o ver este vehículo en persona? Responde si o no."
+            "¿Prefieres que te contacte por aquí por WhatsApp, por llamada o deseas agendar una cita?"
         )
         state = with_user_message(state, "si")
 
@@ -135,7 +136,143 @@ class PurchaseFlowTests(GraphTestCase):
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
             patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch(
+                "src.nodes.car_selection.classify_vehicle_step_flags",
+                return_value={
+                    "ask_promotions": False,
+                    "ask_financing": False,
+                    "ask_images": False,
+                    "ask_more_images": False,
+                    "wants_compare_two_vehicles": False,
+                    "wants_other_vehicles": False,
+                    "confirm_purchase": True,
+                    "reject_purchase": False,
+                },
+            ),
+            patch("src.nodes.car_selection.classify_contact_method", return_value="UNKNOWN"),
             patch("src.nodes.car_selection.classify_purchase_confirmation_intent", return_value="SI"),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertEqual(updated.get("current_node"), "car_selection")
+        self.assertTrue(updated.get("awaiting_purchase_confirmation"))
+        self.assertFalse(updated.get("lead_capture_done"))
+        last = updated["messages"][-1]["content"]
+        self.assertIn("WhatsApp", last)
+        self.assertIn("llamada", last)
+        self.assertIn("cita", last)
+
+    def test_whatsapp_preference_routes_to_lead_capture_thanks(self) -> None:
+        state = initial_state()
+        state["current_node"] = "car_selection"
+        state["intent"] = "vehicle_catalog"
+        state["selected_car"] = "Nissan Versa 2004"
+        state["selected_vehicle_id"] = "veh-1"
+        state["awaiting_purchase_confirmation"] = True
+        state["last_bot_message"] = (
+            "¿Prefieres que te contacte por aquí por WhatsApp, por llamada o deseas agendar una cita?"
+        )
+        state = with_user_message(state, "por whatsapp")
+
+        vehicles = [{"id": "veh-1", "brand": "Nissan", "model": "Versa", "year": 2004, "status": "available"}]
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch(
+                "src.nodes.car_selection.classify_vehicle_step_flags",
+                return_value={
+                    "ask_promotions": False,
+                    "ask_financing": False,
+                    "ask_images": False,
+                    "ask_more_images": False,
+                    "wants_compare_two_vehicles": False,
+                    "wants_other_vehicles": False,
+                    "confirm_purchase": False,
+                    "reject_purchase": False,
+                },
+            ),
+            patch("src.nodes.lead_capture.notify_advisor"),
+            patch("src.nodes.lead_capture.push_event_to_backend") as event_mock,
+            patch("src.nodes.lead_capture.deactivate_bot", side_effect=lambda s, **_: {**s, "bot_disabled": True}),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertEqual(updated.get("current_node"), "router")
+        self.assertTrue(updated.get("lead_capture_done"))
+        self.assertEqual(updated.get("contact_method"), "whatsapp")
+        self.assertEqual(updated["messages"][-1]["content"], "Perfecto! gracias")
+        payload = event_mock.call_args.args[0]
+        self.assertEqual(payload["contact_method"], "whatsapp")
+        self.assertEqual(payload["message"], "Prefiere contacto por WhatsApp")
+
+    def test_call_preference_routes_to_lead_capture_thanks(self) -> None:
+        state = initial_state()
+        state["current_node"] = "car_selection"
+        state["intent"] = "vehicle_catalog"
+        state["selected_car"] = "Nissan Versa 2004"
+        state["selected_vehicle_id"] = "veh-1"
+        state["awaiting_purchase_confirmation"] = True
+        state["last_bot_message"] = (
+            "¿Prefieres que te contacte por aquí por WhatsApp, por llamada o deseas agendar una cita?"
+        )
+        state = with_user_message(state, "mejor por llamada")
+
+        vehicles = [{"id": "veh-1", "brand": "Nissan", "model": "Versa", "year": 2004, "status": "available"}]
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch(
+                "src.nodes.car_selection.classify_vehicle_step_flags",
+                return_value={
+                    "ask_promotions": False,
+                    "ask_financing": False,
+                    "ask_images": False,
+                    "ask_more_images": False,
+                    "wants_compare_two_vehicles": False,
+                    "wants_other_vehicles": False,
+                    "confirm_purchase": False,
+                    "reject_purchase": False,
+                },
+            ),
+            patch("src.nodes.lead_capture.notify_advisor"),
+            patch("src.nodes.lead_capture.push_event_to_backend") as event_mock,
+            patch("src.nodes.lead_capture.deactivate_bot", side_effect=lambda s, **_: {**s, "bot_disabled": True}),
+        ):
+            updated = self.graph.invoke(state)
+
+        self.assertEqual(updated.get("contact_method"), "call")
+        self.assertEqual(updated["messages"][-1]["content"], "Perfecto! gracias")
+        self.assertEqual(event_mock.call_args.args[0]["contact_method"], "call")
+
+    def test_appointment_preference_sends_calendar_link(self) -> None:
+        state = initial_state()
+        state["current_node"] = "car_selection"
+        state["intent"] = "vehicle_catalog"
+        state["selected_car"] = "Nissan Versa 2004"
+        state["selected_vehicle_id"] = "veh-1"
+        state["awaiting_purchase_confirmation"] = True
+        state["last_bot_message"] = (
+            "¿Prefieres que te contacte por aquí por WhatsApp, por llamada o deseas agendar una cita?"
+        )
+        state = with_user_message(state, "quiero agendar una cita")
+
+        vehicles = [{"id": "veh-1", "brand": "Nissan", "model": "Versa", "year": 2004, "status": "available"}]
+        with (
+            patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
+            patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch(
+                "src.nodes.car_selection.classify_vehicle_step_flags",
+                return_value={
+                    "ask_promotions": False,
+                    "ask_financing": False,
+                    "ask_images": False,
+                    "ask_more_images": False,
+                    "wants_compare_two_vehicles": False,
+                    "wants_other_vehicles": False,
+                    "confirm_purchase": False,
+                    "reject_purchase": False,
+                },
+            ),
             patch(
                 "src.nodes.lead_capture.generate_lead_capture_scheduling_message",
                 return_value=(
@@ -144,17 +281,14 @@ class PurchaseFlowTests(GraphTestCase):
                 ),
             ),
             patch("src.nodes.lead_capture.notify_advisor"),
-            patch("src.nodes.lead_capture.push_event_to_backend"),
+            patch("src.nodes.lead_capture.push_event_to_backend") as event_mock,
             patch("src.nodes.lead_capture.deactivate_bot", side_effect=lambda s, **_: {**s, "bot_disabled": True}),
         ):
             updated = self.graph.invoke(state)
 
-        self.assertEqual(updated.get("current_node"), "router")
-        self.assertTrue(updated.get("lead_capture_done"))
-        self.assertFalse(updated.get("awaiting_purchase_confirmation"))
-        last = updated["messages"][-1]["content"]
-        self.assertIn("Nissan Versa 2004", last)
-        self.assertIn("calendar.app.google", last)
+        self.assertEqual(updated.get("contact_method"), "appointment")
+        self.assertIn("calendar.app.google", updated["messages"][-1]["content"])
+        self.assertEqual(event_mock.call_args.args[0]["contact_method"], "appointment")
 
     def test_purchase_classifier_more_images_fetches_next_batch(self) -> None:
         state = initial_state()
@@ -185,6 +319,7 @@ class PurchaseFlowTests(GraphTestCase):
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
             patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=vehicles[0]),
             patch("src.nodes.car_selection.classify_vehicle_step_flags", return_value=step_neutral),
             patch("src.nodes.car_selection.classify_purchase_confirmation_intent", return_value="VER_MAS_IMAGENES"),
             patch(
@@ -723,7 +858,25 @@ class PurchaseFlowTests(GraphTestCase):
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": False}),
             patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
+            patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=vehicles[0]),
+            patch(
+                "src.nodes.car_selection.classify_vehicle_step_flags",
+                return_value={
+                    "ask_promotions": False,
+                    "ask_financing": False,
+                    "ask_images": False,
+                    "ask_more_images": False,
+                    "wants_compare_two_vehicles": False,
+                    "wants_other_vehicles": False,
+                    "confirm_purchase": False,
+                    "reject_purchase": False,
+                },
+            ),
             patch("src.nodes.car_selection.classify_purchase_confirmation_intent", return_value="VER_MAS_IMAGENES"),
+            patch(
+                "src.nodes.car_selection.fetch_vehicle_images",
+                return_value={"images": [], "nextCursor": 5, "hasMore": False, "mode": "next"},
+            ),
         ):
             updated = self.graph.invoke(state)
 

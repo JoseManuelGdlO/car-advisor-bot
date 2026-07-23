@@ -225,6 +225,80 @@ def detect_payment_type_preference(user_text: str) -> str | None:
     return None
 
 
+_WHATSAPP_CONTACT_SIGNALS: tuple[str, ...] = (
+    "whatsapp",
+    "whats app",
+    "wsp",
+    "wasap",
+    "ws",
+    "wa",
+    "por aqui",
+    "por mensaje",
+    "por este chat",
+    "por este medio",
+    "por este canal",
+    "escribeme",
+    "escriba me",
+    "mandame mensaje",
+    "mensaje de texto",
+)
+
+_CALL_CONTACT_SIGNALS: tuple[str, ...] = (
+    "llamada",
+    "llamar",
+    "llamenme",
+    "llameme",
+    "me llamen",
+    "por telefono",
+    "telefono",
+    "call",
+    "phone",
+)
+
+_APPOINTMENT_CONTACT_SIGNALS: tuple[str, ...] = (
+    "cita",
+    "agendar",
+    "agendar cita",
+    "agendar una cita",
+    "quiero cita",
+    "visita",
+    "visitar",
+    "en persona",
+    "prueba de manejo",
+    "test drive",
+)
+
+
+def detect_contact_method(user_text: str) -> str | None:
+    """Detecta preferencia de contacto: whatsapp, call, appointment, conflict o None."""
+
+    normalized = normalize_user_text(user_text)
+    if not normalized:
+        return None
+    has_whatsapp = any(contains_signal_phrase(normalized, signal) for signal in _WHATSAPP_CONTACT_SIGNALS)
+    has_call = any(contains_signal_phrase(normalized, signal) for signal in _CALL_CONTACT_SIGNALS)
+    has_appointment = any(
+        contains_signal_phrase(normalized, signal) for signal in _APPOINTMENT_CONTACT_SIGNALS
+    )
+    # Prueba/visita sueltas también cuentan como cita (misma semántica que scheduling).
+    if not has_appointment and (
+        _TEST_DRIVE_LOOSE_RE.search(normalized)
+        or _IN_PERSON_VISIT_LOOSE_RE.search(normalized)
+        or is_location_for_visit_request(user_text)
+    ):
+        has_appointment = True
+    hits = sum(1 for flag in (has_whatsapp, has_call, has_appointment) if flag)
+    if hits > 1:
+        return "conflict"
+    if has_whatsapp:
+        return "whatsapp"
+    if has_call:
+        return "call"
+    if has_appointment:
+        return "appointment"
+    return None
+
+
 _COLOR_QUESTION_SIGNALS: tuple[str, ...] = (
     "color",
     "de que color",

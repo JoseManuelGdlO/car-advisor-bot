@@ -644,12 +644,6 @@ class FinancingFlowTests(GraphTestCase):
             )
             stack.enter_context(
                 patch(
-                    "src.nodes.car_selection.generate_vehicle_purchase_question",
-                    return_value="¿Te interesa agendar una prueba de manejo?",
-                )
-            )
-            stack.enter_context(
-                patch(
                     "src.nodes.car_selection.generate_verified_user_message",
                     side_effect=lambda **kw: kw["fallback"],
                 )

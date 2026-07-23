@@ -133,6 +133,7 @@ class IntentCheckerBusinessFaqTests(unittest.TestCase):
         self.assertFalse(out.get("is_faq_interrupt"))
         self.assertEqual(out.get("current_node"), "lead_capture")
         self.assertEqual(out.get("intent"), "lead_capture")
+        self.assertEqual(out.get("contact_method"), "appointment")
 
     def test_plain_location_question_still_goes_to_faq(self) -> None:
         state = self._purchase_confirmation_state("Dónde están ubicados?")
