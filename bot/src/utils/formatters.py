@@ -75,6 +75,44 @@ def _format_int(value: Any, suffix: str = "") -> str:
     return f"{parsed:,}"
 
 
+def _has_optional_number(value: Any) -> bool:
+    """True si el valor opcional del plan tiene un numero usable (no vacio/null)."""
+    if value is None:
+        return False
+    raw = str(value).strip()
+    if not raw or raw.lower() in {"none", "null", "n/d"}:
+        return False
+    try:
+        Decimal(raw)
+    except (InvalidOperation, ValueError):
+        return False
+    return True
+
+
+def _format_requirement_item(item: dict[str, Any]) -> str:
+    """Une titulo y descripcion de un requisito para mostrar en chat."""
+    title = str(item.get("title", "")).strip()
+    description = str(item.get("description", "")).strip()
+    if title and description:
+        return f"{title}: {description}"
+    return title or description
+
+
+def _requirement_labels(plan: dict[str, Any]) -> list[str]:
+    """Lista etiquetas de requisitos con descripcion cuando existe."""
+    requirements = plan.get("requirements")
+    if not isinstance(requirements, list):
+        return []
+    labels: list[str] = []
+    for item in requirements:
+        if not isinstance(item, dict):
+            continue
+        label = _format_requirement_item(item)
+        if label:
+            labels.append(label)
+    return labels
+
+
 def _is_zero_km(value: Any) -> bool:
     """True cuando el kilometraje registrado es exactamente cero (unidad nueva)."""
     try:
@@ -594,12 +632,7 @@ def format_financing_plan_comparison(
     """Compara dos planes de financiamiento en filas paralelas."""
 
     def _req_line(plan: dict[str, Any]) -> str:
-        requirements = plan.get("requirements")
-        req_values = [
-            str(item.get("title", "")).strip()
-            for item in requirements
-            if isinstance(item, dict) and str(item.get("title", "")).strip()
-        ] if isinstance(requirements, list) else []
+        req_values = _requirement_labels(plan)
         return ", ".join(req_values) if req_values else "N/D"
 
     def _veh_line(plan: dict[str, Any]) -> str:
@@ -607,11 +640,26 @@ def format_financing_plan_comparison(
         labels = [_vehicle_label(v) for v in avail]
         return "; ".join(labels) if labels else "N/D"
 
-    bold = _bold_labels(["Plan", "Financiera", "Tasa", "Plazo maximo", "Requisitos", "Vehiculos"], platform)
+    bold = _bold_labels(
+        ["Plan", "Financiera", "Tasa", "Enganche minimo", "Plazo minimo", "Plazo maximo", "Requisitos", "Vehiculos"],
+        platform,
+    )
 
     def _name(plan: dict[str, Any], idx: int) -> str:
         n = str(plan.get("name", "")).strip() or f"Plan {idx}"
         return n
+
+    def _optional_percent(plan: dict[str, Any]) -> str:
+        value = plan.get("minDownPaymentPercent")
+        if not _has_optional_number(value):
+            return "N/D"
+        return _format_rate(value, show_rate=True)
+
+    def _optional_min_term(plan: dict[str, Any]) -> str:
+        value = plan.get("minTermMonths")
+        if not _has_optional_number(value):
+            return "N/D"
+        return _format_int(value, "meses")
 
     rows = [
         f"{bold['Plan']}: {_name(plan_a, 1)} | {_name(plan_b, 2)}",
@@ -625,14 +673,28 @@ def format_financing_plan_comparison(
             f"{_format_rate(plan_a.get('rate'), bool(plan_a.get('showRate', True)))} | "
             f"{_format_rate(plan_b.get('rate'), bool(plan_b.get('showRate', True)))}"
         ),
-        (
-            f"{bold['Plazo maximo']}: "
-            f"{_format_int(plan_a.get('maxTermMonths'), 'meses')} | "
-            f"{_format_int(plan_b.get('maxTermMonths'), 'meses')}"
-        ),
-        f"{bold['Requisitos']}: {_req_line(plan_a)} | {_req_line(plan_b)}",
-        f"{bold['Vehiculos']}: {_veh_line(plan_a)} | {_veh_line(plan_b)}",
     ]
+    if _has_optional_number(plan_a.get("minDownPaymentPercent")) or _has_optional_number(
+        plan_b.get("minDownPaymentPercent")
+    ):
+        rows.append(
+            f"{bold['Enganche minimo']}: {_optional_percent(plan_a)} | {_optional_percent(plan_b)}"
+        )
+    if _has_optional_number(plan_a.get("minTermMonths")) or _has_optional_number(plan_b.get("minTermMonths")):
+        rows.append(
+            f"{bold['Plazo minimo']}: {_optional_min_term(plan_a)} | {_optional_min_term(plan_b)}"
+        )
+    rows.extend(
+        [
+            (
+                f"{bold['Plazo maximo']}: "
+                f"{_format_int(plan_a.get('maxTermMonths'), 'meses')} | "
+                f"{_format_int(plan_b.get('maxTermMonths'), 'meses')}"
+            ),
+            f"{bold['Requisitos']}: {_req_line(plan_a)} | {_req_line(plan_b)}",
+            f"{bold['Vehiculos']}: {_veh_line(plan_a)} | {_veh_line(plan_b)}",
+        ]
+    )
     return "\n".join(["Comparacion de planes de financiamiento:", "", *rows])
 
 
@@ -718,7 +780,7 @@ def format_financing_plans(plans: list[dict[str, Any]], platform: str = "web") -
         return "No hay planes de financiamiento disponibles en este momento."
 
     bold_labels = _bold_labels(
-        ["Tasa", "Plazo maximo", "Requisitos", "Vehiculos disponibles", "Vehiculos"],
+        ["Tasa", "Enganche minimo", "Plazo minimo", "Plazo maximo", "Requisitos", "Vehiculos disponibles", "Vehiculos"],
         platform,
     )
     lines = ["Estos son los planes de financiamiento disponibles:", ""]
@@ -734,16 +796,22 @@ def format_financing_plans(plans: list[dict[str, Any]], platform: str = "web") -
         rate = _format_rate(plan.get("rate"), bool(plan.get("showRate", True)))
         lines.append(f"{printed}. {name} ({lender})")
         lines.append(f"   - {bold_labels['Tasa']}: {rate}")
+        if _has_optional_number(plan.get("minDownPaymentPercent")):
+            lines.append(
+                f"   - {bold_labels['Enganche minimo']}: "
+                f"{_format_rate(plan.get('minDownPaymentPercent'), show_rate=True)}"
+            )
+        if _has_optional_number(plan.get("minTermMonths")):
+            lines.append(
+                f"   - {bold_labels['Plazo minimo']}: {_format_int(plan.get('minTermMonths'), 'meses')}"
+            )
         lines.append(f"   - {bold_labels['Plazo maximo']}: {max_term}")
 
-        requirements = plan.get("requirements")
-        req_values = [
-            str(item.get("title", "")).strip()
-            for item in requirements
-            if isinstance(item, dict) and str(item.get("title", "")).strip()
-        ] if isinstance(requirements, list) else []
+        req_values = _requirement_labels(plan)
         if req_values:
-            lines.append(f"   - {bold_labels['Requisitos']}: {', '.join(req_values)}")
+            lines.append(f"   - {bold_labels['Requisitos']}:")
+            for requirement in req_values:
+                lines.append(f"     - {requirement}")
 
         vehicle_values = [
             _vehicle_label(item)
@@ -770,7 +838,10 @@ def format_financing_plans_for_vehicle(
     if not active_plans:
         return f"No encontre planes de financiamiento activos para {normalized_vehicle}."
 
-    bold_labels = _bold_labels(["Tasa", "Plazo maximo", "Requisitos"], platform)
+    bold_labels = _bold_labels(
+        ["Tasa", "Enganche minimo", "Plazo minimo", "Plazo maximo", "Requisitos"],
+        platform,
+    )
     lines = [f"Planes de financiamiento para {normalized_vehicle}:", ""]
     printed = 0
     for idx, plan in enumerate(active_plans, start=1):
@@ -783,16 +854,20 @@ def format_financing_plans_for_vehicle(
         plan_label = f"{name} ({lender})" if lender else name
         max_term = _format_int(plan.get("maxTermMonths"), "meses")
         rate = _format_rate(plan.get("rate"), bool(plan.get("showRate", True)))
-        lines.append(
-            f"{printed}. {plan_label} - {bold_labels['Tasa']}: {rate} - {bold_labels['Plazo maximo']}: {max_term}"
-        )
+        detail_parts = [f"{bold_labels['Tasa']}: {rate}"]
+        if _has_optional_number(plan.get("minDownPaymentPercent")):
+            detail_parts.append(
+                f"{bold_labels['Enganche minimo']}: "
+                f"{_format_rate(plan.get('minDownPaymentPercent'), show_rate=True)}"
+            )
+        if _has_optional_number(plan.get("minTermMonths")):
+            detail_parts.append(
+                f"{bold_labels['Plazo minimo']}: {_format_int(plan.get('minTermMonths'), 'meses')}"
+            )
+        detail_parts.append(f"{bold_labels['Plazo maximo']}: {max_term}")
+        lines.append(f"{printed}. {plan_label} - {' - '.join(detail_parts)}")
 
-        requirements = plan.get("requirements")
-        req_values = [
-            str(item.get("title", "")).strip()
-            for item in requirements
-            if isinstance(item, dict) and str(item.get("title", "")).strip()
-        ] if isinstance(requirements, list) else []
+        req_values = _requirement_labels(plan)
         if req_values:
             lines.append(f"   {bold_labels['Requisitos']}:")
             for requirement in req_values:

@@ -13,6 +13,8 @@ export type FinancingPlanDto = {
   lender: string;
   rate: number;
   maxTermMonths: number;
+  minDownPaymentPercent: number | null;
+  minTermMonths: number | null;
   active: boolean;
   showRate: boolean;
   requirements?: FinancingRequirementDto[];

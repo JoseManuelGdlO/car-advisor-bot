@@ -22,7 +22,9 @@ CONTACT_PREFERENCE_MESSAGE_SHORT = (
 
 PURCHASE_PREFERENCES_REASK_BOTH = "¿Automático o Estándar, y contado o financiado?"
 
-FAQ_SOFT_CATALOG_CLOSE = "Si quieres, te muestro modelos disponibles."
+FAQ_SOFT_CATALOG_CLOSE = (
+    "Si te interesa alguno de estos vehiculos, menciona cuál para darte información más detallada"
+)
 
 LEAD_CONTACT_FOLLOWUP_WHATSAPP_CALL = "Un asesor te contactará pronto."
 
