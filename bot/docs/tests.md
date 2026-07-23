@@ -48,7 +48,7 @@ Las variables de entorno se fusionan al importar el paquete `tests` (ver `tests/
 
 **Rol:** integración — flujo de catálogo y primer contacto con promociones.
 
-**Cubre:** answer-first en catálogo cuando el clasificador devuelve `VEHICLE_CATALOG`; enrutamiento a `faq` cuando devuelve `FAQ`; solicitud de promociones desde el inicio; detalle de vehículo con/sin imágenes; multiturno saludo → modelos → selección → preferencias (transmisión/pago) → narrativa de detalle **sin** PDF automático; pedido de fotos que co-envía ficha PDF si hay `technicalSheetUrl`; filtros por rango de precio; cambio a “otros vehículos” durante confirmación de compra; smoke mínimo “¿qué carros tienes?”.
+**Cubre:** answer-first en catálogo cuando el clasificador devuelve `VEHICLE_CATALOG`; enrutamiento a `faq` cuando devuelve `FAQ`; solicitud de promociones desde el inicio; detalle de vehículo con/sin imágenes; multiturno saludo → modelos → selección → preferencias (transmisión/pago) → narrativa de detalle **sin** PDF automático; escape a catálogo desde preferencias (`wants_other_vehicles` / `reject_purchase`); pedido de fotos que co-envía ficha PDF si hay `technicalSheetUrl`; filtros por rango de precio; cambio a “otros vehículos” durante confirmación de compra; smoke mínimo “¿qué carros tienes?”.
 
 **Clases:** `VehicleCatalogFlowTests`, `CarSelectionSmokeTests`.
 
