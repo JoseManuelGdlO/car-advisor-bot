@@ -109,15 +109,12 @@ def _route_after_car_selection(state: clientState) -> str:
 
 
 def _route_after_financing(state: clientState) -> str:
-    """Permite continuar flujo cuando financing cambia de nodo destino."""
+    """Financing es one-shot informativo; solo hop mismo turno a promotions o catalogo."""
 
     node = state.get("current_node", "financing")
     if node == "car_selection":
-        _log_transition("financing", "car_selection", "continuacion tras seleccionar plan")
+        _log_transition("financing", "car_selection", "hop a catalogo")
         return "car_selection"
-    if node == "lead_capture":
-        _log_transition("financing", "lead_capture", "continuacion de compra")
-        return "lead_capture"
     if node == "promotions":
         _log_transition("financing", "promotions", "consulta de promociones")
         return "promotions"
@@ -126,18 +123,15 @@ def _route_after_financing(state: clientState) -> str:
 
 
 def _route_after_promotions(state: clientState) -> str:
-    """Permite continuar flujo cuando promotions cambia de nodo destino."""
+    """Promotions es one-shot informativo; solo hop mismo turno a financing o catalogo."""
 
     node = state.get("current_node", "promotions")
     if node == "car_selection":
-        _log_transition("promotions", "car_selection", "continuacion hacia catalogo")
+        _log_transition("promotions", "car_selection", "hop a catalogo")
         return "car_selection"
     if node == "financing":
-        _log_transition("promotions", "financing", "continuacion hacia financiamiento")
+        _log_transition("promotions", "financing", "consulta de financiamiento")
         return "financing"
-    if node == "lead_capture":
-        _log_transition("promotions", "lead_capture", "confirmacion de promocion + vehiculo")
-        return "lead_capture"
     _log_transition("promotions", "end")
     return "end"
 

@@ -374,7 +374,7 @@ def _build_purchase_preferences_message(selected_car: str) -> str:
     return (
         f"¡Excelente elección! El {model} tenemos excelentes promociones este mes.\n"
         "Ya tengo la ficha lista para ti.\n"
-        "Solo 2 datos rápidos para mandarte la versión correcta:\n\n"
+        "Solo 2 datos rápidos para mandarte la información adecuada:\n\n"
         "1. ¿Lo buscas Automático o Estándar?\n"
         "2. ¿Sería de contado o financiado?\n"
         "Por favor contesta ambas preguntas en un mismo mensaje"

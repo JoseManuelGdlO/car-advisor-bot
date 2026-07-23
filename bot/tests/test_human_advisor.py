@@ -320,19 +320,7 @@ class TestIntentCheckerHumanAdvisor(unittest.TestCase):
         }
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value=flags),
-            patch(
-                "src.nodes.intent_checker.classify_financing_step_flags",
-                return_value={
-                    "ask_promotions": False,
-                    "ask_other_vehicles": False,
-                    "ask_financing_with_vehicle": False,
-                    "wants_compare_two_plans": False,
-                    "select_plan": False,
-                    "ask_plan_vehicle_info": False,
-                    "reject_financing_keep_purchase": False,
-                    "ask_explicit_plan": True,
-                },
-            ),
+            patch("src.nodes.intent_checker.maybe_escalate_financing_detail", return_value=None),
         ):
             out = intent_checker(dict(state))
         self.assertTrue(out.get("is_faq_interrupt"))

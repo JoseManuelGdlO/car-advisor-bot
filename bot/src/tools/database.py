@@ -8,7 +8,7 @@ import os
 import re
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Mapping
 
 import mysql.connector
 import requests
@@ -267,6 +267,41 @@ def push_event_to_backend(payload: dict[str, Any], *, owner_user_id: str | None 
         )
     except Exception:
         return
+
+
+def persist_commercial_selection_to_backend(
+    state: Mapping[str, Any],
+    *,
+    financing_selection: dict[str, Any] | None = None,
+    promotion_selection: dict[str, Any] | None = None,
+    message: str = "",
+) -> None:
+    """Persiste plan/promo mostrado en notes del lead sin cerrar lead_capture."""
+
+    financing = financing_selection if isinstance(financing_selection, dict) else {}
+    promotion = promotion_selection if isinstance(promotion_selection, dict) else {}
+    if not financing and not promotion:
+        return
+    phone = str(state.get("phone") or state.get("user_id") or "").strip()
+    if not phone:
+        return
+    default_platform = str(os.getenv("BOT_DEFAULT_INBOUND_CHANNEL", "web")).strip().lower() or "web"
+    platform = str(state.get("platform") or default_platform).strip().lower() or default_platform
+    selected_car = str(state.get("selected_car") or "").strip()
+    owner = str(state.get("owner_user_id") or "").strip() or None
+    push_event_to_backend(
+        {
+            "user_id": phone,
+            "platform": platform,
+            "message": str(message or "").strip() or "Consulta comercial registrada",
+            "from": "system",
+            "selected_car": selected_car,
+            "customer_info": {},
+            "financing_selection": financing,
+            "promotion_selection": promotion,
+        },
+        owner_user_id=owner,
+    )
 
 
 def _normalize_financing_plans_payload(payload: Any) -> list[dict[str, Any]]:

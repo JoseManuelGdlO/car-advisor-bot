@@ -33,3 +33,27 @@ def purchase_preferences_resume_message(_state: Mapping[str, Any] | None = None)
 
     _ = _state
     return PURCHASE_PREFERENCES_REASK_BOTH
+
+
+def mid_purchase_close(state: Mapping[str, Any] | None) -> str:
+    """Cierre literal mid-compra: prefs o contacto; vacio si no aplica."""
+
+    if not state:
+        return ""
+    if bool(state.get("awaiting_purchase_preferences")):
+        return PURCHASE_PREFERENCES_REASK_BOTH
+    if bool(state.get("awaiting_purchase_confirmation")) and str(state.get("selected_car", "")).strip():
+        return CONTACT_PREFERENCE_MESSAGE
+    return ""
+
+
+def commercial_info_follow_up(state: Mapping[str, Any] | None) -> str:
+    """Follow-up tras info de financiamiento/promos segun paso actual."""
+
+    if not state:
+        return FAQ_SOFT_CATALOG_CLOSE
+    if bool(state.get("awaiting_purchase_preferences")):
+        return PURCHASE_PREFERENCES_REASK_BOTH
+    if str(state.get("selected_car", "")).strip() or bool(state.get("awaiting_purchase_confirmation")):
+        return CONTACT_PREFERENCE_MESSAGE
+    return FAQ_SOFT_CATALOG_CLOSE
