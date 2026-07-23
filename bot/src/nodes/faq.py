@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, Mapping
+
 from src.state import clientState
 from src.tools.database import fetch_faq_candidates
 from src.tools.vehicles import normalize_user_text
@@ -21,16 +23,16 @@ from src.utils.financing_credit_faq import (
     is_credit_requirements_faq_interrupt,
     mark_financing_credit_followup_pending,
 )
+from src.utils.purchase_flow_messages import (
+    CONTACT_PREFERENCE_MESSAGE,
+    FAQ_SOFT_CATALOG_CLOSE,
+    PURCHASE_PREFERENCES_REASK_BOTH,
+)
 from src.utils.state_helpers import (
     append_assistant_message,
     latest_human_ai_pair,
     latest_user_message,
 )
-
-_FAQ_DEFAULT_CLOSE = "¿Hay algo más en lo que pueda ayudarte?"
-_FAQ_SCHEDULE_CLOSE = "¿Te gustaría agendar una cita?"
-_FAQ_HOURS_CLOSE = _FAQ_SCHEDULE_CLOSE
-_FAQ_LOCATION_CLOSE = _FAQ_SCHEDULE_CLOSE
 
 _FAQ_HOURS_QUESTION_TERMS = BUSINESS_HOURS_FAQ_SUBSTR
 _FAQ_LOCATION_QUESTION_TERMS = BUSINESS_LOCATION_FAQ_SUBSTR
@@ -77,14 +79,31 @@ def is_faq_location_topic(user_question: str, faq_candidates: list[str]) -> bool
     return bool(context_blob) and any(term in context_blob for term in _FAQ_LOCATION_CONTEXT_TERMS)
 
 
-def resolve_faq_follow_up(user_question: str, faq_candidates: list[str]) -> tuple[str, str]:
-    """Devuelve (cierre_literal, tema_cierre) para el turno FAQ standalone."""
+def _mid_purchase_close(state: Mapping[str, Any] | None) -> str:
+    """Cierre literal mid-compra: prefs o contacto; vacio si no aplica."""
 
+    if not state:
+        return ""
+    if bool(state.get("awaiting_purchase_preferences")):
+        return PURCHASE_PREFERENCES_REASK_BOTH
+    if bool(state.get("awaiting_purchase_confirmation")) and str(state.get("selected_car", "")).strip():
+        return CONTACT_PREFERENCE_MESSAGE
+    return ""
+
+
+def resolve_faq_follow_up(
+    user_question: str,
+    faq_candidates: list[str],
+    state: Mapping[str, Any] | None = None,
+) -> tuple[str, str]:
+    """Devuelve (cierre_literal, tema_cierre) segun tema FAQ y contexto de compra."""
+
+    mid_close = _mid_purchase_close(state)
     if is_faq_hours_topic(user_question, faq_candidates):
-        return _FAQ_HOURS_CLOSE, "horarios"
+        return mid_close, "horarios"
     if is_faq_location_topic(user_question, faq_candidates):
-        return _FAQ_LOCATION_CLOSE, "ubicacion"
-    return _FAQ_DEFAULT_CLOSE, "general"
+        return mid_close, "ubicacion"
+    return FAQ_SOFT_CATALOG_CLOSE, "general"
 
 
 def faq(state: clientState) -> clientState:
@@ -108,19 +127,19 @@ def faq(state: clientState) -> clientState:
     if state.get("is_faq_interrupt"):
         resume_to_step = str(state.get("resume_to_step", "car_selection"))
         _last_user, last_ai = latest_human_ai_pair(state)
-        close_literal, close_topic = resolve_faq_follow_up(question, candidates)
-        mid_purchase_location = (
-            close_topic == "ubicacion"
-            and bool(state.get("awaiting_purchase_confirmation"))
-            and resume_to_step == "car_selection"
-        )
+        _, close_topic = resolve_faq_follow_up(question, candidates, state)
+        awaiting_prefs = bool(state.get("awaiting_purchase_preferences"))
+        awaiting_contact = bool(state.get("awaiting_purchase_confirmation"))
         if is_credit_requirements_faq_interrupt(state):
             transition = CREDIT_FAQ_ADVISOR_CLOSE
             mark_financing_credit_followup_pending(state)
             used_close = ""
-        elif mid_purchase_location:
-            # Mid-compra: invitar a agendar en lugar de retomar "mas detalles del auto".
-            transition = close_literal
+        elif awaiting_prefs:
+            transition = PURCHASE_PREFERENCES_REASK_BOTH
+            used_close = ""
+        elif awaiting_contact:
+            # Mid-compra: retoma preferencia de contacto (no "agendar cita" generico).
+            transition = CONTACT_PREFERENCE_MESSAGE
             used_close = ""
         else:
             transition = generate_faq_resume_transition(
@@ -151,7 +170,7 @@ def faq(state: clientState) -> clientState:
         else:
             state["intent"] = "other"
     else:
-        close_literal, close_topic = resolve_faq_follow_up(question, candidates)
+        close_literal, close_topic = resolve_faq_follow_up(question, candidates, state)
         message = generate_faq_user_turn(
             user_question=question,
             faq_candidates=candidates,

@@ -315,15 +315,6 @@ _VERIFIED_MODE_INSTRUCTIONS: dict[str, str] = {
         "PROHIBIDO: pedir nombre, telefono o correo por chat; inventar otra URL; fechas/horas concretas del negocio.\n"
         "Espanol (Mexico). Tono cercano. Lista corta o 2-4 frases. Sin prefijos."
     ),
-    "purchase_question": (
-        "TAREA: Pregunta de cierre para saber si le interesa una prueba de manejo o ver el vehiculo en persona "
-        "(y ver mas imagenes del mismo si DATOS_VERIFICADOS lo indica).\n"
-        "DATOS_VERIFICADOS incluye instrucciones literales del sistema (si incluye opcion de imagenes o no).\n"
-        "Genera una sola pregunta breve tipo si/no de interes, alineada a esas reglas; puedes usar 1-2 emojis si el bloque lo permite.\n"
-        "PROHIBIDO: fechas, horas, dias, lugar, disponibilidad de agenda, preguntar cuando prefiere venir, "
-        "prometer que tu agendarias o confirmarias la cita. Solo mide interes; el equipo dara seguimiento despues.\n"
-        "No inventes equipamiento. Espanol (Mexico). Sin prefijos."
-    ),
     "faq_insufficient": (
         "TAREA: Indicar que no hay suficiente informacion en la base FAQ para responder con precision.\n"
         "Si MENSAJES_PREDEFINIDOS_VERIFICADOS incluye mensaje_fallback_faq_literal, usalo como respuesta "
@@ -337,8 +328,11 @@ _VERIFIED_MODE_INSTRUCTIONS: dict[str, str] = {
         "TAREA: Generar UNA sola pregunta breve de reanudacion del flujo comercial interrumpido.\n"
         "DATOS_VERIFICADOS incluye paso_a_reanudar, contexto_del_paso, estado_flujo, ultimo_mensaje_bot y mensaje_usuario_faq.\n"
         "La pregunta debe retomar lo que el bot estaba pidiendo en ultimo_mensaje_bot y el estado_flujo, no un guion generico.\n"
+        "Si esperando_preferencia_contacto o esperando_confirmacion_compra es true: retoma preferencia de contacto "
+        "(whatsapp, llamada o cita); PROHIBIDO preguntar solo si/no a prueba de manejo.\n"
+        "Si esperando_preferencias_compra es true: retoma transmision (automatico/estandar) y pago (contado/financiado).\n"
         "Si vehiculo_seleccionado no es (ninguno): PROHIBIDO preguntar si quiere ver catalogo, modelos disponibles, marcas "
-        "o si tiene vehiculo en mente; retoma el paso concreto (confirmacion de interes, detalle, imagenes, etc.).\n"
+        "o si tiene vehiculo en mente; retoma el paso concreto (preferencia de contacto, detalle, imagenes, etc.).\n"
         "Si plan_financiamiento_seleccionado no es (ninguno): no pidas elegir plan desde cero; continua con ese plan.\n"
         "Si promocion_seleccionada no es (ninguno): no pidas elegir promocion desde cero; continua con esa promocion.\n"
         "No repitas ni respondas la duda FAQ del usuario (eso va en otro mensaje).\n"
@@ -356,8 +350,9 @@ _VERIFIED_MODE_INSTRUCTIONS: dict[str, str] = {
         "Despues de la respuesta FAQ, si transicion_literal no es '(ninguna)', integra esa pregunta de transicion "
         "de forma natural (conectores y mayusculas; conserva el sentido de la pregunta).\n"
         "Al final, si cierre_literal no es '(ninguno)', incluye esa pregunta o cierre de forma natural.\n"
-        "Si tema_faq_cierre es horarios: responde solo la informacion de horario/atencion; PROHIBIDO sugerir "
-        "catalogo, comprar o ver un carro; el unico cierre comercial debe ser cierre_literal sobre agendar cita.\n"
+        "Si cierre_literal es '(ninguno)': PROHIBIDO inventar pregunta de cierre, cita, compra o contacto.\n"
+        "Si tema_faq_cierre es horarios o ubicacion: responde solo la informacion pedida; "
+        "PROHIBIDO sugerir catalogo, comprar o ver un carro salvo que cierre_literal lo indique.\n"
         "Un solo mensaje coherente. Espanol (Mexico). Sin prefijos tipo 'Respuesta:'."
     ),
 }
@@ -1547,15 +1542,17 @@ def _build_answer_first_prompt_by_mode(
         "- Si no hay evidencia suficiente, dilo claramente y de forma amable.\n"
         "- No inventes datos tecnicos ni disponibilidad.\n"
         "- Manten tono natural y breve.\n"
-        "- Estructura de salida obligatoria en 3 partes, en este orden:\n"
-        "  1) responde la duda del usuario.\n"
-        "  2) sugiere la accion comercial/logica segun el dominio.\n"
-        "  3) cierra con una pregunta corta para continuar.\n"
+        "- Responde la duda del usuario en 1-2 oraciones.\n"
+        "- Puedes sugerir una accion comercial/logica SOLO si el CONTEXTO ya la implica "
+        "(p. ej. listado de planes que el sistema mostrara aparte).\n"
+        "- PROHIBIDO inventar CTA de cita, compra, contacto con asesor o pregunta de cierre comercial; "
+        "el sistema agrega cierres literales cuando aplica.\n"
+        "- En este modo ignora salesProactivity alto: actua como proactividad baja "
+        "(no inventes siguientes pasos ni preguntas para continuar).\n"
         "- El bloque estructurado (listados, opciones, precios, planes, promociones) se mostrara aparte "
         "en otro mensaje del sistema: NO lo repitas ni lo parafrasees.\n"
         "- Evita copiar frases literales del CONTEXTO si describen listados u opciones.\n"
         "- No enumeres modelos/planes/promociones en tu respuesta semantica.\n"
-        "- La parte 1 (respuesta principal) debe ser breve: maximo 1-2 oraciones.\n"
         "- IMPORTANTE: no incluyas encabezados ni etiquetas literales como "
         "'RESPUESTA', 'SIGUIENTE_PASO' o 'CIERRE'.\n"
         "- No saludes salvo que el usuario haya saludado.\n\n"
@@ -1632,7 +1629,8 @@ def build_answer_first_faq_prompt(
             "Regla adicional para FAQ de horarios:\n"
             "- Responde SOLO con la informacion de horario o dias de atencion.\n"
             "- NO sugieras revisar modelos, comprar ni ver un carro.\n"
-            "- NO incluyas pregunta de cierre comercial; el sistema agregara el cierre sobre agendar cita.\n"
+            "- NO incluyas pregunta de cierre comercial; el sistema puede o no agregar un cierre "
+            "literal segun el contexto del flujo.\n"
         )
     if topic == "ubicacion":
         return (
@@ -1649,6 +1647,7 @@ def build_answer_first_faq_prompt(
             "puedes mencionar ambas en una o dos oraciones cortas, dejando claro cual es ventas y cual es servicio.\n"
             "- Usa EXCLUSIVAMENTE direcciones del CONTEXTO; no inventes ni mezcles datos de distintas entradas.\n"
             "- NO sugieras revisar modelos, comprar ni ver un carro.\n"
-            "- NO incluyas pregunta de cierre comercial; el sistema agregara el cierre sobre agendar cita.\n"
+            "- NO incluyas pregunta de cierre comercial; el sistema puede o no agregar un cierre "
+            "literal segun el contexto del flujo.\n"
         )
     return prompt

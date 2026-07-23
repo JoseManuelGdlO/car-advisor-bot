@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from src.nodes.intent_checker import intent_checker
+from src.utils.purchase_flow_messages import CONTACT_PREFERENCE_MESSAGE
 from src.utils.signals import is_business_faq_question
 from tests.test_helpers import GraphTestCase, initial_state, with_user_message
 
@@ -226,7 +227,7 @@ class BusinessFaqDuringPurchaseFlowTests(GraphTestCase):
         self.assertTrue(updated.get("lead_capture_done"))
         self.assertIn("Agenda tu visita", updated["messages"][-1]["content"])
 
-    def test_plain_location_faq_mid_purchase_uses_schedule_close(self) -> None:
+    def test_plain_location_faq_mid_purchase_uses_contact_preference(self) -> None:
         state = initial_state()
         state["current_node"] = "car_selection"
         state["awaiting_purchase_confirmation"] = True
@@ -245,7 +246,7 @@ class BusinessFaqDuringPurchaseFlowTests(GraphTestCase):
 
         def capture_faq_turn(**kwargs: object) -> str:
             captured.update(kwargs)
-            return "Estamos en Centro. ¿Te gustaría agendar una cita?"
+            return f"Estamos en Centro.\n\n{CONTACT_PREFERENCE_MESSAGE}"
 
         with (
             patch("src.nodes.intent_checker.classify_faq_interrupt_flags", return_value={"interrumpir_por_faq": True}),
@@ -261,8 +262,9 @@ class BusinessFaqDuringPurchaseFlowTests(GraphTestCase):
         self.assertEqual(updated.get("current_node"), "car_selection")
         self.assertTrue(updated.get("awaiting_purchase_confirmation"))
         self.assertEqual(captured.get("faq_close_topic"), "ubicacion")
-        self.assertIn("agendar una cita", str(captured.get("transition_literal", "")).lower())
-        self.assertIn("agendar una cita", updated["messages"][-1]["content"].lower())
+        self.assertEqual(captured.get("transition_literal"), CONTACT_PREFERENCE_MESSAGE)
+        self.assertIn("whatsapp", updated["messages"][-1]["content"].lower())
+        self.assertNotIn("¿te gustaría agendar una cita?", updated["messages"][-1]["content"].lower())
 
 
 if __name__ == "__main__":

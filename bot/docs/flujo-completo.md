@@ -242,13 +242,14 @@ Archivo: [`bot/src/nodes/faq.py`](../src/nodes/faq.py)
 | Paso | Función | Tipo | Cuándo |
 |------|---------|------|--------|
 | 1 | `resolve_faq_candidates` | DB+H | `fetch_faq_candidates`; si tema ubicación → `fetch_location_faq_candidates` |
-| 2 | `resolve_faq_follow_up` | H | Elige cierre según horarios/ubicación/general |
-| 3 | `generate_faq_resume_transition` | L | Solo si `is_faq_interrupt` |
-| 4 | `generate_faq_user_turn` | L | Cuerpo de respuesta + cierre |
+| 2 | `resolve_faq_follow_up` | H | Horarios/ubicación: sin cierre (o literal mid-compra); general: soft catálogo |
+| 3 | `generate_faq_resume_transition` | L/H | Interrupt fuera de `awaiting_purchase_*`; mid-compra usa literales fijos |
+| 4 | `generate_faq_user_turn` | L | Cuerpo de respuesta + cierre/transición |
 
 **Modo interruptivo** (`is_faq_interrupt=True`):
 
-- Genera transición de reanudación hacia `resume_to_step`.
+- Si `awaiting_purchase_preferences` / `awaiting_purchase_confirmation`: transición = literal del paso (sin LLM).
+- Si no: genera transición de reanudación hacia `resume_to_step`.
 - Restaura `current_node` al nodo guardado (`car_selection`, `financing`, etc.).
 - Limpia `skip_car_prompt` / `skip_lead_prompt`.
 - El grafo termina en `END` de `faq`; el **siguiente turno** retoma el flujo comercial.
@@ -257,6 +258,7 @@ Archivo: [`bot/src/nodes/faq.py`](../src/nodes/faq.py)
 
 - `current_node` vuelve a `router` tras responder.
 - `intent` queda en `other`.
+- Horarios/ubicación no empujan cita; general puede cerrar con invitación suave a modelos.
 
 ---
 
