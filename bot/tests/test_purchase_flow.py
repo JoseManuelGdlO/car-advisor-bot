@@ -200,7 +200,7 @@ class PurchaseFlowTests(GraphTestCase):
         self.assertEqual(updated.get("current_node"), "router")
         self.assertTrue(updated.get("lead_capture_done"))
         self.assertEqual(updated.get("contact_method"), "whatsapp")
-        self.assertEqual(updated["messages"][-1]["content"], "Perfecto! gracias")
+        self.assertEqual(updated["messages"][-1]["content"], "Listo, ya avise para que te contacten 😊")
         payload = event_mock.call_args.args[0]
         self.assertEqual(payload["contact_method"], "whatsapp")
         self.assertTrue(str(payload["message"]).startswith("Cliente interesado en:"))
@@ -243,7 +243,7 @@ class PurchaseFlowTests(GraphTestCase):
             updated = self.graph.invoke(state)
 
         self.assertEqual(updated.get("contact_method"), "call")
-        self.assertEqual(updated["messages"][-1]["content"], "Perfecto! gracias")
+        self.assertEqual(updated["messages"][-1]["content"], "Listo, ya avise para que te contacten 😊")
         self.assertEqual(event_mock.call_args.args[0]["contact_method"], "call")
 
     def test_appointment_preference_sends_calendar_link(self) -> None:

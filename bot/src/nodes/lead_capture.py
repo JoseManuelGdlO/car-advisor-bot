@@ -8,7 +8,10 @@ from src.state import clientState
 from src.tools.database import push_event_to_backend
 from src.tools.vehicles import notify_advisor
 from src.utils.bot_control import deactivate_bot
-from src.utils.financing_advisor_notify import resolve_client_display_phone
+from src.utils.financing_advisor_notify import (
+    append_visit_incentive_if_configured,
+    resolve_client_display_phone,
+)
 from src.services.llm_responses import (
     classify_lead_capture_navigation,
     generate_lead_capture_scheduling_message,
@@ -20,7 +23,7 @@ from src.utils.state_helpers import append_assistant_message, latest_user_messag
 
 _log = get_app_logger("lead_capture")
 
-CONTACT_THANKS_MESSAGE = "Perfecto! gracias"
+CONTACT_THANKS_MESSAGE = "Listo, ya avise para que te contacten 😊"
 
 _VALID_CONTACT_METHODS = frozenset({"whatsapp", "call", "appointment"})
 
@@ -223,6 +226,7 @@ def _append_scheduling_message(
 
 
 def _append_thanks_message(state: clientState) -> clientState:
+    state = append_visit_incentive_if_configured(state)
     return append_assistant_message(state, CONTACT_THANKS_MESSAGE)
 
 

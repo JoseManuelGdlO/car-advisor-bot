@@ -84,7 +84,7 @@ class LeadCaptureSchedulingFlowTests(unittest.TestCase):
             s = lead_capture(with_user_message(state, "por whatsapp"))
 
         self.assertTrue(s.get("lead_capture_done"))
-        self.assertEqual(s["messages"][-1]["content"], "Perfecto! gracias")
+        self.assertEqual(s["messages"][-1]["content"], "Listo, ya avise para que te contacten 😊")
         self.assertNotIn(DEFAULT_CALENDAR_SCHEDULING_URL, s["messages"][-1]["content"])
         notify_mock.assert_called_once()
         payload = event_mock.call_args.args[0]
@@ -97,6 +97,30 @@ class LeadCaptureSchedulingFlowTests(unittest.TestCase):
             payload["purchase_preferences"],
             {"transmission": "estandar", "payment_type": "financiado"},
         )
+
+    def test_whatsapp_appends_visit_incentive_before_thanks_when_configured(self) -> None:
+        state = initial_state()
+        state["current_node"] = "lead_capture"
+        state["selected_car"] = "Honda Civic 2020"
+        state["contact_method"] = "whatsapp"
+        state["owner_user_id"] = "owner-uuid-test"
+        state["user_id"] = "session-whatsapp-incentive"
+
+        with (
+            patch("src.nodes.lead_capture.classify_lead_capture_navigation", return_value=""),
+            patch("src.nodes.lead_capture.notify_advisor"),
+            patch("src.nodes.lead_capture.push_event_to_backend"),
+            patch(
+                "src.utils.financing_advisor_notify.get_bot_settings",
+                return_value={"visitIncentiveMessage": "Te invitamos a visitarnos en la agencia"},
+            ),
+            patch("src.nodes.lead_capture.deactivate_bot", side_effect=lambda s, **_: {**s, "bot_disabled": True}),
+        ):
+            s = lead_capture(with_user_message(state, "por whatsapp"))
+
+        tail = [m["content"] for m in s["messages"] if m.get("role") == "assistant"][-2:]
+        self.assertEqual(tail[0], "Te invitamos a visitarnos en la agencia")
+        self.assertEqual(tail[1], "Listo, ya avise para que te contacten 😊")
 
     def test_call_contact_method_sends_thanks_without_calendar(self) -> None:
         state = initial_state()
@@ -114,7 +138,7 @@ class LeadCaptureSchedulingFlowTests(unittest.TestCase):
         ):
             s = lead_capture(with_user_message(state, "llamada"))
 
-        self.assertEqual(s["messages"][-1]["content"], "Perfecto! gracias")
+        self.assertEqual(s["messages"][-1]["content"], "Listo, ya avise para que te contacten 😊")
         self.assertEqual(event_mock.call_args.args[0]["contact_method"], "call")
 
     def test_already_done_does_not_repeat_link(self) -> None:
