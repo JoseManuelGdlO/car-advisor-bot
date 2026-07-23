@@ -102,12 +102,30 @@ def _promotion_selection(state: clientState, selected_car: str) -> dict[str, Any
     return promotion_selection
 
 
-def _event_message_for_contact_method(contact_method: str) -> str:
-    if contact_method == "whatsapp":
-        return "Prefiere contacto por WhatsApp"
-    if contact_method == "call":
-        return "Prefiere contacto por llamada"
-    return "Se envió el enlace para agendar visita o prueba de manejo"
+_VALID_TRANSMISSIONS = frozenset({"automatico", "estandar"})
+_VALID_PAYMENT_TYPES = frozenset({"contado", "financiado"})
+
+
+def _purchase_preferences(state: clientState) -> dict[str, str]:
+    transmission = str(state.get("selected_transmission", "")).strip().lower()
+    payment_type = str(state.get("selected_payment_type", "")).strip().lower()
+    prefs: dict[str, str] = {}
+    if transmission in _VALID_TRANSMISSIONS:
+        prefs["transmission"] = transmission
+    if payment_type in _VALID_PAYMENT_TYPES:
+        prefs["payment_type"] = payment_type
+    return prefs
+
+
+def _ficha_summary_message(selected_car: str, purchase_preferences: dict[str, str]) -> str:
+    lines = ["Cliente interesado en:", selected_car]
+    transmission = purchase_preferences.get("transmission", "")
+    payment_type = purchase_preferences.get("payment_type", "")
+    if transmission:
+        lines.append(transmission)
+    if payment_type:
+        lines.append(payment_type)
+    return "\n".join(lines)
 
 
 def _push_body_for_contact_method(contact_method: str, *, display_phone: str, selected_car: str) -> str:
@@ -141,6 +159,7 @@ def _notify_and_persist(
     uid = str(user_id or "").strip() or "lead"
     financing_selection = _financing_selection(state, selected_car)
     promotion_selection = _promotion_selection(state, selected_car)
+    purchase_preferences = _purchase_preferences(state)
     resolved_method = contact_method or "appointment"
 
     _debug(
@@ -150,17 +169,19 @@ def _notify_and_persist(
         contact_method=resolved_method,
         financing_selection=financing_selection,
         promotion_selection=promotion_selection,
+        purchase_preferences=purchase_preferences,
     )
     push_event_to_backend(
         {
             "user_id": uid,
             "platform": platform,
-            "message": _event_message_for_contact_method(resolved_method),
+            "message": _ficha_summary_message(selected_car, purchase_preferences),
             "from": "system",
             "selected_car": selected_car,
             "customer_info": {},
             "financing_selection": financing_selection,
             "promotion_selection": promotion_selection,
+            "purchase_preferences": purchase_preferences,
             "contact_method": resolved_method,
         }
     )

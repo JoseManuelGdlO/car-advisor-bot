@@ -63,6 +63,8 @@ class LeadCaptureOverrideIntentTests(GraphTestCase):
         notify_mock.assert_called_once()
         event_mock.assert_called_once()
         event_payload = event_mock.call_args.args[0]
-        self.assertEqual(event_payload["message"], "Se envió el enlace para agendar visita o prueba de manejo")
+        self.assertTrue(str(event_payload["message"]).startswith("Cliente interesado en:"))
+        self.assertIn("Dodge Ram 2015", event_payload["message"])
         self.assertEqual(event_payload["from"], "system")
         self.assertEqual(event_payload["customer_info"], {})
+        self.assertEqual(event_payload["purchase_preferences"], {})

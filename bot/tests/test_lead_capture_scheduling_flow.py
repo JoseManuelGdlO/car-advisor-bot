@@ -55,11 +55,13 @@ class LeadCaptureSchedulingFlowTests(unittest.TestCase):
         notify_mock.assert_called_once()
         event_mock.assert_called_once()
         payload = event_mock.call_args.args[0]
-        self.assertEqual(payload["message"], "Se envió el enlace para agendar visita o prueba de manejo")
+        self.assertTrue(str(payload["message"]).startswith("Cliente interesado en:"))
+        self.assertIn("Honda Civic 2020", payload["message"])
         self.assertEqual(payload["from"], "system")
         self.assertEqual(payload["customer_info"], {})
         self.assertEqual(payload["selected_car"], "Honda Civic 2020")
         self.assertEqual(payload["contact_method"], "appointment")
+        self.assertEqual(payload["purchase_preferences"], {})
 
     def test_whatsapp_contact_method_sends_thanks_without_calendar(self) -> None:
         state = initial_state()
@@ -70,6 +72,8 @@ class LeadCaptureSchedulingFlowTests(unittest.TestCase):
         state["owner_user_id"] = "owner-uuid-test"
         state["user_id"] = "session-whatsapp"
         state["contact_method"] = "whatsapp"
+        state["selected_transmission"] = "estandar"
+        state["selected_payment_type"] = "financiado"
 
         with (
             patch("src.nodes.lead_capture.classify_lead_capture_navigation", return_value=""),
@@ -85,7 +89,14 @@ class LeadCaptureSchedulingFlowTests(unittest.TestCase):
         notify_mock.assert_called_once()
         payload = event_mock.call_args.args[0]
         self.assertEqual(payload["contact_method"], "whatsapp")
-        self.assertEqual(payload["message"], "Prefiere contacto por WhatsApp")
+        self.assertEqual(
+            payload["message"],
+            "Cliente interesado en:\nHonda Civic 2020\nestandar\nfinanciado",
+        )
+        self.assertEqual(
+            payload["purchase_preferences"],
+            {"transmission": "estandar", "payment_type": "financiado"},
+        )
 
     def test_call_contact_method_sends_thanks_without_calendar(self) -> None:
         state = initial_state()

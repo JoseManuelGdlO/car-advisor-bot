@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { Phone, MessageCircle, Car, FileText, Landmark, Tag, Pencil, Trash2 } from "lucide-react";
+import { Phone, MessageCircle, Car, FileText, Landmark, Tag, Pencil, Trash2, SlidersHorizontal } from "lucide-react";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { Avatar } from "@/components/Avatar";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -58,6 +58,10 @@ type SellerNotesJson = {
     vehicle_id?: string;
     vehicle_name?: string;
   };
+  purchase_preferences?: {
+    transmission?: "automatico" | "estandar" | string;
+    payment_type?: "contado" | "financiado" | string;
+  };
 };
 
 function parseSellerNotes(notes: string): SellerNotesJson | null {
@@ -67,6 +71,20 @@ function parseSellerNotes(notes: string): SellerNotesJson | null {
   } catch {
     return null;
   }
+}
+
+function formatTransmissionLabel(value?: string) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "automatico") return "Automático";
+  if (normalized === "estandar") return "Estándar";
+  return value?.trim() || "";
+}
+
+function formatPaymentTypeLabel(value?: string) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "contado") return "Contado";
+  if (normalized === "financiado") return "Financiado";
+  return value?.trim() || "";
 }
 
 function buildVehicleHref(vehicleId?: string) {
@@ -101,6 +119,10 @@ export default function ClienteDetalle() {
   const customerInfo = parsedNotes?.customer_info;
   const financingSelection = parsedNotes?.financing_selection;
   const promotionSelection = parsedNotes?.promotion_selection;
+  const purchasePreferences = parsedNotes?.purchase_preferences;
+  const transmissionLabel = formatTransmissionLabel(purchasePreferences?.transmission);
+  const paymentTypeLabel = formatPaymentTypeLabel(purchasePreferences?.payment_type);
+  const hasPurchasePreferences = Boolean(transmissionLabel || paymentTypeLabel);
   const interestedVehicleName = financingSelection?.vehicle_name || promotionSelection?.vehicle_name || client?.interestedIn;
   const interestedVehicleId = financingSelection?.vehicle_id || promotionSelection?.vehicle_id;
 
@@ -255,6 +277,29 @@ export default function ClienteDetalle() {
             </div>
           </div>
         </div>
+
+        {hasPurchasePreferences && (
+          <div className="bg-card rounded-2xl p-4 shadow-card border border-border">
+            <h3 className="text-xs font-bold uppercase text-muted-foreground tracking-wide mb-3">Preferencias de compra</h3>
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-accent grid place-items-center text-accent-foreground">
+                <SlidersHorizontal className="w-6 h-6" />
+              </div>
+              <div className="space-y-0.5">
+                {transmissionLabel ? (
+                  <p className="font-semibold text-sm">
+                    <span className="text-muted-foreground font-medium">Transmisión:</span> {transmissionLabel}
+                  </p>
+                ) : null}
+                {paymentTypeLabel ? (
+                  <p className="font-semibold text-sm">
+                    <span className="text-muted-foreground font-medium">Pago:</span> {paymentTypeLabel}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        )}
 
         {financingSelection?.plan_name && (
           <div className="bg-card rounded-2xl p-4 shadow-card border border-border">

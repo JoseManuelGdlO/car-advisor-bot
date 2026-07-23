@@ -129,7 +129,17 @@ export const botResetConversation = async (req, res) => {
 export const botUpsertConversation = async (req, res) => {
   // Delega toda la lógica de persistencia a un servicio reutilizable por otros canales.
   // Este endpoint es la entrada oficial de eventos del bot/canales al CRM.
-  const { user_id, platform, message, selected_car, customer_info, financing_selection, promotion_selection, contact_method } = req.body;
+  const {
+    user_id,
+    platform,
+    message,
+    selected_car,
+    customer_info,
+    financing_selection,
+    promotion_selection,
+    purchase_preferences,
+    contact_method,
+  } = req.body;
   const ownerUserId = resolveRequestOwner(req, { bodyField: "owner_user_id" });
   const normalizedPlatform = normalizeInboundChannel(platform || env.bot.defaultInboundChannel || "web");
   const from = String(req.body.from || "client").trim().toLowerCase();
@@ -150,6 +160,7 @@ export const botUpsertConversation = async (req, res) => {
     customerInfo: customer_info,
     financingSelection: financing_selection,
     promotionSelection: promotion_selection,
+    purchasePreferences: purchase_preferences,
     contactMethod: contact_method,
   });
   appLog.info(
