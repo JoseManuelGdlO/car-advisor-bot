@@ -337,8 +337,8 @@ class AdCampaignGraphFlowTests(GraphTestCase):
             patch("src.nodes.car_selection.fetch_vehicles", return_value=[vehicle_detail]),
             patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=vehicle_detail),
             patch(
-                "src.nodes.car_selection.generate_vehicle_detail_conversation",
-                return_value="Detalle del Nissan Versa 2020 desde anuncio.",
+                "src.nodes.car_selection.generate_vehicle_detail_pitch_copy",
+                return_value={"tagline": "", "closing": "Detalle del Nissan Versa 2020 desde anuncio."},
             ),
             patch(
                 "src.nodes.car_selection.generate_verified_user_message",
@@ -400,8 +400,8 @@ class AdCampaignGraphFlowTests(GraphTestCase):
             patch("src.nodes.car_selection.fetch_vehicles", return_value=[vehicle_detail]),
             patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=vehicle_detail),
             patch(
-                "src.nodes.car_selection.generate_vehicle_detail_conversation",
-                return_value="Detalle del Nissan Versa 2020 desde anuncio mid-sesion.",
+                "src.nodes.car_selection.generate_vehicle_detail_pitch_copy",
+                return_value={"tagline": "", "closing": "Detalle del Nissan Versa 2020 desde anuncio mid-sesion."},
             ),
             patch(
                 "src.nodes.car_selection.generate_verified_user_message",

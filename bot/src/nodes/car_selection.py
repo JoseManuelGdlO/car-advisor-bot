@@ -20,7 +20,7 @@ from src.services.llm_responses import (
     generate_selected_vehicle_qa_response,
     generate_vehicle_candidates_selection_message,
     generate_vehicle_comparison_conversation,
-    generate_vehicle_detail_conversation,
+    generate_vehicle_detail_pitch_copy,
     generate_verified_user_message,
 )
 from src.services.car_selection_fallback import (
@@ -54,10 +54,12 @@ from src.tools.vehicles import (
 )
 from src.utils.purchase_flow_messages import CONTACT_PREFERENCE_MESSAGE
 from src.utils.formatters import (
+    assemble_vehicle_detail_pitch,
     format_available_vehicles_grouped,
     format_candidate_options,
     format_filtered_vehicles,
     format_two_vehicle_comparison_grounding,
+    format_vehicle_detail_pitch,
     format_vehicle_name,
     format_vehicle_detail,
     sort_vehicles_by_outbound_priority,
@@ -901,15 +903,23 @@ def _respond_with_selected_vehicle_detail_and_purchase_question(state: clientSta
     if not str(state.get("selected_car", "")).strip():
         state["selected_car"] = format_vehicle_name(detail)
 
-    platform = str(state.get("platform", "web")).strip().lower() or "web"
     user_text = latest_user_message(state)
-    grounded_vehicle_facts = format_vehicle_detail(
-        detail,
-        platform=platform,
-        include_color=user_asks_for_color(user_text),
-        include_dimensions=user_asks_for_dimensions(user_text),
+    pitch_parts = format_vehicle_detail_pitch(detail)
+    existing_tagline = str(pitch_parts.get("tagline") or "").strip()
+    pitch_copy = generate_vehicle_detail_pitch_copy(
+        state["selected_car"],
+        str(pitch_parts.get("facts_block") or ""),
+        has_tagline=bool(existing_tagline),
     )
-    detail_narrative = generate_vehicle_detail_conversation(state["selected_car"], grounded_vehicle_facts)
+    tagline = existing_tagline or str(pitch_copy.get("tagline") or "").strip()
+    closing = str(pitch_copy.get("closing") or "").strip()
+    detail_narrative = assemble_vehicle_detail_pitch(
+        title_line=str(pitch_parts.get("title_line") or ""),
+        tagline=tagline,
+        bullets=list(pitch_parts.get("bullets") or []),
+        price_line=str(pitch_parts.get("price_line") or ""),
+        closing=closing,
+    )
     purchase_question = _build_purchase_question(state)
     blocks: list[str] = [detail_narrative, purchase_question]
 

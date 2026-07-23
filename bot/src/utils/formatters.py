@@ -356,6 +356,204 @@ def format_vehicle_detail(
     return "\n".join(lines)
 
 
+_PITCH_METADATA_PRIORITY: tuple[str, ...] = (
+    "fuelCombinedKmL",
+    "fuelCityKmL",
+    "fuelHighwayKmL",
+    "passengers",
+    "drivetrain",
+    "doors",
+    "fuel",
+    "transmissionFull",
+    "versions",
+)
+
+_PITCH_MAX_BULLETS = 4
+
+
+def _format_currency_pitch(value: Any) -> str:
+    """Formatea precio de pitch sin centavos cuando son .00 (estilo marketing)."""
+
+    raw = str(value or "").strip()
+    if not raw:
+        return "N/D"
+    try:
+        amount = Decimal(raw)
+    except (InvalidOperation, ValueError):
+        return raw
+    if amount == amount.to_integral_value():
+        return f"${amount:,.0f}"
+    return f"${amount:,.2f}"
+
+
+def _pitch_emoji(vehicle: dict[str, Any]) -> str:
+    """Emoji de ficha: `image` del inventario o auto por defecto."""
+
+    emoji = str(vehicle.get("image") or "").strip()
+    if emoji and "http" not in emoji.lower() and "/" not in emoji and len(emoji) <= 8:
+        return emoji
+    return "🚗"
+
+
+def _pitch_title_name(vehicle: dict[str, Any]) -> str:
+    """Nombre corto para título de pitch: marca + modelo + año."""
+
+    brand = _title_or_default(vehicle.get("brand"), fallback="")
+    model = _title_or_default(vehicle.get("model"), fallback="")
+    year = vehicle.get("year")
+    parts = [part for part in (brand, model) if part]
+    name = " ".join(parts).strip()
+    if isinstance(year, int):
+        year_str = str(year)
+        if year_str not in name:
+            name = f"{name} {year}".strip()
+    return name or "Vehiculo"
+
+
+def _pitch_transmission_bullet(vehicle: dict[str, Any]) -> str:
+    """Bullet de transmisión a partir del campo principal o metadata."""
+
+    transmission = str(vehicle.get("transmission") or "").strip()
+    if not transmission:
+        metadata = vehicle.get("metadata")
+        if isinstance(metadata, dict):
+            transmission = str(metadata.get("transmissionFull") or "").strip()
+    if not transmission:
+        return ""
+    return f"Transmisión: {_title_or_default(transmission)}"
+
+
+def _pitch_engine_bullet(vehicle: dict[str, Any]) -> str:
+    """Bullet de motor; opcionalmente concatena rendimiento combinado."""
+
+    engine = str(vehicle.get("engine") or "").strip()
+    if not engine:
+        return ""
+    bullet = f"Motor {_title_or_default(engine)}"
+    metadata = vehicle.get("metadata")
+    if isinstance(metadata, dict):
+        combined = metadata.get("fuelCombinedKmL")
+        if combined is not None and str(combined).strip():
+            formatted = _format_metadata_value(combined)
+            if formatted:
+                bullet = f"{bullet} - {formatted} km/l"
+    return bullet
+
+
+def _pitch_metadata_bullets(vehicle: dict[str, Any], *, skip_keys: set[str]) -> list[str]:
+    """Bullets adicionales desde metadata (prioridad fija, sin dimensiones)."""
+
+    metadata = vehicle.get("metadata")
+    if not isinstance(metadata, dict) or not metadata:
+        return []
+    bullets: list[str] = []
+    seen: set[str] = set(skip_keys)
+
+    for key in _PITCH_METADATA_PRIORITY:
+        if key in seen:
+            continue
+        if key not in metadata:
+            continue
+        label = _metadata_key_label(key)
+        text = _format_metadata_value(metadata.get(key))
+        if not label or not text:
+            continue
+        if _is_dimension_metadata_key(key, label):
+            continue
+        seen.add(key)
+        bullets.append(f"{label}: {text}")
+
+    for key, value in metadata.items():
+        raw_key = str(key)
+        if raw_key in seen:
+            continue
+        label = _metadata_key_label(raw_key)
+        text = _format_metadata_value(value)
+        if not label or not text:
+            continue
+        if _is_dimension_metadata_key(raw_key, label):
+            continue
+        seen.add(raw_key)
+        bullets.append(f"{label}: {text}")
+
+    return bullets
+
+
+def format_vehicle_detail_pitch(vehicle: dict[str, Any]) -> dict[str, Any]:
+    """Arma partes deterministas del pitch marketing (titulo, bullets, precio, tagline)."""
+
+    title_line = f"{_pitch_emoji(vehicle)} {_pitch_title_name(vehicle)}".strip()
+    tagline = str(vehicle.get("description") or "").strip()
+
+    bullets: list[str] = []
+    skip_meta: set[str] = set()
+
+    engine_bullet = _pitch_engine_bullet(vehicle)
+    if engine_bullet:
+        bullets.append(engine_bullet)
+        skip_meta.add("fuelCombinedKmL")
+
+    transmission_bullet = _pitch_transmission_bullet(vehicle)
+    if transmission_bullet:
+        bullets.append(transmission_bullet)
+        skip_meta.add("transmissionFull")
+
+    for extra in _pitch_metadata_bullets(vehicle, skip_keys=skip_meta):
+        if len(bullets) >= _PITCH_MAX_BULLETS:
+            break
+        bullets.append(extra)
+
+    if len(bullets) < _PITCH_MAX_BULLETS and _is_zero_km(vehicle.get("km")):
+        bullets.append("Vehículo nuevo")
+
+    price_formatted = _format_currency_pitch(vehicle.get("price"))
+    price_line = f"💰 Desde {price_formatted}" if price_formatted != "N/D" else ""
+
+    return {
+        "title_line": title_line,
+        "tagline": tagline,
+        "bullets": bullets[:_PITCH_MAX_BULLETS],
+        "price_line": price_line,
+        "facts_block": "\n".join(
+            [
+                title_line,
+                *[f"✅ {item}" for item in bullets[:_PITCH_MAX_BULLETS]],
+                price_line,
+            ]
+        ).strip(),
+    }
+
+
+def assemble_vehicle_detail_pitch(
+    *,
+    title_line: str,
+    tagline: str = "",
+    bullets: list[str] | None = None,
+    price_line: str = "",
+    closing: str = "",
+) -> str:
+    """Une las partes del pitch en el mensaje final para el usuario."""
+
+    lines: list[str] = []
+    title = str(title_line or "").strip()
+    if title:
+        lines.append(title)
+    tag = str(tagline or "").strip()
+    if tag:
+        lines.append(tag)
+    for bullet in bullets or []:
+        text = str(bullet or "").strip()
+        if text:
+            lines.append(f"✅ {text}" if not text.startswith("✅") else text)
+    price = str(price_line or "").strip()
+    if price:
+        lines.append(price)
+    close = str(closing or "").strip()
+    if close:
+        lines.append(close)
+    return "\n".join(lines).strip()
+
+
 def format_two_vehicle_comparison_grounding(
     vehicle_a: dict[str, Any],
     vehicle_b: dict[str, Any],

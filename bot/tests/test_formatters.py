@@ -5,6 +5,7 @@ from __future__ import annotations
 import unittest
 
 from src.utils.formatters import (
+    assemble_vehicle_detail_pitch,
     format_available_vehicles_grouped,
     format_candidate_options,
     format_financing_plan_comparison,
@@ -12,6 +13,7 @@ from src.utils.formatters import (
     format_promotion_comparison,
     format_two_vehicle_comparison_grounding,
     format_vehicle_detail,
+    format_vehicle_detail_pitch,
     format_vehicle_name,
     sort_vehicles_by_outbound_priority,
 )
@@ -255,6 +257,67 @@ class TestFormatVehicleDetail(unittest.TestCase):
         self.assertIn("**Descripción**: Unidad impecable", out)
         self.assertIn("**Puertas**: Cinco", out)
         self.assertIn("**Combustible**: Gasolina", out)
+
+
+class TestFormatVehicleDetailPitch(unittest.TestCase):
+    def test_pitch_uses_description_as_tagline_and_custom_emoji(self) -> None:
+        vehicle = {
+            "brand": "Suzuki",
+            "model": "Jimny 3 Puertas",
+            "year": 2027,
+            "price": "475990",
+            "km": 0,
+            "transmission": "manual / automatica",
+            "engine": "1.5L",
+            "image": "🗻",
+            "description": "El legendario 4x4 puro.",
+            "metadata": {"passengers": 4, "fuelCombinedKmL": 15.4},
+        }
+        parts = format_vehicle_detail_pitch(vehicle)
+        self.assertEqual(parts["title_line"], "🗻 Suzuki Jimny 3 Puertas 2027")
+        self.assertEqual(parts["tagline"], "El legendario 4x4 puro.")
+        self.assertEqual(parts["price_line"], "💰 Desde $475,990")
+        self.assertTrue(any("Motor 1.5L" in b and "15.4 km/l" in b for b in parts["bullets"]))
+        self.assertTrue(any("Transmisión" in b for b in parts["bullets"]))
+        self.assertLessEqual(len(parts["bullets"]), 4)
+
+        assembled = assemble_vehicle_detail_pitch(
+            title_line=parts["title_line"],
+            tagline=parts["tagline"],
+            bullets=parts["bullets"],
+            price_line=parts["price_line"],
+            closing="Es para quien quiere diversión pura.",
+        )
+        self.assertIn("🗻 Suzuki Jimny 3 Puertas 2027", assembled)
+        self.assertIn("El legendario 4x4 puro.", assembled)
+        self.assertIn("✅", assembled)
+        self.assertIn("💰 Desde $475,990", assembled)
+        self.assertIn("Es para quien quiere diversión pura.", assembled)
+
+    def test_pitch_omits_empty_tagline_and_defaults_emoji(self) -> None:
+        vehicle = {
+            "brand": "Suzuki",
+            "model": "Swift",
+            "year": 2027,
+            "price": "343990.50",
+            "km": 100,
+            "transmission": "CVT",
+            "engine": "1.2L Mild Hybrid",
+            "description": "",
+        }
+        parts = format_vehicle_detail_pitch(vehicle)
+        self.assertTrue(parts["title_line"].startswith("🚗 "))
+        self.assertEqual(parts["tagline"], "")
+        self.assertEqual(parts["price_line"], "💰 Desde $343,990.50")
+        assembled = assemble_vehicle_detail_pitch(
+            title_line=parts["title_line"],
+            tagline="",
+            bullets=parts["bullets"],
+            price_line=parts["price_line"],
+            closing="",
+        )
+        self.assertNotIn("\n\n", assembled)
+        self.assertIn("Motor 1.2L Mild Hybrid", assembled)
 
 
 class TestFormatFinancingPlanComparison(unittest.TestCase):

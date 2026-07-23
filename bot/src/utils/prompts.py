@@ -430,6 +430,49 @@ def build_vehicle_detail_conversation_prompt(
     )
 
 
+def build_vehicle_detail_pitch_copy_prompt(
+    vehicle_name: str,
+    facts_block: str,
+    bot_settings: dict[str, Any] | None,
+    *,
+    has_tagline: bool,
+) -> str:
+    """Prompt para tagline/cierre cortos del pitch; no reescribe bullets ni precio."""
+
+    system_prompt = build_system_prompt(bot_settings)
+    name = vehicle_name.strip() or "este vehiculo"
+    facts = str(facts_block or "").strip()
+    if has_tagline:
+        mode_rules = (
+            "- Ya existe TAGLINE editorial en inventario; NO inventes ni reescribas tagline.\n"
+            "- Devuelve SOLO una linea exactamente asi:\n"
+            "CIERRE: <una frase corta en espanol Mexico>\n"
+        )
+    else:
+        mode_rules = (
+            "- No hay tagline en inventario; genera TAGLINE y CIERRE.\n"
+            "- Devuelve exactamente estas dos lineas (sin extras):\n"
+            "TAGLINE: <una frase corta tipo gancho comercial>\n"
+            "CIERRE: <una frase corta de cierre>\n"
+        )
+    return (
+        f"{system_prompt}\n\n"
+        "PITCH_COPY_DETALLE_VEHICULO (solo datos verificados):\n"
+        f"Nombre del vehiculo: {name}\n\n"
+        "DATOS_VERIFICADOS (estructura ya armada; no la reescribas):\n"
+        f"{facts}\n\n"
+        "Instrucciones obligatorias:\n"
+        "- Espanol (Mexico), tono consultor de agencia, frases muy cortas.\n"
+        "- Usa SOLO hechos que aparezcan en DATOS_VERIFICADOS. No inventes equipamiento, seguridad, ADAS, bolsas, "
+        "camaras, consumo, financiamiento, promociones ni ranking de ventas.\n"
+        "- No uses emojis, viñetas, listas, markdown ni preguntas.\n"
+        "- No invites a ver otros modelos, pedir mas info ni explorar el catalogo.\n"
+        f"{mode_rules}"
+        "- Si no puedes redactar un cierre util sin inventar, deja CIERRE vacio: CIERRE:\n"
+        "- Devuelve UNICAMENTE las lineas pedidas, sin prefijos tipo 'Respuesta:' ni comillas envolventes."
+    )
+
+
 def build_vehicle_comparison_conversation_prompt(
     vehicle_name_a: str,
     vehicle_name_b: str,

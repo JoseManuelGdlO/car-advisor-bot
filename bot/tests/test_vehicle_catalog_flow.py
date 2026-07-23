@@ -149,8 +149,8 @@ class VehicleCatalogFlowTests(GraphTestCase):
             patch("src.nodes.car_selection.fetch_vehicles", return_value=vehicles),
             patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=vehicles[0]),
             patch(
-                "src.nodes.car_selection.generate_vehicle_detail_conversation",
-                return_value="Detalle del vehiculo: Nissan Versa 2004, color blanco.",
+                "src.nodes.car_selection.generate_vehicle_detail_pitch_copy",
+                return_value={"tagline": "", "closing": "Detalle del vehiculo: Nissan Versa 2004, color blanco."},
             ),
             patch(
                 "src.nodes.car_selection.generate_verified_user_message",
@@ -291,8 +291,8 @@ class VehicleCatalogFlowTests(GraphTestCase):
             patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=versa_2011),
             patch("src.nodes.car_selection.generate_vehicle_candidates_selection_message", return_value="1. Nissan Versa 2011\n2. Nissan Versa 2001"),
             patch(
-                "src.nodes.car_selection.generate_vehicle_detail_conversation",
-                return_value="Aqui tienes la informacion completa del Nissan Versa 2011.",
+                "src.nodes.car_selection.generate_vehicle_detail_pitch_copy",
+                return_value={"tagline": "", "closing": "Aqui tienes la informacion completa del Nissan Versa 2011."},
             ),
             patch(
                 "src.nodes.car_selection.generate_verified_user_message",
@@ -356,8 +356,8 @@ class VehicleCatalogFlowTests(GraphTestCase):
             patch("src.nodes.car_selection.search_vehicles", return_value=[vehicles[0]]) as mocked_search,
             patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=vehicles[0]),
             patch(
-                "src.nodes.car_selection.generate_vehicle_detail_conversation",
-                return_value="Encontramos un Nissan Versa 2011 dentro de tu presupuesto.",
+                "src.nodes.car_selection.generate_vehicle_detail_pitch_copy",
+                return_value={"tagline": "", "closing": "Encontramos un Nissan Versa 2011 dentro de tu presupuesto."},
             ),
         ):
             updated = self.graph.invoke(state)
@@ -399,8 +399,8 @@ class VehicleCatalogFlowTests(GraphTestCase):
             patch("src.nodes.car_selection.search_vehicles", return_value=[candidate]) as mocked_search,
             patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=candidate),
             patch(
-                "src.nodes.car_selection.generate_vehicle_detail_conversation",
-                return_value="Encontramos un Nissan Versa 2011 dentro del rango solicitado.",
+                "src.nodes.car_selection.generate_vehicle_detail_pitch_copy",
+                return_value={"tagline": "", "closing": "Encontramos un Nissan Versa 2011 dentro del rango solicitado."},
             ),
         ):
             updated = self.graph.invoke(state)
@@ -447,8 +447,8 @@ class VehicleCatalogFlowTests(GraphTestCase):
             ) as mocked_requirement,
             patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=platform_car),
             patch(
-                "src.nodes.car_selection.generate_vehicle_detail_conversation",
-                return_value="El Suzuki Swift es ideal para plataformas.",
+                "src.nodes.car_selection.generate_vehicle_detail_pitch_copy",
+                return_value={"tagline": "", "closing": "El Suzuki Swift es ideal para plataformas."},
             ),
             patch("src.nodes.car_selection.search_vehicles") as mocked_search,
         ):
@@ -497,8 +497,8 @@ class VehicleCatalogFlowTests(GraphTestCase):
             ),
             patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=five_seater),
             patch(
-                "src.nodes.car_selection.generate_vehicle_detail_conversation",
-                return_value="El Ertiga acomoda bien a 5 o mas pasajeros.",
+                "src.nodes.car_selection.generate_vehicle_detail_pitch_copy",
+                return_value={"tagline": "", "closing": "El Ertiga acomoda bien a 5 o mas pasajeros."},
             ),
         ):
             updated = self.graph.invoke(state)
@@ -574,8 +574,8 @@ class VehicleCatalogFlowTests(GraphTestCase):
             patch("src.nodes.car_selection.search_vehicles", return_value=[vehicles[0]]) as mocked_search,
             patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=vehicles[0]),
             patch(
-                "src.nodes.car_selection.generate_vehicle_detail_conversation",
-                return_value="Encontramos un Nissan Versa 2011 dentro de tu presupuesto.",
+                "src.nodes.car_selection.generate_vehicle_detail_pitch_copy",
+                return_value={"tagline": "", "closing": "Encontramos un Nissan Versa 2011 dentro de tu presupuesto."},
             ),
             patch("src.nodes.car_selection.classify_vehicle_requirement_matches") as mocked_requirement,
         ):
@@ -612,8 +612,8 @@ class VehicleCatalogFlowTests(GraphTestCase):
             patch("src.nodes.car_selection.classify_vehicle_requirement_matches") as mocked_requirement,
             patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=cheap),
             patch(
-                "src.nodes.car_selection.generate_vehicle_detail_conversation",
-                return_value="El Nissan Versa es la opcion mas economica.",
+                "src.nodes.car_selection.generate_vehicle_detail_pitch_copy",
+                return_value={"tagline": "", "closing": "El Nissan Versa es la opcion mas economica."},
             ),
             patch("src.nodes.car_selection.search_vehicles") as mocked_search,
         ):
@@ -661,8 +661,8 @@ class VehicleCatalogFlowTests(GraphTestCase):
             patch("src.nodes.car_selection.classify_purchase_confirmation_intent") as mocked_confirm,
             patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=cheap),
             patch(
-                "src.nodes.car_selection.generate_vehicle_detail_conversation",
-                return_value="El Swift es el mas barato de la lista.",
+                "src.nodes.car_selection.generate_vehicle_detail_pitch_copy",
+                return_value={"tagline": "", "closing": "El Swift es el mas barato de la lista."},
             ),
         ):
             updated = self.graph.invoke(state)
@@ -711,8 +711,8 @@ class VehicleCatalogFlowTests(GraphTestCase):
             patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=vehicles[0]),
             patch("src.nodes.car_selection.classify_vehicle_step_flags", return_value=neutral_step_flags),
             patch(
-                "src.nodes.car_selection.generate_vehicle_detail_conversation",
-                return_value="Detalle del Nissan Versa 2020.",
+                "src.nodes.car_selection.generate_vehicle_detail_pitch_copy",
+                return_value={"tagline": "", "closing": "Detalle del Nissan Versa 2020."},
             ),
             patch(
                 "src.nodes.car_selection._llm_vehicle_image_flags",
@@ -778,8 +778,8 @@ class VehicleCatalogFlowTests(GraphTestCase):
             patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=vehicles[0]),
             patch("src.nodes.car_selection.classify_vehicle_step_flags", return_value=false_positive_image_flags),
             patch(
-                "src.nodes.car_selection.generate_vehicle_detail_conversation",
-                return_value="Detalle del Suzuki Dzire 2026.",
+                "src.nodes.car_selection.generate_vehicle_detail_pitch_copy",
+                return_value={"tagline": "", "closing": "Detalle del Suzuki Dzire 2026."},
             ),
             patch("src.nodes.car_selection.classify_purchase_preferences") as mocked_llm,
             patch("src.utils.vehicle_images.fetch_vehicle_images") as mocked_images,
@@ -840,8 +840,8 @@ class VehicleCatalogFlowTests(GraphTestCase):
             patch("src.nodes.car_selection.fetch_vehicle_by_id", return_value=vehicles[0]),
             patch("src.nodes.car_selection.classify_vehicle_step_flags", return_value=step_flags),
             patch(
-                "src.nodes.car_selection.generate_vehicle_detail_conversation",
-                return_value="Detalle del Suzuki Dzire 2026.",
+                "src.nodes.car_selection.generate_vehicle_detail_pitch_copy",
+                return_value={"tagline": "", "closing": "Detalle del Suzuki Dzire 2026."},
             ),
             patch(
                 "src.utils.vehicle_images.fetch_vehicle_images",
@@ -898,8 +898,8 @@ class VehicleCatalogFlowTests(GraphTestCase):
                 return_value={"transmission": "AUTOMATICO", "payment_type": "CONTADO"},
             ),
             patch(
-                "src.nodes.car_selection.generate_vehicle_detail_conversation",
-                return_value="Detalle del Versa.",
+                "src.nodes.car_selection.generate_vehicle_detail_pitch_copy",
+                return_value={"tagline": "", "closing": "Detalle del Versa."},
             ),
             patch(
                 "src.nodes.car_selection._llm_vehicle_image_flags",

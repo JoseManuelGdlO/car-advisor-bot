@@ -34,6 +34,7 @@ from src.utils.prompts import (
     build_router_intent_classifier_prompt,
     build_vehicle_comparison_conversation_prompt,
     build_vehicle_detail_conversation_prompt,
+    build_vehicle_detail_pitch_copy_prompt,
     build_faq_response_prompt,
     build_faq_selection_prompt,
     build_vehicle_comparison_extract_prompt,
@@ -644,6 +645,79 @@ def generate_vehicle_detail_conversation(vehicle_name: str, grounded_facts_block
             temperature=0.45,
         )
         return fallback
+
+
+def _parse_vehicle_detail_pitch_copy(text: str, *, need_tagline: bool) -> dict[str, str]:
+    """Parsea TAGLINE:/CIERRE: (o JSON) desde la salida del LLM."""
+
+    raw = str(text or "").strip()
+    result = {"tagline": "", "closing": ""}
+    if not raw:
+        return result
+
+    parsed = _parse_json_object_from_llm(raw)
+    if isinstance(parsed, dict):
+        tagline = str(parsed.get("tagline") or parsed.get("TAGLINE") or "").strip()
+        closing = str(parsed.get("closing") or parsed.get("cierre") or parsed.get("CIERRE") or "").strip()
+        if need_tagline:
+            result["tagline"] = tagline
+        result["closing"] = closing
+        return result
+
+    tagline = ""
+    closing = ""
+    for line in raw.splitlines():
+        cleaned = line.strip().strip('"').strip("'")
+        if not cleaned:
+            continue
+        lower = cleaned.lower()
+        if lower.startswith("tagline:"):
+            tagline = cleaned.split(":", 1)[1].strip()
+        elif lower.startswith("cierre:"):
+            closing = cleaned.split(":", 1)[1].strip()
+    if need_tagline and not tagline and not closing and "\n" not in raw:
+        # Fallback: una sola linea sin prefijo se trata como tagline.
+        tagline = raw
+    if need_tagline:
+        result["tagline"] = tagline
+    result["closing"] = closing
+    return result
+
+
+def generate_vehicle_detail_pitch_copy(
+    vehicle_name: str,
+    facts_block: str,
+    *,
+    has_tagline: bool,
+) -> dict[str, str]:
+    """Genera tagline (si falta) y cierre corto para el pitch de detalle."""
+
+    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
+    normalized_name = vehicle_name.strip() or "este vehiculo"
+    facts = str(facts_block or "").strip()
+    empty = {"tagline": "", "closing": ""}
+    if not facts:
+        return empty
+    try:
+        settings = get_bot_settings()
+        llm = ChatOpenAI(model=model_name, temperature=0.4)
+        prompt = build_vehicle_detail_pitch_copy_prompt(
+            normalized_name,
+            facts,
+            settings,
+            has_tagline=has_tagline,
+        )
+        content = llm.invoke(prompt).content
+        return _parse_vehicle_detail_pitch_copy(str(content), need_tagline=not has_tagline)
+    except Exception as exc:
+        _log_llm_invoke_failure(
+            "generate_vehicle_detail_pitch_copy",
+            exc,
+            model_name=model_name,
+            prompt_kind="vehicle_detail_pitch_copy",
+            temperature=0.4,
+        )
+        return empty
 
 
 def _split_two_vehicle_grounding_block(combined: str) -> tuple[str, str]:
