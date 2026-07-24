@@ -288,6 +288,7 @@ def persist_commercial_selection_to_backend(
     default_platform = str(os.getenv("BOT_DEFAULT_INBOUND_CHANNEL", "web")).strip().lower() or "web"
     platform = str(state.get("platform") or default_platform).strip().lower() or default_platform
     selected_car = str(state.get("selected_car") or "").strip()
+    selected_vehicle_id = str(state.get("selected_vehicle_id") or "").strip()
     owner = str(state.get("owner_user_id") or "").strip() or None
     push_event_to_backend(
         {
@@ -296,6 +297,7 @@ def persist_commercial_selection_to_backend(
             "message": str(message or "").strip() or "Consulta comercial registrada",
             "from": "system",
             "selected_car": selected_car,
+            "selected_vehicle_id": selected_vehicle_id,
             "customer_info": {},
             "financing_selection": financing,
             "promotion_selection": promotion,

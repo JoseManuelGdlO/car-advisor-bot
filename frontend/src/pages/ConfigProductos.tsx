@@ -308,14 +308,23 @@ export default function ConfigProductos() {
   }, [cars, promotions]);
 
   const list = useMemo(() => {
-    return cars.filter((c) => {
-      let okF = true;
-      if (filter === "noFinancing") okF = !c.financingPlans?.length;
-      else if (filter === "noPromos") okF = linkedPromoCountForVehicle(c.id, promotions) === 0;
-      else if (filter !== "all") okF = c.status === filter;
-      const okQ = !q || `${c.brand} ${c.model}`.toLowerCase().includes(q.toLowerCase());
-      return okF && okQ;
-    });
+    return cars
+      .filter((c) => {
+        let okF = true;
+        if (filter === "noFinancing") okF = !c.financingPlans?.length;
+        else if (filter === "noPromos") okF = linkedPromoCountForVehicle(c.id, promotions) === 0;
+        else if (filter !== "all") okF = c.status === filter;
+        const okQ = !q || `${c.brand} ${c.model}`.toLowerCase().includes(q.toLowerCase());
+        return okF && okQ;
+      })
+      .sort((a, b) => {
+        const priorityA = Number(a.outboundPriority) || 0;
+        const priorityB = Number(b.outboundPriority) || 0;
+        if (priorityA <= 0 && priorityB <= 0) return 0;
+        if (priorityA <= 0) return 1;
+        if (priorityB <= 0) return -1;
+        return priorityA - priorityB;
+      });
   }, [cars, filter, q, promotions]);
 
   const isFormValid =

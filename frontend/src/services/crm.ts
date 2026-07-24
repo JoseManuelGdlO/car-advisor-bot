@@ -8,6 +8,7 @@ import type {
   DashboardKpisDto,
   FinancingPlanDto,
   FinancingRequirementDto,
+  TopProductsResponseDto,
 } from "./crm.dto";
 export type {
   BlacklistEntryDto,
@@ -21,11 +22,15 @@ export type {
   FinancingPlanDto,
   FinancingRequirementDto,
   PromotionDto,
+  TopProductDto,
+  TopProductsResponseDto,
   VehicleDto,
 } from "./crm.dto";
 
 export const crmApi = {
   getKpis: (token: string) => apiRequest<DashboardKpisDto>("/dashboard/kpis", "GET", undefined, token),
+  getTopProducts: (token: string) =>
+    apiRequest<TopProductsResponseDto>("/dashboard/top-products", "GET", undefined, token),
   getClients: (token: string) => apiRequest<ClientDto[]>("/clients", "GET", undefined, token),
   getClient: (token: string, id: string) => apiRequest<ClientDto>(`/clients/${id}`, "GET", undefined, token),
   updateClient: (

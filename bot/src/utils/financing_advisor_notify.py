@@ -417,6 +417,7 @@ def handle_financing_detail_escalation(
             "message": "Cliente necesita ayuda con financiamiento",
             "from": "system",
             "selected_car": selected_car,
+            "selected_vehicle_id": str(state.get("selected_vehicle_id") or "").strip(),
             "customer_info": customer_info,
             "current_node": current_node,
         }

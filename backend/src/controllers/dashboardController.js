@@ -1,6 +1,7 @@
-import { Op, fn, col, where } from "sequelize";
-import { ClientLead, Conversation, OwnerNotification } from "../models/index.js";
+import { Op } from "sequelize";
+import { ClientLead, Conversation, OwnerNotification, Vehicle } from "../models/index.js";
 import { calcDayOverDayChangePct, utcDayBounds } from "../utils/dashboardKpis.js";
+import { buildTopProductsRanking } from "../utils/dashboardTopProducts.js";
 import { DASHBOARD_ESCALATION_KINDS } from "../services/ownerNotifications.js";
 
 // Scope multi-tenant por propietario autenticado.
@@ -21,6 +22,32 @@ const escalationsBetween = (userId, start, end) => ({
   ...createdAtBetween(start, end),
 });
 
+/** Leads con interés textual o vehicleId para armar el ranking. */
+export const findInterestLeads = (userId) =>
+  ClientLead.findAll({
+    where: {
+      ...visibleLeadsWhere(userId),
+      [Op.or]: [
+        {
+          [Op.and]: [
+            { interestedIn: { [Op.not]: null } },
+            { interestedIn: { [Op.ne]: "" } },
+          ],
+        },
+        { interestedVehicleId: { [Op.not]: null } },
+      ],
+    },
+    attributes: ["interestedIn", "interestedVehicleId"],
+    raw: true,
+  });
+
+export const findOwnerVehicles = (userId) =>
+  Vehicle.findAll({
+    where: ownerWhere(userId),
+    attributes: ["id", "brand", "model", "year"],
+    raw: true,
+  });
+
 export const getDashboard = async (req, res) => {
   const userId = req.auth.userId;
   const now = new Date();
@@ -39,7 +66,8 @@ export const getDashboard = async (req, res) => {
     escalationsToday,
     escalationsYesterday,
     waiting,
-    topRows,
+    interestLeads,
+    vehicles,
     weeklyRows,
   ] = await Promise.all([
     Conversation.count({ where: ownerWhere(userId) }),
@@ -56,21 +84,8 @@ export const getDashboard = async (req, res) => {
       where: escalationsBetween(userId, yesterdayBounds.start, yesterdayBounds.end),
     }),
     Conversation.count({ where: { ...ownerWhere(userId), unread: { [Op.gt]: 0 } } }),
-    ClientLead.findAll({
-      where: {
-        ...visibleLeadsWhere(userId),
-        [Op.and]: [
-          { interestedIn: { [Op.not]: null } },
-          { interestedIn: { [Op.ne]: "" } },
-          where(fn("TRIM", col("interested_in")), { [Op.ne]: "" }),
-        ],
-      },
-      attributes: ["interestedIn", [fn("COUNT", col("interested_in")), "queries"]],
-      group: ["interested_in"],
-      order: [[fn("COUNT", col("interested_in")), "DESC"]],
-      limit: 5,
-      raw: true,
-    }),
+    findInterestLeads(userId),
+    findOwnerVehicles(userId),
     Conversation.findAll({
       where: {
         ...ownerWhere(userId),
@@ -109,11 +124,27 @@ export const getDashboard = async (req, res) => {
     escalations: escalationsToday,
     escalationsChange: calcDayOverDayChangePct(escalationsToday, escalationsYesterday),
     weeklyChats,
-    topProducts: topRows
-      .map((x) => ({
-        name: String(x.interested_in || x.interestedIn || "").trim(),
-        queries: Number(x.queries || 0),
-      }))
-      .filter((x) => x.name),
+    topProducts: buildTopProductsRanking({
+      leads: interestLeads,
+      vehicles,
+      limit: 5,
+      includeZero: false,
+    }),
+  });
+};
+
+/** Ranking completo de autos consultados más el catálogo sin consultas (con 0). */
+export const getTopProducts = async (req, res) => {
+  const userId = req.auth.userId;
+  const [interestLeads, vehicles] = await Promise.all([
+    findInterestLeads(userId),
+    findOwnerVehicles(userId),
+  ]);
+  return res.json({
+    items: buildTopProductsRanking({
+      leads: interestLeads,
+      vehicles,
+      includeZero: true,
+    }),
   });
 };

@@ -54,6 +54,12 @@ class CarSelectionFormattersTests(unittest.TestCase):
         self.assertEqual(format_vehicle_name({"brand": "Nissan", "model": "Versa", "year": 2011}), "Nissan Versa 2011")
         self.assertEqual(format_vehicle_name({"brand": "Nissan", "model": "Versa"}), "Nissan Versa")
 
+    def test_format_vehicle_name_does_not_duplicate_year_already_in_model(self) -> None:
+        self.assertEqual(
+            format_vehicle_name({"brand": "Suzuki", "model": "SWIFT BOOSTERGREEN 2026", "year": 2026}),
+            "Suzuki SWIFT BOOSTERGREEN 2026",
+        )
+
     def test_format_candidate_options_returns_numbered_lines(self) -> None:
         options = format_candidate_options(
             [

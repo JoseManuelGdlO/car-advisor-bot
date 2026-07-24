@@ -44,6 +44,11 @@ export default function ClientLeadModel(sequelize) {
       type: DataTypes.STRING(160),
       field: "interested_in",
     },
+    interestedVehicleId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      field: "interested_vehicle_id",
+    },
     lastMessage: {
       type: DataTypes.TEXT,
       field: "last_message",

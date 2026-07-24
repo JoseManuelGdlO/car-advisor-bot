@@ -1,7 +1,13 @@
 import { Op } from "sequelize";
-import { ChannelConversationContext, ClientLead, Conversation, Message } from "../models/index.js";
+import { ChannelConversationContext, ClientLead, Conversation, Message, Vehicle } from "../models/index.js";
 import { ApiError } from "../utils/errors.js";
 import { isWithinBotSchedule } from "../utils/botSettings.js";
+import {
+  buildVehicleMatchIndex,
+  formatVehicleDisplayName,
+  matchInterestToVehicle,
+  normalizeInterestedInLabel,
+} from "../utils/dashboardTopProducts.js";
 import { channelAllowsAutoReply, normalizeInboundChannel } from "../utils/integrationChannel.js";
 import { getOrCreateBotSettings } from "./botSettingsService.js";
 import {
@@ -21,6 +27,48 @@ const hasUsableCustomerInfo = (c) => {
 };
 
 const isNonEmptyObject = (o) => o && typeof o === "object" && Object.keys(o).length > 0;
+
+/** Resuelve vehicleId + nombre de display actual a partir del payload del bot. */
+export const resolveLeadVehicleInterest = async ({
+  ownerUserId,
+  selectedCar = "",
+  selectedVehicleId = "",
+}) => {
+  const vehicleId = String(selectedVehicleId || "").trim();
+  const cleanedLabel = normalizeInterestedInLabel(selectedCar);
+
+  if (vehicleId) {
+    const vehicle = await Vehicle.findOne({
+      where: { id: vehicleId, ownerUserId },
+      attributes: ["id", "brand", "model", "year"],
+      raw: true,
+    });
+    if (vehicle) {
+      return {
+        interestedVehicleId: vehicle.id,
+        interestedIn: formatVehicleDisplayName(vehicle) || cleanedLabel,
+      };
+    }
+  }
+
+  if (cleanedLabel) {
+    const vehicles = await Vehicle.findAll({
+      where: { ownerUserId },
+      attributes: ["id", "brand", "model", "year"],
+      raw: true,
+    });
+    const matched = matchInterestToVehicle(cleanedLabel, buildVehicleMatchIndex(vehicles));
+    if (matched) {
+      return {
+        interestedVehicleId: matched.id,
+        interestedIn: formatVehicleDisplayName(matched) || cleanedLabel,
+      };
+    }
+    return { interestedVehicleId: null, interestedIn: cleanedLabel };
+  }
+
+  return null;
+};
 
 export const ELIMINATED_LEAD_STATUS = "eliminated";
 
@@ -68,6 +116,7 @@ export const upsertConversationEvent = async ({
   message,
   from = "client",
   selectedCar = "",
+  selectedVehicleId = "",
   customerInfo = {},
   financingSelection = {},
   promotionSelection = {},
@@ -155,6 +204,12 @@ export const upsertConversationEvent = async ({
     }
   }
 
+  const resolvedInterest = await resolveLeadVehicleInterest({
+    ownerUserId,
+    selectedCar,
+    selectedVehicleId,
+  });
+
   let currentNotes;
   try {
     currentNotes = lead.notes ? JSON.parse(String(lead.notes)) : {};
@@ -197,11 +252,16 @@ export const upsertConversationEvent = async ({
     ...(Object.keys(mergedPurchasePreferences).length ? { purchase_preferences: mergedPurchasePreferences } : {}),
   };
   const leadFieldUpdates = {
-    interestedIn: selectedCar || lead.interestedIn,
+    interestedIn: resolvedInterest?.interestedIn || lead.interestedIn,
     lastMessage: isInboundClientMessage ? normalizedMessage : lead.lastMessage,
     lastMessageAt: isInboundClientMessage ? new Date() : lead.lastMessageAt,
     notes: Object.keys(mergedNotes).length ? JSON.stringify(mergedNotes) : lead.notes,
   };
+  // Solo actualizar cuando hay ID resuelto; un follow-up con texto sin match
+  // no debe borrar un interestedVehicleId capturado antes.
+  if (resolvedInterest?.interestedVehicleId) {
+    leadFieldUpdates.interestedVehicleId = resolvedInterest.interestedVehicleId;
+  }
   if (normalizedContactMethod) leadFieldUpdates.contactMethod = normalizedContactMethod;
   if (String(lead.phone) !== String(normalizedUserId)) leadFieldUpdates.phone = normalizedUserId;
   if (resolvedDisplayPhone) leadFieldUpdates.displayPhone = resolvedDisplayPhone;
@@ -575,7 +635,8 @@ export const clearLeadCommercialAssociationsForExternalUser = async ({ ownerUser
   });
   if (!lead) return emptyResult;
 
-  const hadVehicle = Boolean(String(lead.interestedIn || "").trim());
+  const hadVehicle =
+    Boolean(String(lead.interestedIn || "").trim()) || Boolean(String(lead.interestedVehicleId || "").trim());
   const { notes: newNotes, hadFinancing, hadPromotion, hadPurchasePreferences } =
     buildNotesWithoutCommercialSelections(lead.notes);
   const hadAnything = hadVehicle || hadFinancing || hadPromotion || hadPurchasePreferences;
@@ -585,6 +646,7 @@ export const clearLeadCommercialAssociationsForExternalUser = async ({ ownerUser
 
   await lead.update({
     interestedIn: "",
+    interestedVehicleId: null,
     notes: newNotes,
   });
 

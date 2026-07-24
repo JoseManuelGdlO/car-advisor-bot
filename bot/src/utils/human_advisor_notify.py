@@ -135,6 +135,7 @@ def handle_human_advisor_request(
             "message": "Cliente pidió hablar con un asesor",
             "from": "system",
             "selected_car": selected_car,
+            "selected_vehicle_id": str(state.get("selected_vehicle_id") or "").strip(),
             "customer_info": customer_info,
             "current_node": current_node,
         }

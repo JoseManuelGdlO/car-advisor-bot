@@ -93,6 +93,15 @@ export type BlacklistEntryDto = {
   createdAt: string;
 };
 
+export type TopProductDto = {
+  name: string;
+  queries: number;
+};
+
+export type TopProductsResponseDto = {
+  items: TopProductDto[];
+};
+
 export type DashboardKpisDto = {
   activeChats: number;
   newToday: number;
@@ -102,7 +111,7 @@ export type DashboardKpisDto = {
   escalations: number;
   escalationsChange: number;
   weeklyChats: number[];
-  topProducts: Array<{ name: string; queries: number }>;
+  topProducts: TopProductDto[];
 };
 
 export type ClientDto = {

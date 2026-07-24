@@ -15,7 +15,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { useAuth } from "@/context/AuthContext";
 import { crmApi } from "@/services/crm";
-import type { DashboardKpisDto } from "@/services/crm";
+import type { DashboardKpisDto, TopProductDto } from "@/services/crm";
 import {
   notificationsApi,
   type NotificationKindFilter,
@@ -116,6 +116,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [notifOpen, setNotifOpen] = useState(false);
+  const [topProductsOpen, setTopProductsOpen] = useState(false);
   const [filterKind, setFilterKind] = useState<NotificationKindFilter>("");
   const { token, user } = useAuth();
 
@@ -123,6 +124,17 @@ export default function Dashboard() {
     queryKey: ["kpis"],
     queryFn: () => crmApi.getKpis(token!),
     enabled: Boolean(token),
+  });
+
+  const {
+    data: topProductsData,
+    isLoading: topProductsLoading,
+    isError: topProductsError,
+    refetch: refetchTopProducts,
+  } = useQuery({
+    queryKey: ["top-products"],
+    queryFn: () => crmApi.getTopProducts(token!),
+    enabled: Boolean(token) && topProductsOpen,
   });
 
   const { data: notificationsData, isLoading: notificationsLoading } = useQuery({
@@ -134,6 +146,9 @@ export default function Dashboard() {
       }),
     enabled: Boolean(token),
   });
+
+  const allTopProducts = topProductsData?.items ?? [];
+  const topProductsMaxQueries = allTopProducts[0]?.queries ?? 0;
 
   const items = notificationsData?.items ?? [];
   const unreadCount = notificationsData?.unreadCount ?? 0;
@@ -286,10 +301,18 @@ export default function Dashboard() {
         <div className="bg-card rounded-2xl p-4 shadow-card border border-border">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-bold text-foreground">Top autos consultados</h3>
-            <button className="text-xs font-semibold text-primary-dark">Ver todos</button>
+            <button
+              type="button"
+              onClick={() => setTopProductsOpen(true)}
+              className="text-xs font-semibold text-primary-dark"
+              aria-label="Ver todos los autos consultados"
+              aria-expanded={topProductsOpen}
+            >
+              Ver todos
+            </button>
           </div>
           <ul className="space-y-2.5">
-            {safeKpis.topProducts.map((p: { name: string; queries: number }, i: number) => {
+            {safeKpis.topProducts.map((p: TopProductDto, i: number) => {
               const pct = safeKpis.topProducts[0]?.queries ? (p.queries / safeKpis.topProducts[0].queries) * 100 : 0;
               return (
                 <li key={`${p.name}-${i}`}>
@@ -331,6 +354,76 @@ export default function Dashboard() {
           </button>
         ) : null}
       </div>
+
+      <Sheet open={topProductsOpen} onOpenChange={setTopProductsOpen}>
+        <SheetContent side="bottom" className="rounded-t-2xl max-h-[85vh] overflow-y-auto">
+          <SheetHeader className="text-left">
+            <SheetTitle>Top autos consultados</SheetTitle>
+            <SheetDescription>
+              Ranking completo de tu inventario; los autos sin consultas aparecen en gris
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="mt-4 space-y-2.5 pb-safe">
+            {topProductsLoading ? (
+              <p className="text-sm text-muted-foreground text-center py-8 px-2">Cargando…</p>
+            ) : null}
+
+            {!topProductsLoading && topProductsError ? (
+              <div className="text-center py-8 px-2 space-y-3">
+                <p className="text-sm text-muted-foreground">No se pudo cargar el ranking.</p>
+                <Button type="button" variant="outline" size="sm" onClick={() => void refetchTopProducts()}>
+                  Reintentar
+                </Button>
+              </div>
+            ) : null}
+
+            {!topProductsLoading && !topProductsError && allTopProducts.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8 px-2">
+                Aún no hay autos consultados.
+              </p>
+            ) : null}
+
+            {!topProductsLoading && !topProductsError
+              ? allTopProducts.map((p, i) => {
+                  const pct = topProductsMaxQueries ? (p.queries / topProductsMaxQueries) * 100 : 0;
+                  const neverQueried = p.queries === 0;
+                  return (
+                    <div
+                      key={`${p.name}-${i}`}
+                      className={cn("rounded-xl border border-border bg-card p-3", neverQueried && "opacity-60")}
+                    >
+                      <div className="flex items-center justify-between text-xs mb-1.5">
+                        <span
+                          className={cn(
+                            "font-medium flex items-center gap-2 min-w-0",
+                            neverQueried ? "text-muted-foreground" : "text-foreground",
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              "w-5 h-5 shrink-0 rounded-full grid place-items-center text-[10px] font-bold",
+                              neverQueried ? "bg-muted text-muted-foreground" : "bg-accent text-accent-foreground",
+                            )}
+                          >
+                            {neverQueried ? "–" : i + 1}
+                          </span>
+                          <span className="truncate">{p.name}</span>
+                        </span>
+                        <span className="text-muted-foreground font-semibold shrink-0 ml-2">{p.queries}</span>
+                      </div>
+                      <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                        {neverQueried ? null : (
+                          <div className="h-full bg-gradient-primary rounded-full" style={{ width: `${pct}%` }} />
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              : null}
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <Sheet open={notifOpen} onOpenChange={setNotifOpen}>
         <SheetContent side="bottom" className="rounded-t-2xl max-h-[85vh] overflow-y-auto">

@@ -181,6 +181,7 @@ def _notify_and_persist(
             "message": _ficha_summary_message(selected_car, purchase_preferences),
             "from": "system",
             "selected_car": selected_car,
+            "selected_vehicle_id": str(state.get("selected_vehicle_id") or "").strip(),
             "customer_info": {},
             "financing_selection": financing_selection,
             "promotion_selection": promotion_selection,

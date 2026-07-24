@@ -226,13 +226,22 @@ def _format_metadata_lines(
 
 
 def format_vehicle_name(item: dict[str, Any]) -> str:
-    """Compone nombre legible `marca modelo año` para mensajes."""
+    """Compone nombre legible `marca modelo año` para mensajes.
+
+    Evita duplicar el año cuando el modelo ya termina con ese mismo año
+    (p. ej. model='SWIFT 2026' + year=2026 → 'Brand SWIFT 2026').
+    """
 
     brand = str(item.get("brand", "")).strip()
     model = str(item.get("model", "")).strip()
     year = item.get("year")
-    suffix = f" {year}" if isinstance(year, int) else ""
-    return f"{brand} {model}{suffix}".strip()
+    base = f"{brand} {model}".strip()
+    if isinstance(year, int) and year > 0:
+        year_token = str(year)
+        tokens = base.split()
+        if not tokens or tokens[-1] != year_token:
+            return f"{base} {year_token}".strip()
+    return base
 
 
 def _outbound_priority_value(item: dict[str, Any]) -> int:
