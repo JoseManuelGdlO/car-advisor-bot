@@ -9,6 +9,7 @@ import { debounceAndFlush } from "./messageDebounceBuffer.js";
 import { isPhoneBlacklisted } from "./phoneBlacklistService.js";
 import { runWithWcToken } from "./wcAuthCache.js";
 import { wcClient } from "./wcClient.js";
+import { formatCampaignCrmMessage } from "../utils/campaignCrmMessage.js";
 import { logWcWebhook, logWcWebhookDebug } from "../utils/wcWebhookLog.js";
 
 /** CRM: resumen cuando el usuario envía solo media/adjuntos (sin invocar el bot). */
@@ -98,13 +99,16 @@ export const ingestWhatsappConnectEvent = async ({ normalizedEvent, credentials:
     return { ok: true, blocked: true };
   }
 
-  const clientCrmMessage = unsupportedMediaOnly ? UNSUPPORTED_INBOUND_CRM_CLIENT_MESSAGE : incomingMessage;
+  const clientCrmMessage = unsupportedMediaOnly
+    ? UNSUPPORTED_INBOUND_CRM_CLIENT_MESSAGE
+    : formatCampaignCrmMessage(incomingMessage, normalizedEvent.adContext);
 
   try {
     logWcWebhookDebug("pipeline: upsert client message", {
       externalUserId: String(normalizedEvent.externalUserId || "").slice(0, 80),
       messageId: normalizedEvent.messageId,
       unsupportedMediaOnly,
+      hasAdContext: Boolean(normalizedEvent.adContext?.isAd),
     });
     const conversationResult = await upsertConversationEvent({
       ownerUserId: normalizedEvent.ownerUserId,
