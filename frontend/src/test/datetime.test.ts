@@ -26,8 +26,8 @@ describe("datetime formatting by bot timezone", () => {
   it("formats message times and full dates in the configured timezone", () => {
     const midday = "2026-07-16T18:00:00.000Z";
 
-    expect(formatMessageTime(midday, "America/Mexico_City")).toBe("12:00");
-    expect(formatMessageTime(midday, "America/Bogota")).toBe("13:00");
-    expect(formatDateTime(midday, "America/Mexico_City")).toContain("12:00");
+    expect(formatMessageTime(midday, "America/Mexico_City")).toBe("12:00 p.m.");
+    expect(formatMessageTime(midday, "America/Bogota")).toBe("01:00 p.m.");
+    expect(formatDateTime(midday, "America/Mexico_City")).toContain("12:00 p.m.");
   });
 });

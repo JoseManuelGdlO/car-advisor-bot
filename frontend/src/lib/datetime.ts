@@ -84,7 +84,7 @@ export const formatMessageTime = (
     timeZone: normalizeTimezoneValue(timeZone),
     hour: "2-digit",
     minute: "2-digit",
-    hour12: false,
+    hour12: true,
   }).format(date);
 };
 
@@ -98,6 +98,6 @@ export const formatDateTime = (value: string | undefined, timeZone?: string): st
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-    hour12: false,
+    hour12: true,
   }).format(date);
 };
