@@ -13,6 +13,15 @@ let intervalTimer = null;
 let bootTimer = null;
 let running = false;
 
+/** Combina el texto de seguimiento con la última pregunta del bot en el CRM. */
+export const buildReminderOutboundText = ({ reminderMessage, lastBotText }) => {
+  const reminder = String(reminderMessage || "").trim();
+  const lastBot = String(lastBotText || "").trim();
+  if (!lastBot) return null;
+  if (!reminder || reminder === lastBot) return lastBot;
+  return `${reminder}\n\n${lastBot}`;
+};
+
 const resolveDisplayPhone = (conversation) => {
   const client = conversation.client;
   return String(client?.displayPhone || client?.phone || "").trim();
@@ -47,10 +56,16 @@ const processConversationReminder = async ({ conversation, reminderMessage }) =>
     return;
   }
 
+  const outboundText = buildReminderOutboundText({
+    reminderMessage,
+    lastBotText: latest.text,
+  });
+  if (!outboundText) return;
+
   await sendConversationTextMessage({
     ownerUserId: conversation.ownerUserId,
     conversationId: conversation.id,
-    text: reminderMessage,
+    text: outboundText,
     senderRole: "assistant",
   });
 

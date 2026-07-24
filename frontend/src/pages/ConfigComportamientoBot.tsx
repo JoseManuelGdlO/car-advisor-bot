@@ -266,7 +266,7 @@ export default function ConfigComportamientoBot() {
             <div>
               <p className="text-sm font-semibold">Recordatorio de seguimiento</p>
               <p className="text-xs text-muted-foreground">
-                Si el último mensaje es del bot y no hay escalación, envía este texto tras el plazo.
+                Si el último mensaje es del bot y no hay escalación, antepone este texto a esa pregunta tras el plazo.
               </p>
             </div>
             <Switch
