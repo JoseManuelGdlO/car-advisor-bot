@@ -6,14 +6,38 @@ y imports circulares con llm_responses.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Mapping, MutableMapping
 
-CONTACT_PREFERENCE_MESSAGE = (
-    "Un asesor profesional te va a contactar en menos de 10 minutos para darte, precios, "
-    "colores disponibles y promo de Julio.\n"
-    "¿Prefieres que te contacte por aquí por WhatsApp, por llamada o deseas agendar una cita?\n"
-    "Por favor responde: whatsapp, llamada o cita"
+_MONTHS_ES = (
+    "Enero",
+    "Febrero",
+    "Marzo",
+    "Abril",
+    "Mayo",
+    "Junio",
+    "Julio",
+    "Agosto",
+    "Septiembre",
+    "Octubre",
+    "Noviembre",
+    "Diciembre",
 )
+
+
+def _current_month_name_es() -> str:
+    return _MONTHS_ES[datetime.now().month - 1]
+
+
+def contact_preference_message() -> str:
+    """CTA largo de preferencia de contacto, con el mes actual en la promo."""
+
+    return (
+        "Un asesor profesional te va a contactar en menos de 10 minutos para darte, precios, "
+        f"colores disponibles y promo de {_current_month_name_es()}.\n"
+        "¿Prefieres que te contacte por aquí por WhatsApp, por llamada o deseas agendar una cita?\n"
+        "Por favor responde: whatsapp, llamada o cita"
+    )
 
 CONTACT_PREFERENCE_MESSAGE_SHORT = (
     "Para que un asesor te contacte por favor contesta si prefieres hablar por "
@@ -32,7 +56,7 @@ LEAD_CONTACT_FOLLOWUP_WHATSAPP_CALL = "Un asesor te contactará pronto."
 def is_contact_preference_message(text: str) -> bool:
     """True si el texto es el CTA largo o el corto de preferencia de contacto."""
 
-    return text in (CONTACT_PREFERENCE_MESSAGE, CONTACT_PREFERENCE_MESSAGE_SHORT)
+    return text in (contact_preference_message(), CONTACT_PREFERENCE_MESSAGE_SHORT)
 
 
 def resolve_contact_preference_message(
@@ -49,7 +73,7 @@ def resolve_contact_preference_message(
         or bool(state.get("awaiting_purchase_confirmation"))
     ):
         return CONTACT_PREFERENCE_MESSAGE_SHORT
-    return CONTACT_PREFERENCE_MESSAGE
+    return contact_preference_message()
 
 
 def mark_contact_preference_prompt_sent(state: MutableMapping[str, Any]) -> None:
