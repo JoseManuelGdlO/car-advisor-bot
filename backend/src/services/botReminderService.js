@@ -36,7 +36,11 @@ const getLatestMessage = async (conversationId) =>
     ],
   });
 
-const processConversationReminder = async ({ conversation, reminderMessage }) => {
+export const processConversationReminder = async ({
+  conversation,
+  reminderMessage,
+  sendTextMessage = sendConversationTextMessage,
+}) => {
   const channel = String(conversation.channel || "").toLowerCase();
   if (!SUPPORTED_CHANNELS.includes(channel)) return;
 
@@ -63,7 +67,7 @@ const processConversationReminder = async ({ conversation, reminderMessage }) =>
   if (!outboundText) return;
 
   try {
-    await sendConversationTextMessage({
+    await sendTextMessage({
       ownerUserId: conversation.ownerUserId,
       conversationId: conversation.id,
       text: outboundText,
@@ -81,9 +85,9 @@ const processConversationReminder = async ({ conversation, reminderMessage }) =>
         `[bot-reminder] Graph 24h/re-engagement conversation=${conversation.id} owner=${conversation.ownerUserId}`,
         error?.message || error
       );
-      return;
+    } else {
+      throw error;
     }
-    throw error;
   }
 
   await conversation.update({ lastReminderAt: new Date() });
