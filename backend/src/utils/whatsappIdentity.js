@@ -57,6 +57,15 @@ export const blacklistPhoneLookupValues = (normalizedPhone) => {
   return [...new Set(values)];
 };
 
+/** Destinatario Graph: dígitos MX 521 + 10 locales (sin `+` ni `@s.whatsapp.net`). */
+export const formatWhatsappGraphTo = (value) => {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (!digits) return "";
+  const local = digits.length <= 10 ? digits : digits.slice(-10);
+  if (local.length !== 10) return "";
+  return `${MEXICO_WHATSAPP_PREFIX}${local}`;
+};
+
 export const resolveDisplayPhone = ({ fromPhone, channelId, customerTelefono } = {}) => {
   const fromPhoneNorm = normalizeDisplayPhone(fromPhone);
   if (fromPhoneNorm) return fromPhoneNorm;

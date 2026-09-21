@@ -8,6 +8,11 @@ import { runBotChat } from "./botEngineClient.js";
 import { debounceAndFlush } from "./messageDebounceBuffer.js";
 import { isPhoneBlacklisted } from "./phoneBlacklistService.js";
 import { formatCampaignCrmMessage } from "../utils/campaignCrmMessage.js";
+import {
+  sendWhatsappDocument,
+  sendWhatsappImage,
+  sendWhatsappText,
+} from "./metaWhatsappClient.js";
 
 /** CRM: resumen cuando el usuario envía solo media/adjuntos (sin invocar el bot). */
 export const UNSUPPORTED_INBOUND_CRM_CLIENT_MESSAGE =
@@ -71,18 +76,24 @@ const persistAssistantReply = async ({ normalizedEvent, message }) => {
   });
 };
 
-/** Task 4 cablea Graph send; Task 3 persiste CRM y deja el outbound en espera. */
-const deferOutbound = ({ normalizedEvent, type }) => {
-  logWaCloud("outbound deferred", {
-    to: String(normalizedEvent.externalUserId || "").slice(0, 64),
-    type,
-  });
+const sendCloudOutbound = async ({ credentials, to, type, text, imageUrl, documentUrl, fileName, caption }) => {
+  const phoneNumberId = credentials?.phoneNumberId;
+  const accessToken = credentials?.accessToken;
+  if (type === "image") {
+    await sendWhatsappImage({ phoneNumberId, accessToken, to, imageUrl, caption });
+    return;
+  }
+  if (type === "document") {
+    await sendWhatsappDocument({ phoneNumberId, accessToken, to, documentUrl, fileName, caption });
+    return;
+  }
+  await sendWhatsappText({ phoneNumberId, accessToken, to, text });
 };
 
 export const shouldIgnoreBlacklistedWhatsappEvent = ({ ownerUserId, displayPhone }) =>
   isPhoneBlacklisted({ ownerUserId, displayPhone });
 
-export const ingestWhatsappCloudEvent = async ({ normalizedEvent, credentials: _credentials }) => {
+export const ingestWhatsappCloudEvent = async ({ normalizedEvent, credentials }) => {
   let receipt;
   try {
     receipt = await ChannelEventReceipt.create({
@@ -165,7 +176,16 @@ export const ingestWhatsappCloudEvent = async ({ normalizedEvent, credentials: _
     if (unsupportedMediaOnly) {
       const replyText = UNSUPPORTED_INBOUND_OUTBOUND_REPLY;
       await persistAssistantReply({ normalizedEvent, message: replyText });
-      deferOutbound({ normalizedEvent, type: "text" });
+      logWaCloud("pipeline: send outbound", {
+        to: String(normalizedEvent.externalUserId || "").slice(0, 64),
+        type: "text",
+      });
+      await sendCloudOutbound({
+        credentials,
+        to: normalizedEvent.externalUserId,
+        type: "text",
+        text: replyText,
+      });
       await markReceipt(receipt, "processed");
       return { ok: true, conversationId: conversationResult.conversationId, repliesSent: 1, unsupportedMediaOnly: true };
     }
@@ -198,6 +218,7 @@ export const ingestWhatsappCloudEvent = async ({ normalizedEvent, credentials: _
       const replyText = String(reply?.text || "").trim();
       const imageUrl = String(reply?.imageUrl || "").trim();
       const documentUrl = String(reply?.documentUrl || "").trim();
+      const fileName = String(reply?.fileName || "").trim();
       const caption = String(reply?.caption || "").trim();
       const messageForCrm = isImage
         ? caption || "Imagen del vehiculo"
@@ -207,9 +228,19 @@ export const ingestWhatsappCloudEvent = async ({ normalizedEvent, credentials: _
 
       if (!messageForCrm && !imageUrl && !documentUrl) continue;
       await persistAssistantReply({ normalizedEvent, message: messageForCrm });
-      deferOutbound({
-        normalizedEvent,
+      logWaCloud("pipeline: send outbound", {
+        to: String(normalizedEvent.externalUserId || "").slice(0, 64),
         type: isImage ? "image" : isDocument ? "document" : "text",
+      });
+      await sendCloudOutbound({
+        credentials,
+        to: normalizedEvent.externalUserId,
+        type: isImage ? "image" : isDocument ? "document" : "text",
+        text: replyText,
+        imageUrl,
+        documentUrl,
+        fileName,
+        caption,
       });
     }
 

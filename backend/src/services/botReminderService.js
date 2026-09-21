@@ -62,12 +62,29 @@ const processConversationReminder = async ({ conversation, reminderMessage }) =>
   });
   if (!outboundText) return;
 
-  await sendConversationTextMessage({
-    ownerUserId: conversation.ownerUserId,
-    conversationId: conversation.id,
-    text: outboundText,
-    senderRole: "assistant",
-  });
+  try {
+    await sendConversationTextMessage({
+      ownerUserId: conversation.ownerUserId,
+      conversationId: conversation.id,
+      text: outboundText,
+      senderRole: "assistant",
+    });
+  } catch (error) {
+    const details = `${error?.message || ""} ${error?.meta?.message || ""}`.toLowerCase();
+    if (
+      details.includes("24 hours") ||
+      details.includes("24 horas") ||
+      details.includes("re-engagement") ||
+      details.includes("reengagement")
+    ) {
+      console.warn(
+        `[bot-reminder] Graph 24h/re-engagement conversation=${conversation.id} owner=${conversation.ownerUserId}`,
+        error?.message || error
+      );
+      return;
+    }
+    throw error;
+  }
 
   await conversation.update({ lastReminderAt: new Date() });
 };

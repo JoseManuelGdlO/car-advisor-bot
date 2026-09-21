@@ -20,6 +20,7 @@ import {
   getWhatsappMetaStatus,
   postMetaDisconnect,
   postMetaEmbeddedSignup,
+  postMetaWhatsappSendTest,
 } from "../controllers/metaWhatsappController.js";
 
 export const accountRoutes = Router();
@@ -41,3 +42,4 @@ accountRoutes.get("/integrations/whatsapp/meta/config", requireUserAuth, getMeta
 accountRoutes.post("/integrations/whatsapp/meta/signup", requireUserAuth, postMetaEmbeddedSignup);
 accountRoutes.post("/integrations/whatsapp/meta/disconnect", requireUserAuth, postMetaDisconnect);
 accountRoutes.get("/internal/whatsapp/meta/status", requireUserAuth, getWhatsappMetaStatus);
+accountRoutes.post("/internal/whatsapp/send-test", requireUserAuth, postMetaWhatsappSendTest);

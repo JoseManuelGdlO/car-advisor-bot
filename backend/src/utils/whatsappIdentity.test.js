@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   extractDisplayPhoneFromChannelId,
+  formatWhatsappGraphTo,
   isWhatsappChannelId,
   normalizeBlacklistPhone,
   normalizeDisplayPhone,
@@ -68,4 +69,14 @@ test("resolveDisplayPhone extrae de JID clásico como último recurso", () => {
     }),
     "5215512345678",
   );
+});
+
+test("formatWhatsappGraphTo quita + y @s.whatsapp.net y usa prefijo 521", () => {
+  assert.equal(formatWhatsappGraphTo("6183218624"), "5216183218624");
+  assert.equal(formatWhatsappGraphTo("5216183218624"), "5216183218624");
+  assert.equal(formatWhatsappGraphTo("+52 1 618 321 8624"), "5216183218624");
+  assert.equal(formatWhatsappGraphTo("6183218624@s.whatsapp.net"), "5216183218624");
+  assert.equal(formatWhatsappGraphTo("5215512345678@s.whatsapp.net"), "5215512345678");
+  assert.equal(formatWhatsappGraphTo(""), "");
+  assert.equal(formatWhatsappGraphTo("55"), "");
 });
