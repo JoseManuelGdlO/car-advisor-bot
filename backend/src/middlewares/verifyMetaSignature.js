@@ -45,3 +45,6 @@ export const verifyMetaInstagramSignature = (req, _res, next) => {
     return next(err);
   }
 };
+
+export const isValidMetaSignature = isValidMetaInstagramSignature;
+export const verifyMetaSignature = verifyMetaInstagramSignature;

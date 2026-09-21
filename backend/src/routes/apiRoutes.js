@@ -12,6 +12,7 @@ import { notificationRoutes } from "./notificationRoutes.js";
 import { whatsappConnectRoutes } from "./whatsappConnectRoutes.js";
 import { whatsappConnectWebhookRoutes } from "./whatsappConnectWebhookRoutes.js";
 import { instagramWebhookRoutes } from "./instagramWebhookRoutes.js";
+import { whatsappCloudWebhookRoutes } from "./whatsappCloudWebhookRoutes.js";
 
 export const apiRoutes = Router();
 
@@ -28,3 +29,4 @@ apiRoutes.use("/", whatsappConnectRoutes);
 // Webhooks públicos del proveedor (sin JWT de usuario).
 apiRoutes.use("/", whatsappConnectWebhookRoutes);
 apiRoutes.use("/", instagramWebhookRoutes);
+apiRoutes.use("/", whatsappCloudWebhookRoutes);
