@@ -58,13 +58,7 @@ export function describeGraphToken(token) {
   const value = String(token || "").trim();
   const platform = String(env.meta.accessToken || "").trim();
   if (!value) return { source: "missing", preview: null };
-  const source = platform && value === platform
-    ? (String(process.env.META_ACCESS_TOKEN || "").trim()
-      ? "META_ACCESS_TOKEN"
-      : String(process.env.META_SYSTEM_USER_TOKEN || "").trim()
-        ? "META_SYSTEM_USER_TOKEN"
-        : "META_ACCESS_TOKEN")
-    : "plannerAccessToken";
+  const source = platform && value === platform ? "META_ACCESS_TOKEN" : "plannerAccessToken";
   return {
     source,
     preview: `${value.slice(0, 8)}…len=${value.length}`,

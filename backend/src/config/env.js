@@ -65,7 +65,7 @@ export const env = {
     configId: must("META_EMBEDDED_SIGNUP_CONFIG_ID", ""),
     businessId: must("META_BUSINESS_ID", ""),
     systemUserId: must("META_SYSTEM_USER_ID", ""),
-    accessToken: must("META_ACCESS_TOKEN", "") || must("META_SYSTEM_USER_TOKEN", ""),
+    accessToken: must("META_ACCESS_TOKEN", ""),
     timeoutMs: Number(must("META_TIMEOUT_MS", "8000")),
     mediaTimeoutMs: Number(must("META_MEDIA_TIMEOUT_MS", "60000")),
     debugGraphToken: must("META_DEBUG_GRAPH_TOKEN", "false") === "true",
