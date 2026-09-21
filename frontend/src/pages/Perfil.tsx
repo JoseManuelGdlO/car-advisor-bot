@@ -1234,10 +1234,15 @@ function IntegrationAccordionItem({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52">
-            <DropdownMenuItem className="gap-2" onSelect={onOpenCredentials}>
-              <KeyRound className="w-4 h-4" />
-              Credenciales
-            </DropdownMenuItem>
+            {isWhatsAppMeta || isWhatsAppConnect ? null : (
+              <>
+                <DropdownMenuItem className="gap-2" onSelect={onOpenCredentials}>
+                  <KeyRound className="w-4 h-4" />
+                  Credenciales
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
             {/* DEPRECATED: WhatsApp Connect */}
             {false && isWhatsAppConnect ? (
               <>
@@ -1257,7 +1262,6 @@ function IntegrationAccordionItem({
                 </DropdownMenuItem>
               </>
             ) : null}
-            <DropdownMenuSeparator />
             {integration.status === "active" ? (
               <DropdownMenuItem className="gap-2" onSelect={onDeactivate} disabled={patchPending}>
                 <PowerOff className="w-4 h-4" />

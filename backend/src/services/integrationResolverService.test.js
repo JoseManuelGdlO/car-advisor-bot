@@ -58,6 +58,47 @@ test("assertPhoneNumberIdExclusiveToOwner permite reutilizar el número del mism
   }
 });
 
+test("assertPhoneNumberIdExclusiveToOwner lanza 409 si el número está solo en credenciales de otra cuenta", async () => {
+  const originalFindAll = ChannelIntegration.findAll;
+  const originalCredFindOne = ChannelCredential.findOne;
+  ChannelIntegration.findAll = async ({ where } = {}) => {
+    if (where?.phoneNumberId) return [];
+    return [{ id: "int-other", ownerUserId: "other-user", phoneNumberId: null }];
+  };
+  ChannelCredential.findOne = async () => ({
+    cipherText: encryptCredentialsPayload({ accessToken: "tok", phoneNumberId: "pn-hidden" }),
+  });
+  try {
+    await assert.rejects(
+      () => assertPhoneNumberIdExclusiveToOwner({ phoneNumberId: "pn-hidden", ownerUserId: "me" }),
+      (err) =>
+        err instanceof ApiError &&
+        err.status === 409 &&
+        err.message === "Este número de WhatsApp ya está vinculado a otra cuenta."
+    );
+  } finally {
+    ChannelIntegration.findAll = originalFindAll;
+    ChannelCredential.findOne = originalCredFindOne;
+  }
+});
+
+test("assertPhoneNumberIdExclusiveToOwner permite el mismo dueño si el id está solo en credenciales", async () => {
+  const originalFindAll = ChannelIntegration.findAll;
+  const originalCredFindOne = ChannelCredential.findOne;
+  ChannelIntegration.findAll = async () => [
+    { id: "int-me", ownerUserId: "me", phoneNumberId: null },
+  ];
+  ChannelCredential.findOne = async () => ({
+    cipherText: encryptCredentialsPayload({ accessToken: "tok", phoneNumberId: "pn-mine" }),
+  });
+  try {
+    await assertPhoneNumberIdExclusiveToOwner({ phoneNumberId: "pn-mine", ownerUserId: "me" });
+  } finally {
+    ChannelIntegration.findAll = originalFindAll;
+    ChannelCredential.findOne = originalCredFindOne;
+  }
+});
+
 test("resolveMetaWhatsappByPhoneNumberId prefiere la columna phoneNumberId", async () => {
   const originalFindOne = ChannelIntegration.findOne;
   const originalCredFindOne = ChannelCredential.findOne;

@@ -213,4 +213,21 @@ export const assertPhoneNumberIdExclusiveToOwner = async ({ phoneNumberId, owner
   if (others.some((row) => row.ownerUserId !== ownerUserId)) {
     throw new ApiError(409, "Este número de WhatsApp ya está vinculado a otra cuenta.");
   }
+
+  const integrations = await ChannelIntegration.findAll({
+    where: { channel: WHATSAPP_CHANNEL, provider: META_WHATSAPP_PROVIDER, status: "active" },
+    order: [["updatedAt", "DESC"]],
+  });
+  for (const integration of integrations) {
+    if (integration.ownerUserId === ownerUserId) continue;
+    try {
+      const payload = await getActiveCredentialPayload(integration.ownerUserId, integration.id);
+      const credentials = normalizeMetaCredentials(payload);
+      if (credentials.phoneNumberId && credentials.phoneNumberId === target) {
+        throw new ApiError(409, "Este número de WhatsApp ya está vinculado a otra cuenta.");
+      }
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) throw error;
+    }
+  }
 };

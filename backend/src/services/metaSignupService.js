@@ -127,8 +127,8 @@ export async function completeEmbeddedSignup({
   logInfo("embedded signup: token intercambiado", {
     ownerUserId,
     tokenSource: described.source,
-    tokenPreview: described.preview,
     equalsPlatform: described.equalsPlatform,
+    ...(env.meta.debugGraphToken ? { tokenPreview: described.preview } : {}),
   });
 
   await subscribeWabaApp(resolvedWabaId, accessToken);

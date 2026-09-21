@@ -50,6 +50,17 @@ export function isFacebookOrigin(origin: string) {
   return FB_ORIGINS.has(origin);
 }
 
+const injectFacebookSdkScript = (onError: () => void) => {
+  const script = document.createElement("script");
+  script.id = "facebook-jssdk";
+  script.async = true;
+  script.defer = true;
+  script.crossOrigin = "anonymous";
+  script.src = "https://connect.facebook.net/es_LA/sdk.js";
+  script.onerror = onError;
+  document.body.appendChild(script);
+};
+
 export function loadFacebookSdk(appId: string, version: string) {
   return new Promise<void>((resolve, reject) => {
     if (typeof window === "undefined") {
@@ -77,16 +88,10 @@ export function loadFacebookSdk(appId: string, version: string) {
       });
       resolve();
     };
+    const onError = () => reject(new Error("No se pudo cargar el SDK de Facebook."));
     const existing = document.getElementById("facebook-jssdk");
-    if (existing) return;
-    const script = document.createElement("script");
-    script.id = "facebook-jssdk";
-    script.async = true;
-    script.defer = true;
-    script.crossOrigin = "anonymous";
-    script.src = "https://connect.facebook.net/es_LA/sdk.js";
-    script.onerror = () => reject(new Error("No se pudo cargar el SDK de Facebook."));
-    document.body.appendChild(script);
+    if (existing) existing.remove();
+    injectFacebookSdkScript(onError);
   });
 }
 
