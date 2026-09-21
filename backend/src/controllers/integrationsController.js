@@ -64,7 +64,7 @@ const findOwnedIntegrationOr404 = async (userId, id) => {
   return row;
 };
 
-const integrationDto = async (row) => {
+export const integrationDto = async (row) => {
   const activeCred = await ChannelCredential.findOne({
     where: { ownerUserId: row.ownerUserId, channelIntegrationId: row.id, isActive: true },
   });
@@ -78,6 +78,10 @@ const integrationDto = async (row) => {
     lastHealthcheckAt: row.lastHealthcheckAt,
     lastError: row.lastError,
     hasActiveCredential: Boolean(activeCred),
+    wabaId: row.wabaId || null,
+    phoneNumberId: row.phoneNumberId || null,
+    displayPhoneNumber: row.displayPhoneNumber || null,
+    coexistenceEnabled: Boolean(row.coexistenceEnabled),
   };
 };
 

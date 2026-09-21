@@ -1,0 +1,121 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { ChannelCredential, ChannelIntegration } from "../models/index.js";
+import { ApiError } from "../utils/errors.js";
+import { encryptCredentialsPayload } from "../utils/credentialsCrypto.js";
+import {
+  assertPhoneNumberIdExclusiveToOwner,
+  META_WHATSAPP_PROVIDER,
+  normalizeMetaCredentials,
+  resolveInstagramMetaIntegrationById,
+  resolveMetaWhatsappByPhoneNumberId,
+  resolveMetaWhatsappIntegrationById,
+  resolveWhatsappConnectIntegrationById,
+  WHATSAPP_CHANNEL,
+} from "./integrationResolverService.js";
+
+test("normalizeMetaCredentials extrae token y phoneNumberId", () => {
+  const creds = normalizeMetaCredentials({
+    accessToken: " tok ",
+    wabaId: "waba",
+    phoneNumberId: "123",
+    displayPhoneNumber: "+52 1",
+    coexistenceEnabled: 1,
+  });
+  assert.equal(creds.accessToken, "tok");
+  assert.equal(creds.phoneNumberId, "123");
+  assert.equal(creds.coexistenceEnabled, true);
+});
+
+test("META_WHATSAPP_PROVIDER es meta y el canal es whatsapp", () => {
+  assert.equal(META_WHATSAPP_PROVIDER, "meta");
+  assert.equal(WHATSAPP_CHANNEL, "whatsapp");
+});
+
+test("assertPhoneNumberIdExclusiveToOwner lanza 409 si otra cuenta tiene el número", async () => {
+  const original = ChannelIntegration.findAll;
+  ChannelIntegration.findAll = async () => [{ ownerUserId: "other-user", phoneNumberId: "123" }];
+  try {
+    await assert.rejects(
+      () => assertPhoneNumberIdExclusiveToOwner({ phoneNumberId: "123", ownerUserId: "me" }),
+      (err) =>
+        err instanceof ApiError &&
+        err.status === 409 &&
+        err.message === "Este número de WhatsApp ya está vinculado a otra cuenta."
+    );
+  } finally {
+    ChannelIntegration.findAll = original;
+  }
+});
+
+test("assertPhoneNumberIdExclusiveToOwner permite reutilizar el número del mismo dueño", async () => {
+  const original = ChannelIntegration.findAll;
+  ChannelIntegration.findAll = async () => [{ ownerUserId: "me", phoneNumberId: "123" }];
+  try {
+    await assertPhoneNumberIdExclusiveToOwner({ phoneNumberId: "123", ownerUserId: "me" });
+  } finally {
+    ChannelIntegration.findAll = original;
+  }
+});
+
+test("resolveMetaWhatsappByPhoneNumberId prefiere la columna phoneNumberId", async () => {
+  const originalFindOne = ChannelIntegration.findOne;
+  const originalCredFindOne = ChannelCredential.findOne;
+  const row = {
+    id: "int-1",
+    ownerUserId: "owner-1",
+    wabaId: "waba-col",
+    phoneNumberId: "pn-col",
+    displayPhoneNumber: "+52 1",
+    coexistenceEnabled: true,
+  };
+  ChannelIntegration.findOne = async () => row;
+  ChannelCredential.findOne = async () => ({
+    cipherText: encryptCredentialsPayload({ accessToken: "tok", phoneNumberId: "pn-cred" }),
+  });
+  try {
+    const resolved = await resolveMetaWhatsappByPhoneNumberId({ phoneNumberId: "pn-col" });
+    assert.equal(resolved.integration.id, "int-1");
+    assert.equal(resolved.credentials.phoneNumberId, "pn-col");
+    assert.equal(resolved.credentials.accessToken, "tok");
+    assert.equal(resolved.provider, "meta");
+  } finally {
+    ChannelIntegration.findOne = originalFindOne;
+    ChannelCredential.findOne = originalCredFindOne;
+  }
+});
+
+test("resolveWhatsappConnectIntegrationById y resolveInstagramMetaIntegrationById siguen exportados", () => {
+  assert.equal(typeof resolveWhatsappConnectIntegrationById, "function");
+  assert.equal(typeof resolveInstagramMetaIntegrationById, "function");
+  assert.equal(typeof resolveMetaWhatsappIntegrationById, "function");
+});
+
+test("resolveMetaWhatsappByPhoneNumberId cae a credenciales si la columna no coincide", async () => {
+  const originalFindOne = ChannelIntegration.findOne;
+  const originalFindAll = ChannelIntegration.findAll;
+  const originalCredFindOne = ChannelCredential.findOne;
+  const row = {
+    id: "int-2",
+    ownerUserId: "owner-2",
+    wabaId: "waba-2",
+    phoneNumberId: null,
+    displayPhoneNumber: "+52 2",
+    coexistenceEnabled: false,
+  };
+  ChannelIntegration.findOne = async () => null;
+  ChannelIntegration.findAll = async () => [row];
+  ChannelCredential.findOne = async () => ({
+    cipherText: encryptCredentialsPayload({ accessToken: "tok-2", phoneNumberId: "pn-fallback" }),
+  });
+  try {
+    const resolved = await resolveMetaWhatsappByPhoneNumberId({ phoneNumberId: "pn-fallback" });
+    assert.equal(resolved.integration.id, "int-2");
+    assert.equal(resolved.credentials.phoneNumberId, "pn-fallback");
+    assert.equal(resolved.provider, "meta");
+  } finally {
+    ChannelIntegration.findOne = originalFindOne;
+    ChannelIntegration.findAll = originalFindAll;
+    ChannelCredential.findOne = originalCredFindOne;
+  }
+});
