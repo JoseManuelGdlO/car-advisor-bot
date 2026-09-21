@@ -1,7 +1,14 @@
 import { env } from "../config/env.js";
 import { ApiError } from "../utils/errors.js";
-import { parseGraphErrorPayload, userFacingMetaCodeMessage } from "../utils/metaError.js";
+import { parseGraphErrorPayload, toMetaErrorMeta, userFacingMetaCodeMessage } from "../utils/metaError.js";
 import { formatWhatsappGraphTo } from "../utils/whatsappIdentity.js";
+
+const quietTest = process.env.NODE_ENV === "test" || Boolean(process.env.NODE_TEST_CONTEXT);
+
+function logMetaSendError(fields) {
+  if (quietTest) return;
+  console.error("[meta-whatsapp] Graph messages error", fields);
+}
 
 const graphMessagesUrl = (phoneNumberId) => {
   const version = String(env.meta.graphApiVersion || "v21.0").replace(/^\/+|\/+$/g, "");
@@ -51,7 +58,13 @@ const graphSend = async ({ phoneNumberId, accessToken, body }) => {
       const details = parseGraphErrorPayload(payload, response.status);
       const status = details.httpStatus >= 400 && details.httpStatus < 600 ? details.httpStatus : 502;
       const err = new ApiError(status, userFacingMetaCodeMessage(details.code, details.message));
-      err.meta = details;
+      err.meta = toMetaErrorMeta(details, { httpStatus: status, message: err.message });
+      logMetaSendError({
+        phoneNumberId: phoneId,
+        to: body?.to || null,
+        kind: body?.type || null,
+        ...err.meta,
+      });
       throw err;
     }
     return payload;

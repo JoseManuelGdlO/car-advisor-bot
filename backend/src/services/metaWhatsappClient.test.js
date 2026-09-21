@@ -87,6 +87,50 @@ test("Graph 400 con mensaje de 24 h lanza ApiError con texto usable", async () =
   );
 });
 
+test("Graph 400 code 100 adjunta meta completo de Graph", async () => {
+  global.fetch = async () => ({
+    ok: false,
+    status: 400,
+    text: async () =>
+      JSON.stringify({
+        error: {
+          message: "(#100) Invalid parameter",
+          type: "OAuthException",
+          code: 100,
+          error_subcode: 33,
+          error_user_title: "Unsupported post request",
+          error_data: { details: "Object with ID 'PNID' does not exist" },
+          fbtrace_id: "AbC123",
+          href: "https://developers.facebook.com/docs/graph-api/using-graph-api/error-handling/",
+        },
+      }),
+  });
+
+  await assert.rejects(
+    () =>
+      sendWhatsappText({
+        phoneNumberId: "PNID",
+        accessToken: "tok",
+        to: "5215512345678",
+        text: "Hola",
+      }),
+    (err) => {
+      assert.equal(err instanceof ApiError, true);
+      assert.equal(err.status, 400);
+      assert.match(err.message, /configuración de la app/i);
+      assert.equal(err.meta.code, 100);
+      assert.equal(err.meta.subcode, 33);
+      assert.equal(err.meta.type, "OAuthException");
+      assert.equal(err.meta.title, "Unsupported post request");
+      assert.equal(err.meta.message, "(#100) Invalid parameter");
+      assert.match(err.meta.details, /does not exist/);
+      assert.equal(err.meta.fbtraceId, "AbC123");
+      assert.match(err.meta.href, /error-handling/);
+      return true;
+    }
+  );
+});
+
 test("status 429 reintenta", async () => {
   let calls = 0;
   global.fetch = async () => {

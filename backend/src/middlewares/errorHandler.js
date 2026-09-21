@@ -27,7 +27,10 @@ export const errorHandler = (err, _req, res, _next) => {
       status,
       message: err?.message || "Internal server error",
       stack: err?.stack || "",
+      ...(err.meta ? { meta: err.meta } : {}),
     });
   }
-  res.status(status).json({ message: err.message || "Internal server error" });
+  const body = { message: err.message || "Internal server error" };
+  if (err.meta) body.meta = err.meta;
+  res.status(status).json(body);
 };

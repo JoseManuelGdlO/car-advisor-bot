@@ -52,6 +52,40 @@ test("exchangeEmbeddedSignupCode lanza ApiError 502 si Meta no devuelve access_t
   assert.equal(parsed.searchParams.get("code"), "signup-code");
 });
 
+test("graphRequest adjunta type details y fbtraceId en el error de Graph", async () => {
+  env.meta.graphApiVersion = "v21.0";
+  global.fetch = async () => ({
+    ok: false,
+    status: 400,
+    text: async () =>
+      JSON.stringify({
+        error: {
+          message: "(#100) Invalid parameter",
+          type: "GraphMethodException",
+          code: 100,
+          error_subcode: 33,
+          error_data: { details: "Unsupported get request" },
+          fbtrace_id: "trace-1",
+        },
+      }),
+  });
+
+  await assert.rejects(
+    () => graphRequest({ method: "GET", path: "me", token: "tok" }),
+    (err) => {
+      assert.equal(err instanceof ApiError, true);
+      assert.equal(err.status, 400);
+      assert.equal(err.meta.code, 100);
+      assert.equal(err.meta.subcode, 33);
+      assert.equal(err.meta.type, "GraphMethodException");
+      assert.equal(err.meta.details, "Unsupported get request");
+      assert.equal(err.meta.fbtraceId, "trace-1");
+      assert.equal(err.meta.message, "(#100) Invalid parameter");
+      return true;
+    }
+  );
+});
+
 test("ensurePlatformCanManageWaba no lanza si el share OBO falla", async () => {
   env.meta.accessToken = "platform-token";
   env.meta.businessId = "biz-1";

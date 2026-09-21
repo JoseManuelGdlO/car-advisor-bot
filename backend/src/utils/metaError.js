@@ -53,13 +53,25 @@ export function userFacingMetaCodeMessage(code, fallback) {
   return META_CODE_MESSAGES[Number(code)] || fallback || "Error de la API de WhatsApp (Meta).";
 }
 
-export function parseGraphErrorPayload(payload = {}, httpStatus = 500) {
-  const error = payload?.error && typeof payload.error === "object" ? payload.error : {};
+export function toMetaErrorMeta(details = {}, fallbacks = {}) {
   return {
-    httpStatus,
-    code: error.code ?? error.error_code ?? null,
-    subcode: error.error_subcode ?? error.error_user_title ?? null,
-    message: String(error.message || error.error_user_msg || payload?.error || "Error de Graph API").trim(),
-    fbtraceId: error.fbtrace_id || error.fbtraceId || null,
+    httpStatus: details.httpStatus ?? fallbacks.httpStatus ?? null,
+    code: details.code ?? null,
+    subcode: details.subcode ?? null,
+    type: details.type ?? null,
+    title: details.title ?? null,
+    message: details.message ?? fallbacks.message ?? null,
+    details: details.details ?? null,
+    fbtraceId: details.fbtraceId ?? null,
+    href: details.href ?? null,
   };
+}
+
+export function parseGraphErrorPayload(payload = {}, httpStatus = 500) {
+  const summary = summarizeMetaError(payload);
+  const stringFallback = typeof payload?.error === "string" ? trimOrNull(payload.error) : null;
+  return toMetaErrorMeta(
+    { ...summary, httpStatus },
+    { message: stringFallback || "Error de Graph API" },
+  );
 }

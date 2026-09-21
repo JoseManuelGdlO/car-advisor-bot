@@ -1,6 +1,6 @@
 import { env } from "../config/env.js";
 import { ApiError } from "../utils/errors.js";
-import { parseGraphErrorPayload, userFacingMetaCodeMessage } from "../utils/metaError.js";
+import { parseGraphErrorPayload, toMetaErrorMeta, userFacingMetaCodeMessage } from "../utils/metaError.js";
 
 const quietTest = process.env.NODE_ENV === "test" || Boolean(process.env.NODE_TEST_CONTEXT);
 
@@ -25,13 +25,10 @@ function graphBase() {
 }
 
 export function attachMetaError(err, details = {}) {
-  err.meta = {
-    httpStatus: details.httpStatus ?? err.status ?? null,
-    code: details.code ?? null,
-    subcode: details.subcode ?? null,
-    message: details.message ?? err.message,
-    fbtraceId: details.fbtraceId ?? null,
-  };
+  err.meta = toMetaErrorMeta(details, {
+    httpStatus: err.status,
+    message: err.message,
+  });
   return err;
 }
 
@@ -115,11 +112,7 @@ export async function graphRequest({
     const graphErrorMeta = {
       path,
       method,
-      httpStatus: err.meta?.httpStatus,
-      code: err.meta?.code,
-      subcode: err.meta?.subcode,
-      fbtraceId: err.meta?.fbtraceId,
-      message: err.meta?.message,
+      ...toMetaErrorMeta(err.meta, { httpStatus: res.status, message: err.message }),
     };
     if (errorLog === "warn") logWarn("Graph API error", graphErrorMeta);
     else logError("Graph API error", graphErrorMeta);
@@ -198,9 +191,7 @@ export async function ensurePlatformCanManageWaba({ wabaId, plannerAccessToken }
         logWarn("OBO: no se pudo vincular el WABA al portafolio", {
           wabaId: waba,
           businessId,
-          message: error.message,
-          code: error.meta?.code || null,
-          subcode: error.meta?.subcode || null,
+          ...toMetaErrorMeta(error.meta, { message: error.message }),
         });
       }
     }
@@ -235,9 +226,7 @@ export async function ensurePlatformCanManageWaba({ wabaId, plannerAccessToken }
     } else {
       logWarn("OBO: no se pudo asignar el system user", {
         wabaId: waba,
-        message: error.message,
-        code: error.meta?.code || null,
-        subcode: error.meta?.subcode || null,
+        ...toMetaErrorMeta(error.meta, { message: error.message }),
       });
     }
   }
