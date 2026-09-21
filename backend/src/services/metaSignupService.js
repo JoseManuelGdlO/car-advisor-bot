@@ -111,11 +111,13 @@ export async function completeEmbeddedSignup({
   }
   const exchangeCode = String(code || "").trim();
   if (!exchangeCode) throw new ApiError(400, "Falta el código de Embedded Signup.");
+  const resolvedWabaId = String(wabaId || "").trim();
+  if (!resolvedWabaId) throw new ApiError(400, "Meta no devolvió el WABA ID. Completa de nuevo el flujo.");
 
   const coexistenceByEvent = String(event || "").toUpperCase() === "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING";
   logInfo("embedded signup: intercambiando código", {
     ownerUserId,
-    hasWabaId: Boolean(wabaId),
+    hasWabaId: Boolean(resolvedWabaId),
     hasPhoneNumberId: Boolean(phoneNumberId),
     event: event || null,
   });
@@ -128,9 +130,6 @@ export async function completeEmbeddedSignup({
     tokenPreview: described.preview,
     equalsPlatform: described.equalsPlatform,
   });
-
-  const resolvedWabaId = String(wabaId || "").trim();
-  if (!resolvedWabaId) throw new ApiError(400, "Meta no devolvió el WABA ID. Completa de nuevo el flujo.");
 
   await subscribeWabaApp(resolvedWabaId, accessToken);
   logInfo("embedded signup: WABA suscrita a webhooks", { ownerUserId, wabaId: resolvedWabaId });

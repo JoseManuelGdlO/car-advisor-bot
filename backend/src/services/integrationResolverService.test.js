@@ -91,6 +91,78 @@ test("resolveWhatsappConnectIntegrationById y resolveInstagramMetaIntegrationByI
   assert.equal(typeof resolveMetaWhatsappIntegrationById, "function");
 });
 
+test("resolveMetaWhatsappByPhoneNumberId no usa fila activa sin accessToken", async () => {
+  const originalFindOne = ChannelIntegration.findOne;
+  const originalFindAll = ChannelIntegration.findAll;
+  const originalCredFindOne = ChannelCredential.findOne;
+  const row = {
+    id: "int-empty-token",
+    ownerUserId: "owner-empty",
+    wabaId: "waba-empty",
+    phoneNumberId: "pn-empty",
+    displayPhoneNumber: "+52 0",
+    coexistenceEnabled: false,
+  };
+  ChannelIntegration.findOne = async () => row;
+  ChannelIntegration.findAll = async () => [];
+  ChannelCredential.findOne = async () => ({
+    cipherText: encryptCredentialsPayload({ phoneNumberId: "pn-empty" }),
+  });
+  try {
+    await assert.rejects(
+      () => resolveMetaWhatsappByPhoneNumberId({ phoneNumberId: "pn-empty" }),
+      (err) =>
+        err instanceof ApiError &&
+        err.status === 404 &&
+        err.message === "No active meta whatsapp integration for this phone_number_id"
+    );
+  } finally {
+    ChannelIntegration.findOne = originalFindOne;
+    ChannelIntegration.findAll = originalFindAll;
+    ChannelCredential.findOne = originalCredFindOne;
+  }
+});
+
+test("resolveMetaWhatsappByPhoneNumberId no lanza 400 si fallan credenciales de la columna", async () => {
+  const originalFindOne = ChannelIntegration.findOne;
+  const originalFindAll = ChannelIntegration.findAll;
+  const originalCredFindOne = ChannelCredential.findOne;
+  const columnRow = {
+    id: "int-col-broken",
+    ownerUserId: "owner-broken",
+    wabaId: "waba-broken",
+    phoneNumberId: "pn-target",
+    displayPhoneNumber: "+52 9",
+    coexistenceEnabled: false,
+  };
+  const fallbackRow = {
+    id: "int-fallback-ok",
+    ownerUserId: "owner-ok",
+    wabaId: "waba-ok",
+    phoneNumberId: null,
+    displayPhoneNumber: "+52 8",
+    coexistenceEnabled: false,
+  };
+  ChannelIntegration.findOne = async () => columnRow;
+  ChannelIntegration.findAll = async () => [columnRow, fallbackRow];
+  ChannelCredential.findOne = async (opts) => {
+    if (opts?.where?.channelIntegrationId === "int-col-broken") return null;
+    return {
+      cipherText: encryptCredentialsPayload({ accessToken: "tok-ok", phoneNumberId: "pn-target" }),
+    };
+  };
+  try {
+    const resolved = await resolveMetaWhatsappByPhoneNumberId({ phoneNumberId: "pn-target" });
+    assert.equal(resolved.integration.id, "int-fallback-ok");
+    assert.equal(resolved.credentials.accessToken, "tok-ok");
+    assert.equal(resolved.provider, "meta");
+  } finally {
+    ChannelIntegration.findOne = originalFindOne;
+    ChannelIntegration.findAll = originalFindAll;
+    ChannelCredential.findOne = originalCredFindOne;
+  }
+});
+
 test("resolveMetaWhatsappByPhoneNumberId cae a credenciales si la columna no coincide", async () => {
   const originalFindOne = ChannelIntegration.findOne;
   const originalFindAll = ChannelIntegration.findAll;

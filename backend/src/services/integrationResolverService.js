@@ -164,12 +164,19 @@ export const resolveMetaWhatsappByPhoneNumberId = async ({ phoneNumberId }) => {
     order: [["updatedAt", "DESC"]],
   });
   if (byColumn) {
-    const credentialsPayload = await getActiveCredentialPayload(byColumn.ownerUserId, byColumn.id);
-    return {
-      integration: byColumn,
-      credentials: metaCredentialsFromIntegration(byColumn, credentialsPayload),
-      provider: META_WHATSAPP_PROVIDER,
-    };
+    try {
+      const credentialsPayload = await getActiveCredentialPayload(byColumn.ownerUserId, byColumn.id);
+      const credentials = metaCredentialsFromIntegration(byColumn, credentialsPayload);
+      if (credentials.phoneNumberId && credentials.accessToken) {
+        return {
+          integration: byColumn,
+          credentials,
+          provider: META_WHATSAPP_PROVIDER,
+        };
+      }
+    } catch {
+      // Missing/invalid credentials must not 400 inbound webhooks; continue ciphertext fallback.
+    }
   }
 
   const integrations = await ChannelIntegration.findAll({
@@ -180,7 +187,7 @@ export const resolveMetaWhatsappByPhoneNumberId = async ({ phoneNumberId }) => {
     try {
       const payload = await getActiveCredentialPayload(integration.ownerUserId, integration.id);
       const credentials = normalizeMetaCredentials(payload);
-      if (credentials.phoneNumberId && credentials.phoneNumberId === target) {
+      if (credentials.phoneNumberId && credentials.phoneNumberId === target && credentials.accessToken) {
         return { integration, credentials, provider: META_WHATSAPP_PROVIDER };
       }
     } catch {

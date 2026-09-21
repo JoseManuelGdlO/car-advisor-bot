@@ -52,13 +52,15 @@ test("publicMetaSignupConfig configured es true solo con appId, configId y appSe
   assert.equal(JSON.stringify(config).includes("app-secret"), false);
 });
 
-test("completeEmbeddedSignup 400 si Meta no devolvió WABA ID", async () => {
+test("completeEmbeddedSignup 400 si falta wabaId y no intercambia el código", async () => {
   env.meta.appId = "app-id";
   env.meta.configId = "cfg-id";
   env.meta.appSecret = "app-secret";
   env.meta.accessToken = "";
+  let exchangeCalled = false;
   global.fetch = async (url) => {
     if (String(url).includes("oauth/access_token")) {
+      exchangeCalled = true;
       return { ok: true, status: 200, text: async () => JSON.stringify({ access_token: "EAA_TOKEN" }) };
     }
     return { ok: true, status: 200, text: async () => "{}" };
@@ -71,6 +73,7 @@ test("completeEmbeddedSignup 400 si Meta no devolvió WABA ID", async () => {
       err.status === 400 &&
       err.message === "Meta no devolvió el WABA ID. Completa de nuevo el flujo."
   );
+  assert.equal(exchangeCalled, false);
 });
 
 test("completeEmbeddedSignup intercambia el código y guarda ChannelIntegration", async () => {
