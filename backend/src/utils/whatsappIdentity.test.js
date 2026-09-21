@@ -71,18 +71,18 @@ test("resolveDisplayPhone extrae de JID clásico como último recurso", () => {
   );
 });
 
-test("formatWhatsappGraphTo quita + y @s.whatsapp.net y usa prefijo 521", () => {
-  assert.equal(formatWhatsappGraphTo("6183218624"), "5216183218624");
-  assert.equal(formatWhatsappGraphTo("5216183218624"), "5216183218624");
-  assert.equal(formatWhatsappGraphTo("+52 1 618 321 8624"), "5216183218624");
-  assert.equal(formatWhatsappGraphTo("6183218624@s.whatsapp.net"), "5216183218624");
-  assert.equal(formatWhatsappGraphTo("5215512345678@s.whatsapp.net"), "5215512345678");
+test("formatWhatsappGraphTo quita + y @s.whatsapp.net y usa prefijo 52", () => {
+  assert.equal(formatWhatsappGraphTo("6183218624"), "526183218624");
+  assert.equal(formatWhatsappGraphTo("5216183218624"), "526183218624");
+  assert.equal(formatWhatsappGraphTo("526183218624"), "526183218624");
+  assert.equal(formatWhatsappGraphTo("+52 1 618 321 8624"), "526183218624");
+  assert.equal(formatWhatsappGraphTo("6183218624@s.whatsapp.net"), "526183218624");
+  assert.equal(formatWhatsappGraphTo("5215512345678@s.whatsapp.net"), "525512345678");
   assert.equal(formatWhatsappGraphTo(""), "");
   assert.equal(formatWhatsappGraphTo("55"), "");
 });
 
-test("formatWhatsappGraphTo conserva dígitos internacionales 10-15 sin forzar MX 521", () => {
+test("formatWhatsappGraphTo conserva dígitos internacionales 10-15 sin forzar MX", () => {
   assert.equal(formatWhatsappGraphTo("16505551234"), "16505551234");
   assert.equal(formatWhatsappGraphTo("+1 650 555 1234"), "16505551234");
-  assert.equal(formatWhatsappGraphTo("5215512345678@s.whatsapp.net"), "5215512345678");
 });

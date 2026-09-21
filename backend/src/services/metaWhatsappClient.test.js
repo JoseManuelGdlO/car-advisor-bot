@@ -52,7 +52,7 @@ test("sendWhatsappText POST /{phoneNumberId}/messages con messaging_product what
   assert.equal(calledHeaders.Authorization, "Bearer tok");
   assert.equal(calledHeaders["Content-Type"], "application/json");
   assert.equal(calledBody.messaging_product, "whatsapp");
-  assert.equal(calledBody.to, "5215512345678");
+  assert.equal(calledBody.to, "525512345678");
   assert.equal(calledBody.type, "text");
   assert.equal(calledBody.text.body, "Hola");
 });
@@ -197,7 +197,7 @@ test("sendWhatsappImage POST image.link y caption opcional", async () => {
   });
 
   assert.equal(calledBody.messaging_product, "whatsapp");
-  assert.equal(calledBody.to, "5215512345678");
+  assert.equal(calledBody.to, "525512345678");
   assert.equal(calledBody.type, "image");
   assert.deepEqual(calledBody.image, {
     link: "https://example.com/car.png",

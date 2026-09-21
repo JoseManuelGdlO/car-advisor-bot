@@ -110,7 +110,7 @@ test("sendConversationTextMessage usa Graph cuando provider es meta", async () =
   assert.equal(wcCalls, 0);
   assert.match(calledUrl, /\/PNID\/messages/);
   assert.equal(calledBody.messaging_product, "whatsapp");
-  assert.equal(calledBody.to, "5215512345678");
+  assert.equal(calledBody.to, "525512345678");
   assert.equal(calledBody.type, "text");
   assert.equal(calledBody.text.body, "Hola desde el asesor");
   assert.equal(msg.text, "Hola desde el asesor");

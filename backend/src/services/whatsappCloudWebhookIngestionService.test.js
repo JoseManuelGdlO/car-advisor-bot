@@ -168,7 +168,7 @@ test("texto inbound dispara sendWhatsappText (Graph POST /messages)", async () =
   assert.equal(botCalls[0].message, "Hola");
   assert.equal(graphBodies.length, 1);
   assert.equal(graphBodies[0].messaging_product, "whatsapp");
-  assert.equal(graphBodies[0].to, "5215512345678");
+  assert.equal(graphBodies[0].to, "525512345678");
   assert.equal(graphBodies[0].type, "text");
   assert.equal(graphBodies[0].text.body, "Hola bot");
 });
