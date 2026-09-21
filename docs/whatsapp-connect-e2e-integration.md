@@ -1,3 +1,7 @@
+> **Deprecado.** WhatsApp Connect está desmontado. Usar Cloud API:
+> `docs/meta-cloud-api-requisitos.md`. Este archivo se conserva como referencia
+> histórica; no seguir el flujo de QR.
+
 # WhatsApp Connect V2 - Integracion E2E
 
 ## Objetivo

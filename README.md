@@ -77,6 +77,8 @@ Usa como base `backend/.env.example`:
 - `WC_WEBHOOK_MAX_SKEW_MS` (opcional, ventana anti-replay del webhook)
 - `WC_WEBHOOK_ENABLED` (opcional, `true`/`false`; deshabilita ingesta de webhooks)
 - `WC_WEBHOOK_DEBUG` (opcional, `true`/`false`; logs extra `[wc-webhook:debug]` con pasos y payloads resumidos)
+- `META_APP_ID`, `META_EMBEDDED_SIGNUP_CONFIG_ID` (Embedded Signup de WhatsApp Cloud API; ver `docs/meta-cloud-api-requisitos.md`)
+- Otras variables Meta (`META_APP_SECRET`, `META_WEBHOOK_VERIFY_TOKEN`, tokens Graph, etc.) en `backend/.env.example`
 
 ### Frontend (`frontend/.env`)
 
@@ -150,9 +152,11 @@ Usa `bot/.env.example`:
 - FAQs: `/api/faqs`
 - Promociones: `/api/promotions`
 - Bot integration: `POST /api/bot/conversation-events`
-- WhatsApp QR link (interno): `POST /api/internal/whatsapp/qr-link` (requiere JWT de usuario)
+- WhatsApp Cloud API (Meta): Embedded Signup, webhooks y envío de prueba vía rutas Meta (ver `docs/meta-cloud-api-requisitos.md`)
 
 ## Flujo WhatsApp Connect (proxy backend)
+
+> **Deprecado.** WhatsApp Connect está desmontado en el backend (`apiRoutes.js`). Usar WhatsApp Cloud API: [`docs/meta-cloud-api-requisitos.md`](docs/meta-cloud-api-requisitos.md). La documentación siguiente se conserva como referencia histórica; no seguir el flujo de QR.
 
 1. El usuario crea una integracion de canal `whatsapp` con proveedor `whatsapp-connect` en `Perfil`.
 2. El frontend llama `POST /api/internal/whatsapp/qr-link`.

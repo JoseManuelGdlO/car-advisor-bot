@@ -347,26 +347,27 @@ export default function Perfil() {
   const metaInstagramWebhookUrl = `${metaWebhookApiOrigin}/webhooks/meta/instagram`;
   const metaWhatsappWebhookUrl = `${metaWebhookApiOrigin}/webhooks/meta/whatsapp`;
 
-  const qrLinkMutation = useMutation({
-    mutationFn: (integrationId: string) => integrationsApi.createWhatsAppQrLink(token!, integrationId),
-    onMutate: (integrationId) => {
-      setQrLoadingIntegrationId(integrationId);
-      setLastQrErrorByIntegrationId((prev) => ({ ...prev, [integrationId]: "" }));
-    },
-    onSuccess: (data, integrationId) => {
-      setLastQrByIntegrationId((prev) => ({ ...prev, [integrationId]: data }));
-      setLastQrErrorByIntegrationId((prev) => ({ ...prev, [integrationId]: "" }));
-      setQrViewerIntegrationId(integrationId);
-      setQrViewerOpen(true);
-    },
-    onError: (error, integrationId) => {
-      const { formError } = normalizeApiError(error, "No se pudo generar el QR.");
-      setLastQrErrorByIntegrationId((prev) => ({ ...prev, [integrationId]: formError }));
-    },
-    onSettled: () => {
-      setQrLoadingIntegrationId(null);
-    },
-  });
+  // DEPRECATED: WhatsApp Connect
+  // const qrLinkMutation = useMutation({
+  //   mutationFn: (integrationId: string) => integrationsApi.createWhatsAppQrLink(token!, integrationId),
+  //   onMutate: (integrationId) => {
+  //     setQrLoadingIntegrationId(integrationId);
+  //     setLastQrErrorByIntegrationId((prev) => ({ ...prev, [integrationId]: "" }));
+  //   },
+  //   onSuccess: (data, integrationId) => {
+  //     setLastQrByIntegrationId((prev) => ({ ...prev, [integrationId]: data }));
+  //     setLastQrErrorByIntegrationId((prev) => ({ ...prev, [integrationId]: "" }));
+  //     setQrViewerIntegrationId(integrationId);
+  //     setQrViewerOpen(true);
+  //   },
+  //   onError: (error, integrationId) => {
+  //     const { formError } = normalizeApiError(error, "No se pudo generar el QR.");
+  //     setLastQrErrorByIntegrationId((prev) => ({ ...prev, [integrationId]: formError }));
+  //   },
+  //   onSettled: () => {
+  //     setQrLoadingIntegrationId(null);
+  //   },
+  // });
 
   // DEPRECATED: WhatsApp Connect
   // const deviceStatusMutation = useMutation({
@@ -378,10 +379,10 @@ export default function Perfil() {
   //   onSettled: () => setDeviceStatusLoadingIntegrationId(null),
   // });
 
-  const sendTestMutation = useMutation({
-    // Ejecuta envío manual para validar credenciales y canal outbound.
-    mutationFn: (params: { integrationId: string; to: string; text: string }) => integrationsApi.sendWhatsAppTest(token!, params),
-  });
+  // DEPRECATED: WhatsApp Connect
+  // const sendTestMutation = useMutation({
+  //   mutationFn: (params: { integrationId: string; to: string; text: string }) => integrationsApi.sendWhatsAppTest(token!, params),
+  // });
 
   // DEPRECATED: WhatsApp Connect
   // const fetchedDeviceStatusRef = useRef<Set<string>>(new Set());
@@ -641,18 +642,12 @@ export default function Perfil() {
                   deviceStatus={deviceStatusByIntegrationId[it.id]}
                   qrLoading={qrLoadingIntegrationId === it.id}
                   deviceStatusLoading={deviceStatusLoadingIntegrationId === it.id}
-                  sendTestPending={sendTestMutation.isPending}
+                  sendTestPending={false}
                   patchPending={patchIntegrationMutation.isPending}
                   onOpenCredentials={() => openCredentials(it.id)}
-                  onGenerateQr={() => qrLinkMutation.mutate(it.id)}
+                  onGenerateQr={() => {}}
                   onViewQr={() => openQrViewer(it.id)}
-                  onSendTest={() => {
-                    const to = window.prompt("Número destino (con código de país):", "");
-                    if (!to) return;
-                    const text = window.prompt("Mensaje de prueba:", "Hola desde Car Advisor Bot");
-                    if (!text) return;
-                    sendTestMutation.mutate({ integrationId: it.id, to, text });
-                  }}
+                  onSendTest={() => {}}
                   onActivate={() => patchIntegrationMutation.mutate({ id: it.id, status: "active" })}
                   onDeactivate={() => patchIntegrationMutation.mutate({ id: it.id, status: "disabled" })}
                   onDelete={() => setDeleteIntegrationId(it.id)}

@@ -1,3 +1,6 @@
+// DEPRECATED: WhatsApp Connect. Este módulo ya no se monta en apiRoutes.js.
+// No borrar hasta retirar por completo el proveedor no oficial.
+
 import { Router } from "express";
 import { requireUserAuth } from "../middlewares/auth.js";
 import {
