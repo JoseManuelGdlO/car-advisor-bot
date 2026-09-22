@@ -2,6 +2,7 @@ import { ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { Capacitor } from "@capacitor/core";
 import { Signal, Wifi, BatteryFull } from "lucide-react";
+import { isLegalPublicPath } from "@/lib/legal";
 import { BottomNav } from "./BottomNav";
 
 interface PhoneFrameProps {
@@ -12,7 +13,10 @@ const HIDE_NAV_PREFIXES = ["/login", "/forgot-password", "/reset-password"];
 
 export const PhoneFrame = ({ children }: PhoneFrameProps) => {
   const { pathname } = useLocation();
-  const showNav = !HIDE_NAV_PREFIXES.some((p) => pathname.startsWith(p)) && !pathname.startsWith("/chat/");
+  const showNav =
+    !HIDE_NAV_PREFIXES.some((p) => pathname.startsWith(p)) &&
+    !pathname.startsWith("/chat/") &&
+    !isLegalPublicPath(pathname);
   const isNativeApp = Capacitor.isNativePlatform();
 
   if (isNativeApp) {
