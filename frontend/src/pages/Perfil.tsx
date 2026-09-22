@@ -27,6 +27,7 @@ import {
   selectWhatsAppMetaIntegration,
   whatsAppMetaDisplayPhone,
 } from "@/lib/whatsappMeta";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -197,17 +198,27 @@ export default function Perfil() {
     escalations: Number(kpis?.escalations) || 0,
   };
 
-  const dirty = useMemo(() => {
-    if (!profile) return false;
+  const { userDirty, businessDirty } = useMemo(() => {
+    if (!profile) return { userDirty: false, businessDirty: false };
     const calendarValue = (userForm.calendarSchedulingUrl || savedCalendarUrl).trim();
-    const u =
+    const userDirty =
       profile.user.name !== userForm.name.trim() ||
       (profile.user.phone || "") !== (userForm.phone.trim() || "") ||
       (profile.user.defaultPlatform || "") !== (userForm.defaultPlatform || "") ||
       savedCalendarUrl !== calendarValue;
-    const b = JSON.stringify(profile.business || {}) !== JSON.stringify({ ...emptyBusiness, ...bizForm });
-    return u || b;
+    const businessDirty = JSON.stringify(profile.business || {}) !== JSON.stringify({ ...emptyBusiness, ...bizForm });
+    return { userDirty, businessDirty };
   }, [profile, userForm, bizForm, savedCalendarUrl]);
+
+  const renderSaveProfileButton = () => (
+    <div className="pt-2 space-y-2">
+      <Button className="w-full" disabled={!token || profileLoading || saveProfileMutation.isPending} onClick={() => saveProfileMutation.mutate()}>
+        <Save className="w-4 h-4 mr-2" />
+        {saveProfileMutation.isPending ? "Guardando..." : "Guardar perfil"}
+      </Button>
+      <FormErrorAlert title="No se pudo guardar el perfil" message={profileFormError} />
+    </div>
+  );
 
   return (
     <>
@@ -240,134 +251,141 @@ export default function Perfil() {
           </div>
         </div>
 
-        <div className="bg-card rounded-2xl p-4 shadow-card border border-border space-y-3">
-          <div className="flex items-center gap-2">
-            <Building2 className="w-5 h-5 text-primary" />
-            <p className="font-semibold text-sm">Tu cuenta</p>
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs">Nombre</Label>
-            <Input
-              value={userForm.name}
-              onChange={(e) => setUserForm((s) => ({ ...s, name: e.target.value }))}
-              className={cn(profileFieldErrors.name && "border-destructive focus-visible:ring-destructive")}
-              aria-invalid={Boolean(profileFieldErrors.name)}
-            />
-            <FieldErrorText error={profileFieldErrors.name} />
-            <Label className="text-xs">Teléfono</Label>
-            <Input
-              value={userForm.phone}
-              onChange={(e) => setUserForm((s) => ({ ...s, phone: e.target.value }))}
-              placeholder="+57..."
-              className={cn(profileFieldErrors.phone && "border-destructive focus-visible:ring-destructive")}
-              aria-invalid={Boolean(profileFieldErrors.phone)}
-            />
-            <FieldErrorText error={profileFieldErrors.phone} />
-            <div className="flex items-center justify-between gap-2 pt-1">
-              <Label className="text-xs">Link de calendario de Google</Label>
-              <GoogleCalendarLinkHelpDialog />
-            </div>
-            {profileLoading ? (
-              <p className="text-xs text-muted-foreground">Cargando enlace...</p>
-            ) : calendarUrlEditing ? (
-              <div className="space-y-2">
+        <Accordion type="multiple" className="space-y-3">
+          <AccordionItem value="cuenta" className="border-0 bg-card rounded-2xl px-4 shadow-card border border-border">
+            <AccordionTrigger className="hover:no-underline py-4">
+              <span className="flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-primary" />
+                <span className="font-semibold text-sm">Tu cuenta</span>
+              </span>
+            </AccordionTrigger>
+            <AccordionContent>
+              <div className="space-y-2 pb-1">
+                <Label className="text-xs">Nombre</Label>
                 <Input
-                  type="url"
-                  value={userForm.calendarSchedulingUrl || savedCalendarUrl}
-                  onChange={(e) => setUserForm((s) => ({ ...s, calendarSchedulingUrl: e.target.value }))}
-                  placeholder="https://calendar.app.google/..."
-                  autoFocus
-                  className={cn(profileFieldErrors.calendarSchedulingUrl && "border-destructive focus-visible:ring-destructive")}
-                  aria-invalid={Boolean(profileFieldErrors.calendarSchedulingUrl)}
+                  value={userForm.name}
+                  onChange={(e) => setUserForm((s) => ({ ...s, name: e.target.value }))}
+                  className={cn(profileFieldErrors.name && "border-destructive focus-visible:ring-destructive")}
+                  aria-invalid={Boolean(profileFieldErrors.name)}
                 />
-                <FieldErrorText error={profileFieldErrors.calendarSchedulingUrl} />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 px-2 text-xs"
-                  onClick={() => {
-                    setCalendarUrlEditing(false);
-                    setUserForm((s) => ({ ...s, calendarSchedulingUrl: savedCalendarUrl }));
-                  }}
-                >
-                  Cancelar
-                </Button>
-              </div>
-            ) : (
-              <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 space-y-2">
-                {savedCalendarUrl ? (
-                  <a
-                    href={savedCalendarUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block text-xs text-primary-dark break-all hover:underline"
-                  >
-                    {savedCalendarUrl}
-                  </a>
+                <FieldErrorText error={profileFieldErrors.name} />
+                <Label className="text-xs">Teléfono</Label>
+                <Input
+                  value={userForm.phone}
+                  onChange={(e) => setUserForm((s) => ({ ...s, phone: e.target.value }))}
+                  placeholder="+57..."
+                  className={cn(profileFieldErrors.phone && "border-destructive focus-visible:ring-destructive")}
+                  aria-invalid={Boolean(profileFieldErrors.phone)}
+                />
+                <FieldErrorText error={profileFieldErrors.phone} />
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  <Label className="text-xs">Link de calendario de Google</Label>
+                  <GoogleCalendarLinkHelpDialog />
+                </div>
+                {profileLoading ? (
+                  <p className="text-xs text-muted-foreground">Cargando enlace...</p>
+                ) : calendarUrlEditing ? (
+                  <div className="space-y-2">
+                    <Input
+                      type="url"
+                      value={userForm.calendarSchedulingUrl || savedCalendarUrl}
+                      onChange={(e) => setUserForm((s) => ({ ...s, calendarSchedulingUrl: e.target.value }))}
+                      placeholder="https://calendar.app.google/..."
+                      autoFocus
+                      className={cn(profileFieldErrors.calendarSchedulingUrl && "border-destructive focus-visible:ring-destructive")}
+                      aria-invalid={Boolean(profileFieldErrors.calendarSchedulingUrl)}
+                    />
+                    <FieldErrorText error={profileFieldErrors.calendarSchedulingUrl} />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 px-2 text-xs"
+                      onClick={() => {
+                        setCalendarUrlEditing(false);
+                        setUserForm((s) => ({ ...s, calendarSchedulingUrl: savedCalendarUrl }));
+                      }}
+                    >
+                      Cancelar
+                    </Button>
+                  </div>
                 ) : (
-                  <p className="text-xs text-muted-foreground">Aún no tienes un enlace de calendario configurado.</p>
+                  <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 space-y-2">
+                    {savedCalendarUrl ? (
+                      <a
+                        href={savedCalendarUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block text-xs text-primary-dark break-all hover:underline"
+                      >
+                        {savedCalendarUrl}
+                      </a>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">Aún no tienes un enlace de calendario configurado.</p>
+                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8"
+                      onClick={() => {
+                        setUserForm((s) => ({ ...s, calendarSchedulingUrl: savedCalendarUrl }));
+                        setCalendarUrlEditing(true);
+                      }}
+                    >
+                      {savedCalendarUrl ? "Cambiar URL" : "Agregar URL"}
+                    </Button>
+                  </div>
                 )}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8"
-                  onClick={() => {
-                    setUserForm((s) => ({ ...s, calendarSchedulingUrl: savedCalendarUrl }));
-                    setCalendarUrlEditing(true);
-                  }}
-                >
-                  {savedCalendarUrl ? "Cambiar URL" : "Agregar URL"}
-                </Button>
+                {userDirty ? renderSaveProfileButton() : null}
               </div>
-            )}
-          </div>
-        </div>
+            </AccordionContent>
+          </AccordionItem>
 
-        <div className="bg-card rounded-2xl p-4 shadow-card border border-border space-y-3">
-          <div className="flex items-center gap-2">
-            <Building2 className="w-5 h-5 text-success" />
-            <p className="font-semibold text-sm">Datos del negocio</p>
-          </div>
-          <div className="grid gap-2">
-            <Input placeholder="Nombre comercial" value={bizForm.tradeName || ""} onChange={(e) => setBizForm((s) => ({ ...s, tradeName: e.target.value }))} className={cn(profileFieldErrors.tradeName && "border-destructive")} />
-            <FieldErrorText error={profileFieldErrors.tradeName} />
-            <Input placeholder="Razón social" value={bizForm.legalName || ""} onChange={(e) => setBizForm((s) => ({ ...s, legalName: e.target.value }))} className={cn(profileFieldErrors.legalName && "border-destructive")} />
-            <FieldErrorText error={profileFieldErrors.legalName} />
-            <Input placeholder="NIT / ID fiscal" value={bizForm.taxId || ""} onChange={(e) => setBizForm((s) => ({ ...s, taxId: e.target.value }))} className={cn(profileFieldErrors.taxId && "border-destructive")} />
-            <FieldErrorText error={profileFieldErrors.taxId} />
-            <Input placeholder="Teléfono del negocio" value={bizForm.businessPhone || ""} onChange={(e) => setBizForm((s) => ({ ...s, businessPhone: e.target.value }))} className={cn(profileFieldErrors.businessPhone && "border-destructive")} />
-            <FieldErrorText error={profileFieldErrors.businessPhone} />
-            <Input placeholder="Email del negocio" value={bizForm.businessEmail || ""} onChange={(e) => setBizForm((s) => ({ ...s, businessEmail: e.target.value }))} className={cn(profileFieldErrors.businessEmail && "border-destructive")} />
-            <FieldErrorText error={profileFieldErrors.businessEmail} />
-            <Input placeholder="Sitio web" value={bizForm.website || ""} onChange={(e) => setBizForm((s) => ({ ...s, website: e.target.value }))} className={cn(profileFieldErrors.website && "border-destructive")} />
-            <FieldErrorText error={profileFieldErrors.website} />
-            <Input placeholder="Dirección" value={bizForm.addressLine || ""} onChange={(e) => setBizForm((s) => ({ ...s, addressLine: e.target.value }))} className={cn(profileFieldErrors.addressLine && "border-destructive")} />
-            <FieldErrorText error={profileFieldErrors.addressLine} />
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Input placeholder="Ciudad" value={bizForm.city || ""} onChange={(e) => setBizForm((s) => ({ ...s, city: e.target.value }))} className={cn(profileFieldErrors.city && "border-destructive")} />
-                <FieldErrorText error={profileFieldErrors.city} />
+          <AccordionItem value="negocio" className="border-0 bg-card rounded-2xl px-4 shadow-card border border-border">
+            <AccordionTrigger className="hover:no-underline py-4">
+              <span className="flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-success" />
+                <span className="font-semibold text-sm">Datos del negocio</span>
+              </span>
+            </AccordionTrigger>
+            <AccordionContent>
+              <div className="grid gap-2 pb-1">
+                <Input placeholder="Nombre comercial" value={bizForm.tradeName || ""} onChange={(e) => setBizForm((s) => ({ ...s, tradeName: e.target.value }))} className={cn(profileFieldErrors.tradeName && "border-destructive")} />
+                <FieldErrorText error={profileFieldErrors.tradeName} />
+                <Input placeholder="Razón social" value={bizForm.legalName || ""} onChange={(e) => setBizForm((s) => ({ ...s, legalName: e.target.value }))} className={cn(profileFieldErrors.legalName && "border-destructive")} />
+                <FieldErrorText error={profileFieldErrors.legalName} />
+                <Input placeholder="NIT / ID fiscal" value={bizForm.taxId || ""} onChange={(e) => setBizForm((s) => ({ ...s, taxId: e.target.value }))} className={cn(profileFieldErrors.taxId && "border-destructive")} />
+                <FieldErrorText error={profileFieldErrors.taxId} />
+                <Input placeholder="Teléfono del negocio" value={bizForm.businessPhone || ""} onChange={(e) => setBizForm((s) => ({ ...s, businessPhone: e.target.value }))} className={cn(profileFieldErrors.businessPhone && "border-destructive")} />
+                <FieldErrorText error={profileFieldErrors.businessPhone} />
+                <Input placeholder="Email del negocio" value={bizForm.businessEmail || ""} onChange={(e) => setBizForm((s) => ({ ...s, businessEmail: e.target.value }))} className={cn(profileFieldErrors.businessEmail && "border-destructive")} />
+                <FieldErrorText error={profileFieldErrors.businessEmail} />
+                <Input placeholder="Sitio web" value={bizForm.website || ""} onChange={(e) => setBizForm((s) => ({ ...s, website: e.target.value }))} className={cn(profileFieldErrors.website && "border-destructive")} />
+                <FieldErrorText error={profileFieldErrors.website} />
+                <Input placeholder="Dirección" value={bizForm.addressLine || ""} onChange={(e) => setBizForm((s) => ({ ...s, addressLine: e.target.value }))} className={cn(profileFieldErrors.addressLine && "border-destructive")} />
+                <FieldErrorText error={profileFieldErrors.addressLine} />
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Input placeholder="Ciudad" value={bizForm.city || ""} onChange={(e) => setBizForm((s) => ({ ...s, city: e.target.value }))} className={cn(profileFieldErrors.city && "border-destructive")} />
+                    <FieldErrorText error={profileFieldErrors.city} />
+                  </div>
+                  <div>
+                    <Input placeholder="Estado / Depto" value={bizForm.state || ""} onChange={(e) => setBizForm((s) => ({ ...s, state: e.target.value }))} className={cn(profileFieldErrors.state && "border-destructive")} />
+                    <FieldErrorText error={profileFieldErrors.state} />
+                  </div>
+                </div>
+                <Input placeholder="País" value={bizForm.country || ""} onChange={(e) => setBizForm((s) => ({ ...s, country: e.target.value }))} className={cn(profileFieldErrors.country && "border-destructive")} />
+                <FieldErrorText error={profileFieldErrors.country} />
+                <Textarea placeholder="Descripción corta del negocio" value={bizForm.description || ""} onChange={(e) => setBizForm((s) => ({ ...s, description: e.target.value }))} rows={3} className={cn(profileFieldErrors.description && "border-destructive")} />
+                <FieldErrorText error={profileFieldErrors.description} />
+                <Input placeholder="URL del logo" value={bizForm.logoUrl || ""} onChange={(e) => setBizForm((s) => ({ ...s, logoUrl: e.target.value }))} className={cn(profileFieldErrors.logoUrl && "border-destructive")} />
+                <FieldErrorText error={profileFieldErrors.logoUrl} />
+                {businessDirty ? renderSaveProfileButton() : null}
               </div>
-              <div>
-                <Input placeholder="Estado / Depto" value={bizForm.state || ""} onChange={(e) => setBizForm((s) => ({ ...s, state: e.target.value }))} className={cn(profileFieldErrors.state && "border-destructive")} />
-                <FieldErrorText error={profileFieldErrors.state} />
-              </div>
-            </div>
-            <Input placeholder="País" value={bizForm.country || ""} onChange={(e) => setBizForm((s) => ({ ...s, country: e.target.value }))} className={cn(profileFieldErrors.country && "border-destructive")} />
-            <FieldErrorText error={profileFieldErrors.country} />
-            <Textarea placeholder="Descripción corta del negocio" value={bizForm.description || ""} onChange={(e) => setBizForm((s) => ({ ...s, description: e.target.value }))} rows={3} className={cn(profileFieldErrors.description && "border-destructive")} />
-            <FieldErrorText error={profileFieldErrors.description} />
-            <Input placeholder="URL del logo" value={bizForm.logoUrl || ""} onChange={(e) => setBizForm((s) => ({ ...s, logoUrl: e.target.value }))} className={cn(profileFieldErrors.logoUrl && "border-destructive")} />
-            <FieldErrorText error={profileFieldErrors.logoUrl} />
-          </div>
-          <Button className="w-full" disabled={!token || profileLoading || !dirty || saveProfileMutation.isPending} onClick={() => saveProfileMutation.mutate()}>
-            <Save className="w-4 h-4 mr-2" />
-            {saveProfileMutation.isPending ? "Guardando..." : "Guardar perfil"}
-          </Button>
-          <FormErrorAlert title="No se pudo guardar el perfil" message={profileFormError} />
-        </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
 
         <button
           type="button"
