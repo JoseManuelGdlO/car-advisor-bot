@@ -67,23 +67,27 @@ export default function ConfigComportamientoBot() {
 
   useEffect(() => {
     if (!data) return;
-    setForm({
-      tone: data.tone,
-      emojiStyle: data.emojiStyle,
-      salesProactivity: data.salesProactivity,
-      customInstructions: data.customInstructions || "",
-      botName: data.botName || "",
-      welcomeMessage: data.welcomeMessage || "",
-      faqFallbackMessage: data.faqFallbackMessage || "",
-      downPaymentMessage: data.downPaymentMessage ?? "",
-      visitIncentiveMessage: data.visitIncentiveMessage ?? "",
-    });
-    setReminderEnabled(Boolean(data.reminderEnabled));
+    if (!settingsHydrated) {
+      setForm({
+        tone: data.tone,
+        emojiStyle: data.emojiStyle,
+        salesProactivity: data.salesProactivity,
+        customInstructions: data.customInstructions || "",
+        botName: data.botName || "",
+        welcomeMessage: data.welcomeMessage || "",
+        faqFallbackMessage: data.faqFallbackMessage || "",
+        downPaymentMessage: data.downPaymentMessage ?? "",
+        visitIncentiveMessage: data.visitIncentiveMessage ?? "",
+      });
+      setReminderEnabled(Boolean(data.reminderEnabled));
+      setReminderMessage(data.reminderMessage ?? "");
+      setReminderHours(data.reminderHours != null ? String(data.reminderHours) : "");
+      setReminderOncePerConversation(Boolean(data.reminderOncePerConversation));
+      setSettingsHydrated(true);
+      return;
+    }
     setReminderMessage(data.reminderMessage ?? "");
-    setReminderHours(data.reminderHours != null ? String(data.reminderHours) : "");
-    setReminderOncePerConversation(Boolean(data.reminderOncePerConversation));
-    setSettingsHydrated(true);
-  }, [data]);
+  }, [data, settingsHydrated]);
 
   const parsedReminderHours = (() => {
     const trimmed = reminderHours.trim();

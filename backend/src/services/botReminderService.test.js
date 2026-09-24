@@ -204,13 +204,14 @@ test("processConversationReminder sends HSM BODY when Meta window is closed and 
         templateCalls.push(args);
       },
       getLastClientAt: async () => hoursAgo(25),
+      resolveWhatsappProvider: async () => "meta",
       loadFollowupTemplate: async () => ({
         metaConnected: true,
         template: {
           name: "cab_sg_abc123de",
           language: "es_MX",
           status: "APPROVED",
-          components: [{ type: "BODY", text: HSM_BODY }],
+          body: HSM_BODY,
         },
       }),
     });
@@ -245,13 +246,14 @@ test("processConversationReminder skips lastReminderAt when Meta window is close
         templateCalls.push(args);
       },
       getLastClientAt: async () => hoursAgo(25),
+      resolveWhatsappProvider: async () => "meta",
       loadFollowupTemplate: async () => ({
         metaConnected: true,
         template: {
           name: "cab_sg_pending1",
           language: "es_MX",
           status: "PENDING",
-          components: [{ type: "BODY", text: HSM_BODY }],
+          body: HSM_BODY,
         },
       }),
     });
@@ -296,6 +298,45 @@ test("processConversationReminder keeps session-text 24h catch on Instagram and 
       }),
     });
 
+    assert.equal(templateCalls.length, 0);
+    assert.equal(updates.length, 1);
+    assert.ok(updates[0].lastReminderAt instanceof Date);
+  } finally {
+    restoreFindOne();
+  }
+});
+
+test("processConversationReminder uses session text when leftover Connect conversation has dealer Meta connected", async () => {
+  const restoreFindOne = stubLatestBotMessage();
+  const { conversation, updates } = makeConversation();
+  const textCalls = [];
+  const templateCalls = [];
+
+  try {
+    await processConversationReminder({
+      conversation,
+      reminderMessage: REMINDER_MESSAGE,
+      sendTextMessage: async (args) => {
+        textCalls.push(args);
+      },
+      sendTemplateMessage: async (args) => {
+        templateCalls.push(args);
+      },
+      getLastClientAt: async () => hoursAgo(25),
+      resolveWhatsappProvider: async () => "whatsapp-connect",
+      loadFollowupTemplate: async () => ({
+        metaConnected: true,
+        template: {
+          name: "cab_sg_abc123de",
+          language: "es_MX",
+          status: "APPROVED",
+          body: HSM_BODY,
+        },
+      }),
+    });
+
+    assert.equal(textCalls.length, 1);
+    assert.equal(textCalls[0].text, SESSION_OUTBOUND);
     assert.equal(templateCalls.length, 0);
     assert.equal(updates.length, 1);
     assert.ok(updates[0].lastReminderAt instanceof Date);

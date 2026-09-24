@@ -122,7 +122,7 @@ Portar lógica de invitations, adaptada a `ApiError`, `env.js` y el pipeline de 
 | `metaGraphClient.js` | HTTP Graph, exchange code, subscribe WABA, list phones, OBO | `meta-graph.client.js` |
 | `metaError.js` | Mensajes de error Graph | `utils/meta-error.js` |
 | `metaSignupService.js` | Completar signup + disconnect | `meta-signup.service.js` |
-| `metaWhatsappClient.js` | Send text / image / document + retry | `meta.client.js` (subset, sin plantillas) |
+| `metaWhatsappClient.js` | Send text / image / document / template (`sendWhatsappTemplate`) + retry | `meta.client.js` |
 | `whatsappCloudEventNormalizer.js` | Payload Meta → evento canónico | `normalizeMetaInboundMessage` |
 | `whatsappCloudWebhookIngestionService.js` | Dedupe, CRM, bot, outbound | `wcWebhookIngestionService.js` |
 | Resolver `provider=meta` por `phoneNumberId` | Ruteo webhook | `resolveMetaWhatsappByPhoneNumberId` |
