@@ -139,11 +139,18 @@ test("completeEmbeddedSignup intercambia el código y guarda ChannelIntegration"
     return { id: "cred_meta", ...data };
   };
 
+  const ensureCalls = [];
+  const ensureFollowupDefault = async (args) => {
+    ensureCalls.push(args);
+    return { created: true };
+  };
+
   const result = await completeEmbeddedSignup({
     ownerUserId: "owner-1",
     code: "AUTH_CODE",
     wabaId: "waba_1",
     event: "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING",
+    ensureFollowupDefault,
   });
 
   assert.equal(created.ownerUserId, "owner-1");
@@ -158,6 +165,12 @@ test("completeEmbeddedSignup intercambia el código y guarda ChannelIntegration"
   assert.equal(result.coexistenceEnabled, true);
   assert.equal(result.provider, "meta");
   assert.match(requested.find((r) => r.url.includes("oauth/access_token"))?.url || "", /oauth\/access_token/);
+  assert.equal(ensureCalls.length, 1);
+  assert.deepEqual(ensureCalls[0], {
+    ownerUserId: "owner-1",
+    wabaId: "waba_1",
+    accessToken: "EAA_TOKEN",
+  });
 });
 
 function mockGraphSignupFetch() {
@@ -190,6 +203,57 @@ function mockGraphSignupFetch() {
     return { ok: true, status: 200, text: async () => "{}" };
   };
 }
+
+test("completeEmbeddedSignup resuelve si ensureFollowupDefault lanza y no revierte credenciales", async () => {
+  env.meta.appId = "app-id";
+  env.meta.configId = "cfg-id";
+  env.meta.appSecret = "app-secret";
+  env.meta.accessToken = "";
+  mockGraphSignupFetch();
+
+  ChannelIntegration.findAll = async () => [];
+  ChannelIntegration.findOne = async () => null;
+  let created;
+  ChannelIntegration.create = async (data) => {
+    created = { id: "int_meta", ...data, update: async (patch) => Object.assign(created, patch) };
+    return created;
+  };
+  let credCreated;
+  let credUpdateAfterCreate = false;
+  ChannelCredential.update = async () => {
+    if (credCreated) credUpdateAfterCreate = true;
+    return [1];
+  };
+  ChannelCredential.create = async (data) => {
+    credCreated = data;
+    return { id: "cred_meta", ...data };
+  };
+
+  let ensureCalled = false;
+  const ensureFollowupDefault = async (args) => {
+    ensureCalled = true;
+    assert.deepEqual(args, {
+      ownerUserId: "owner-1",
+      wabaId: "waba_1",
+      accessToken: "EAA_TOKEN",
+    });
+    throw new Error("Graph down");
+  };
+
+  const result = await completeEmbeddedSignup({
+    ownerUserId: "owner-1",
+    code: "AUTH_CODE",
+    wabaId: "waba_1",
+    ensureFollowupDefault,
+  });
+
+  assert.equal(ensureCalled, true);
+  assert.equal(result.provider, "meta");
+  assert.equal(result.coexistenceEnabled, true);
+  assert.equal(created.status, "active");
+  assert.equal(credCreated.isActive, true);
+  assert.equal(credUpdateAfterCreate, false);
+});
 
 test("completeEmbeddedSignup 409 si el número pertenece a otra cuenta", async () => {
   env.meta.appId = "app-id";
