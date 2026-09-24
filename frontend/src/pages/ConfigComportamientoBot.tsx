@@ -9,7 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { FormErrorAlert } from "@/components/FormErrorAlert";
+import { BotFollowupTemplateSection } from "@/components/BotFollowupTemplateSection";
 import { normalizeApiError } from "@/lib/formErrors";
+import { integrationsApi } from "@/services/integrations";
 
 
 type BehaviorForm = Pick<
@@ -48,6 +50,12 @@ export default function ConfigComportamientoBot() {
     queryFn: () => crmApi.getBotSettings(token!),
     enabled: Boolean(token),
   });
+  const { data: followup } = useQuery({
+    queryKey: ["whatsapp-followup-template"],
+    queryFn: () => integrationsApi.getFollowupTemplate(token!),
+    enabled: Boolean(token),
+  });
+  const metaConnected = Boolean(followup?.metaConnected);
 
   const [form, setForm] = useState<BehaviorForm>(DEFAULT_FORM);
   const [error, setError] = useState<string | null>(null);
@@ -86,7 +94,7 @@ export default function ConfigComportamientoBot() {
   })();
   const reminderHoursInvalid = reminderHours.trim() !== "" && parsedReminderHours === null;
   const normalizedReminderMessage = reminderMessage.trim() || null;
-  const reminderMessageMissing = reminderEnabled && !normalizedReminderMessage;
+  const reminderMessageMissing = reminderEnabled && !metaConnected && !normalizedReminderMessage;
   const reminderHoursMissing = reminderEnabled && parsedReminderHours === null;
   const reminderInvalid = reminderHoursInvalid || reminderMessageMissing || reminderHoursMissing;
 
@@ -104,9 +112,10 @@ export default function ConfigComportamientoBot() {
         visitIncentiveMessage: form.visitIncentiveMessage.trim() || null,
         reminderEnabled,
         // Al desactivar, solo se envía el switch; el resto se omite para conservar lo guardado.
+        // Con Meta conectado, el cuerpo lo copia el backend al crear/editar la plantilla.
         ...(reminderEnabled
           ? {
-              reminderMessage: normalizedReminderMessage,
+              ...(metaConnected ? {} : { reminderMessage: normalizedReminderMessage }),
               reminderHours: parsedReminderHours,
               reminderOncePerConversation,
             }
@@ -136,7 +145,7 @@ export default function ConfigComportamientoBot() {
       (data.visitIncentiveMessage ?? "") !== form.visitIncentiveMessage ||
       Boolean(data.reminderEnabled) !== reminderEnabled ||
       (reminderEnabled &&
-        ((data.reminderMessage ?? null) !== normalizedReminderMessage ||
+        ((!metaConnected && (data.reminderMessage ?? null) !== normalizedReminderMessage) ||
           (data.reminderHours ?? null) !== parsedReminderHours ||
           Boolean(data.reminderOncePerConversation) !== reminderOncePerConversation))
     );
@@ -147,6 +156,7 @@ export default function ConfigComportamientoBot() {
     reminderOncePerConversation,
     normalizedReminderMessage,
     parsedReminderHours,
+    metaConnected,
   ]);
 
   return (
@@ -276,24 +286,15 @@ export default function ConfigComportamientoBot() {
               aria-label="Recordatorio activado"
             />
           </div>
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-muted-foreground" htmlFor="bot-reminder-message">
-              Mensaje de recordatorio
-            </label>
-            <Textarea
-              id="bot-reminder-message"
-              rows={3}
-              value={reminderMessage}
-              onChange={(e) => setReminderMessage(e.target.value)}
-              placeholder="Ej. ¿Sigues interesado? Estoy aquí para ayudarte."
-              disabled={!reminderEnabled || isLoading || !settingsHydrated}
-              maxLength={2000}
-              aria-invalid={reminderMessageMissing}
-            />
-            {reminderMessageMissing ? (
-              <p className="text-xs text-destructive">Escribe el mensaje de recordatorio para poder activarlo.</p>
-            ) : null}
-          </div>
+          <BotFollowupTemplateSection
+            token={token}
+            reminderEnabled={reminderEnabled}
+            reminderMessage={reminderMessage}
+            onReminderMessageChange={setReminderMessage}
+            reminderMessageMissing={reminderMessageMissing}
+            reminderFieldsDisabled={!reminderEnabled || isLoading || !settingsHydrated}
+            settingsHydrated={settingsHydrated}
+          />
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-muted-foreground" htmlFor="bot-reminder-hours">
               Horas para el recordatorio
