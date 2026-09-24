@@ -22,6 +22,7 @@ import PushDeviceModel from "./PushDevice.js";
 import OwnerNotificationModel from "./OwnerNotification.js";
 import PasswordResetCodeModel from "./PasswordResetCode.js";
 import BlackListEntryModel from "./BlackListEntry.js";
+import WhatsappMessageTemplateModel from "./WhatsappMessageTemplate.js";
 
 export const User = UserModel(sequelize);
 export const ServiceToken = ServiceTokenModel(sequelize);
@@ -46,6 +47,7 @@ export const PushDevice = PushDeviceModel(sequelize);
 export const OwnerNotification = OwnerNotificationModel(sequelize);
 export const PasswordResetCode = PasswordResetCodeModel(sequelize);
 export const BlackListEntry = BlackListEntryModel(sequelize);
+export const WhatsappMessageTemplate = WhatsappMessageTemplateModel(sequelize);
 
 User.hasMany(PasswordResetCode, {
   foreignKey: { name: "userId", field: "user_id", allowNull: false },
@@ -82,6 +84,20 @@ User.hasMany(BlackListEntry, {
   onUpdate: "CASCADE",
 });
 BlackListEntry.belongsTo(User, {
+  foreignKey: { name: "ownerUserId", field: "owner_user_id", allowNull: false },
+  targetKey: "id",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+
+User.hasMany(WhatsappMessageTemplate, {
+  foreignKey: { name: "ownerUserId", field: "owner_user_id", allowNull: false },
+  sourceKey: "id",
+  as: "whatsappMessageTemplates",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+WhatsappMessageTemplate.belongsTo(User, {
   foreignKey: { name: "ownerUserId", field: "owner_user_id", allowNull: false },
   targetKey: "id",
   onDelete: "CASCADE",

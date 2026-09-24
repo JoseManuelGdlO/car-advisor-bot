@@ -69,6 +69,7 @@ export const env = {
     timeoutMs: Number(must("META_TIMEOUT_MS", "8000")),
     mediaTimeoutMs: Number(must("META_MEDIA_TIMEOUT_MS", "60000")),
     debugGraphToken: must("META_DEBUG_GRAPH_TOKEN", "false") === "true",
+    templateLanguage: must("META_TEMPLATE_LANGUAGE", "es_MX"),
   },
   wc: {
     // URL base del servicio WhatsApp Connect (mismo host para todos los tenants).
