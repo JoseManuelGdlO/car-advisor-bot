@@ -4,8 +4,9 @@ import {
   expandWhatsappCloudInboundMessages,
   toNormalizedWhatsappCloudEvent,
 } from "../services/whatsappCloudEventNormalizer.js";
-import { ingestWhatsappCloudEvent } from "../services/whatsappCloudWebhookIngestionService.js";
-import { resolveMetaWhatsappByPhoneNumberId } from "../services/integrationResolverService.js";
+import { ingestWhatsappCloudEvent as defaultIngestWhatsappCloudEvent } from "../services/whatsappCloudWebhookIngestionService.js";
+import { resolveMetaWhatsappByPhoneNumberId as defaultResolveMetaWhatsappByPhoneNumberId } from "../services/integrationResolverService.js";
+import { applyTemplateStatusUpdate as defaultApplyTemplateStatusUpdate } from "../services/whatsappFollowupTemplateService.js";
 
 const quietTest = process.env.NODE_ENV === "test";
 
@@ -28,6 +29,110 @@ const logWaCloudDebug = (message, meta = {}) => {
   logWaCloud(message, meta);
 };
 
+export function extractTemplateStatusUpdates(body = {}) {
+  const entries = Array.isArray(body.entry) ? body.entry : [];
+  const out = [];
+  for (const entry of entries) {
+    const changes = Array.isArray(entry?.changes) ? entry.changes : [];
+    for (const change of changes) {
+      if (change?.field !== "message_template_status_update") continue;
+      const value = change?.value && typeof change.value === "object" ? change.value : {};
+      out.push({
+        wabaId: String(entry?.id || "").trim(),
+        metaTemplateId: String(value.message_template_id || "").trim() || null,
+        name: String(value.message_template_name || "").trim(),
+        language: String(value.message_template_language || "").trim(),
+        event: String(value.event || "").trim().toUpperCase(),
+        reason: value.reason == null ? null : String(value.reason),
+      });
+    }
+  }
+  return out;
+}
+
+export async function handleMetaWhatsappWebhookBody(
+  body,
+  {
+    applyTemplateStatusUpdate: applyStatus = defaultApplyTemplateStatusUpdate,
+    ingestWhatsappCloudEvent: ingestEvent = defaultIngestWhatsappCloudEvent,
+    resolveMetaWhatsappByPhoneNumberId: resolveByPhone = defaultResolveMetaWhatsappByPhoneNumberId,
+  } = {}
+) {
+  const templateUpdates = extractTemplateStatusUpdates(body);
+  const expanded = expandWhatsappCloudInboundMessages(body);
+  if (templateUpdates.length === 0 && expanded.length === 0) {
+    return { ok: true, ignored: true };
+  }
+
+  const templateResults = [];
+  for (const update of templateUpdates) {
+    templateResults.push(await applyStatus(update));
+  }
+
+  const cache = new Map();
+  const results = [];
+
+  for (const event of expanded) {
+    const phoneNumberId = String(event.phoneNumberId || "").trim();
+    if (!phoneNumberId) {
+      logWaCloud("ingest miss (missing phone_number_id)", { messageId: event.messageId });
+      results.push({ ok: true, ignored: true, reason: "missing_phone_number_id" });
+      continue;
+    }
+
+    let resolved = cache.get(phoneNumberId);
+    if (resolved === undefined) {
+      try {
+        resolved = await resolveByPhone({ phoneNumberId });
+      } catch (error) {
+        if (error instanceof ApiError && (error.status === 404 || error.status === 400)) {
+          logWaCloud("ingest miss (unknown phone_number_id)", { phoneNumberId });
+          resolved = null;
+        } else {
+          throw error;
+        }
+      }
+      cache.set(phoneNumberId, resolved);
+    }
+    if (!resolved) {
+      results.push({ ok: true, ignored: true, reason: "unknown_phone_number_id" });
+      continue;
+    }
+
+    const normalized = toNormalizedWhatsappCloudEvent({
+      integration: resolved.integration,
+      credentials: resolved.credentials,
+      event,
+    });
+    logWaCloud("ingest start", {
+      providerEventId: normalized.eventId,
+      integrationId: normalized.integrationId,
+    });
+    try {
+      const result = await ingestEvent({
+        normalizedEvent: normalized,
+        credentials: resolved.credentials,
+      });
+      logWaCloud("ingest ok", { providerEventId: normalized.eventId, ...result });
+      results.push(result);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        logWaCloud("ingest duplicate (idempotent)", { providerEventId: normalized.eventId });
+        results.push({ ok: true, duplicate: true });
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  return {
+    ok: true,
+    processed: results.length,
+    templateUpdates: templateResults.length,
+    results,
+  };
+}
+
 export const getMetaWhatsappWebhook = (req, res) => {
   const mode = String(req.query["hub.mode"] || "");
   const token = String(req.query["hub.verify_token"] || "");
@@ -42,74 +147,13 @@ export const getMetaWhatsappWebhook = (req, res) => {
   return res.sendStatus(403);
 };
 
-export const postMetaWhatsappWebhook = async (req, res, next) => {
+export const postMetaWhatsappWebhook = async (req, res, next, deps = {}) => {
   try {
     if (!env.meta.webhookEnabled) throw new ApiError(503, "WhatsApp Cloud webhook disabled");
     const body = req.body && typeof req.body === "object" ? req.body : {};
     logWaCloudDebug("payload object", { object: body.object });
-
-    const expanded = expandWhatsappCloudInboundMessages(body);
-    if (expanded.length === 0) {
-      return res.status(200).json({ ok: true, ignored: true });
-    }
-
-    const cache = new Map();
-    const results = [];
-
-    for (const event of expanded) {
-      const phoneNumberId = String(event.phoneNumberId || "").trim();
-      if (!phoneNumberId) {
-        logWaCloud("ingest miss (missing phone_number_id)", { messageId: event.messageId });
-        results.push({ ok: true, ignored: true, reason: "missing_phone_number_id" });
-        continue;
-      }
-
-      let resolved = cache.get(phoneNumberId);
-      if (resolved === undefined) {
-        try {
-          resolved = await resolveMetaWhatsappByPhoneNumberId({ phoneNumberId });
-        } catch (error) {
-          if (error instanceof ApiError && (error.status === 404 || error.status === 400)) {
-            logWaCloud("ingest miss (unknown phone_number_id)", { phoneNumberId });
-            resolved = null;
-          } else {
-            throw error;
-          }
-        }
-        cache.set(phoneNumberId, resolved);
-      }
-      if (!resolved) {
-        results.push({ ok: true, ignored: true, reason: "unknown_phone_number_id" });
-        continue;
-      }
-
-      const normalized = toNormalizedWhatsappCloudEvent({
-        integration: resolved.integration,
-        credentials: resolved.credentials,
-        event,
-      });
-      logWaCloud("ingest start", {
-        providerEventId: normalized.eventId,
-        integrationId: normalized.integrationId,
-      });
-      try {
-        const result = await ingestWhatsappCloudEvent({
-          normalizedEvent: normalized,
-          credentials: resolved.credentials,
-        });
-        logWaCloud("ingest ok", { providerEventId: normalized.eventId, ...result });
-        results.push(result);
-      } catch (error) {
-        if (error instanceof ApiError && error.status === 409) {
-          logWaCloud("ingest duplicate (idempotent)", { providerEventId: normalized.eventId });
-          results.push({ ok: true, duplicate: true });
-          continue;
-        }
-        throw error;
-      }
-    }
-
-    return res.status(200).json({ ok: true, processed: results.length, results });
+    const payload = await handleMetaWhatsappWebhookBody(body, deps);
+    return res.status(200).json(payload);
   } catch (error) {
     logWaCloud("ingest error", {
       message: error?.message || String(error),
