@@ -30,7 +30,7 @@ HEAD: `eb3d380`
   Ejemplo local (túnel HTTPS): `https://<tu-host>/api/webhooks/meta/whatsapp`
 - **Verify token:** `META_WEBHOOK_VERIFY_TOKEN` en `backend/.env` (el mismo que Instagram)
 - **GET challenge local:** **PASS** — 200 con el `hub.challenge` si el token coincide; 403 si no. Instagram `/api/webhooks/meta/instagram` sigue vivo (200/403).
-- **Campo a suscribir:** `messages`
+- **Campos a suscribir:** `messages`, `message_template_status_update`
 - **Firma POST:** `META_APP_SECRET` — en el `.env` local está **vacío**. El GET challenge funciona; el POST de Meta fallará la firma hasta que pongas el secret y reinicies el backend.
 - **También vacíos / comentados:** `META_APP_ID`, `META_EMBEDDED_SIGNUP_CONFIG_ID` (necesarios para Embedded Signup).
 - **Migración:** `202609211200-whatsapp-meta-columns` **ya aplicada** en el MySQL local.
@@ -110,7 +110,7 @@ eb3d380 fix: Cloud API review follow-ups
 1. Completar y descomentar en `backend/.env`: `META_APP_ID`, `META_APP_SECRET`, `META_EMBEDDED_SIGNUP_CONFIG_ID`. Reiniciar backend.
 2. Embedded Signup desde Perfil con número tester.
 3. BD: `channel_integrations` `whatsapp`/`meta`/`active` + credencial activa (token no visible en frontend).
-4. Meta Developer: callback HTTPS + verify token + suscribir `messages`.
+4. Meta Developer: callback HTTPS + verify token + suscribir `messages` y `message_template_status_update`.
 5. Texto al número → Conversaciones → bot responde. Probar imagen y PDF.
 6. Send-test a un número con ventana &lt; 24 h.
 7. Disconnect → `disabled`; reconnect.

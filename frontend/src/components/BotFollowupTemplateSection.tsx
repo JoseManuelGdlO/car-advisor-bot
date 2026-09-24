@@ -80,17 +80,10 @@ export function BotFollowupTemplateSection({
     setSeededFrom("create");
   }, [metaConnected, reminderMessage, seededFrom, settingsHydrated, template]);
 
-  const invalidateFollowupAndSettings = async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["whatsapp-followup-template"] }),
-      queryClient.invalidateQueries({ queryKey: ["bot-settings"] }),
-    ]);
-  };
-
   const createMutation = useMutation({
     mutationFn: (body: string) => integrationsApi.createFollowupTemplate(token!, { body }),
     onSuccess: async () => {
-      await invalidateFollowupAndSettings();
+      await queryClient.invalidateQueries({ queryKey: ["whatsapp-followup-template"] });
       toast.success("Plantilla enviada a revisión");
     },
     onError: (error: unknown) => {
@@ -102,7 +95,7 @@ export function BotFollowupTemplateSection({
     mutationFn: (body: string) => integrationsApi.updateFollowupTemplate(token!, { body }),
     onSuccess: async () => {
       setConfirmOpen(false);
-      await invalidateFollowupAndSettings();
+      await queryClient.invalidateQueries({ queryKey: ["whatsapp-followup-template"] });
       toast.success("Plantilla enviada a revisión");
     },
     onError: (error: unknown) => {
