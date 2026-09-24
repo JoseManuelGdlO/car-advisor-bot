@@ -112,6 +112,25 @@ export const sendWhatsappText = async ({ phoneNumberId, accessToken, to, text })
   );
 };
 
+export const sendWhatsappTemplate = async ({ phoneNumberId, accessToken, to, name, language }) => {
+  const phone = requirePhone(to);
+  const templateName = String(name || "").trim();
+  if (!templateName) throw new ApiError(400, "El nombre de la plantilla es obligatorio.");
+  const code = String(language || env.meta.templateLanguage || "").trim();
+  return sendWhatsappWithRetry(() =>
+    graphSend({
+      phoneNumberId,
+      accessToken,
+      body: {
+        messaging_product: "whatsapp",
+        to: phone,
+        type: "template",
+        template: { name: templateName, language: { code } },
+      },
+    })
+  );
+};
+
 export const sendWhatsappImage = async ({ phoneNumberId, accessToken, to, imageUrl, caption }) => {
   const phone = requirePhone(to);
   const link = String(imageUrl || "").trim();

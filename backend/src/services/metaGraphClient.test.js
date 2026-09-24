@@ -2,9 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { env } from "../config/env.js";
 import {
+  createMessageTemplate,
   exchangeEmbeddedSignupCode,
   graphRequest,
   ensurePlatformCanManageWaba,
+  updateMessageTemplate,
 } from "./metaGraphClient.js";
 import { ApiError } from "../utils/errors.js";
 
@@ -106,4 +108,76 @@ test("ensurePlatformCanManageWaba no lanza si el share OBO falla", async () => {
   assert.equal(result.skipped, false);
   assert.equal(result.shared, false);
   assert.equal(result.assigned, false);
+});
+
+test("createMessageTemplate POST /{wabaId}/message_templates con el payload y el token del caller", async () => {
+  env.meta.graphApiVersion = "v21.0";
+  env.meta.accessToken = "platform-token";
+
+  const payload = {
+    name: "cab_sg_abcd1234",
+    language: "es_MX",
+    category: "MARKETING",
+    components: [{ type: "BODY", text: "Hola, ¿sigues interesado?" }],
+  };
+
+  let calledUrl;
+  let calledMethod;
+  let calledHeaders;
+  let calledBody;
+  global.fetch = async (url, options) => {
+    calledUrl = String(url);
+    calledMethod = options?.method;
+    calledHeaders = options?.headers || {};
+    calledBody = JSON.parse(String(options?.body || "{}"));
+    return { ok: true, status: 200, text: async () => JSON.stringify({ id: "tmpl-1" }) };
+  };
+
+  const result = await createMessageTemplate({
+    wabaId: "waba-123",
+    token: "dealer-token",
+    payload,
+  });
+
+  assert.match(calledUrl, /^https:\/\/graph\.facebook\.com\/v21\.0\/waba-123\/message_templates/);
+  assert.equal(calledMethod, "POST");
+  assert.equal(calledHeaders.Authorization, "Bearer dealer-token");
+  assert.deepEqual(calledBody, payload);
+  assert.equal(result.id, "tmpl-1");
+});
+
+test("updateMessageTemplate POST /{templateId} con el payload y el token del caller", async () => {
+  env.meta.graphApiVersion = "v21.0";
+  env.meta.accessToken = "platform-token";
+
+  const payload = {
+    language: "es_MX",
+    category: "MARKETING",
+    components: [{ type: "BODY", text: "Cuerpo actualizado" }],
+  };
+
+  let calledUrl;
+  let calledMethod;
+  let calledHeaders;
+  let calledBody;
+  global.fetch = async (url, options) => {
+    calledUrl = String(url);
+    calledMethod = options?.method;
+    calledHeaders = options?.headers || {};
+    calledBody = JSON.parse(String(options?.body || "{}"));
+    return { ok: true, status: 200, text: async () => JSON.stringify({ success: true }) };
+  };
+
+  const result = await updateMessageTemplate({
+    templateId: "graph-template-99",
+    token: "dealer-token",
+    payload,
+  });
+
+  assert.match(calledUrl, /^https:\/\/graph\.facebook\.com\/v21\.0\/graph-template-99(?:\?|$)/);
+  assert.doesNotMatch(calledUrl, /message_templates/);
+  assert.equal(calledMethod, "POST");
+  assert.equal(calledHeaders.Authorization, "Bearer dealer-token");
+  assert.deepEqual(calledBody, payload);
+  assert.equal(result.success, true);
 });

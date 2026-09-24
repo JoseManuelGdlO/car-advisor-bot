@@ -271,6 +271,24 @@ export async function subscribeWabaApp(wabaId, token) {
   });
 }
 
+export async function createMessageTemplate({ wabaId, token, payload }) {
+  return graphRequest({
+    method: "POST",
+    path: `${wabaId}/message_templates`,
+    token,
+    body: payload,
+  });
+}
+
+export async function updateMessageTemplate({ templateId, token, payload }) {
+  return graphRequest({
+    method: "POST",
+    path: templateId,
+    token,
+    body: payload,
+  });
+}
+
 export async function unsubscribeWabaApp(wabaId, token) {
   return graphRequest({
     method: "DELETE",

@@ -5,6 +5,7 @@ import { ApiError } from "../utils/errors.js";
 import {
   sendWhatsappDocument,
   sendWhatsappImage,
+  sendWhatsappTemplate,
   sendWhatsappText,
   sendWhatsappWithRetry,
 } from "./metaWhatsappClient.js";
@@ -12,11 +13,13 @@ import {
 const originalFetch = global.fetch;
 const originalTimeoutMs = env.meta.timeoutMs;
 const originalGraphVersion = env.meta.graphApiVersion;
+const originalTemplateLanguage = env.meta.templateLanguage;
 
 test.afterEach(() => {
   global.fetch = originalFetch;
   env.meta.timeoutMs = originalTimeoutMs;
   env.meta.graphApiVersion = originalGraphVersion;
+  env.meta.templateLanguage = originalTemplateLanguage;
 });
 
 const okResponse = (payload = { messages: [{ id: "wamid.1" }] }) => ({
@@ -227,4 +230,67 @@ test("sendWhatsappDocument POST document.link filename y caption", async () => {
     filename: "ficha.pdf",
     caption: "Ficha técnica",
   });
+});
+
+test("sendWhatsappTemplate POST type=template sin components", async () => {
+  env.meta.graphApiVersion = "v21.0";
+  env.meta.templateLanguage = "es_MX";
+  let calledUrl;
+  let calledMethod;
+  let calledHeaders;
+  let calledBody;
+  global.fetch = async (url, options) => {
+    calledUrl = String(url);
+    calledMethod = options?.method;
+    calledHeaders = options?.headers || {};
+    calledBody = JSON.parse(String(options?.body || "{}"));
+    return okResponse();
+  };
+
+  await sendWhatsappTemplate({
+    phoneNumberId: "PNID",
+    accessToken: "tok",
+    to: "5215512345678@s.whatsapp.net",
+    name: "cab_sg_abcd1234",
+  });
+
+  assert.match(calledUrl, /\/PNID\/messages/);
+  assert.match(calledUrl, /graph\.facebook\.com\/v21\.0\//);
+  assert.equal(calledMethod, "POST");
+  assert.equal(calledHeaders.Authorization, "Bearer tok");
+  assert.equal(calledHeaders["Content-Type"], "application/json");
+  assert.equal(calledBody.messaging_product, "whatsapp");
+  assert.equal(calledBody.to, "525512345678");
+  assert.equal(calledBody.type, "template");
+  assert.deepEqual(calledBody.template, {
+    name: "cab_sg_abcd1234",
+    language: { code: "es_MX" },
+  });
+  assert.equal("components" in calledBody, false);
+  assert.equal("components" in calledBody.template, false);
+});
+
+test("sendWhatsappTemplate exige name y to con ApiError 400 en español", async () => {
+  await assert.rejects(
+    () =>
+      sendWhatsappTemplate({
+        phoneNumberId: "PNID",
+        accessToken: "tok",
+        to: "5215512345678",
+      }),
+    (err) =>
+      err instanceof ApiError &&
+      err.status === 400 &&
+      /nombre|plantilla/i.test(err.message)
+  );
+
+  await assert.rejects(
+    () =>
+      sendWhatsappTemplate({
+        phoneNumberId: "PNID",
+        accessToken: "tok",
+        name: "cab_sg_abcd1234",
+      }),
+    (err) => err instanceof ApiError && err.status === 400 && /teléfono|telefono/i.test(err.message)
+  );
 });
