@@ -18,6 +18,7 @@ import {
   subscribeWabaApp,
   unsubscribeWabaApp,
 } from "./metaGraphClient.js";
+import { ensureFollowupDefaultTemplate } from "./whatsappFollowupTemplateService.js";
 
 const quietTest = process.env.NODE_ENV === "test" || Boolean(process.env.NODE_TEST_CONTEXT);
 
@@ -104,6 +105,7 @@ export async function completeEmbeddedSignup({
   phoneNumberId,
   businessId,
   event,
+  ensureFollowupDefault = ensureFollowupDefaultTemplate,
 } = {}) {
   const config = publicMetaSignupConfig();
   if (!config.configured) {
@@ -192,6 +194,16 @@ export async function completeEmbeddedSignup({
     phoneNumberId: credentials.phoneNumberId,
     coexistenceEnabled,
   });
+
+  try {
+    await ensureFollowupDefault({ ownerUserId, wabaId: resolvedWabaId, accessToken });
+  } catch (error) {
+    logWarn("embedded signup: no se pudo crear la plantilla de seguimiento", {
+      ownerUserId,
+      wabaId: resolvedWabaId,
+      message: error.message,
+    });
+  }
 
   return {
     integration,
