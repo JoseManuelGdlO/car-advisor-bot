@@ -10,7 +10,7 @@ export type BrowserTab = {
 
 export function BrowserTabs({ tabs, label, pathname }: { tabs: BrowserTab[]; label: string; pathname: string }) {
   return (
-    <div className="bg-muted px-2 pt-2" role="tablist" aria-label={label}>
+    <div className="bg-[hsl(160_12%_90%)] px-2 pt-2" role="tablist" aria-label={label}>
       <div className="flex items-end gap-1">
         {tabs.map((tab) => {
           const active = tab.match(pathname);
@@ -24,10 +24,9 @@ export function BrowserTabs({ tabs, label, pathname }: { tabs: BrowserTab[]; lab
               className={cn(
                 "relative flex-1 min-h-11 px-3 inline-flex items-center justify-center gap-1.5 rounded-t-[14px] text-[13px] transition-colors",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                "active:translate-y-px",
                 active
-                  ? "bg-background text-foreground font-semibold"
-                  : "text-muted-foreground hover:text-foreground hover:bg-background/60 font-medium",
+                  ? "z-10 bg-background text-foreground font-semibold shadow-[inset_0_3px_0_0_hsl(var(--primary))]"
+                  : "mb-1 text-muted-foreground font-medium hover:text-foreground hover:bg-background/70",
               )}
             >
               <span className="truncate">{tab.label}</span>

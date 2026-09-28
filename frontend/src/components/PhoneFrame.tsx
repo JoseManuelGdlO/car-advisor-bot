@@ -21,9 +21,11 @@ export const PhoneFrame = ({ children }: PhoneFrameProps) => {
 
   if (isNativeApp) {
     return (
-      <div className="min-h-screen w-full bg-background">
-        <div className={`h-screen w-full flex flex-col pt-safe ${showNav ? "pb-[calc(72px+var(--safe-area-bottom))]" : "pb-safe"}`}>
-          <div className="flex-1 overflow-y-auto scrollbar-hide">{children}</div>
+      <div className="relative min-h-screen w-full bg-background">
+        <div className="h-screen w-full flex flex-col pt-safe">
+          <div className="flex-1 overflow-y-auto scrollbar-hide">
+            <div className={showNav ? "pb-[calc(5.5rem+var(--safe-area-bottom))]" : "pb-safe"}>{children}</div>
+          </div>
         </div>
         {showNav && <BottomNav />}
       </div>
@@ -61,8 +63,10 @@ export const PhoneFrame = ({ children }: PhoneFrameProps) => {
         </div>
 
         {/* Screen content */}
-        <div className={`h-full w-full flex flex-col pt-safe lg:pt-7 ${showNav ? "pb-[calc(72px+var(--safe-area-bottom))]" : "pb-safe"}`}>
-          <div className="flex-1 overflow-y-auto scrollbar-hide">{children}</div>
+        <div className="h-full w-full flex flex-col pt-safe lg:pt-7">
+          <div className="flex-1 overflow-y-auto scrollbar-hide">
+            <div className={showNav ? "pb-[calc(5.5rem+var(--safe-area-bottom))]" : "pb-safe"}>{children}</div>
+          </div>
         </div>
 
         {/* Bottom nav */}

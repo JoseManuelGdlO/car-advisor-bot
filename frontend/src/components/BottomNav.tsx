@@ -28,29 +28,32 @@ export const BottomNav = () => {
   const { pathname } = useLocation();
 
   return (
-    <nav className="absolute bottom-0 left-0 right-0 bg-card/95 backdrop-blur border-t border-border z-30 flex items-stretch px-2 pt-1 pb-[calc(0.5rem+env(safe-area-inset-bottom))] min-h-[72px]">
-      {items.map(({ to, label, icon: Icon }) => {
-        const active = isItemActive(pathname, to);
-        return (
-          <NavLink
-            key={to}
-            to={to}
-            aria-current={active ? "page" : undefined}
-            className={cn(
-              "flex-1 flex flex-col items-center justify-center gap-1 rounded-xl transition-colors active:scale-[0.98]",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              active ? "text-primary" : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            <div className={cn("p-1.5 rounded-xl transition-colors", active && "bg-accent")}>
-              <Icon className="w-[22px] h-[22px]" strokeWidth={active ? 2.4 : 2} />
-            </div>
-            <span className={cn("text-[11px] font-medium leading-tight text-center", active && "font-semibold")}>
-              {label}
-            </span>
-          </NavLink>
-        );
-      })}
+    <nav
+      className="absolute inset-x-0 z-30 flex justify-center bg-transparent pointer-events-none px-5 bottom-[calc(0.75rem+env(safe-area-inset-bottom))]"
+      aria-label="Navegación principal"
+    >
+      <div className="pointer-events-auto flex h-14 items-center rounded-full bg-[hsl(160_8%_7%)] px-1.5 shadow-[0_18px_40px_-18px_hsl(160_20%_4%/0.7)]">
+        {items.map(({ to, label, icon: Icon }) => {
+          const active = isItemActive(pathname, to);
+          return (
+            <NavLink
+              key={to}
+              to={to}
+              aria-label={label}
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "flex h-12 w-14 items-center justify-center rounded-full",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(160_8%_7%)]",
+                "active:scale-[0.96] motion-safe:transition-transform",
+                active ? "text-primary" : "text-white",
+              )}
+            >
+              <Icon className={cn("h-[22px] w-[22px]", active && "scale-110")} strokeWidth={active ? 2.4 : 2} />
+              <span className="sr-only">{label}</span>
+            </NavLink>
+          );
+        })}
+      </div>
     </nav>
   );
 };

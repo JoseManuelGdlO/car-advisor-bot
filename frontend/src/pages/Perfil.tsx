@@ -26,15 +26,23 @@ import {
   selectWhatsAppMetaIntegration,
   whatsAppMetaDisplayPhone,
 } from "@/lib/whatsappMeta";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import DeleteAccount from "@/components/deleteAccount";
 import { Label } from "@/components/ui/label";
 import { GoogleCalendarLinkHelpDialog } from "@/components/GoogleCalendarLinkHelpDialog";
 import { FieldErrorText, FormErrorAlert } from "@/components/FormErrorAlert";
-import { GOOGLE_CALENDAR_URL_ERROR, isGoogleCalendarSchedulingUrl } from "@/lib/calendarUrl";
+import {
+  GOOGLE_CALENDAR_URL_ERROR,
+  isGoogleCalendarSchedulingUrl,
+} from "@/lib/calendarUrl";
 import { normalizeApiError } from "@/lib/formErrors";
 import { cn } from "@/lib/utils";
 
@@ -95,9 +103,16 @@ export default function Perfil() {
     enabled: Boolean(token),
   });
 
-  const [userForm, setUserForm] = useState({ name: "", phone: "", defaultPlatform: "", calendarSchedulingUrl: "" });
+  const [userForm, setUserForm] = useState({
+    name: "",
+    phone: "",
+    defaultPlatform: "",
+    calendarSchedulingUrl: "",
+  });
   const [profileFormError, setProfileFormError] = useState("");
-  const [profileFieldErrors, setProfileFieldErrors] = useState<Record<string, string>>({});
+  const [profileFieldErrors, setProfileFieldErrors] = useState<
+    Record<string, string>
+  >({});
   const [deleteFormError, setDeleteFormError] = useState("");
   const [bizForm, setBizForm] = useState<BusinessProfileDto>(emptyBusiness);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -129,7 +144,9 @@ export default function Perfil() {
 
   const saveProfileMutation = useMutation({
     mutationFn: () => {
-      const calendarSchedulingUrl = (userForm.calendarSchedulingUrl || savedCalendarUrl).trim();
+      const calendarSchedulingUrl = (
+        userForm.calendarSchedulingUrl || savedCalendarUrl
+      ).trim();
       if (!isGoogleCalendarSchedulingUrl(calendarSchedulingUrl)) {
         throw new Error(GOOGLE_CALENDAR_URL_ERROR);
       }
@@ -137,7 +154,14 @@ export default function Perfil() {
         user: {
           name: userForm.name.trim(),
           phone: userForm.phone.trim() || null,
-          defaultPlatform: (userForm.defaultPlatform || null) as "whatsapp" | "facebook" | "telegram" | "web" | "api" | "instagram" | null,
+          defaultPlatform: (userForm.defaultPlatform || null) as
+            | "whatsapp"
+            | "facebook"
+            | "telegram"
+            | "web"
+            | "api"
+            | "instagram"
+            | null,
           calendarSchedulingUrl,
         },
         business: {
@@ -165,28 +189,39 @@ export default function Perfil() {
       await refreshProfile();
     },
     onError: (error) => {
-      if (error instanceof Error && error.message === GOOGLE_CALENDAR_URL_ERROR) {
+      if (
+        error instanceof Error &&
+        error.message === GOOGLE_CALENDAR_URL_ERROR
+      ) {
         setProfileFormError("");
         setProfileFieldErrors({ calendarSchedulingUrl: error.message });
         return;
       }
-      const { formError, fieldErrors } = normalizeApiError(error, "No se pudo guardar el perfil.", {
-        knownFields: PROFILE_KNOWN_FIELDS,
-      });
+      const { formError, fieldErrors } = normalizeApiError(
+        error,
+        "No se pudo guardar el perfil.",
+        {
+          knownFields: PROFILE_KNOWN_FIELDS,
+        },
+      );
       setProfileFormError(formError);
       setProfileFieldErrors(fieldErrors);
     },
   });
 
   const deleteAccountMutation = useMutation({
-    mutationFn: () => accountApi.deleteAccount(token!, { confirmText: deleteConfirmText }),
+    mutationFn: () =>
+      accountApi.deleteAccount(token!, { confirmText: deleteConfirmText }),
     onSuccess: async () => {
       setDeleteFormError("");
       await logout();
       navigate("/login", { replace: true });
     },
     onError: (error) => {
-      const { formError } = normalizeApiError(error, "No se pudo eliminar la cuenta.");
+      const { formError } = normalizeApiError(
+        error,
+        "No se pudo eliminar la cuenta.",
+      );
       setDeleteFormError(formError);
     },
   });
@@ -199,23 +234,35 @@ export default function Perfil() {
 
   const { userDirty, businessDirty } = useMemo(() => {
     if (!profile) return { userDirty: false, businessDirty: false };
-    const calendarValue = (userForm.calendarSchedulingUrl || savedCalendarUrl).trim();
+    const calendarValue = (
+      userForm.calendarSchedulingUrl || savedCalendarUrl
+    ).trim();
     const userDirty =
       profile.user.name !== userForm.name.trim() ||
       (profile.user.phone || "") !== (userForm.phone.trim() || "") ||
-      (profile.user.defaultPlatform || "") !== (userForm.defaultPlatform || "") ||
+      (profile.user.defaultPlatform || "") !==
+        (userForm.defaultPlatform || "") ||
       savedCalendarUrl !== calendarValue;
-    const businessDirty = JSON.stringify(profile.business || {}) !== JSON.stringify({ ...emptyBusiness, ...bizForm });
+    const businessDirty =
+      JSON.stringify(profile.business || {}) !==
+      JSON.stringify({ ...emptyBusiness, ...bizForm });
     return { userDirty, businessDirty };
   }, [profile, userForm, bizForm, savedCalendarUrl]);
 
   const renderSaveProfileButton = () => (
     <div className="pt-2 space-y-2">
-      <Button className="w-full" disabled={!token || profileLoading || saveProfileMutation.isPending} onClick={() => saveProfileMutation.mutate()}>
+      <Button
+        className="w-full"
+        disabled={!token || profileLoading || saveProfileMutation.isPending}
+        onClick={() => saveProfileMutation.mutate()}
+      >
         <Save className="w-4 h-4 mr-2" />
         {saveProfileMutation.isPending ? "Guardando..." : "Guardar perfil"}
       </Button>
-      <FormErrorAlert title="No se pudo guardar el perfil" message={profileFormError} />
+      <FormErrorAlert
+        title="No se pudo guardar el perfil"
+        message={profileFormError}
+      />
     </div>
   );
 
@@ -223,33 +270,28 @@ export default function Perfil() {
     <>
       <div className="px-4 py-5 space-y-5">
         <div className="bg-card rounded-2xl p-5 shadow-card border border-border flex flex-col items-center text-center">
-          <Avatar name={user?.name || "Usuario"} color="hsl(162 75% 30%)" size="lg" />
+          <Avatar
+            name={user?.name || "Usuario"}
+            color="hsl(162 75% 30%)"
+            size="lg"
+          />
           <h2 className="font-bold text-lg mt-3">{user?.name || "Usuario"}</h2>
           <p className="text-xs text-muted-foreground">{user?.email}</p>
           {bizForm.tradeName ? (
-            <p className="text-xs font-semibold text-primary-dark mt-1">{bizForm.tradeName}</p>
+            <p className="text-xs font-semibold text-primary-dark mt-1">
+              {bizForm.tradeName}
+            </p>
           ) : (
-            <p className="text-xs text-muted-foreground mt-1">Completa los datos de tu negocio abajo</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Completa los datos de tu negocio abajo
+            </p>
           )}
         </div>
-
-        <div className="grid grid-cols-3 gap-3">
-          <button type="button" onClick={() => navigate("/chats")} className="bg-card rounded-2xl p-3 text-center shadow-card border border-border hover:bg-muted/40">
-            <p className="text-xl font-extrabold text-primary-dark">{safeKpis.activeChats}</p>
-            <p className="text-[10px] uppercase font-semibold text-muted-foreground">Chats</p>
-          </button>
-          <button type="button" onClick={() => navigate("/clientes")} className="bg-card rounded-2xl p-3 text-center shadow-card border border-border hover:bg-muted/40">
-            <p className="text-xl font-extrabold text-primary-dark">{safeKpis.newLeads}</p>
-            <p className="text-[10px] uppercase font-semibold text-muted-foreground">Leads</p>
-          </button>
-          <div className="bg-card rounded-2xl p-3 text-center shadow-card border border-border">
-            <p className="text-xl font-extrabold text-primary-dark">{safeKpis.escalations}</p>
-            <p className="text-[10px] uppercase font-semibold text-muted-foreground">Escalaciones</p>
-          </div>
-        </div>
-
         <Accordion type="multiple" className="space-y-3">
-          <AccordionItem value="cuenta" className="border-0 bg-card rounded-2xl px-4 shadow-card border border-border">
+          <AccordionItem
+            value="cuenta"
+            className="border-0 bg-card rounded-2xl px-4 shadow-card border border-border"
+          >
             <AccordionTrigger className="hover:no-underline py-4">
               <span className="flex items-center gap-2">
                 <Building2 className="w-5 h-5 text-primary" />
@@ -261,38 +303,64 @@ export default function Perfil() {
                 <Label className="text-xs">Nombre</Label>
                 <Input
                   value={userForm.name}
-                  onChange={(e) => setUserForm((s) => ({ ...s, name: e.target.value }))}
-                  className={cn(profileFieldErrors.name && "border-destructive focus-visible:ring-destructive")}
+                  onChange={(e) =>
+                    setUserForm((s) => ({ ...s, name: e.target.value }))
+                  }
+                  className={cn(
+                    profileFieldErrors.name &&
+                      "border-destructive focus-visible:ring-destructive",
+                  )}
                   aria-invalid={Boolean(profileFieldErrors.name)}
                 />
                 <FieldErrorText error={profileFieldErrors.name} />
                 <Label className="text-xs">Teléfono</Label>
                 <Input
                   value={userForm.phone}
-                  onChange={(e) => setUserForm((s) => ({ ...s, phone: e.target.value }))}
+                  onChange={(e) =>
+                    setUserForm((s) => ({ ...s, phone: e.target.value }))
+                  }
                   placeholder="+57..."
-                  className={cn(profileFieldErrors.phone && "border-destructive focus-visible:ring-destructive")}
+                  className={cn(
+                    profileFieldErrors.phone &&
+                      "border-destructive focus-visible:ring-destructive",
+                  )}
                   aria-invalid={Boolean(profileFieldErrors.phone)}
                 />
                 <FieldErrorText error={profileFieldErrors.phone} />
                 <div className="flex items-center justify-between gap-2 pt-1">
-                  <Label className="text-xs">Link de calendario de Google</Label>
+                  <Label className="text-xs">
+                    Link de calendario de Google
+                  </Label>
                   <GoogleCalendarLinkHelpDialog />
                 </div>
                 {profileLoading ? (
-                  <p className="text-xs text-muted-foreground">Cargando enlace...</p>
+                  <p className="text-xs text-muted-foreground">
+                    Cargando enlace...
+                  </p>
                 ) : calendarUrlEditing ? (
                   <div className="space-y-2">
                     <Input
                       type="url"
                       value={userForm.calendarSchedulingUrl || savedCalendarUrl}
-                      onChange={(e) => setUserForm((s) => ({ ...s, calendarSchedulingUrl: e.target.value }))}
+                      onChange={(e) =>
+                        setUserForm((s) => ({
+                          ...s,
+                          calendarSchedulingUrl: e.target.value,
+                        }))
+                      }
                       placeholder="https://calendar.app.google/..."
                       autoFocus
-                      className={cn(profileFieldErrors.calendarSchedulingUrl && "border-destructive focus-visible:ring-destructive")}
-                      aria-invalid={Boolean(profileFieldErrors.calendarSchedulingUrl)}
+                      className={cn(
+                        profileFieldErrors.calendarSchedulingUrl &&
+                          "border-destructive focus-visible:ring-destructive",
+                      )}
+                      aria-invalid={Boolean(
+                        profileFieldErrors.calendarSchedulingUrl,
+                      )}
                     />
-                    <FieldErrorText error={profileFieldErrors.calendarSchedulingUrl} />
+                    <FieldErrorText
+                      error={profileFieldErrors.calendarSchedulingUrl}
+                    />
                     <Button
                       type="button"
                       variant="ghost"
@@ -300,7 +368,10 @@ export default function Perfil() {
                       className="h-8 px-2 text-xs"
                       onClick={() => {
                         setCalendarUrlEditing(false);
-                        setUserForm((s) => ({ ...s, calendarSchedulingUrl: savedCalendarUrl }));
+                        setUserForm((s) => ({
+                          ...s,
+                          calendarSchedulingUrl: savedCalendarUrl,
+                        }));
                       }}
                     >
                       Cancelar
@@ -318,7 +389,9 @@ export default function Perfil() {
                         {savedCalendarUrl}
                       </a>
                     ) : (
-                      <p className="text-xs text-muted-foreground">Aún no tienes un enlace de calendario configurado.</p>
+                      <p className="text-xs text-muted-foreground">
+                        Aún no tienes un enlace de calendario configurado.
+                      </p>
                     )}
                     <Button
                       type="button"
@@ -326,7 +399,10 @@ export default function Perfil() {
                       size="sm"
                       className="h-8"
                       onClick={() => {
-                        setUserForm((s) => ({ ...s, calendarSchedulingUrl: savedCalendarUrl }));
+                        setUserForm((s) => ({
+                          ...s,
+                          calendarSchedulingUrl: savedCalendarUrl,
+                        }));
                         setCalendarUrlEditing(true);
                       }}
                     >
@@ -336,10 +412,24 @@ export default function Perfil() {
                 )}
                 {userDirty ? renderSaveProfileButton() : null}
               </div>
+              <div className="pt-2 space-y-2">
+                <DeleteAccount
+                  deleteDialogOpen={deleteDialogOpen}
+                  setDeleteDialogOpen={setDeleteDialogOpen}
+                  deleteFormError={deleteFormError}
+                  setDeleteFormError={setDeleteFormError}
+                  deleteConfirmText={deleteConfirmText}
+                  setDeleteConfirmText={setDeleteConfirmText}
+                  deleteAccountMutation={deleteAccountMutation}
+                />
+              </div>
             </AccordionContent>
           </AccordionItem>
 
-          <AccordionItem value="negocio" className="border-0 bg-card rounded-2xl px-4 shadow-card border border-border">
+          <AccordionItem
+            value="negocio"
+            className="border-0 bg-card rounded-2xl px-4 shadow-card border border-border"
+          >
             <AccordionTrigger className="hover:no-underline py-4">
               <span className="flex items-center gap-2">
                 <Building2 className="w-5 h-5 text-success" />
@@ -348,35 +438,144 @@ export default function Perfil() {
             </AccordionTrigger>
             <AccordionContent>
               <div className="grid gap-2 pb-1">
-                <Input placeholder="Nombre comercial" value={bizForm.tradeName || ""} onChange={(e) => setBizForm((s) => ({ ...s, tradeName: e.target.value }))} className={cn(profileFieldErrors.tradeName && "border-destructive")} />
+                <Input
+                  placeholder="Nombre comercial"
+                  value={bizForm.tradeName || ""}
+                  onChange={(e) =>
+                    setBizForm((s) => ({ ...s, tradeName: e.target.value }))
+                  }
+                  className={cn(
+                    profileFieldErrors.tradeName && "border-destructive",
+                  )}
+                />
                 <FieldErrorText error={profileFieldErrors.tradeName} />
-                <Input placeholder="Razón social" value={bizForm.legalName || ""} onChange={(e) => setBizForm((s) => ({ ...s, legalName: e.target.value }))} className={cn(profileFieldErrors.legalName && "border-destructive")} />
+                <Input
+                  placeholder="Razón social"
+                  value={bizForm.legalName || ""}
+                  onChange={(e) =>
+                    setBizForm((s) => ({ ...s, legalName: e.target.value }))
+                  }
+                  className={cn(
+                    profileFieldErrors.legalName && "border-destructive",
+                  )}
+                />
                 <FieldErrorText error={profileFieldErrors.legalName} />
-                <Input placeholder="NIT / ID fiscal" value={bizForm.taxId || ""} onChange={(e) => setBizForm((s) => ({ ...s, taxId: e.target.value }))} className={cn(profileFieldErrors.taxId && "border-destructive")} />
+                <Input
+                  placeholder="NIT / ID fiscal"
+                  value={bizForm.taxId || ""}
+                  onChange={(e) =>
+                    setBizForm((s) => ({ ...s, taxId: e.target.value }))
+                  }
+                  className={cn(
+                    profileFieldErrors.taxId && "border-destructive",
+                  )}
+                />
                 <FieldErrorText error={profileFieldErrors.taxId} />
-                <Input placeholder="Teléfono del negocio" value={bizForm.businessPhone || ""} onChange={(e) => setBizForm((s) => ({ ...s, businessPhone: e.target.value }))} className={cn(profileFieldErrors.businessPhone && "border-destructive")} />
+                <Input
+                  placeholder="Teléfono del negocio"
+                  value={bizForm.businessPhone || ""}
+                  onChange={(e) =>
+                    setBizForm((s) => ({ ...s, businessPhone: e.target.value }))
+                  }
+                  className={cn(
+                    profileFieldErrors.businessPhone && "border-destructive",
+                  )}
+                />
                 <FieldErrorText error={profileFieldErrors.businessPhone} />
-                <Input placeholder="Email del negocio" value={bizForm.businessEmail || ""} onChange={(e) => setBizForm((s) => ({ ...s, businessEmail: e.target.value }))} className={cn(profileFieldErrors.businessEmail && "border-destructive")} />
+                <Input
+                  placeholder="Email del negocio"
+                  value={bizForm.businessEmail || ""}
+                  onChange={(e) =>
+                    setBizForm((s) => ({ ...s, businessEmail: e.target.value }))
+                  }
+                  className={cn(
+                    profileFieldErrors.businessEmail && "border-destructive",
+                  )}
+                />
                 <FieldErrorText error={profileFieldErrors.businessEmail} />
-                <Input placeholder="Sitio web" value={bizForm.website || ""} onChange={(e) => setBizForm((s) => ({ ...s, website: e.target.value }))} className={cn(profileFieldErrors.website && "border-destructive")} />
+                <Input
+                  placeholder="Sitio web"
+                  value={bizForm.website || ""}
+                  onChange={(e) =>
+                    setBizForm((s) => ({ ...s, website: e.target.value }))
+                  }
+                  className={cn(
+                    profileFieldErrors.website && "border-destructive",
+                  )}
+                />
                 <FieldErrorText error={profileFieldErrors.website} />
-                <Input placeholder="Dirección" value={bizForm.addressLine || ""} onChange={(e) => setBizForm((s) => ({ ...s, addressLine: e.target.value }))} className={cn(profileFieldErrors.addressLine && "border-destructive")} />
+                <Input
+                  placeholder="Dirección"
+                  value={bizForm.addressLine || ""}
+                  onChange={(e) =>
+                    setBizForm((s) => ({ ...s, addressLine: e.target.value }))
+                  }
+                  className={cn(
+                    profileFieldErrors.addressLine && "border-destructive",
+                  )}
+                />
                 <FieldErrorText error={profileFieldErrors.addressLine} />
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <Input placeholder="Ciudad" value={bizForm.city || ""} onChange={(e) => setBizForm((s) => ({ ...s, city: e.target.value }))} className={cn(profileFieldErrors.city && "border-destructive")} />
+                    <Input
+                      placeholder="Ciudad"
+                      value={bizForm.city || ""}
+                      onChange={(e) =>
+                        setBizForm((s) => ({ ...s, city: e.target.value }))
+                      }
+                      className={cn(
+                        profileFieldErrors.city && "border-destructive",
+                      )}
+                    />
                     <FieldErrorText error={profileFieldErrors.city} />
                   </div>
                   <div>
-                    <Input placeholder="Estado / Depto" value={bizForm.state || ""} onChange={(e) => setBizForm((s) => ({ ...s, state: e.target.value }))} className={cn(profileFieldErrors.state && "border-destructive")} />
+                    <Input
+                      placeholder="Estado / Depto"
+                      value={bizForm.state || ""}
+                      onChange={(e) =>
+                        setBizForm((s) => ({ ...s, state: e.target.value }))
+                      }
+                      className={cn(
+                        profileFieldErrors.state && "border-destructive",
+                      )}
+                    />
                     <FieldErrorText error={profileFieldErrors.state} />
                   </div>
                 </div>
-                <Input placeholder="País" value={bizForm.country || ""} onChange={(e) => setBizForm((s) => ({ ...s, country: e.target.value }))} className={cn(profileFieldErrors.country && "border-destructive")} />
+                <Input
+                  placeholder="País"
+                  value={bizForm.country || ""}
+                  onChange={(e) =>
+                    setBizForm((s) => ({ ...s, country: e.target.value }))
+                  }
+                  className={cn(
+                    profileFieldErrors.country && "border-destructive",
+                  )}
+                />
                 <FieldErrorText error={profileFieldErrors.country} />
-                <Textarea placeholder="Descripción corta del negocio" value={bizForm.description || ""} onChange={(e) => setBizForm((s) => ({ ...s, description: e.target.value }))} rows={3} className={cn(profileFieldErrors.description && "border-destructive")} />
+                <Textarea
+                  placeholder="Descripción corta del negocio"
+                  value={bizForm.description || ""}
+                  onChange={(e) =>
+                    setBizForm((s) => ({ ...s, description: e.target.value }))
+                  }
+                  rows={3}
+                  className={cn(
+                    profileFieldErrors.description && "border-destructive",
+                  )}
+                />
                 <FieldErrorText error={profileFieldErrors.description} />
-                <Input placeholder="URL del logo" value={bizForm.logoUrl || ""} onChange={(e) => setBizForm((s) => ({ ...s, logoUrl: e.target.value }))} className={cn(profileFieldErrors.logoUrl && "border-destructive")} />
+                <Input
+                  placeholder="URL del logo"
+                  value={bizForm.logoUrl || ""}
+                  onChange={(e) =>
+                    setBizForm((s) => ({ ...s, logoUrl: e.target.value }))
+                  }
+                  className={cn(
+                    profileFieldErrors.logoUrl && "border-destructive",
+                  )}
+                />
                 <FieldErrorText error={profileFieldErrors.logoUrl} />
                 {businessDirty ? renderSaveProfileButton() : null}
               </div>
@@ -392,7 +591,9 @@ export default function Perfil() {
           <div className="flex items-center gap-2 mb-3">
             <Link2 className="w-5 h-5 text-info" />
             <p className="font-semibold text-sm flex-1">Integraciones</p>
-            <span className="text-xs font-semibold text-primary-dark">Gestionar</span>
+            <span className="text-xs font-semibold text-primary-dark">
+              Gestionar
+            </span>
             <ChevronRight className="w-4 h-4 text-muted-foreground" />
           </div>
           <div className="flex items-center gap-3">
@@ -402,7 +603,9 @@ export default function Perfil() {
             <div className="min-w-0 flex-1">
               <p className="font-semibold text-sm">WhatsApp</p>
               {integrationsLoading ? (
-                <p className="text-xs text-muted-foreground">Cargando estado...</p>
+                <p className="text-xs text-muted-foreground">
+                  Cargando estado...
+                </p>
               ) : whatsappConnected ? (
                 <p className="text-xs text-muted-foreground break-all">
                   Conectado{whatsappPhone ? ` · ${whatsappPhone}` : ""}
@@ -416,34 +619,56 @@ export default function Perfil() {
 
         <ul className="bg-card rounded-2xl shadow-card border border-border overflow-hidden">
           <li>
-            <button type="button" onClick={() => navigate("/config")} className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-muted/40">
+            <button
+              type="button"
+              onClick={() => navigate("/config")}
+              className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-muted/40"
+            >
               <div className="w-9 h-9 rounded-xl bg-primary/10 grid place-items-center text-primary">
                 <Settings className="w-4 h-4" />
               </div>
-              <span className="flex-1 text-sm font-medium">Configuración del bot</span>
+              <span className="flex-1 text-sm font-medium">
+                Configuración del bot
+              </span>
               <ChevronRight className="w-4 h-4 text-muted-foreground" />
             </button>
           </li>
           <li className="border-t border-border">
-            <button type="button" onClick={() => navigate("/config/bot")} className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-muted/40">
+            <button
+              type="button"
+              onClick={() => navigate("/config/bot")}
+              className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-muted/40"
+            >
               <div className="w-9 h-9 rounded-xl bg-accent grid place-items-center text-accent-foreground">
                 <Clock3 className="w-4 h-4" />
               </div>
-              <span className="flex-1 text-sm font-medium">Horario del bot</span>
+              <span className="flex-1 text-sm font-medium">
+                Horario del bot
+              </span>
               <ChevronRight className="w-4 h-4 text-muted-foreground" />
             </button>
           </li>
           <li className="border-t border-border">
-            <button type="button" onClick={() => navigate("/vehiculos")} className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-muted/40">
+            <button
+              type="button"
+              onClick={() => navigate("/vehiculos")}
+              className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-muted/40"
+            >
               <div className="w-9 h-9 rounded-xl bg-primary/10 grid place-items-center text-primary-dark">
                 <Car className="w-4 h-4" />
               </div>
-              <span className="flex-1 text-sm font-medium">Vehículos y ventas</span>
+              <span className="flex-1 text-sm font-medium">
+                Vehículos y ventas
+              </span>
               <ChevronRight className="w-4 h-4 text-muted-foreground" />
             </button>
           </li>
           <li className="border-t border-border">
-            <button type="button" onClick={() => navigate("/perfil/notificaciones")} className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-muted/40">
+            <button
+              type="button"
+              onClick={() => navigate("/perfil/notificaciones")}
+              className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-muted/40"
+            >
               <div className="w-9 h-9 rounded-xl bg-warning/10 grid place-items-center text-warning">
                 <Bell className="w-4 h-4" />
               </div>
@@ -452,11 +677,17 @@ export default function Perfil() {
             </button>
           </li>
           <li className="border-t border-border">
-            <button type="button" onClick={() => navigate("/config")} className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-muted/40">
+            <button
+              type="button"
+              onClick={() => navigate("/config")}
+              className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-muted/40"
+            >
               <div className="w-9 h-9 rounded-xl bg-info/10 grid place-items-center text-info">
                 <HelpCircle className="w-4 h-4" />
               </div>
-              <span className="flex-1 text-sm font-medium">Ayuda y soporte</span>
+              <span className="flex-1 text-sm font-medium">
+                Ayuda y soporte
+              </span>
               <ChevronRight className="w-4 h-4 text-muted-foreground" />
             </button>
           </li>
@@ -471,61 +702,14 @@ export default function Perfil() {
               </div>
               <span className="flex-1 min-w-0">
                 <span className="block text-sm font-medium">Privacidad</span>
-                <span className="block text-xs text-muted-foreground">Recopilación y uso de datos</span>
+                <span className="block text-xs text-muted-foreground">
+                  Recopilación y uso de datos
+                </span>
               </span>
               <ChevronRight className="w-4 h-4 text-muted-foreground" />
             </button>
           </li>
         </ul>
-
-        <div className="bg-card rounded-2xl p-4 shadow-card border border-destructive/30 space-y-3">
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="w-5 h-5 text-destructive mt-0.5" />
-            <div>
-              <p className="font-semibold text-sm text-destructive">Eliminar cuenta</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Eliminará de forma permanente tu usuario y los datos asociados.
-              </p>
-            </div>
-          </div>
-          <Dialog
-            open={deleteDialogOpen}
-            onOpenChange={(open) => {
-              setDeleteDialogOpen(open);
-              if (!open) setDeleteFormError("");
-            }}
-          >
-            <DialogTrigger asChild>
-              <Button variant="destructive" className="w-full">Iniciar eliminación de cuenta</Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>Confirmar eliminación de cuenta</DialogTitle>
-                <DialogDescription>
-                  Esta acción es permanente. Para continuar, escribe <strong>ELIMINAR</strong>.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-2">
-                <Label className="text-xs">Confirmación</Label>
-                <Input
-                  value={deleteConfirmText}
-                  onChange={(e) => setDeleteConfirmText(e.target.value)}
-                  placeholder="ELIMINAR"
-                />
-              </div>
-              <Button
-                variant="destructive"
-                className="w-full"
-                disabled={deleteAccountMutation.isPending || deleteConfirmText.trim().toUpperCase() !== "ELIMINAR"}
-                onClick={() => deleteAccountMutation.mutate()}
-              >
-                {deleteAccountMutation.isPending ? "Eliminando..." : "Eliminar cuenta definitivamente"}
-              </Button>
-              <FormErrorAlert title="No se pudo eliminar la cuenta" message={deleteFormError} />
-            </DialogContent>
-          </Dialog>
-        </div>
-
         <button
           type="button"
           onClick={async () => {
@@ -537,7 +721,9 @@ export default function Perfil() {
           <LogOut className="w-4 h-4" /> Cerrar sesión
         </button>
 
-        <p className="text-center text-[10px] text-muted-foreground">AutoBot · Perfil y cuenta</p>
+        <p className="text-center text-[10px] text-muted-foreground">
+          AutoBot · Perfil y cuenta
+        </p>
       </div>
     </>
   );
