@@ -16,7 +16,6 @@ import {
   MessageCircle,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ScreenHeader } from "@/components/ScreenHeader";
 import { Avatar } from "@/components/Avatar";
 import { useAuth } from "@/context/AuthContext";
 import { accountApi, type BusinessProfileDto } from "@/services/account";
@@ -222,8 +221,6 @@ export default function Perfil() {
 
   return (
     <>
-      <ScreenHeader title="Mi perfil" variant="primary" />
-
       <div className="px-4 py-5 space-y-5">
         <div className="bg-card rounded-2xl p-5 shadow-card border border-border flex flex-col items-center text-center">
           <Avatar name={user?.name || "Usuario"} color="hsl(162 75% 30%)" size="lg" />

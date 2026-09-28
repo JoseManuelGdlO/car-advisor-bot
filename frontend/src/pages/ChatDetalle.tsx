@@ -233,12 +233,11 @@ export default function ChatDetalle() {
     <div className="flex flex-col h-full min-w-0 overflow-hidden">
       <input ref={fileInputRef} type="file" className="hidden" accept="image/*,.pdf,.doc,.docx" onChange={handleFileChange} />
 
-      {/* WhatsApp-style header */}
-      <header className="bg-gradient-hero text-primary-foreground px-3 pt-4 pb-3 flex items-center gap-2 shadow-soft z-10">
+      <header className="bg-background/95 backdrop-blur border-b border-border text-foreground px-1.5 py-1.5 flex items-center gap-1 z-10">
         <button
           type="button"
           onClick={() => navigate(-1)}
-          className="min-h-[44px] min-w-[44px] shrink-0 grid place-items-center rounded-full hover:bg-white/15 touch-manipulation"
+          className="min-h-11 min-w-11 shrink-0 grid place-items-center rounded-full hover:bg-muted touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label="Volver"
         >
           <ArrowLeft className="w-5 h-5" />
@@ -246,22 +245,25 @@ export default function ChatDetalle() {
         <button
           type="button"
           onClick={() => navigate(`/cliente/${client.id}`)}
-          className="relative shrink-0 rounded-full hover:bg-white/15 touch-manipulation"
+          className="relative shrink-0 rounded-full hover:bg-muted touch-manipulation"
           aria-label="Ver ficha del cliente"
         >
           <Avatar name={client.name} color={client.avatarColor} size="sm" />
-          <ChannelIcon channel={normalizeConversationChannel(conv.channel)} size={9} className="absolute -bottom-0.5 -right-0.5 ring-2 ring-primary-dark" />
+          <ChannelIcon channel={normalizeConversationChannel(conv.channel)} size={9} className="absolute -bottom-0.5 -right-0.5 ring-2 ring-background" />
         </button>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-sm truncate">{client.name}</p>
-          {client.interestedIn?.trim() ? (
-            <p className="text-[11px] text-primary-foreground/80 truncate">Interesado en {client.interestedIn.trim()}</p>
-          ) : null}
+        <div className="flex flex-1 min-w-0 items-stretch gap-2">
+          <span aria-hidden className="w-[3px] self-stretch rounded-full bg-primary shrink-0 my-1" />
+          <div className="min-w-0">
+            <p className="font-semibold text-sm truncate">{client.name}</p>
+            {client.interestedIn?.trim() ? (
+              <p className="text-[11px] text-muted-foreground truncate">Interesado en {client.interestedIn.trim()}</p>
+            ) : null}
+          </div>
         </div>
         <button
           type="button"
           onClick={handleCall}
-          className="min-h-[44px] min-w-[44px] shrink-0 grid place-items-center rounded-full hover:bg-white/15 touch-manipulation"
+          className="min-h-11 min-w-11 shrink-0 grid place-items-center rounded-full hover:bg-muted touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label="Llamar al cliente"
         >
           <Phone className="w-4 h-4" />
@@ -270,7 +272,7 @@ export default function ChatDetalle() {
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="min-h-[44px] min-w-[44px] shrink-0 grid place-items-center rounded-full hover:bg-white/15 touch-manipulation outline-none"
+              className="min-h-11 min-w-11 shrink-0 grid place-items-center rounded-full hover:bg-muted touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Más opciones"
             >
               <MoreVertical className="w-4 h-4" />
