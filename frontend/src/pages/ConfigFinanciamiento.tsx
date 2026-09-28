@@ -15,7 +15,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { useAuth } from "@/context/AuthContext";
 import { FinancingPlanDto, FinancingRequirementDto, crmApi } from "@/services/crm";
@@ -52,6 +51,7 @@ export default function ConfigFinanciamiento() {
   const [form, setForm] = useState<PlanFormState>(emptyForm);
   const [planOpen, setPlanOpen] = useState(false);
   const [requirementsOpen, setRequirementsOpen] = useState(false);
+  const [addChooserOpen, setAddChooserOpen] = useState(false);
   const [requirementTitle, setRequirementTitle] = useState("");
   const [requirementDescription, setRequirementDescription] = useState("");
   const [editRequirementOpen, setEditRequirementOpen] = useState(false);
@@ -273,10 +273,10 @@ export default function ConfigFinanciamiento() {
   };
 
   return (
-    <>
+    <div className="relative h-full overflow-hidden">
+      <div className="h-full overflow-y-auto scrollbar-hide">
       <ScreenHeader title="Financiamiento" subtitle={`${plans.length} planes`} back />
 
-      <div className="grid grid-cols-2 gap-2 px-4 pt-3 pb-1">
         <Dialog
               open={requirementsOpen}
               onOpenChange={(open) => {
@@ -288,17 +288,6 @@ export default function ConfigFinanciamiento() {
                 }
               }}
             >
-              <DialogTrigger asChild>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="w-full rounded-full h-9 px-2.5 text-xs gap-1 border-primary/50 bg-primary/10 text-primary-dark font-semibold hover:bg-primary/15 hover:text-primary-dark"
-                  aria-label="Agregar un requisito al catálogo"
-                >
-                  <ListChecks className="w-4 h-4 shrink-0" />
-                  Nuevo requisito
-                </Button>
-              </DialogTrigger>
               <DialogContent className="max-w-md overflow-x-hidden max-h-[85vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Catálogo de requisitos</DialogTitle>
@@ -392,17 +381,6 @@ export default function ConfigFinanciamiento() {
                 }
               }}
             >
-              <DialogTrigger asChild>
-                <Button
-                  size="sm"
-                  className="w-full rounded-full h-9 px-2.5 text-xs gap-1 shadow-green"
-                  onClick={openNewPlan}
-                  aria-label="Crear un plan de financiamiento"
-                >
-                  <Plus className="w-4 h-4 shrink-0" />
-                  Nuevo plan
-                </Button>
-              </DialogTrigger>
               <DialogContent className="max-w-md overflow-x-hidden">
                 <DialogHeader>
                   <DialogTitle>{planDialogTitle}</DialogTitle>
@@ -537,9 +515,8 @@ export default function ConfigFinanciamiento() {
                 </form>
               </DialogContent>
             </Dialog>
-      </div>
 
-      <ul className="px-4 pb-4 pt-2 space-y-3">
+      <ul className="px-4 pb-24 pt-3 space-y-3">
         {plans.map((plan) => (
           <li
             id={`plan-${plan.id}`}
@@ -695,6 +672,59 @@ export default function ConfigFinanciamiento() {
           </div>
         </DialogContent>
       </Dialog>
-    </>
+      </div>
+
+      <button
+        type="button"
+        aria-label="Agregar"
+        onClick={() => setAddChooserOpen(true)}
+        className="absolute bottom-4 right-4 z-20 grid h-14 w-14 place-items-center rounded-full bg-primary text-primary-foreground shadow-green transition-transform active:scale-95"
+      >
+        <Plus className="h-6 w-6" />
+      </button>
+
+      <Dialog open={addChooserOpen} onOpenChange={setAddChooserOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Agregar</DialogTitle>
+            <DialogDescription>Elige si quieres un requisito o un plan nuevo.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <button
+              type="button"
+              className="flex w-full items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-left hover:bg-muted/40"
+              onClick={() => {
+                setAddChooserOpen(false);
+                window.setTimeout(() => setRequirementsOpen(true), 0);
+              }}
+            >
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary-dark">
+                <ListChecks className="h-5 w-5" />
+              </span>
+              <span>
+                <span className="block text-sm font-semibold">Requisito</span>
+                <span className="block text-xs text-muted-foreground">Documento o condición del catálogo</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              className="flex w-full items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-left hover:bg-muted/40"
+              onClick={() => {
+                setAddChooserOpen(false);
+                window.setTimeout(() => openNewPlan(), 0);
+              }}
+            >
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary-dark">
+                <Landmark className="h-5 w-5" />
+              </span>
+              <span>
+                <span className="block text-sm font-semibold">Plan nuevo</span>
+                <span className="block text-xs text-muted-foreground">Tasa, plazo y financiera</span>
+              </span>
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
