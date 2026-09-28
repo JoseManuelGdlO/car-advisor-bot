@@ -36,7 +36,11 @@ const getLatestMessage = async (conversationId) =>
     ],
   });
 
-const processConversationReminder = async ({ conversation, reminderMessage }) => {
+export const processConversationReminder = async ({
+  conversation,
+  reminderMessage,
+  sendTextMessage = sendConversationTextMessage,
+}) => {
   const channel = String(conversation.channel || "").toLowerCase();
   if (!SUPPORTED_CHANNELS.includes(channel)) return;
 
@@ -62,12 +66,29 @@ const processConversationReminder = async ({ conversation, reminderMessage }) =>
   });
   if (!outboundText) return;
 
-  await sendConversationTextMessage({
-    ownerUserId: conversation.ownerUserId,
-    conversationId: conversation.id,
-    text: outboundText,
-    senderRole: "assistant",
-  });
+  try {
+    await sendTextMessage({
+      ownerUserId: conversation.ownerUserId,
+      conversationId: conversation.id,
+      text: outboundText,
+      senderRole: "assistant",
+    });
+  } catch (error) {
+    const details = `${error?.message || ""} ${error?.meta?.message || ""}`.toLowerCase();
+    if (
+      details.includes("24 hours") ||
+      details.includes("24 horas") ||
+      details.includes("re-engagement") ||
+      details.includes("reengagement")
+    ) {
+      console.warn(
+        `[bot-reminder] Graph 24h/re-engagement conversation=${conversation.id} owner=${conversation.ownerUserId}`,
+        error?.message || error
+      );
+    } else {
+      throw error;
+    }
+  }
 
   await conversation.update({ lastReminderAt: new Date() });
 };

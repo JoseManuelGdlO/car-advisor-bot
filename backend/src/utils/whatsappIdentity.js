@@ -57,6 +57,18 @@ export const blacklistPhoneLookupValues = (normalizedPhone) => {
   return [...new Set(values)];
 };
 
+/**
+ * Destinatario Graph: dígitos E.164 (10–15), sin `+` ni `@s.whatsapp.net`.
+ * México va como `52` + 10 dígitos. El `521` legado del webhook se convierte a `52`.
+ */
+export const formatWhatsappGraphTo = (value) => {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (digits.length < 10 || digits.length > 15) return "";
+  if (digits.length === 10) return `52${digits}`;
+  if (digits.length === 13 && digits.startsWith("521")) return `52${digits.slice(3)}`;
+  return digits;
+};
+
 export const resolveDisplayPhone = ({ fromPhone, channelId, customerTelefono } = {}) => {
   const fromPhoneNorm = normalizeDisplayPhone(fromPhone);
   if (fromPhoneNorm) return fromPhoneNorm;

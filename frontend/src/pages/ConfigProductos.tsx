@@ -11,12 +11,12 @@ import {
   Landmark,
   Pencil,
   Plus,
-  Search,
   Tag,
   Trash2,
   X,
 } from "lucide-react";
 import { ScreenHeader } from "@/components/ScreenHeader";
+import { ListToolbar } from "@/components/ListToolbar";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
 import { CarStatus } from "@/data/mockData";
@@ -535,7 +535,9 @@ export default function ConfigProductos() {
 
   return (
     <>
+      <div className="sticky top-0 z-20 bg-background/95 backdrop-blur">
       <ScreenHeader
+        embedded
         title="Productos"
         subtitle={`${cars.length} autos en catálogo`}
         back
@@ -904,52 +906,14 @@ export default function ConfigProductos() {
           </Dialog>
         }
       />
-
-      <div className="px-4 py-3 space-y-3 sticky top-[65px] bg-background/95 backdrop-blur z-10 border-b border-border">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar marca o modelo…"
-            className="w-full h-11 pl-10 pr-10 rounded-xl bg-muted text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          />
-          {q ? (
-            <button
-              type="button"
-              onClick={() => setQ("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-muted-foreground hover:text-foreground hover:bg-background/80"
-              aria-label="Limpiar búsqueda"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          ) : null}
-        </div>
-        <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4 pb-0.5">
-          {filters.map((f) => (
-            <button
-              key={f.key}
-              type="button"
-              onClick={() => setFilter(f.key)}
-              className={cn(
-                "inline-flex items-center gap-1.5 px-3.5 h-8 rounded-full text-xs font-semibold whitespace-nowrap transition-colors border",
-                filter === f.key
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-card text-muted-foreground border-border hover:text-foreground"
-              )}
-            >
-              {f.label}
-              <span
-                className={cn(
-                  "tabular-nums rounded-full px-1.5 py-px text-[10px] font-bold",
-                  filter === f.key ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-muted-foreground"
-                )}
-              >
-                {filterCounts[f.key]}
-              </span>
-            </button>
-          ))}
-        </div>
+      <ListToolbar
+        query={q}
+        onQueryChange={setQ}
+        placeholder="Buscar marca o modelo…"
+        filter={filter}
+        onFilterChange={(key) => setFilter(key as ProductFilter)}
+        filters={filters.map((item) => ({ ...item, count: filterCounts[item.key] }))}
+      />
       </div>
 
       {isLoading ? (

@@ -1,3 +1,6 @@
+// DEPRECATED: WhatsApp Connect. Este módulo ya no se monta en apiRoutes.js.
+// No borrar hasta retirar por completo el proveedor no oficial.
+
 import express, { Router } from "express";
 import rateLimit from "express-rate-limit";
 import {

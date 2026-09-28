@@ -1,5 +1,5 @@
 import { Op } from "sequelize";
-import { ChannelConversationContext, ClientLead, Conversation, Message, Vehicle } from "../models/index.js";
+import { ChannelConversationContext, ChannelIntegration, ClientLead, Conversation, Message, Vehicle } from "../models/index.js";
 import { ApiError } from "../utils/errors.js";
 import { isWithinBotSchedule } from "../utils/botSettings.js";
 import {
@@ -12,9 +12,11 @@ import { channelAllowsAutoReply, normalizeInboundChannel } from "../utils/integr
 import { getOrCreateBotSettings } from "./botSettingsService.js";
 import {
   resolveInstagramMetaIntegrationById,
+  resolveMetaWhatsappIntegrationById,
   resolveWhatsappConnectIntegrationById,
 } from "./integrationResolverService.js";
 import { sendInstagramImageMessage, sendInstagramTextMessage } from "./metaInstagramClient.js";
+import { sendWhatsappImage, sendWhatsappText } from "./metaWhatsappClient.js";
 import { setBotSessionDisabled } from "./botEngineClient.js";
 import { sendPushToOwner } from "./pushService.js";
 import { runWithWcToken } from "./wcAuthCache.js";
@@ -395,19 +397,33 @@ export const sendConversationTextMessage = async ({
 
   if (channel === "whatsapp") {
     if (!context?.channelIntegrationId) throw new ApiError(400, "Conversation is missing WhatsApp integration context");
-    const { credentials } = await resolveWhatsappConnectIntegrationById({
-      ownerUserId,
-      integrationId: context.channelIntegrationId,
-    });
-    await runWithWcToken(() =>
-      wcClient.sendMessageWithRetry({
-        deviceId: context.deviceId || credentials.deviceId,
+    const integration = await ChannelIntegration.findByPk(context.channelIntegrationId);
+    if (integration?.provider === "meta") {
+      const { credentials } = await resolveMetaWhatsappIntegrationById({
+        ownerUserId,
+        integrationId: integration.id,
+      });
+      await sendWhatsappText({
+        phoneNumberId: credentials.phoneNumberId,
+        accessToken: credentials.accessToken,
         to: recipient,
-        type: "text",
         text: normalizedText,
-        tenantId: context.tenantId || credentials.tenantId,
-      })
-    );
+      });
+    } else {
+      const { credentials } = await resolveWhatsappConnectIntegrationById({
+        ownerUserId,
+        integrationId: context.channelIntegrationId,
+      });
+      await runWithWcToken(() =>
+        wcClient.sendMessageWithRetry({
+          deviceId: context.deviceId || credentials.deviceId,
+          to: recipient,
+          type: "text",
+          text: normalizedText,
+          tenantId: context.tenantId || credentials.tenantId,
+        })
+      );
+    }
   } else if (channel === "instagram") {
     if (!context?.channelIntegrationId) throw new ApiError(400, "Conversation is missing Instagram integration context");
     const { credentials } = await resolveInstagramMetaIntegrationById({
@@ -451,20 +467,35 @@ export const sendConversationAttachmentMessage = async ({
 
   if (channel === "whatsapp") {
     if (!context?.channelIntegrationId) throw new ApiError(400, "Conversation is missing WhatsApp integration context");
-    const { credentials } = await resolveWhatsappConnectIntegrationById({
-      ownerUserId,
-      integrationId: context.channelIntegrationId,
-    });
-    await runWithWcToken(() =>
-      wcClient.sendMessageWithRetry({
-        deviceId: context.deviceId || credentials.deviceId,
+    const integration = await ChannelIntegration.findByPk(context.channelIntegrationId);
+    if (integration?.provider === "meta") {
+      const { credentials } = await resolveMetaWhatsappIntegrationById({
+        ownerUserId,
+        integrationId: integration.id,
+      });
+      await sendWhatsappImage({
+        phoneNumberId: credentials.phoneNumberId,
+        accessToken: credentials.accessToken,
         to: recipient,
-        type: "image",
         imageUrl: url,
         ...(normalizedCaption ? { caption: normalizedCaption } : {}),
-        tenantId: context.tenantId || credentials.tenantId,
-      })
-    );
+      });
+    } else {
+      const { credentials } = await resolveWhatsappConnectIntegrationById({
+        ownerUserId,
+        integrationId: context.channelIntegrationId,
+      });
+      await runWithWcToken(() =>
+        wcClient.sendMessageWithRetry({
+          deviceId: context.deviceId || credentials.deviceId,
+          to: recipient,
+          type: "image",
+          imageUrl: url,
+          ...(normalizedCaption ? { caption: normalizedCaption } : {}),
+          tenantId: context.tenantId || credentials.tenantId,
+        })
+      );
+    }
   } else if (channel === "instagram") {
     if (!context?.channelIntegrationId) throw new ApiError(400, "Conversation is missing Instagram integration context");
     const { credentials } = await resolveInstagramMetaIntegrationById({

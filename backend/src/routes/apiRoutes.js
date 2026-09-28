@@ -9,9 +9,12 @@ import { financingRoutes } from "./financingRoutes.js";
 import { accountRoutes } from "./accountRoutes.js";
 import { pushRoutes } from "./pushRoutes.js";
 import { notificationRoutes } from "./notificationRoutes.js";
-import { whatsappConnectRoutes } from "./whatsappConnectRoutes.js";
-import { whatsappConnectWebhookRoutes } from "./whatsappConnectWebhookRoutes.js";
+// DEPRECATED: WhatsApp Connect — no montar. Borrar en un PR posterior.
+// import { whatsappConnectRoutes } from "./whatsappConnectRoutes.js";
+// import { whatsappConnectWebhookRoutes } from "./whatsappConnectWebhookRoutes.js";
+
 import { instagramWebhookRoutes } from "./instagramWebhookRoutes.js";
+import { whatsappCloudWebhookRoutes } from "./whatsappCloudWebhookRoutes.js";
 
 export const apiRoutes = Router();
 
@@ -24,7 +27,7 @@ apiRoutes.use("/", financingRoutes);
 apiRoutes.use("/", accountRoutes);
 apiRoutes.use("/", pushRoutes);
 apiRoutes.use("/", notificationRoutes);
-apiRoutes.use("/", whatsappConnectRoutes);
-// Webhooks públicos del proveedor (sin JWT de usuario).
-apiRoutes.use("/", whatsappConnectWebhookRoutes);
+// apiRoutes.use("/", whatsappConnectRoutes);
+// apiRoutes.use("/", whatsappConnectWebhookRoutes);
 apiRoutes.use("/", instagramWebhookRoutes);
+apiRoutes.use("/", whatsappCloudWebhookRoutes);

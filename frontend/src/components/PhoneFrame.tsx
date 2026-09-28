@@ -2,6 +2,7 @@ import { ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { Capacitor } from "@capacitor/core";
 import { Signal, Wifi, BatteryFull } from "lucide-react";
+import { isLegalPublicPath } from "@/lib/legal";
 import { BottomNav } from "./BottomNav";
 
 interface PhoneFrameProps {
@@ -12,14 +13,19 @@ const HIDE_NAV_PREFIXES = ["/login", "/forgot-password", "/reset-password"];
 
 export const PhoneFrame = ({ children }: PhoneFrameProps) => {
   const { pathname } = useLocation();
-  const showNav = !HIDE_NAV_PREFIXES.some((p) => pathname.startsWith(p)) && !pathname.startsWith("/chat/");
+  const showNav =
+    !HIDE_NAV_PREFIXES.some((p) => pathname.startsWith(p)) &&
+    !pathname.startsWith("/chat/") &&
+    !isLegalPublicPath(pathname);
   const isNativeApp = Capacitor.isNativePlatform();
 
   if (isNativeApp) {
     return (
-      <div className="min-h-screen w-full bg-background">
-        <div className={`h-screen w-full flex flex-col pt-safe ${showNav ? "pb-[calc(72px+var(--safe-area-bottom))]" : "pb-safe"}`}>
-          <div className="flex-1 overflow-y-auto scrollbar-hide">{children}</div>
+      <div className="relative min-h-screen w-full bg-background">
+        <div className="h-screen w-full flex flex-col pt-safe">
+          <div className="flex-1 overflow-y-auto scrollbar-hide">
+            <div className={showNav ? "pb-[calc(5.5rem+var(--safe-area-bottom))]" : "pb-safe"}>{children}</div>
+          </div>
         </div>
         {showNav && <BottomNav />}
       </div>
@@ -57,8 +63,10 @@ export const PhoneFrame = ({ children }: PhoneFrameProps) => {
         </div>
 
         {/* Screen content */}
-        <div className={`h-full w-full flex flex-col pt-safe lg:pt-7 ${showNav ? "pb-[calc(72px+var(--safe-area-bottom))]" : "pb-safe"}`}>
-          <div className="flex-1 overflow-y-auto scrollbar-hide">{children}</div>
+        <div className="h-full w-full flex flex-col pt-safe lg:pt-7">
+          <div className="flex-1 overflow-y-auto scrollbar-hide">
+            <div className={showNav ? "pb-[calc(5.5rem+var(--safe-area-bottom))]" : "pb-safe"}>{children}</div>
+          </div>
         </div>
 
         {/* Bottom nav */}

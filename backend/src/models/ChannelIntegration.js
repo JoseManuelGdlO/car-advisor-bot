@@ -42,5 +42,23 @@ export default function ChannelIntegrationModel(sequelize) {
       type: DataTypes.TEXT,
       field: "last_error",
     },
+    wabaId: {
+      type: DataTypes.STRING(40),
+      field: "waba_id",
+    },
+    phoneNumberId: {
+      type: DataTypes.STRING(40),
+      field: "phone_number_id",
+    },
+    displayPhoneNumber: {
+      type: DataTypes.STRING(40),
+      field: "display_phone_number",
+    },
+    coexistenceEnabled: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      field: "coexistence_enabled",
+    },
   });
 }

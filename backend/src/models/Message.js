@@ -37,5 +37,13 @@ export default function MessageModel(sequelize) {
     platform: {
       type: DataTypes.STRING(20),
     },
+    createdAt: {
+      type: DataTypes.DATE(3),
+      allowNull: false,
+    },
+    updatedAt: {
+      type: DataTypes.DATE(3),
+      allowNull: false,
+    },
   });
 }

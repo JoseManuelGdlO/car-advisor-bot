@@ -22,13 +22,18 @@ import ConfigBot from "./pages/ConfigBot.tsx";
 import ConfigComportamientoBot from "./pages/ConfigComportamientoBot.tsx";
 import Vehiculos from "./pages/Vehiculos.tsx";
 import Perfil from "./pages/Perfil.tsx";
+import Integraciones from "./pages/Integraciones.tsx";
 import ConfigNotificaciones from "./pages/ConfigNotificaciones.tsx";
+import Privacidad from "./pages/Privacidad.tsx";
+import Terminos from "./pages/Terminos.tsx";
+import EliminarDatos from "./pages/EliminarDatos.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import { AuthProvider } from "@/context/AuthContext";
 import { RequireAuth } from "@/components/RequireAuth";
 import { GuestOnly } from "@/components/GuestOnly";
 import { PushBridge } from "@/mobile/PushBridge";
 import { DelayedQueryLoadingOverlay } from "@/components/DelayedQueryLoadingOverlay";
+import { AccountSectionLayout, ChatsSectionLayout } from "@/components/SectionTabsLayout";
 
 const queryClient = new QueryClient();
 
@@ -47,12 +52,20 @@ const App = () => (
               <Route path="/login" element={<GuestOnly><Login /></GuestOnly>} />
               <Route path="/forgot-password" element={<GuestOnly><ForgotPassword /></GuestOnly>} />
               <Route path="/reset-password" element={<GuestOnly><ResetPassword /></GuestOnly>} />
+              <Route path="/privacidad" element={<Privacidad />} />
+              <Route path="/terminos" element={<Terminos />} />
+              <Route path="/eliminar-datos" element={<EliminarDatos />} />
               <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
-              <Route path="/clientes" element={<RequireAuth><Clientes /></RequireAuth>} />
+              <Route element={<RequireAuth><ChatsSectionLayout /></RequireAuth>}>
+                <Route path="/chats" element={<Conversaciones />} />
+                <Route path="/clientes" element={<Clientes />} />
+              </Route>
               <Route path="/cliente/:id" element={<RequireAuth><ClienteDetalle /></RequireAuth>} />
-              <Route path="/chats" element={<RequireAuth><Conversaciones /></RequireAuth>} />
               <Route path="/chat/:id" element={<RequireAuth><ChatDetalle /></RequireAuth>} />
-              <Route path="/config" element={<RequireAuth><Configuracion /></RequireAuth>} />
+              <Route element={<RequireAuth><AccountSectionLayout /></RequireAuth>}>
+                <Route path="/perfil" element={<Perfil />} />
+                <Route path="/config" element={<Configuracion />} />
+              </Route>
               <Route path="/config/faqs" element={<RequireAuth><ConfigFaqs /></RequireAuth>} />
               <Route path="/config/bot" element={<RequireAuth><ConfigBot /></RequireAuth>} />
               <Route path="/config/comportamiento-bot" element={<RequireAuth><ConfigComportamientoBot /></RequireAuth>} />
@@ -63,7 +76,7 @@ const App = () => (
               <Route path="/config/productos" element={<RequireAuth><Navigate to="/vehiculos/productos" replace /></RequireAuth>} />
               <Route path="/config/financiamiento" element={<RequireAuth><Navigate to="/vehiculos/financiamiento" replace /></RequireAuth>} />
               <Route path="/config/promociones" element={<RequireAuth><Navigate to="/vehiculos/promociones" replace /></RequireAuth>} />
-              <Route path="/perfil" element={<RequireAuth><Perfil /></RequireAuth>} />
+              <Route path="/perfil/integraciones" element={<RequireAuth><Integraciones /></RequireAuth>} />
               <Route path="/perfil/notificaciones" element={<RequireAuth><ConfigNotificaciones /></RequireAuth>} />
               <Route path="*" element={<NotFound />} />
             </Routes>

@@ -211,7 +211,7 @@ export default function Dashboard() {
           <button
             type="button"
             onClick={() => setNotifOpen(true)}
-            className="w-9 h-9 grid place-items-center rounded-full bg-white/15 hover:bg-white/25 transition-colors relative"
+            className="min-h-11 min-w-11 grid place-items-center rounded-full hover:bg-muted transition-colors relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Notificaciones"
             aria-expanded={notifOpen}
           >

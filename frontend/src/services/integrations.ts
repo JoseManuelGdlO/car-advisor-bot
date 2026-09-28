@@ -12,6 +12,27 @@ export type IntegrationDto = {
   lastHealthcheckAt: string | null;
   lastError: string | null;
   hasActiveCredential: boolean;
+  wabaId?: string | null;
+  phoneNumberId?: string | null;
+  displayPhoneNumber?: string | null;
+  coexistenceEnabled?: boolean;
+};
+
+export type MetaSignupConfigDto = {
+  configured: boolean;
+  appId: string;
+  configId: string;
+  graphVersion: string;
+  featureType: string;
+  sessionInfoVersion: string;
+};
+
+export type WhatsAppMetaStatusDto = {
+  provider: "meta";
+  configured: boolean;
+  wabaId: string | null;
+  phoneNumberId: string | null;
+  displayPhoneNumber: string | null;
 };
 
 export type WhatsAppQrLinkDto = {
@@ -36,12 +57,29 @@ export const integrationsApi = {
   postCredentials: (token: string, id: string, payload: Record<string, unknown>) =>
     apiRequest<{ ok: boolean; hasActiveCredential: boolean }>(`/integrations/${id}/credentials`, "POST", { payload }, token),
   test: (token: string, id: string) => apiRequest<{ ok: boolean; message: string }>(`/integrations/${id}/test`, "POST", {}, token),
-  createWhatsAppQrLink: (token: string, integrationId: string) =>
-    apiRequest<WhatsAppQrLinkDto>("/internal/whatsapp/qr-link", "POST", { integrationId }, token),
-  // Consulta estado del device vinculado para mostrar ONLINE/OFFLINE en Perfil.
-  getWhatsAppDeviceStatus: (token: string, integrationId: string) =>
-    apiRequest<WhatsAppDeviceStatusDto>(`/internal/whatsapp/device-status?integrationId=${encodeURIComponent(integrationId)}`, "GET", undefined, token),
-  // Envío de prueba manual para validar credenciales/ruteo outbound.
-  sendWhatsAppTest: (token: string, body: { integrationId: string; to: string; text: string }) =>
+  // DEPRECATED WhatsApp Connect
+  // createWhatsAppQrLink: (token: string, integrationId: string) =>
+  //   apiRequest<WhatsAppQrLinkDto>("/internal/whatsapp/qr-link", "POST", { integrationId }, token),
+  // getWhatsAppDeviceStatus: (token: string, integrationId: string) =>
+  //   apiRequest<WhatsAppDeviceStatusDto>(`/internal/whatsapp/device-status?integrationId=${encodeURIComponent(integrationId)}`, "GET", undefined, token),
+  // sendWhatsAppTest: (token: string, body: { integrationId: string; to: string; text: string }) =>
+  //   apiRequest<{ ok: boolean }>("/internal/whatsapp/send-test", "POST", body, token),
+  getMetaSignupConfig: (token: string) =>
+    apiRequest<MetaSignupConfigDto>("/integrations/whatsapp/meta/config", "GET", undefined, token),
+  completeMetaSignup: (
+    token: string,
+    body: {
+      code: string;
+      wabaId?: string | null;
+      phoneNumberId?: string | null;
+      businessId?: string | null;
+      event?: string | null;
+    },
+  ) => apiRequest<IntegrationDto>("/integrations/whatsapp/meta/signup", "POST", body, token),
+  disconnectMetaWhatsapp: (token: string) =>
+    apiRequest<{ ok: boolean }>("/integrations/whatsapp/meta/disconnect", "POST", {}, token),
+  getWhatsAppMetaStatus: (token: string) =>
+    apiRequest<WhatsAppMetaStatusDto>("/internal/whatsapp/meta/status", "GET", undefined, token),
+  sendWhatsAppCloudTest: (token: string, body: { to: string; text: string }) =>
     apiRequest<{ ok: boolean }>("/internal/whatsapp/send-test", "POST", body, token),
 };
