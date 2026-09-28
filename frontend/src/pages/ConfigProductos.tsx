@@ -603,8 +603,25 @@ export default function ConfigProductos() {
         }}
       >
         <div className="h-full overflow-y-auto scrollbar-hide">
-          <ScreenHeader title="Productos" subtitle={`${cars.length} autos en catálogo`} back />
-          <DialogContent className="max-w-md p-0 gap-0 max-h-[92vh] flex flex-col overflow-hidden">
+          <div className="sticky top-0 z-20 bg-background/95 backdrop-blur">
+            <ScreenHeader
+              embedded
+              title="Productos"
+              subtitle={`${cars.length} autos en catálogo`}
+              back
+              action={
+                <DialogTrigger asChild>
+                  <Button
+                    size="sm"
+                    className="rounded-full h-9 px-3 shadow-green"
+                    onClick={resetVehicleForm}
+                  >
+                    <Plus className="w-4 h-4" /> Auto
+                  </Button>
+                </DialogTrigger>
+              }
+            />
+            <DialogContent className="max-w-md p-0 gap-0 max-h-[92vh] flex flex-col overflow-hidden">
               <DialogHeader className="px-5 pt-5 pb-4 border-b shrink-0 text-center sm:text-center">
                 <DialogTitle>{editingId ? "Editar auto" : "Nuevo auto"}</DialogTitle>
                 {isWizard ? (
@@ -1025,7 +1042,7 @@ export default function ConfigProductos() {
               </form>
             </DialogContent>
 
-      <div className="sticky top-[65px] z-10 border-b border-border bg-background/95 backdrop-blur">
+            <div className="border-b border-border">
         <div className="flex items-center gap-2 px-4 py-3">
           <Popover>
             <PopoverTrigger asChild>
@@ -1161,7 +1178,8 @@ export default function ConfigProductos() {
             </div>
           </div>
         ) : null}
-      </div>
+            </div>
+          </div>
 
       {isLoading ? (
         <div className="px-4 py-4 grid grid-cols-1 gap-4">
