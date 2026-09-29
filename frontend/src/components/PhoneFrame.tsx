@@ -23,8 +23,14 @@ export const PhoneFrame = ({ children }: PhoneFrameProps) => {
     return (
       <div className="relative min-h-screen w-full bg-background">
         <div className="h-screen w-full flex flex-col pt-safe">
-          <div className="flex-1 overflow-y-auto scrollbar-hide">
-            <div className={showNav ? "pb-[calc(5.5rem+var(--safe-area-bottom))]" : "pb-safe"}>{children}</div>
+          <div
+            className={
+              showNav
+                ? "flex-1 min-h-0 overflow-y-auto scrollbar-hide pb-[calc(5.5rem+var(--safe-area-bottom))]"
+                : "flex-1 min-h-0 overflow-y-auto scrollbar-hide pb-safe"
+            }
+          >
+            {children}
           </div>
         </div>
         {showNav && <BottomNav />}
@@ -64,8 +70,14 @@ export const PhoneFrame = ({ children }: PhoneFrameProps) => {
 
         {/* Screen content */}
         <div className="h-full w-full flex flex-col pt-safe lg:pt-7">
-          <div className="flex-1 overflow-y-auto scrollbar-hide">
-            <div className={showNav ? "pb-[calc(5.5rem+var(--safe-area-bottom))]" : "pb-safe"}>{children}</div>
+          <div
+            className={
+              showNav
+                ? "flex-1 min-h-0 overflow-y-auto scrollbar-hide pb-[calc(5.5rem+var(--safe-area-bottom))]"
+                : "flex-1 min-h-0 overflow-y-auto scrollbar-hide pb-safe"
+            }
+          >
+            {children}
           </div>
         </div>
 

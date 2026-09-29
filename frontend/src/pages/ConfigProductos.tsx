@@ -609,17 +609,6 @@ export default function ConfigProductos() {
               title="Productos"
               subtitle={`${cars.length} autos en catálogo`}
               back
-              action={
-                <DialogTrigger asChild>
-                  <Button
-                    size="sm"
-                    className="rounded-full h-9 px-3 shadow-green"
-                    onClick={resetVehicleForm}
-                  >
-                    <Plus className="w-4 h-4" /> Auto
-                  </Button>
-                </DialogTrigger>
-              }
             />
             <DialogContent className="max-w-md p-0 gap-0 max-h-[92vh] flex flex-col overflow-hidden">
               <DialogHeader className="px-5 pt-5 pb-4 border-b shrink-0 text-center sm:text-center">
@@ -1204,7 +1193,7 @@ export default function ConfigProductos() {
           <p className="text-xs text-muted-foreground mt-1 max-w-[240px] mx-auto">
             {q || activeFilterCount > 0
               ? "No hay resultados con ese filtro. Prueba otra búsqueda."
-              : "Agrega tu primer auto con el botón de arriba."}
+              : "Agrega tu primer auto con el botón +."}
           </p>
         </div>
       ) : (
