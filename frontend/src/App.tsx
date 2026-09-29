@@ -49,7 +49,8 @@ const App = () => (
           <PhoneFrame>
             <Routes>
               <Route path="/" element={<Index />} />
-              <Route path="/login" element={<GuestOnly><Login /></GuestOnly>} />
+              <Route path="/login" element={<GuestOnly><Login mode="login" /></GuestOnly>} />
+              <Route path="/registro" element={<GuestOnly><Login mode="register" /></GuestOnly>} />
               <Route path="/forgot-password" element={<GuestOnly><ForgotPassword /></GuestOnly>} />
               <Route path="/reset-password" element={<GuestOnly><ResetPassword /></GuestOnly>} />
               <Route path="/privacidad" element={<Privacidad />} />

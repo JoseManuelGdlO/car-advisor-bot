@@ -9,11 +9,13 @@ interface PhoneFrameProps {
   children: ReactNode;
 }
 
-const HIDE_NAV_PREFIXES = ["/login", "/forgot-password", "/reset-password"];
+const HIDE_NAV_PREFIXES = ["/login", "/registro", "/forgot-password", "/reset-password"];
 
 export const PhoneFrame = ({ children }: PhoneFrameProps) => {
   const { pathname } = useLocation();
+  const onWelcome = pathname === "/";
   const showNav =
+    !onWelcome &&
     !HIDE_NAV_PREFIXES.some((p) => pathname.startsWith(p)) &&
     !pathname.startsWith("/chat/") &&
     !isLegalPublicPath(pathname);
@@ -59,7 +61,9 @@ export const PhoneFrame = ({ children }: PhoneFrameProps) => {
         <div className="hidden lg:block absolute top-0 left-1/2 -translate-x-1/2 w-32 h-7 bg-foreground/90 rounded-b-2xl z-50" />
 
         {/* Status bar (desktop only) */}
-        <div className="hidden lg:flex absolute top-0 left-0 right-0 h-7 px-8 items-center justify-between text-[11px] font-semibold text-foreground z-40">
+        <div
+          className={`hidden lg:flex absolute top-0 left-0 right-0 h-7 px-8 items-center justify-between text-[11px] font-semibold z-40 ${onWelcome ? "text-white" : "text-foreground"}`}
+        >
           <span>9:41</span>
           <div className="flex items-center gap-1 ml-auto pl-32">
             <Signal className="w-3 h-3" />

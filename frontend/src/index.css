@@ -152,6 +152,86 @@
   }
 }
 
+.lava-field {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: hsl(158 62% 24%);
+}
+
+.lava-blob {
+  position: absolute;
+  display: block;
+  filter: blur(40px);
+  will-change: transform, border-radius;
+}
+
+.lava-blob-a {
+  width: 86%;
+  height: 52%;
+  left: -22%;
+  top: -12%;
+  background: hsl(142 74% 48%);
+  animation: lava-drift-a 17s ease-in-out infinite;
+}
+
+.lava-blob-b {
+  width: 74%;
+  height: 46%;
+  right: -24%;
+  top: 22%;
+  background: hsl(164 68% 34%);
+  animation: lava-drift-b 21s ease-in-out infinite;
+}
+
+.lava-blob-c {
+  width: 68%;
+  height: 42%;
+  left: 4%;
+  bottom: -12%;
+  background: hsl(128 62% 58%);
+  animation: lava-drift-c 19s ease-in-out infinite;
+}
+
+.lava-blob-d {
+  width: 46%;
+  height: 32%;
+  right: -4%;
+  bottom: 16%;
+  background: hsl(170 48% 18%);
+  animation: lava-drift-d 24s ease-in-out infinite;
+}
+
+@keyframes lava-drift-a {
+  0% { transform: translate3d(0, 0, 0) scale(1); border-radius: 48% 52% 60% 40% / 54% 42% 58% 46%; }
+  50% { transform: translate3d(22%, 26%, 0) scale(1.2); border-radius: 60% 40% 44% 56% / 38% 64% 36% 62%; }
+  100% { transform: translate3d(0, 0, 0) scale(1); border-radius: 48% 52% 60% 40% / 54% 42% 58% 46%; }
+}
+
+@keyframes lava-drift-b {
+  0% { transform: translate3d(0, 0, 0) scale(1.05); border-radius: 58% 42% 46% 54% / 44% 60% 40% 56%; }
+  50% { transform: translate3d(-18%, 16%, 0) scale(0.92); border-radius: 40% 60% 62% 38% / 58% 36% 64% 42%; }
+  100% { transform: translate3d(0, 0, 0) scale(1.05); border-radius: 58% 42% 46% 54% / 44% 60% 40% 56%; }
+}
+
+@keyframes lava-drift-c {
+  0% { transform: translate3d(0, 8%, 0) scale(1); border-radius: 52% 48% 38% 62% / 46% 58% 42% 54%; }
+  50% { transform: translate3d(14%, -22%, 0) scale(1.16); border-radius: 42% 58% 64% 36% / 60% 40% 60% 40%; }
+  100% { transform: translate3d(0, 8%, 0) scale(1); border-radius: 52% 48% 38% 62% / 46% 58% 42% 54%; }
+}
+
+@keyframes lava-drift-d {
+  0% { transform: translate3d(0, 0, 0) scale(1); border-radius: 62% 38% 48% 52% / 40% 56% 44% 60%; }
+  50% { transform: translate3d(-16%, -20%, 0) scale(1.22); border-radius: 38% 62% 40% 60% / 56% 42% 58% 44%; }
+  100% { transform: translate3d(0, 0, 0) scale(1); border-radius: 62% 38% 48% 52% / 40% 56% 44% 60%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lava-blob {
+    animation: none;
+  }
+}
+
 .bg-chat-pattern {
     background-color: hsl(var(--chat-bg));
     background-image:
