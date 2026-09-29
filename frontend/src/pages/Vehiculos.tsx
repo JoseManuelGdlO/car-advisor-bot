@@ -13,26 +13,35 @@ const sections = [
   {
     to: "/vehiculos/productos",
     icon: Car,
+    kicker: "Catálogo",
     title: "Productos (autos)",
     desc: "Catálogo, precios y especificaciones",
-    color: "bg-primary/10 text-primary-dark",
-    countLabel: (n: number) => `${n} autos en catálogo`,
+    metric: "autos en catálogo",
+    shell: "bg-accent",
+    chip: "bg-primary/10 text-primary-dark",
+    accent: "text-primary-dark",
   },
   {
     to: "/vehiculos/financiamiento",
     icon: Landmark,
+    kicker: "Planes",
     title: "Financiamiento",
     desc: "Planes, tasas y requisitos",
-    color: "bg-success/10 text-success",
-    countLabel: (n: number) => `${n} planes`,
+    metric: "planes",
+    shell: "bg-primary/15",
+    chip: "bg-primary/10 text-primary-dark",
+    accent: "text-primary-dark",
   },
   {
     to: "/vehiculos/promociones",
     icon: Tag,
+    kicker: "Ofertas",
     title: "Promociones",
     desc: "Ofertas y descuentos activos",
-    color: "bg-warning/10 text-warning",
-    countLabel: (n: number) => `${n} promos activas`,
+    metric: "promos activas",
+    shell: "bg-warning/15",
+    chip: "bg-warning/15 text-warning",
+    accent: "text-warning",
   },
 ];
 
@@ -58,32 +67,38 @@ export default function Vehiculos() {
   const counts = [cars.length, financingPlans.length, activePromos];
 
   return (
-    <>
+    <div className="h-full min-h-0 flex flex-col">
       <ScreenHeader title="Vehículos" subtitle="Catálogo, financiamiento y promociones" variant="primary" />
 
-      <div className="px-4 py-5 space-y-5">
-        <div className="space-y-3">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground px-1">Ventas y catálogo</h2>
-          {sections.map((s, i) => (
-            <button
-              key={s.to}
-              type="button"
-              onClick={() => navigate(s.to)}
-              className="w-full bg-card rounded-2xl p-4 shadow-card border border-border flex items-center gap-3 text-left hover:bg-muted/40 transition-colors"
-            >
-              <div className={`w-12 h-12 rounded-2xl grid place-items-center ${s.color}`}>
-                <s.icon className="w-6 h-6" />
+      <div className="flex-1 min-h-0 grid grid-rows-3 gap-3 px-4 py-4">
+        {sections.map((s, i) => (
+          <button
+            key={s.to}
+            type="button"
+            onClick={() => navigate(s.to)}
+            className={`h-full min-h-0 w-full rounded-2xl ${s.shell} p-3 text-left flex flex-col gap-3 active:scale-[0.99] transition-transform`}
+          >
+            <div className="flex items-center gap-2 px-0.5">
+              <div className={`w-9 h-9 rounded-xl grid place-items-center ${s.chip}`}>
+                <s.icon className="w-5 h-5" />
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm">{s.title}</p>
-                <p className="text-xs text-muted-foreground">{s.desc}</p>
-                <p className="text-[11px] text-primary-dark font-semibold mt-0.5">{s.countLabel(counts[i])}</p>
-              </div>
-              <ChevronRight className="w-5 h-5 text-muted-foreground shrink-0" />
-            </button>
-          ))}
-        </div>
+              <span className={`text-sm font-semibold ${s.accent}`}>{s.kicker}</span>
+              <ChevronRight className={`w-4 h-4 ml-auto shrink-0 ${s.accent} opacity-70`} />
+            </div>
+
+            <div className="flex-1 min-h-0 bg-card rounded-2xl px-4 py-3.5 shadow-card flex flex-col">
+              <p className="text-sm font-bold text-foreground leading-snug">{s.title}</p>
+              <div className="my-2.5 h-px bg-border" />
+              <p className="text-xs text-muted-foreground leading-snug">{s.desc}</p>
+            </div>
+
+            <div className="px-1 pb-0.5">
+              <p className="text-2xl font-bold text-foreground leading-none">{counts[i]}</p>
+              <p className={`text-xs mt-1 ${s.accent}`}>{s.metric}</p>
+            </div>
+          </button>
+        ))}
       </div>
-    </>
+    </div>
   );
 }

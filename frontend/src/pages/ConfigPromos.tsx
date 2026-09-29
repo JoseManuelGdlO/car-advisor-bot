@@ -9,7 +9,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { crmApi } from "@/services/crm";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FormErrorAlert } from "@/components/FormErrorAlert";
 import { normalizeApiError } from "@/lib/formErrors";
@@ -153,25 +153,14 @@ export default function ConfigPromos() {
   };
 
   return (
-    <>
+    <div className="relative h-full overflow-hidden">
+      <div className="h-full overflow-y-auto scrollbar-hide">
       <ScreenHeader
         title="Promociones"
         subtitle={`${source.filter((p) => p.active).length} activas`}
         back
-        action={
+      />
           <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <Button
-                size="sm"
-                className="rounded-full h-9 px-3 shadow-green"
-                onClick={() => {
-                  setEditingId(null);
-                  setForm({ title: "", description: "", validUntil: "", appliesTo: "", vehicleIds: [] });
-                }}
-              >
-                <Plus className="w-4 h-4" /> Promo
-              </Button>
-            </DialogTrigger>
             <DialogContent className="max-w-md">
               <DialogHeader>
                 <DialogTitle>{editingId ? "Editar promoción" : "Nueva promoción"}</DialogTitle>
@@ -232,10 +221,8 @@ export default function ConfigPromos() {
               </div>
             </DialogContent>
           </Dialog>
-        }
-      />
 
-      <ul className="px-4 py-4 space-y-3">
+      <ul className="px-4 py-4 pb-24 space-y-3">
         {source.map((p) => (
           <li
             id={`promotion-${p.id}`}
@@ -336,6 +323,20 @@ export default function ConfigPromos() {
           </div>
         </DialogContent>
       </Dialog>
-    </>
+      </div>
+
+      <button
+        type="button"
+        aria-label="Crear promoción"
+        onClick={() => {
+          setEditingId(null);
+          setForm({ title: "", description: "", validUntil: "", appliesTo: "", vehicleIds: [] });
+          setOpen(true);
+        }}
+        className="absolute bottom-4 right-4 z-20 grid h-14 w-14 place-items-center rounded-full bg-primary text-primary-foreground shadow-green transition-transform active:scale-95"
+      >
+        <Plus className="h-6 w-6" />
+      </button>
+    </div>
   );
 }
