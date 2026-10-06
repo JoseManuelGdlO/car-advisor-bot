@@ -56,11 +56,13 @@ morgan.token("safe-url", (req) => {
   const raw = req.originalUrl || req.url || "";
   try {
     const url = new URL(raw, "http://localhost");
-    if (url.searchParams.has("code")) url.searchParams.set("code", "[redacted]");
+    for (const key of ["code", "state"]) {
+      if (url.searchParams.has(key)) url.searchParams.set(key, "[redacted]");
+    }
     const search = url.searchParams.toString();
     return search ? `${url.pathname}?${search}` : url.pathname;
   } catch {
-    return String(raw).replace(/([?&]code=)[^&]*/g, "$1[redacted]");
+    return String(raw).replace(/([?&](?:code|state)=)[^&]*/g, "$1[redacted]");
   }
 });
 app.use(

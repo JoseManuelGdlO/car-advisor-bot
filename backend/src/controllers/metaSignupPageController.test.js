@@ -42,7 +42,7 @@ test.afterEach(() => {
   Object.assign(env.meta, originalMeta);
 });
 
-test("renderSignupPageHtml incluye el SDK y el configId, no el secret", () => {
+test("renderSignupPageHtml abre el diálogo de OAuth en la misma pestaña y no el SDK", () => {
   env.meta.appId = "1414695997519169";
   env.meta.configId = "1085055910915460";
   env.meta.appSecret = "super-secret-value";
@@ -51,11 +51,15 @@ test("renderSignupPageHtml incluye el SDK y el configId, no el secret", () => {
     ticket: "ticket-1",
     config: publicMetaSignupConfig(),
   });
-  assert.match(html, /https:\/\/connect\.facebook\.net\/es_LA\/sdk\.js/);
+  assert.match(html, /https:\/\/www\.facebook\.com\//);
+  assert.match(html, /\/dialog\/oauth/);
+  assert.match(html, /"graphVersion":"v21\.0"/);
+  assert.match(html, /display=page/);
+  assert.match(html, /override_default_response_type=true/);
   assert.match(html, /1085055910915460/);
-  assert.match(html, /Continuar con Facebook/);
   assert.match(html, /whatsapp_business_app_onboarding/);
-  assert.match(html, /autobot:\/\/whatsapp-signup\?result=/);
+  assert.equal(html.includes("FB.login"), false);
+  assert.equal(html.includes("connect.facebook.net"), false);
   assert.equal(html.includes("super-secret-value"), false);
 });
 
@@ -119,17 +123,24 @@ test("GET sin query usa la cookie y sirve la página de alta", async () => {
   assert.equal(String(res.body).includes("super-secret-value"), false);
 });
 
-test("la página no cancela el ticket cuando Facebook aún no devuelve el código", () => {
-  env.meta.appId = "app-id";
-  env.meta.configId = "cfg-id";
-  env.meta.appSecret = "app-secret";
-  const html = renderSignupPageHtml({
-    ticket: "ticket-1",
-    config: publicMetaSignupConfig(),
-  });
-  assert.equal(html.includes('if (!code || eventName.toUpperCase() === "CANCEL")'), false);
-  assert.match(html, /eventName\.toUpperCase\(\) === "CANCEL"/);
-  assert.match(html, /if \(!code\)/);
+test("GET con code y state completa aunque no haya cookie", async () => {
+  const res = mockRes();
+  let completed;
+  await getWhatsappSignupPage(
+    { query: { code: "AUTH_CODE", state: "ticket-from-state" }, headers: {} },
+    res,
+    throwNext,
+    {
+      completeMetaSignupTicket: async (input) => {
+        completed = input;
+        return { ok: true, status: "completed", message: "WhatsApp conectado." };
+      },
+    },
+  );
+  assert.deepEqual(completed, { ticket: "ticket-from-state", code: "AUTH_CODE" });
+  assert.match(String(res.body), /autobot:\/\/whatsapp-signup\?result=success/);
+  assert.equal(String(res.body).includes("AUTH_CODE"), false);
+  assert.equal(String(res.body).includes("ticket-from-state"), false);
 });
 
 test("GET con code de OAuth completa el ticket de la cookie y vuelve a la app", async () => {

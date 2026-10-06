@@ -59,7 +59,22 @@ export async function pollSignupTicket(options: {
     if (options.isAborted?.()) {
       return { status: "cancelled", message: CANCELLED_MESSAGE };
     }
-    const status = await options.fetchStatus();
+    let status: MetaSignupTicketStatusDto;
+    try {
+      status = await options.fetchStatus();
+    } catch {
+      if (options.isAborted?.()) {
+        return { status: "cancelled", message: CANCELLED_MESSAGE };
+      }
+      if (options.dismissed?.()) {
+        dismissedPolls += 1;
+        if (dismissedPolls >= maxDismissedPolls) {
+          return { status: "cancelled", message: CANCELLED_MESSAGE };
+        }
+      }
+      await options.sleep(intervalMs);
+      continue;
+    }
     if (status.status !== "pending") return status;
     if (options.dismissed?.()) {
       dismissedPolls += 1;

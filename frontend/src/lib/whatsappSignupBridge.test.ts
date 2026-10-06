@@ -32,6 +32,20 @@ describe("pollSignupTicket", () => {
     expect(index).toBe(3);
   });
 
+  it("reintenta si una consulta falla con Failed to fetch", async () => {
+    let calls = 0;
+    const status = await pollSignupTicket({
+      fetchStatus: async () => {
+        calls += 1;
+        if (calls === 1) throw new Error("Failed to fetch");
+        return { status: "completed", message: "WhatsApp conectado." };
+      },
+      sleep: async () => undefined,
+    });
+    expect(status.status).toBe("completed");
+    expect(calls).toBe(2);
+  });
+
   it("cancela si el navegador se cerró y el alta no termina", async () => {
     let calls = 0;
     const status = await pollSignupTicket({

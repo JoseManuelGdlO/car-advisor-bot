@@ -59,136 +59,36 @@ const SIGNUP_CLIENT_SCRIPT = `
   var config = JSON.parse(document.getElementById("signup-config").textContent);
   var statusEl = document.getElementById("status");
   var launchEl = document.getElementById("launch");
-  var returnEl = document.getElementById("return-link");
-  var session = null;
-  var finished = false;
+  var started = false;
 
-  window.addEventListener("message", function (event) {
-    if (event.origin !== "https://www.facebook.com" && event.origin !== "https://web.facebook.com") return;
-    var data = event.data;
-    if (typeof data === "string") {
-      try { data = JSON.parse(data); } catch (err) { return; }
-    }
-    if (!data || data.type !== "WA_EMBEDDED_SIGNUP") return;
-    var info = data.data && typeof data.data === "object" ? data.data : {};
-    var asId = function (value) {
-      return typeof value === "string" || typeof value === "number" ? String(value) : null;
-    };
-    session = {
-      event: data.event ? String(data.event) : null,
-      wabaId: asId(info.waba_id),
-      phoneNumberId: asId(info.phone_number_id),
-      businessId: asId(info.business_id),
-    };
-  });
-
-  function returnToApp(result) {
-    var allowed = result === "success" || result === "cancel" || result === "error" ? result : "error";
-    var url = config.scheme + "://whatsapp-signup?result=" + allowed;
-    returnEl.href = url;
-    returnEl.hidden = false;
-    window.location.href = url;
+  function facebookDialogUrl() {
+    var redirectUri = window.location.origin + "/whatsapp-signup";
+    var extras = JSON.stringify({
+      setup: {},
+      featureType: config.featureType,
+      sessionInfoVersion: String(config.sessionInfoVersion || "3"),
+    });
+    return "https://www.facebook.com/" + encodeURIComponent(config.graphVersion) + "/dialog/oauth"
+      + "?client_id=" + encodeURIComponent(config.appId)
+      + "&redirect_uri=" + encodeURIComponent(redirectUri)
+      + "&state=" + encodeURIComponent(config.ticket)
+      + "&response_type=code"
+      + "&config_id=" + encodeURIComponent(config.configId)
+      + "&override_default_response_type=true"
+      + "&display=page"
+      + "&extras=" + encodeURIComponent(extras);
   }
 
-  function waitForSession() {
-    var start = Date.now();
-    return new Promise(function (resolve) {
-      var timer = setInterval(function () {
-        if ((session && session.wabaId) || Date.now() - start >= 1000) {
-          clearInterval(timer);
-          resolve(session);
-        }
-      }, 50);
-    });
-  }
-
-  function postJson(path, body) {
-    return fetch(path, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }).then(function (response) {
-      return response.json().catch(function () { return {}; }).then(function (payload) {
-        return { ok: response.ok, payload: payload };
-      });
-    });
-  }
-
-  function finish(response) {
-    var code = response && response.authResponse ? String(response.authResponse.code || "").trim() : "";
-    waitForSession().then(function (current) {
-      if (finished) return;
-      var eventName = current && current.event ? String(current.event) : "";
-      if (eventName.toUpperCase() === "CANCEL") {
-        finished = true;
-        launchEl.disabled = true;
-        statusEl.textContent = "Conexión cancelada.";
-        return postJson("/whatsapp-signup/cancel", { ticket: config.ticket }).then(function () {
-          returnToApp("cancel");
-        });
-      }
-      if (!code) {
-        launchEl.disabled = false;
-        statusEl.textContent = "Termina en Facebook y pulsa Finalizar. Esta página volverá a la app sola.";
-        return;
-      }
-      finished = true;
-      launchEl.disabled = true;
-      statusEl.textContent = "Conectando WhatsApp…";
-      return postJson("/whatsapp-signup/complete", {
-        ticket: config.ticket,
-        code: code,
-        wabaId: current && current.wabaId,
-        phoneNumberId: current && current.phoneNumberId,
-        businessId: current && current.businessId,
-        event: eventName || null,
-      }).then(function (result) {
-        if (result.ok && result.payload && result.payload.status === "completed") {
-          statusEl.textContent = "Listo. Volviendo a la app…";
-          returnToApp("success");
-          return;
-        }
-        if (result.payload && result.payload.status === "cancelled") {
-          statusEl.textContent = "Conexión cancelada.";
-          returnToApp("cancel");
-          return;
-        }
-        statusEl.textContent = (result.payload && result.payload.message) || "No se pudo conectar WhatsApp.";
-        returnToApp("error");
-      });
-    }).catch(function () {
-      statusEl.textContent = "No se pudo conectar WhatsApp.";
-      returnToApp("error");
-    });
-  }
-
-  window.fbAsyncInit = function () {
-    window.FB.init({
-      appId: config.appId,
-      cookie: true,
-      xfbml: false,
-      version: config.graphVersion,
-      autoLogAppEvents: true,
-    });
-  };
-
-  launchEl.addEventListener("click", function () {
-    if (!window.FB) {
-      statusEl.textContent = "El SDK de Facebook no está listo. Recarga la página.";
-      return;
-    }
+  function startSignup() {
+    if (started) return;
+    started = true;
     launchEl.disabled = true;
-    window.FB.login(finish, {
-      config_id: config.configId,
-      response_type: "code",
-      override_default_response_type: true,
-      extras: {
-        setup: {},
-        featureType: config.featureType,
-        sessionInfoVersion: config.sessionInfoVersion || "3",
-      },
-    });
-  });
+    statusEl.textContent = "Abriendo Facebook…";
+    window.location.assign(facebookDialogUrl());
+  }
+
+  launchEl.addEventListener("click", startSignup);
+  startSignup();
 })();
 `;
 
@@ -276,8 +176,7 @@ export function renderSignupPageHtml({ ticket, config }) {
     <button id="launch" type="button">Continuar con Facebook</button>
     <a id="return-link" class="return" hidden href="${SIGNUP_APP_SCHEME}://whatsapp-signup?result=error">Volver a la app</a>
     <script type="application/json" id="signup-config">${payload}</script>
-    <script>${SIGNUP_CLIENT_SCRIPT}</script>
-    <script async defer crossorigin="anonymous" src="https://connect.facebook.net/es_LA/sdk.js"></script>`,
+    <script>${SIGNUP_CLIENT_SCRIPT}</script>`,
   });
 }
 
@@ -292,21 +191,23 @@ export async function getWhatsappSignupPage(req, res, next, deps = {}) {
     const code = String(req.query?.code || "").trim();
     const oauthError = String(req.query?.error || "").trim();
     const queryTicket = String(req.query?.ticket || "").trim();
+    const stateTicket = String(req.query?.state || "").trim();
     const cookieTicket = readSignupTicketCookie(req.headers?.cookie);
+    const oauthTicket = cookieTicket || stateTicket;
 
     if (code || oauthError) {
       res.setHeader("Set-Cookie", ticketCookie("", { secure, clear: true }));
-      if (!cookieTicket) {
+      if (!oauthTicket) {
         res.status(400).send(renderSignupErrorHtml("Este enlace de conexión no es válido o ya venció."));
         return;
       }
       if (!code) {
-        await cancel(cookieTicket).catch(() => undefined);
+        await cancel(oauthTicket).catch(() => undefined);
         res.status(200).send(renderSignupResultHtml("cancel"));
         return;
       }
       try {
-        const result = await complete({ ticket: cookieTicket, code });
+        const result = await complete({ ticket: oauthTicket, code });
         const kind = result?.status === "completed" ? "success" : result?.status === "cancelled" ? "cancel" : "error";
         res.status(200).send(renderSignupResultHtml(kind));
       } catch {
