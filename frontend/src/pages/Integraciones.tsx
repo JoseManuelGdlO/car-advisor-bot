@@ -20,6 +20,7 @@ import { integrationsApi } from "@/services/integrations";
 import { launchEmbeddedSignup, loadFacebookSdk } from "@/lib/meta-embedded-signup";
 import {
   isWhatsAppMetaConnected,
+  metaSignupHint,
   selectWhatsAppMetaIntegration,
   whatsAppMetaDisplayPhone,
 } from "@/lib/whatsappMeta";
@@ -45,6 +46,13 @@ export default function Integraciones() {
     queryFn: () => integrationsApi.getWhatsAppMetaStatus(token!),
     enabled: Boolean(token),
   });
+
+  const { data: metaConfig } = useQuery({
+    queryKey: ["whatsapp-meta-signup-config"],
+    queryFn: () => integrationsApi.getMetaSignupConfig(token!),
+    enabled: Boolean(token),
+  });
+  const signupHint = metaSignupHint(metaConfig?.configured);
 
   const integration = selectWhatsAppMetaIntegration(integrations);
   const connected = isWhatsAppMetaConnected(integration);
@@ -163,12 +171,15 @@ export default function Integraciones() {
             <Button
               type="button"
               className="w-full"
-              disabled={connecting || !token}
+              disabled={connecting || !token || metaConfig?.configured === false}
               onClick={() => void connectMeta()}
             >
-              {connecting ? "Conectando..." : "Conectar WhatsApp"}
+              {connecting ? "Conectando..." : "Conectar con Facebook"}
             </Button>
           )}
+          {signupHint ? (
+            <p className="text-xs text-muted-foreground">{signupHint}</p>
+          ) : null}
         </div>
 
         {connected ? (

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { IntegrationDto } from "@/services/integrations";
 import {
   isWhatsAppMetaConnected,
+  metaSignupHint,
   selectWhatsAppMetaIntegration,
   whatsAppMetaDisplayPhone,
 } from "@/lib/whatsappMeta";
@@ -51,5 +52,23 @@ describe("whatsAppMetaDisplayPhone", () => {
     expect(whatsAppMetaDisplayPhone(base({ displayPhoneNumber: "  +52 1  " }))).toBe("+52 1");
     expect(whatsAppMetaDisplayPhone(base({ displayPhoneNumber: "" }))).toBeNull();
     expect(whatsAppMetaDisplayPhone(null)).toBeNull();
+  });
+});
+
+describe("metaSignupHint", () => {
+  it("avisa si el servidor no tiene la config de Embedded Signup", () => {
+    expect(metaSignupHint(false)).toBe(
+      "Falta configurar META_APP_ID, META_APP_SECRET y META_EMBEDDED_SIGNUP_CONFIG_ID en el servidor.",
+    );
+  });
+
+  it("explica el popup cuando la config está lista", () => {
+    expect(metaSignupHint(true)).toBe(
+      "Pulsa «Conectar con Facebook» para vincular tu WhatsApp Business. Se abre una ventana de Meta; al terminar, el bot puede responder en ese número.",
+    );
+  });
+
+  it("no muestra texto mientras la config no ha cargado", () => {
+    expect(metaSignupHint(undefined)).toBeNull();
   });
 });
