@@ -6,6 +6,7 @@ import {
   disconnectMetaWhatsapp,
   publicMetaSignupConfig,
 } from "../services/metaSignupService.js";
+import { createMetaSignupTicket, getMetaSignupTicketStatus } from "../services/metaSignupTicketService.js";
 import {
   META_WHATSAPP_PROVIDER,
   WHATSAPP_CHANNEL,
@@ -23,6 +24,27 @@ const findActiveMetaWhatsappIntegration = async (ownerUserId) =>
     },
     order: [["updatedAt", "DESC"]],
   });
+
+export const postMetaSignupTicket = async (req, res, next) => {
+  try {
+    const result = await createMetaSignupTicket(req.auth.userId);
+    return res.status(201).json(result);
+  } catch (err) {
+    return next(err);
+  }
+};
+
+export const getMetaSignupTicket = async (req, res, next) => {
+  try {
+    const result = await getMetaSignupTicketStatus({
+      ownerUserId: req.auth.userId,
+      ticket: req.query?.ticket,
+    });
+    return res.json(result);
+  } catch (err) {
+    return next(err);
+  }
+};
 
 export const getMetaSignupConfig = async (_req, res, next) => {
   try {

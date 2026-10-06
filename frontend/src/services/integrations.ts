@@ -27,6 +27,17 @@ export type MetaSignupConfigDto = {
   sessionInfoVersion: string;
 };
 
+export type MetaSignupTicketDto = {
+  ticket: string;
+  expiresAt: string;
+  signupUrl: string;
+};
+
+export type MetaSignupTicketStatusDto = {
+  status: "pending" | "completed" | "failed" | "cancelled";
+  message: string;
+};
+
 export type WhatsAppMetaStatusDto = {
   provider: "meta";
   configured: boolean;
@@ -83,6 +94,15 @@ export const integrationsApi = {
   //   apiRequest<{ ok: boolean }>("/internal/whatsapp/send-test", "POST", body, token),
   getMetaSignupConfig: (token: string) =>
     apiRequest<MetaSignupConfigDto>("/integrations/whatsapp/meta/config", "GET", undefined, token),
+  createMetaSignupTicket: (token: string) =>
+    apiRequest<MetaSignupTicketDto>("/integrations/whatsapp/meta/signup-ticket", "POST", {}, token),
+  getMetaSignupTicketStatus: (token: string, ticket: string) =>
+    apiRequest<MetaSignupTicketStatusDto>(
+      `/integrations/whatsapp/meta/signup-ticket?ticket=${encodeURIComponent(ticket)}`,
+      "GET",
+      undefined,
+      token,
+    ),
   completeMetaSignup: (
     token: string,
     body: {

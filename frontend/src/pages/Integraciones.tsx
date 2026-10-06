@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Capacitor } from "@capacitor/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FlaskConical, MessageCircle, Unplug } from "lucide-react";
 import { ScreenHeader } from "@/components/ScreenHeader";
@@ -18,6 +19,12 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { integrationsApi } from "@/services/integrations";
 import { launchEmbeddedSignup, loadFacebookSdk } from "@/lib/meta-embedded-signup";
+import {
+  closeSignupBrowser,
+  openSignupBrowser,
+  runNativeWhatsappSignup,
+  subscribeNativeSignupWake,
+} from "@/lib/whatsappSignupBridge";
 import {
   isWhatsAppMetaConnected,
   metaSignupHint,
@@ -82,8 +89,41 @@ export default function Integraciones() {
     onError: (error) => toast.error(normalizeApiError(error, "No se pudo enviar la prueba.").formError),
   });
 
+  const connectMetaNative = async () => {
+    if (!token) return;
+    setConnecting(true);
+    try {
+      const session = await integrationsApi.createMetaSignupTicket(token);
+      const status = await runNativeWhatsappSignup({
+        signupUrl: session.signupUrl,
+        fetchStatus: () => integrationsApi.getMetaSignupTicketStatus(token, session.ticket),
+        openBrowser: openSignupBrowser,
+        closeBrowser: closeSignupBrowser,
+        subscribeWake: subscribeNativeSignupWake,
+      });
+      if (status.status === "completed") {
+        await refreshWhatsApp();
+        toast.success(status.message || "WhatsApp conectado.");
+        return;
+      }
+      if (status.status === "cancelled") {
+        toast.message(status.message || "Se canceló la conexión de WhatsApp.");
+        return;
+      }
+      toast.error(status.message || "No se pudo conectar WhatsApp.");
+    } catch (error) {
+      toast.error(normalizeApiError(error, "No se pudo conectar WhatsApp.").formError);
+    } finally {
+      setConnecting(false);
+    }
+  };
+
   const connectMeta = async () => {
     if (!token) return;
+    if (Capacitor.isNativePlatform()) {
+      await connectMetaNative();
+      return;
+    }
     setConnecting(true);
     try {
       const config = await integrationsApi.getMetaSignupConfig(token);

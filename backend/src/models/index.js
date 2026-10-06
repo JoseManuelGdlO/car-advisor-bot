@@ -21,6 +21,7 @@ import FinancingPlanRequirementModel from "./FinancingPlanRequirement.js";
 import PushDeviceModel from "./PushDevice.js";
 import OwnerNotificationModel from "./OwnerNotification.js";
 import PasswordResetCodeModel from "./PasswordResetCode.js";
+import MetaSignupTicketModel from "./MetaSignupTicket.js";
 import BlackListEntryModel from "./BlackListEntry.js";
 import WhatsappMessageTemplateModel from "./WhatsappMessageTemplate.js";
 
@@ -46,6 +47,7 @@ export const FinancingPlanRequirement = FinancingPlanRequirementModel(sequelize)
 export const PushDevice = PushDeviceModel(sequelize);
 export const OwnerNotification = OwnerNotificationModel(sequelize);
 export const PasswordResetCode = PasswordResetCodeModel(sequelize);
+export const MetaSignupTicket = MetaSignupTicketModel(sequelize);
 export const BlackListEntry = BlackListEntryModel(sequelize);
 export const WhatsappMessageTemplate = WhatsappMessageTemplateModel(sequelize);
 
@@ -57,6 +59,20 @@ User.hasMany(PasswordResetCode, {
   onUpdate: "CASCADE",
 });
 PasswordResetCode.belongsTo(User, {
+  foreignKey: { name: "userId", field: "user_id", allowNull: false },
+  targetKey: "id",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+
+User.hasMany(MetaSignupTicket, {
+  foreignKey: { name: "userId", field: "user_id", allowNull: false },
+  sourceKey: "id",
+  as: "metaSignupTickets",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+MetaSignupTicket.belongsTo(User, {
   foreignKey: { name: "userId", field: "user_id", allowNull: false },
   targetKey: "id",
   onDelete: "CASCADE",

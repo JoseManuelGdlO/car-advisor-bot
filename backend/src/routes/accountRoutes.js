@@ -17,9 +17,11 @@ import {
 } from "../controllers/integrationsController.js";
 import {
   getMetaSignupConfig,
+  getMetaSignupTicket,
   getWhatsappMetaStatus,
   postMetaDisconnect,
   postMetaEmbeddedSignup,
+  postMetaSignupTicket,
   postMetaWhatsappSendTest,
 } from "../controllers/metaWhatsappController.js";
 import {
@@ -44,6 +46,8 @@ accountRoutes.post("/integrations/:id/credentials", requireUserAuth, postIntegra
 accountRoutes.post("/integrations/:id/test", requireUserAuth, postIntegrationTest);
 
 accountRoutes.get("/integrations/whatsapp/meta/config", requireUserAuth, getMetaSignupConfig);
+accountRoutes.post("/integrations/whatsapp/meta/signup-ticket", requireUserAuth, postMetaSignupTicket);
+accountRoutes.get("/integrations/whatsapp/meta/signup-ticket", requireUserAuth, getMetaSignupTicket);
 accountRoutes.post("/integrations/whatsapp/meta/signup", requireUserAuth, postMetaEmbeddedSignup);
 accountRoutes.post("/integrations/whatsapp/meta/disconnect", requireUserAuth, postMetaDisconnect);
 accountRoutes.get(
