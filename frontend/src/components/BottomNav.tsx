@@ -1,12 +1,12 @@
 import { NavLink, useLocation } from "react-router-dom";
-import { LayoutDashboard, MessageCircle, User, Car } from "lucide-react";
+import { LayoutDashboard, MessageCircle, Settings, Car } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const items = [
   { to: "/dashboard", label: "Inicio", icon: LayoutDashboard },
   { to: "/chats", label: "Chats", icon: MessageCircle },
   { to: "/vehiculos", label: "Vehículos", icon: Car },
-  { to: "/perfil", label: "Perfil", icon: User },
+  { to: "/config", label: "Configuración", icon: Settings },
 ];
 
 const isItemActive = (pathname: string, to: string) => {
@@ -20,7 +20,7 @@ const isItemActive = (pathname: string, to: string) => {
     );
   }
   if (to === "/vehiculos") return pathname.startsWith("/vehiculos");
-  if (to === "/perfil") return pathname.startsWith("/perfil") || pathname.startsWith("/config");
+  if (to === "/config") return pathname.startsWith("/config") || pathname.startsWith("/perfil");
   return false;
 };
 

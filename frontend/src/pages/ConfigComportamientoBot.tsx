@@ -1,9 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, Bot, MessageCircleHeart, MessageSquare, Save } from "lucide-react";
+import { AlertCircle, Bot, MessageSquare, Save } from "lucide-react";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { useAuth } from "@/context/AuthContext";
 import { crmApi, type BotSettingsDto } from "@/services/crm";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -168,40 +174,101 @@ export default function ConfigComportamientoBot() {
       <ScreenHeader title="Comportamiento del bot" subtitle="Define su forma de responder y vender" back />
 
       <div className="px-4 py-4 space-y-4">
-        <div className="bg-card rounded-2xl p-4 shadow-card border border-border space-y-3">
-          <div className="flex items-center gap-2">
-            <Bot className="w-5 h-5 text-primary" />
-            <div>
-              <p className="text-sm font-semibold">Identidad del Bot</p>
-              <p className="text-xs text-muted-foreground">Define el nombre de tu asistente virtual</p>
-            </div>
-          </div>
+        <Accordion type="multiple" className="space-y-3">
+          <AccordionItem value="identidad" className="border-0 bg-card rounded-2xl px-4 shadow-card border border-border">
+            <AccordionTrigger className="hover:no-underline py-4">
+              <span className="flex items-center gap-2 text-left">
+                <Bot className="w-5 h-5 shrink-0 text-primary" />
+                <span>
+                  <span className="block font-semibold text-sm">Identidad del bot</span>
+                  <span className="block text-xs font-normal text-muted-foreground">Nombre, tono y forma de responder</span>
+                </span>
+              </span>
+            </AccordionTrigger>
+            <AccordionContent>
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground" htmlFor="bot-name">
+                    Nombre del bot
+                  </label>
+                  <Input
+                    id="bot-name"
+                    maxLength={BOT_NAME_MAX}
+                    placeholder="Ej: AutoBot"
+                    value={form.botName}
+                    onChange={(e) => setForm((prev) => ({ ...prev, botName: e.target.value }))}
+                  />
+                  <p className="text-[11px] text-muted-foreground">Nombre con el que se presenta el asistente al usuario.</p>
+                </div>
 
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-muted-foreground" htmlFor="bot-name">
-              Nombre del Bot
-            </label>
-            <Input
-              id="bot-name"
-              maxLength={BOT_NAME_MAX}
-              placeholder="Ej: AutoBot"
-              value={form.botName}
-              onChange={(e) => setForm((prev) => ({ ...prev, botName: e.target.value }))}
-            />
-            <p className="text-[11px] text-muted-foreground">Nombre con el que se presenta el asistente al usuario.</p>
-          </div>
-        </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground">Tono del bot</label>
+                  <select
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    value={form.tone}
+                    onChange={(e) => setForm((prev) => ({ ...prev, tone: e.target.value as BehaviorForm["tone"] }))}
+                  >
+                    <option value="formal">Formal</option>
+                    <option value="cercano">Cercano</option>
+                    <option value="vendedor">Vendedor</option>
+                    <option value="tecnico">Técnico</option>
+                  </select>
+                </div>
 
-        <div className="bg-card rounded-2xl p-4 shadow-card border border-border space-y-3">
-          <div className="flex items-center gap-2">
-            <MessageSquare className="w-5 h-5 text-primary" />
-            <div>
-              <p className="text-sm font-semibold">Mensajes predefinidos</p>
-              <p className="text-xs text-muted-foreground">Configura los mensajes automáticos del bot</p>
-            </div>
-          </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground">Uso de emojis</label>
+                  <select
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    value={form.emojiStyle}
+                    onChange={(e) => setForm((prev) => ({ ...prev, emojiStyle: e.target.value as BehaviorForm["emojiStyle"] }))}
+                  >
+                    <option value="nunca">Nunca</option>
+                    <option value="pocos">Pocos</option>
+                    <option value="frecuentes">Frecuentes</option>
+                  </select>
+                </div>
 
-          <div className="space-y-1.5">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground">Proactividad comercial</label>
+                  <select
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    value={form.salesProactivity}
+                    onChange={(e) => setForm((prev) => ({ ...prev, salesProactivity: e.target.value as BehaviorForm["salesProactivity"] }))}
+                  >
+                    <option value="bajo">Baja</option>
+                    <option value="medio">Media</option>
+                    <option value="alto">Alta</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground">Instrucciones personalizadas</label>
+                  <Textarea
+                    rows={6}
+                    maxLength={1200}
+                    placeholder="Ejemplo: prioriza agendar test drive, no inventes datos de precios, responde breve."
+                    value={form.customInstructions}
+                    onChange={(e) => setForm((prev) => ({ ...prev, customInstructions: e.target.value }))}
+                  />
+                  <p className="text-[11px] text-muted-foreground text-right">{form.customInstructions.length}/1200</p>
+                </div>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+
+          <AccordionItem value="mensajes" className="border-0 bg-card rounded-2xl px-4 shadow-card border border-border">
+            <AccordionTrigger className="hover:no-underline py-4">
+              <span className="flex items-center gap-2 text-left">
+                <MessageSquare className="w-5 h-5 shrink-0 text-primary" />
+                <span>
+                  <span className="block font-semibold text-sm">Mensajes predefinidos</span>
+                  <span className="block text-xs font-normal text-muted-foreground">Configura los mensajes automáticos del bot</span>
+                </span>
+              </span>
+            </AccordionTrigger>
+            <AccordionContent>
+              <div className="space-y-3">
+                <div className="space-y-1.5">
             <label className="text-xs font-semibold text-muted-foreground" htmlFor="welcome-message">
               Mensaje de bienvenida
             </label>
@@ -213,10 +280,10 @@ export default function ConfigComportamientoBot() {
               value={form.welcomeMessage}
               onChange={(e) => setForm((prev) => ({ ...prev, welcomeMessage: e.target.value }))}
             />
-            <p className="text-[11px] text-muted-foreground text-right">{form.welcomeMessage.length}/{MESSAGE_MAX}</p>
-          </div>
+                  <p className="text-[11px] text-muted-foreground text-right">{form.welcomeMessage.length}/{MESSAGE_MAX}</p>
+                </div>
 
-          <div className="space-y-1.5">
+                <div className="space-y-1.5">
             <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1" htmlFor="faq-fallback">
               <AlertCircle className="w-3.5 h-3.5" />
               Mensaje cuando no entiende
@@ -232,10 +299,10 @@ export default function ConfigComportamientoBot() {
             <p className="text-[11px] text-muted-foreground">
               Se muestra cuando el bot no encuentra respuesta en las FAQs.
             </p>
-            <p className="text-[11px] text-muted-foreground text-right">{form.faqFallbackMessage.length}/{MESSAGE_MAX}</p>
-          </div>
+                  <p className="text-[11px] text-muted-foreground text-right">{form.faqFallbackMessage.length}/{MESSAGE_MAX}</p>
+                </div>
 
-          <div className="space-y-1.5">
+                <div className="space-y-1.5">
             <label className="text-xs font-semibold text-muted-foreground" htmlFor="down-payment-message">
               Mensaje de enganche
             </label>
@@ -250,10 +317,10 @@ export default function ConfigComportamientoBot() {
             <p className="text-[11px] text-muted-foreground">
               Se envía cuando el cliente pregunta por enganche y además se notifica al asesor. Solo aplica si hay texto guardado.
             </p>
-            <p className="text-[11px] text-muted-foreground text-right">{form.downPaymentMessage.length}/{MESSAGE_MAX}</p>
-          </div>
+                  <p className="text-[11px] text-muted-foreground text-right">{form.downPaymentMessage.length}/{MESSAGE_MAX}</p>
+                </div>
 
-          <div className="space-y-1.5">
+                <div className="space-y-1.5">
             <label className="text-xs font-semibold text-muted-foreground" htmlFor="visit-incentive-message">
               Incentivo de visita
             </label>
@@ -269,37 +336,46 @@ export default function ConfigComportamientoBot() {
               Se envía al escalar por financiamiento o al pedir hablar con un asesor humano. Solo aplica si hay texto
               guardado.
             </p>
-            <p className="text-[11px] text-muted-foreground text-right">
-              {form.visitIncentiveMessage.length}/{MESSAGE_MAX}
-            </p>
-          </div>
-        </div>
+                  <p className="text-[11px] text-muted-foreground text-right">
+                    {form.visitIncentiveMessage.length}/{MESSAGE_MAX}
+                  </p>
+                </div>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
 
-        <div className="bg-card rounded-2xl p-4 shadow-card border border-border space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold">Recordatorio de seguimiento</p>
-              <p className="text-xs text-muted-foreground">
-                Si el último mensaje es del bot y no hay escalación, antepone este texto a esa pregunta tras el plazo.
-              </p>
-            </div>
+          <AccordionItem value="recordatorio" className="border-0 bg-card rounded-2xl px-4 shadow-card border border-border">
+            <AccordionTrigger className="hover:no-underline py-4">
+              <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                <span className="min-w-0">
+                  <span className="block font-semibold text-sm">Recordatorio de seguimiento</span>
+                  <span className="block text-xs font-normal text-muted-foreground">
+                    Si el último mensaje es del bot y no hay escalación, antepone este texto a esa pregunta tras el plazo.
+                  </span>
+                </span>
+              </span>
+            </AccordionTrigger>
+            <AccordionContent>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-medium">Recordatorio activado</p>
             <Switch
               checked={reminderEnabled}
               onCheckedChange={setReminderEnabled}
               disabled={isLoading || !settingsHydrated}
-              aria-label="Recordatorio activado"
-            />
-          </div>
-          <BotFollowupTemplateSection
-            token={token}
-            reminderEnabled={reminderEnabled}
-            reminderMessage={reminderMessage}
-            onReminderMessageChange={setReminderMessage}
-            reminderMessageMissing={reminderMessageMissing}
-            reminderFieldsDisabled={!reminderEnabled || isLoading || !settingsHydrated}
-            settingsHydrated={settingsHydrated}
-          />
-          <div className="space-y-1.5">
+                  aria-label="Recordatorio activado"
+                />
+                </div>
+                <BotFollowupTemplateSection
+                  token={token}
+                  reminderEnabled={reminderEnabled}
+                  reminderMessage={reminderMessage}
+                  onReminderMessageChange={setReminderMessage}
+                  reminderMessageMissing={reminderMessageMissing}
+                  reminderFieldsDisabled={!reminderEnabled || isLoading || !settingsHydrated}
+                  settingsHydrated={settingsHydrated}
+                />
+                <div className="space-y-1.5">
             <label className="text-xs font-semibold text-muted-foreground" htmlFor="bot-reminder-hours">
               Horas para el recordatorio
             </label>
@@ -317,14 +393,14 @@ export default function ConfigComportamientoBot() {
               aria-invalid={reminderHoursInvalid}
             />
             {reminderHoursInvalid ? (
-              <p className="text-xs text-destructive">Introduce un entero entre 1 y 720.</p>
-            ) : reminderHoursMissing ? (
-              <p className="text-xs text-destructive">Indica las horas para poder activar el recordatorio.</p>
-            ) : (
-              <p className="text-xs text-muted-foreground">Entre 1 y 720 horas desde el último mensaje del bot.</p>
-            )}
-          </div>
-          <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs text-destructive">Introduce un entero entre 1 y 720.</p>
+                ) : reminderHoursMissing ? (
+                  <p className="text-xs text-destructive">Indica las horas para poder activar el recordatorio.</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Entre 1 y 720 horas desde el último mensaje del bot.</p>
+                )}
+                </div>
+                <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-medium">Una sola vez por conversación</p>
               <p className="text-xs text-muted-foreground">
@@ -335,69 +411,14 @@ export default function ConfigComportamientoBot() {
               checked={reminderOncePerConversation}
               onCheckedChange={setReminderOncePerConversation}
               disabled={!reminderEnabled || isLoading || !settingsHydrated}
-              aria-label="Una sola vez por conversación"
-            />
-          </div>
-        </div>
+                  aria-label="Una sola vez por conversación"
+                />
+                </div>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
 
-        <div className="bg-card rounded-2xl p-4 shadow-card border border-border space-y-3">
-          <div className="flex items-center gap-2">
-            <MessageCircleHeart className="w-5 h-5 text-primary" />
-            <p className="text-sm font-semibold">Personalidad conversacional</p>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-muted-foreground">Tono del bot</label>
-            <select
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              value={form.tone}
-              onChange={(e) => setForm((prev) => ({ ...prev, tone: e.target.value as BehaviorForm["tone"] }))}
-            >
-              <option value="formal">Formal</option>
-              <option value="cercano">Cercano</option>
-              <option value="vendedor">Vendedor</option>
-              <option value="tecnico">Técnico</option>
-            </select>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-muted-foreground">Uso de emojis</label>
-            <select
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              value={form.emojiStyle}
-              onChange={(e) => setForm((prev) => ({ ...prev, emojiStyle: e.target.value as BehaviorForm["emojiStyle"] }))}
-            >
-              <option value="nunca">Nunca</option>
-              <option value="pocos">Pocos</option>
-              <option value="frecuentes">Frecuentes</option>
-            </select>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-muted-foreground">Proactividad comercial</label>
-            <select
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              value={form.salesProactivity}
-              onChange={(e) => setForm((prev) => ({ ...prev, salesProactivity: e.target.value as BehaviorForm["salesProactivity"] }))}
-            >
-              <option value="bajo">Baja</option>
-              <option value="medio">Media</option>
-              <option value="alto">Alta</option>
-            </select>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-muted-foreground">Instrucciones personalizadas</label>
-            <Textarea
-              rows={6}
-              maxLength={1200}
-              placeholder="Ejemplo: prioriza agendar test drive, no inventes datos de precios, responde breve."
-              value={form.customInstructions}
-              onChange={(e) => setForm((prev) => ({ ...prev, customInstructions: e.target.value }))}
-            />
-            <p className="text-[11px] text-muted-foreground text-right">{form.customInstructions.length}/1200</p>
-          </div>
-        </div>
+        </Accordion>
 
         <FormErrorAlert title="No se pudo guardar el comportamiento" message={error} className="mx-1" />
 

@@ -46,8 +46,8 @@ export function AccountSectionLayout() {
     <SectionTabsLayout
       label="Cuenta"
       tabs={[
-        { to: "/perfil", label: "Perfil", match: (pathname) => pathname === "/perfil" },
         { to: "/config", label: "Configuración", match: (pathname) => pathname === "/config" },
+        { to: "/perfil", label: "Perfil", match: (pathname) => pathname === "/perfil" },
       ]}
     />
   );
