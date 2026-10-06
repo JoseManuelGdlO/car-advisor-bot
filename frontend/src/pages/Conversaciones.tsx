@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, Filter, Pause } from "lucide-react";
-import { ScreenHeader } from "@/components/ScreenHeader";
+import { Filter, Pause } from "lucide-react";
+import { ListToolbar } from "@/components/ListToolbar";
 import { Avatar } from "@/components/Avatar";
 import { ChannelIcon } from "@/components/ChannelIcon";
 import { Channel } from "@/data/mockData";
@@ -126,8 +126,6 @@ export default function Conversaciones() {
     });
   }, [conversations, filter, controlFilter, sortOrder, dateFilter, q, timeZone]);
 
-  const totalUnread = conversations.reduce((acc, c) => acc + c.unread, 0);
-
   const clearExtraFilters = () => {
     // setReadFilter("all");
     setControlFilter("all");
@@ -137,54 +135,30 @@ export default function Conversaciones() {
 
   return (
     <>
-      <ScreenHeader
-        title="Conversaciones"
-        subtitle={totalUnread > 0 ? `${totalUnread} mensajes sin leer` : "Todo al día ✨"}
-        action={
+      <ListToolbar
+        query={q}
+        onQueryChange={setQ}
+        placeholder="Buscar por nombre, teléfono o mensaje…"
+        filter={filter}
+        onFilterChange={(key) => setFilter(key as "all" | Channel)}
+        filters={channelFilters}
+        extra={
           <button
             type="button"
             onClick={() => setFiltersOpen(true)}
             className={cn(
-              "relative w-9 h-9 grid place-items-center rounded-full transition-colors",
-              extraFiltersActive ? "bg-primary/10 text-primary" : "hover:bg-muted",
+              "relative h-11 w-11 shrink-0 grid place-items-center rounded-xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              extraFiltersActive ? "bg-primary/10 text-primary" : "hover:bg-muted text-foreground",
             )}
             aria-label="Filtrar conversaciones"
           >
             <Filter className="w-4 h-4" />
             {extraFiltersActive ? (
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-primary" />
+              <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-primary" />
             ) : null}
           </button>
         }
       />
-
-      <div className="px-4 py-3 space-y-3 sticky top-[65px] bg-background/95 backdrop-blur z-10 border-b border-border">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar por nombre, teléfono o mensaje…"
-            className="w-full h-11 pl-10 pr-4 rounded-xl bg-muted text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          />
-        </div>
-        <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4">
-          {channelFilters.map((f) => (
-            <button
-              key={f.key}
-              onClick={() => setFilter(f.key)}
-              className={cn(
-                "px-3.5 h-8 rounded-full text-xs font-semibold whitespace-nowrap transition-colors border",
-                filter === f.key
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-card text-muted-foreground border-border"
-              )}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-      </div>
 
       <ul className="divide-y divide-border">
         {list.map((c) => {

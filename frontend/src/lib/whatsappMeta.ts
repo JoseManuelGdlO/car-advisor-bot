@@ -12,3 +12,13 @@ export function whatsAppMetaDisplayPhone(integration: IntegrationDto | null | un
   const phone = integration?.displayPhoneNumber?.trim();
   return phone || null;
 }
+
+export function metaSignupHint(configured: boolean | undefined): string | null {
+  if (configured === false) {
+    return "Falta configurar META_APP_ID, META_APP_SECRET y META_EMBEDDED_SIGNUP_CONFIG_ID en el servidor.";
+  }
+  if (configured === true) {
+    return "Pulsa «Conectar con Facebook» para vincular tu WhatsApp Business. Se abre una ventana de Meta; al terminar, el bot puede responder en ese número.";
+  }
+  return null;
+}

@@ -1,30 +1,42 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { z } from "zod";
-import { Eye, EyeOff, Bot } from "lucide-react";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import {
+  AuthActions,
+  AuthField,
+  AuthPasswordInput,
+  AuthShell,
+  AuthTextInput,
+  authPillBlack,
+  authPillWhite,
+} from "@/components/AuthShell";
 import { readLoginFormDefaults, useAuth } from "@/context/AuthContext";
 import { ApiRequestError } from "@/lib/api";
 import { GOOGLE_CALENDAR_URL_ERROR, isGoogleCalendarSchedulingUrl } from "@/lib/calendarUrl";
 import { splitApiRequestError, zodIssuesToFieldErrors } from "@/lib/formErrors";
-import { cn } from "@/lib/utils";
 import { GoogleCalendarLinkHelpDialog } from "@/components/GoogleCalendarLinkHelpDialog";
 
-const registerFormSchema = z.object({
-  name: z.string().trim().min(2, "El nombre debe tener al menos 2 caracteres."),
-  email: z.string().trim().email("Introduce un correo electrónico válido."),
-  password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres."),
-  calendarSchedulingUrl: z
-    .string()
-    .trim()
-    .max(500, "El link de calendario no puede tener más de 500 caracteres.")
-    .refine((value) => !value || isGoogleCalendarSchedulingUrl(value), {
-      message: GOOGLE_CALENDAR_URL_ERROR,
-    }),
-});
+const registerFormSchema = z
+  .object({
+    name: z.string().trim().min(2, "El nombre debe tener al menos 2 caracteres."),
+    email: z.string().trim().email("Introduce un correo electrónico válido."),
+    password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres."),
+    confirmPassword: z.string().min(6, "Confirma tu contraseña."),
+    calendarSchedulingUrl: z
+      .string()
+      .trim()
+      .max(500, "El link de calendario no puede tener más de 500 caracteres.")
+      .refine((value) => !value || isGoogleCalendarSchedulingUrl(value), {
+        message: GOOGLE_CALENDAR_URL_ERROR,
+      }),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Las contraseñas no coinciden.",
+    path: ["confirmPassword"],
+  });
 
 const loginFormSchema = z.object({
   email: z.string().trim().min(1, "Indica tu correo electrónico."),
@@ -33,20 +45,23 @@ const loginFormSchema = z.object({
 
 const LOGIN_KNOWN_FIELDS = ["name", "email", "password", "calendarSchedulingUrl"] as const;
 
-export default function Login() {
+export default function Login({ mode = "login" }: { mode?: "login" | "register" }) {
   const navigate = useNavigate();
   const { login, register } = useAuth();
+  const isRegisterMode = mode === "register";
   const [formDefaults] = useState(readLoginFormDefaults());
   const [show, setShow] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [email, setEmail] = useState(formDefaults.email);
   const [pass, setPass] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [name, setName] = useState("");
   const [calendarSchedulingUrl, setCalendarSchedulingUrl] = useState("");
   const [formError, setFormError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [rememberMe, setRememberMe] = useState(formDefaults.rememberMe);
   const [sessionExpired, setSessionExpired] = useState(formDefaults.sessionExpired);
+  const [submitting, setSubmitting] = useState(false);
 
   const clearErrors = () => {
     setFormError("");
@@ -65,6 +80,7 @@ export default function Login() {
         name: name.trim(),
         email: emailTrim,
         password: passVal,
+        confirmPassword: confirm,
         calendarSchedulingUrl: calendarSchedulingUrl.trim(),
       });
       if (!parsed.success) {
@@ -82,6 +98,7 @@ export default function Login() {
       }
     }
 
+    setSubmitting(true);
     try {
       if (isRegisterMode) {
         await register(name.trim(), emailTrim, passVal, calendarSchedulingUrl.trim());
@@ -99,71 +116,50 @@ export default function Login() {
         return;
       }
       setFormError(err instanceof Error ? err.message : "No se pudo iniciar sesión");
+    } finally {
+      setSubmitting(false);
     }
-  };
-
-  const toggleMode = () => {
-    setIsRegisterMode((v) => !v);
-    clearErrors();
-    setSessionExpired(false);
   };
 
   const errName = fieldErrors.name;
   const errEmail = fieldErrors.email;
   const errPassword = fieldErrors.password;
+  const errConfirm = fieldErrors.confirmPassword;
   const errCalendarSchedulingUrl = fieldErrors.calendarSchedulingUrl;
 
   return (
-    <div className="min-h-full flex flex-col bg-gradient-hero text-primary-foreground">
-      {/* Top brand */}
-      <div className="px-6 pt-12 pb-8 flex flex-col items-center">
-        <div className="w-20 h-20 rounded-3xl bg-white/15 backdrop-blur grid place-items-center mb-4 shadow-elevated">
-          <Bot className="w-10 h-10" strokeWidth={2.2} />
-        </div>
-        <h1 className="text-3xl font-extrabold tracking-tight">AutoBot</h1>
-        <p className="text-sm text-primary-foreground/80 mt-1 text-center max-w-xs">
-          Vende más autos por WhatsApp y Facebook con tu chatbot inteligente
-        </p>
-      </div>
+    <AuthShell
+      title={isRegisterMode ? "Crear cuenta" : "Entrar"}
+      subtitle={
+        isRegisterMode
+          ? "Registra tu correo para empezar a atender clientes con AutoBot."
+          : "Entra con la cuenta de tu negocio."
+      }
+      backTo={isRegisterMode ? "/" : undefined}
+    >
+      <form onSubmit={submit} className="flex flex-1 flex-col" autoComplete="on" noValidate>
+        <div className="space-y-5">
+          {!isRegisterMode && sessionExpired ? (
+            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950" role="status">
+              Tu sesión expiró. Vuelve a iniciar sesión.
+            </p>
+          ) : null}
 
-      {/* Form card */}
-      <div className="flex-1 bg-background text-foreground rounded-t-[2rem] px-6 pt-8 pb-6 shadow-elevated animate-fade-in">
-        <h2 className="text-xl font-bold mb-1">Bienvenido de vuelta 👋</h2>
-        <p className="text-sm text-muted-foreground mb-6">Inicia sesión para gestionar tus chats</p>
-
-        {!isRegisterMode && sessionExpired ? (
-          <p
-            className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950"
-            role="status"
-          >
-            Tu sesión expiró. Vuelve a iniciar sesión.
-          </p>
-        ) : null}
-
-        <form onSubmit={submit} className="space-y-4" autoComplete="on" noValidate>
-          {isRegisterMode && (
-            <div className="space-y-1.5">
-              <Label htmlFor="name">Nombre</Label>
-              <Input
+          {isRegisterMode ? (
+            <AuthField id="name" label="Nombre" error={errName}>
+              <AuthTextInput
                 id="name"
                 name="name"
                 autoComplete="name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className={cn("h-12 rounded-xl", errName && "border-destructive focus-visible:ring-destructive")}
-                aria-invalid={Boolean(errName)}
-                aria-describedby={errName ? "name-error" : undefined}
+                error={errName}
               />
-              {errName ? (
-                <p id="name-error" className="text-xs text-destructive">
-                  {errName}
-                </p>
-              ) : null}
-            </div>
-          )}
-          <div className="space-y-1.5">
-            <Label htmlFor="email">Email o teléfono</Label>
-            <Input
+            </AuthField>
+          ) : null}
+
+          <AuthField id="email" label="Correo electrónico" error={errEmail}>
+            <AuthTextInput
               id="email"
               name="email"
               type="email"
@@ -171,24 +167,49 @@ export default function Login() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="tu@email.com"
-              className={cn("h-12 rounded-xl", errEmail && "border-destructive focus-visible:ring-destructive")}
-              aria-invalid={Boolean(errEmail)}
-              aria-describedby={errEmail ? "email-error" : undefined}
+              error={errEmail}
             />
-            {errEmail ? (
-              <p id="email-error" className="text-xs text-destructive">
-                {errEmail}
-              </p>
-            ) : null}
-          </div>
+          </AuthField>
 
-          {isRegisterMode && (
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between gap-2">
-                <Label htmlFor="calendar-url">Link de calendario de Google (opcional)</Label>
-                <GoogleCalendarLinkHelpDialog />
-              </div>
-              <Input
+          <AuthField id="pass" label="Contraseña" error={errPassword}>
+            <AuthPasswordInput
+              id="pass"
+              name="password"
+              autoComplete={isRegisterMode ? "new-password" : "current-password"}
+              value={pass}
+              onChange={(e) => setPass(e.target.value)}
+              placeholder="••••••••"
+              error={errPassword}
+              shown={show}
+              onToggle={() => setShow((s) => !s)}
+            />
+          </AuthField>
+
+          {isRegisterMode ? (
+            <AuthField id="confirm" label="Confirmar contraseña" error={errConfirm}>
+              <AuthPasswordInput
+                id="confirm"
+                name="confirmPassword"
+                autoComplete="new-password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                placeholder="••••••••"
+error={errConfirm}
+              shown={showConfirm}
+              toggleLabel="confirmación"
+              onToggle={() => setShowConfirm((s) => !s)}
+              />
+            </AuthField>
+          ) : null}
+
+          {isRegisterMode ? (
+            <AuthField
+              id="calendar-url"
+              label="Link de calendario de Google (opcional)"
+              error={errCalendarSchedulingUrl}
+              hint={<GoogleCalendarLinkHelpDialog />}
+            >
+              <AuthTextInput
                 id="calendar-url"
                 name="calendar-url"
                 type="url"
@@ -196,93 +217,52 @@ export default function Login() {
                 value={calendarSchedulingUrl}
                 onChange={(e) => setCalendarSchedulingUrl(e.target.value)}
                 placeholder="https://calendar.app.google/..."
-                className={cn(
-                  "h-12 rounded-xl",
-                  errCalendarSchedulingUrl && "border-destructive focus-visible:ring-destructive",
-                )}
-                aria-invalid={Boolean(errCalendarSchedulingUrl)}
-                aria-describedby={errCalendarSchedulingUrl ? "calendar-url-error" : undefined}
+                error={errCalendarSchedulingUrl}
               />
-              {errCalendarSchedulingUrl ? (
-                <p id="calendar-url-error" className="text-xs text-destructive">
-                  {errCalendarSchedulingUrl}
-                </p>
-              ) : null}
-            </div>
-          )}
+            </AuthField>
+          ) : null}
 
-          <div className="space-y-1.5">
-            <Label htmlFor="pass">Contraseña</Label>
-            <div className="relative">
-              <Input
-                id="pass"
-                name="password"
-                type={show ? "text" : "password"}
-                autoComplete={isRegisterMode ? "new-password" : "current-password"}
-                value={pass}
-                onChange={(e) => setPass(e.target.value)}
-                placeholder="••••••••"
-                className={cn("h-12 rounded-xl pr-11", errPassword && "border-destructive focus-visible:ring-destructive")}
-                aria-invalid={Boolean(errPassword)}
-                aria-describedby={errPassword ? "pass-error" : undefined}
-              />
-              <button
-                type="button"
-                onClick={() => setShow((s) => !s)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground p-1"
-                aria-label={show ? "Ocultar contraseña" : "Mostrar contraseña"}
-              >
-                {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-            {errPassword ? (
-              <p id="pass-error" className="text-xs text-destructive">
-                {errPassword}
-              </p>
-            ) : null}
-          </div>
-
-          {!isRegisterMode && (
-            <div className="text-right">
+          {!isRegisterMode ? (
+            <div className="flex items-center justify-between gap-3 pt-1">
               <button
                 type="button"
                 onClick={() => navigate("/forgot-password")}
-                className="text-xs font-semibold text-primary-dark hover:underline"
+                className="text-xs font-semibold text-primary hover:underline"
               >
                 ¿Olvidaste tu contraseña?
               </button>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="remember-me" className="text-xs text-muted-foreground cursor-pointer">
+                  Recuérdame
+                </Label>
+                <Switch
+                  id="remember-me"
+                  checked={rememberMe}
+                  onCheckedChange={setRememberMe}
+                  aria-label="Activar recordar sesión"
+                />
+              </div>
             </div>
-          )}
-
-          <div className="flex items-center justify-between rounded-xl border border-border bg-card px-3 py-2">
-            <Label htmlFor="remember-me" className="text-sm cursor-pointer">
-              Recuérdame
-            </Label>
-            <Switch
-              id="remember-me"
-              checked={rememberMe}
-              onCheckedChange={setRememberMe}
-              aria-label="Activar recordar sesión"
-            />
-          </div>
-
-          <Button type="submit" className="w-full h-12 rounded-xl text-base font-semibold shadow-green">
-            {isRegisterMode ? "Crear cuenta" : "Entrar"}
-          </Button>
-          {formError ? (
-            <p className="text-xs text-destructive" role="alert">
-              {formError}
-            </p>
           ) : null}
-        </form>
+        </div>
 
-        <p className="text-center text-xs text-muted-foreground mt-6">
-          ¿Sin cuenta?{" "}
-          <button type="button" onClick={toggleMode} className="text-primary-dark font-semibold hover:underline">
-            {isRegisterMode ? "Ya tengo cuenta" : "Crear cuenta"}
-          </button>
-        </p>
-      </div>
-    </div>
+        {formError ? (
+          <p className="mt-4 text-xs text-destructive" role="alert">
+            {formError}
+          </p>
+        ) : null}
+
+        <AuthActions>
+          <Button type="submit" disabled={submitting} className={authPillBlack}>
+            {submitting ? "Un momento…" : isRegisterMode ? "Crear cuenta" : "Entrar"}
+          </Button>
+          {isRegisterMode ? null : (
+            <Link to="/registro" className={authPillWhite}>
+              Crear cuenta
+            </Link>
+          )}
+        </AuthActions>
+      </form>
+    </AuthShell>
   );
 }

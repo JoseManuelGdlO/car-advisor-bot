@@ -7,6 +7,7 @@ import rateLimit from "express-rate-limit";
 import { env } from "./config/env.js";
 import { apiRoutes } from "./routes/apiRoutes.js";
 import { authRoutes } from "./routes/authRoutes.js";
+import { metaSignupPageRoutes } from "./routes/metaSignupPageRoutes.js";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.js";
 
 export const app = express();
@@ -71,5 +72,6 @@ if (normalizedApiPrefix !== "/api") {
   app.use(normalizedApiPrefix, apiRoutes);
 }
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
+app.use(metaSignupPageRoutes);
 app.use(notFoundHandler);
 app.use(errorHandler);

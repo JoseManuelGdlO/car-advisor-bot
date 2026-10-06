@@ -1,7 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { HelpCircle, ChevronRight, Bot, Zap, Clock3, Ban } from "lucide-react";
 import { BotBlacklistDialog } from "@/components/BotBlacklistDialog";
-import { ScreenHeader } from "@/components/ScreenHeader";
 import { useAuth } from "@/context/AuthContext";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { crmApi } from "@/services/crm";
@@ -56,8 +55,6 @@ export default function Configuracion() {
 
   return (
     <>
-      <ScreenHeader title="Configuración" subtitle="Contenido y comportamiento del bot" variant="primary" />
-
       <div className="px-4 py-5 space-y-5">
         {/* Bot status */}
         <div className="bg-card rounded-2xl p-4 shadow-card border border-border flex items-center gap-3">

@@ -17,11 +17,18 @@ import {
 } from "../controllers/integrationsController.js";
 import {
   getMetaSignupConfig,
+  getMetaSignupTicket,
   getWhatsappMetaStatus,
   postMetaDisconnect,
   postMetaEmbeddedSignup,
+  postMetaSignupTicket,
   postMetaWhatsappSendTest,
 } from "../controllers/metaWhatsappController.js";
+import {
+  getFollowupTemplateHandler,
+  postFollowupTemplateHandler,
+  putFollowupTemplateHandler,
+} from "../controllers/whatsappFollowupTemplateController.js";
 
 export const accountRoutes = Router();
 
@@ -39,7 +46,24 @@ accountRoutes.post("/integrations/:id/credentials", requireUserAuth, postIntegra
 accountRoutes.post("/integrations/:id/test", requireUserAuth, postIntegrationTest);
 
 accountRoutes.get("/integrations/whatsapp/meta/config", requireUserAuth, getMetaSignupConfig);
+accountRoutes.post("/integrations/whatsapp/meta/signup-ticket", requireUserAuth, postMetaSignupTicket);
+accountRoutes.get("/integrations/whatsapp/meta/signup-ticket", requireUserAuth, getMetaSignupTicket);
 accountRoutes.post("/integrations/whatsapp/meta/signup", requireUserAuth, postMetaEmbeddedSignup);
 accountRoutes.post("/integrations/whatsapp/meta/disconnect", requireUserAuth, postMetaDisconnect);
+accountRoutes.get(
+  "/integrations/whatsapp/meta/templates/followup",
+  requireUserAuth,
+  getFollowupTemplateHandler
+);
+accountRoutes.post(
+  "/integrations/whatsapp/meta/templates/followup",
+  requireUserAuth,
+  postFollowupTemplateHandler
+);
+accountRoutes.put(
+  "/integrations/whatsapp/meta/templates/followup",
+  requireUserAuth,
+  putFollowupTemplateHandler
+);
 accountRoutes.get("/internal/whatsapp/meta/status", requireUserAuth, getWhatsappMetaStatus);
 accountRoutes.post("/internal/whatsapp/send-test", requireUserAuth, postMetaWhatsappSendTest);

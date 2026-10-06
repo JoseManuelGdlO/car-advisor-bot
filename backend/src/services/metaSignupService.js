@@ -14,10 +14,13 @@ import {
   exchangeEmbeddedSignupCode,
   ensurePlatformCanManageWaba,
   getPhoneNumberDetails,
+  initiateCoexistenceSync,
+  inspectGraphToken,
   listWabaPhoneNumbers,
   subscribeWabaApp,
   unsubscribeWabaApp,
 } from "./metaGraphClient.js";
+import { ensureFollowupDefaultTemplate } from "./whatsappFollowupTemplateService.js";
 
 const quietTest = process.env.NODE_ENV === "test" || Boolean(process.env.NODE_TEST_CONTEXT);
 
@@ -104,6 +107,7 @@ export async function completeEmbeddedSignup({
   phoneNumberId,
   businessId,
   event,
+  ensureFollowupDefault = ensureFollowupDefaultTemplate,
 } = {}) {
   const config = publicMetaSignupConfig();
   if (!config.configured) {
@@ -130,6 +134,30 @@ export async function completeEmbeddedSignup({
     equalsPlatform: described.equalsPlatform,
     ...(env.meta.debugGraphToken ? { tokenPreview: described.preview } : {}),
   });
+
+  try {
+    const inspection = await inspectGraphToken(accessToken);
+    logInfo("embedded signup: token inspeccionado", {
+      ownerUserId,
+      type: inspection.type,
+      isValid: inspection.isValid,
+      expiresAt: inspection.expiresAt,
+      dataAccessExpiresAt: inspection.dataAccessExpiresAt,
+      targetIds: inspection.targetIds,
+    });
+    if (described.equalsPlatform || String(inspection.type || "").toUpperCase() === "SYSTEM_USER") {
+      logWarn("embedded signup: el token intercambiado no parece User Access Token del cliente", {
+        ownerUserId,
+        type: inspection.type,
+        equalsPlatform: described.equalsPlatform,
+      });
+    }
+  } catch (error) {
+    logWarn("embedded signup: no se pudo inspeccionar el token", {
+      ownerUserId,
+      message: error.message,
+    });
+  }
 
   await subscribeWabaApp(resolvedWabaId, accessToken);
   logInfo("embedded signup: WABA suscrita a webhooks", { ownerUserId, wabaId: resolvedWabaId });
@@ -185,6 +213,25 @@ export async function completeEmbeddedSignup({
     payload: credentials,
   });
 
+  if (coexistenceEnabled) {
+    try {
+      await initiateCoexistenceSync({
+        phoneNumberId: credentials.phoneNumberId,
+        token: accessToken,
+        syncType: "smb_app_state_sync",
+      });
+      logInfo("embedded signup: sync de contactos iniciado", {
+        phoneNumberId: credentials.phoneNumberId,
+      });
+    } catch (error) {
+      logWarn("embedded signup: sync de coexistence falló", {
+        phoneNumberId: credentials.phoneNumberId,
+        message: error.message,
+        code: error.meta?.code || null,
+      });
+    }
+  }
+
   logInfo("embedded signup: conexión guardada", {
     ownerUserId,
     integrationId: integration.id,
@@ -192,6 +239,16 @@ export async function completeEmbeddedSignup({
     phoneNumberId: credentials.phoneNumberId,
     coexistenceEnabled,
   });
+
+  try {
+    await ensureFollowupDefault({ ownerUserId, wabaId: resolvedWabaId, accessToken });
+  } catch (error) {
+    logWarn("embedded signup: no se pudo crear la plantilla de seguimiento", {
+      ownerUserId,
+      wabaId: resolvedWabaId,
+      message: error.message,
+    });
+  }
 
   return {
     integration,

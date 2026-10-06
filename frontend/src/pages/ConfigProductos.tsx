@@ -2,9 +2,14 @@ import { useState, useMemo, useEffect, useRef, type FormEvent, type ReactNode } 
 import { useSearchParams } from "react-router-dom";
 import {
   ArrowDown,
+  ArrowDownAZ,
   ArrowUp,
+  ArrowUpDown,
+  Calendar,
   Car,
   Check,
+  ChevronDown,
+  ChevronRight,
   FileText,
   Gauge,
   ImagePlus,
@@ -12,6 +17,7 @@ import {
   Pencil,
   Plus,
   Search,
+  SlidersHorizontal,
   Tag,
   Trash2,
   X,
@@ -47,16 +53,29 @@ import {
 } from "@/components/ui/select";
 import { FormErrorAlert } from "@/components/FormErrorAlert";
 import { normalizeApiError } from "@/lib/formErrors";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
-type ProductFilter = "all" | CarStatus | "noFinancing" | "noPromos";
+type ExtraFilter = "noFinancing" | "noPromos";
+type CatalogFilter = CarStatus | ExtraFilter;
+type SortKey = "priority" | "priceAsc" | "priceDesc" | "yearDesc" | "brandAsc";
 
-const filters: { key: ProductFilter; label: string }[] = [
-  { key: "all", label: "Todos" },
+const statusFilterOptions: { key: CarStatus; label: string }[] = [
   { key: "available", label: "Disponibles" },
   { key: "reserved", label: "Apartados" },
   { key: "sold", label: "Vendidos" },
+];
+
+const extraFilterOptions: { key: ExtraFilter; label: string }[] = [
   { key: "noFinancing", label: "Sin financiamiento" },
   { key: "noPromos", label: "Sin promos" },
+];
+
+const sortOptions: { key: SortKey; label: string; icon: typeof Gauge }[] = [
+  { key: "priority", label: "Prioridad", icon: Gauge },
+  { key: "priceAsc", label: "Precio: menor a mayor", icon: ArrowUp },
+  { key: "priceDesc", label: "Precio: mayor a menor", icon: ArrowDown },
+  { key: "yearDesc", label: "Año: más reciente", icon: Calendar },
+  { key: "brandAsc", label: "A–Z", icon: ArrowDownAZ },
 ];
 
 const linkedPromoCountForVehicle = (vehicleId: string, promotions: PromotionDto[]) =>
@@ -158,6 +177,8 @@ const rowsToMetadata = (rows: MetadataRow[]): Record<string, string | number | b
   }
   return result;
 };
+
+const WIZARD_STEPS = ["Identificación", "Especificaciones", "Medios", "Adicional"] as const;
 
 function FormSection({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
   return (
@@ -270,10 +291,15 @@ export default function ConfigProductos() {
   const cars = (data || []) as VehicleDto[];
   const plans = plansData as FinancingPlanDto[];
   const promotions = promotionsData as PromotionDto[];
-  const [filter, setFilter] = useState<ProductFilter>("all");
+  const [statusFilters, setStatusFilters] = useState<CarStatus[]>([]);
+  const [extraFilters, setExtraFilters] = useState<ExtraFilter[]>([]);
+  const [sortKey, setSortKey] = useState<SortKey>("priority");
   const [q, setQ] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [updating, setUpdating] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
+  const [vehicleStep, setVehicleStep] = useState(0);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -290,9 +316,10 @@ export default function ConfigProductos() {
   const [form, setForm] = useState<VehicleFormState>(emptyForm);
   const focusedVehicleId = searchParams.get("vehicleId");
 
+  const activeFilterCount = statusFilters.length + extraFilters.length;
+
   const filterCounts = useMemo(() => {
-    const counts: Record<ProductFilter, number> = {
-      all: cars.length,
+    const counts: Record<CatalogFilter, number> = {
       available: 0,
       reserved: 0,
       sold: 0,
@@ -300,35 +327,58 @@ export default function ConfigProductos() {
       noPromos: 0,
     };
     for (const car of cars) {
-      if (car.status in counts) counts[car.status as CarStatus] += 1;
+      counts[car.status] += 1;
       if (!car.financingPlans?.length) counts.noFinancing += 1;
       if (linkedPromoCountForVehicle(car.id, promotions) === 0) counts.noPromos += 1;
     }
     return counts;
   }, [cars, promotions]);
 
+  const toggleStatusFilter = (key: CarStatus) => {
+    setStatusFilters((current) => (current.includes(key) ? current.filter((item) => item !== key) : [...current, key]));
+  };
+
+  const toggleExtraFilter = (key: ExtraFilter) => {
+    setExtraFilters((current) => (current.includes(key) ? current.filter((item) => item !== key) : [...current, key]));
+  };
+
   const list = useMemo(() => {
+    const byPriority = (a: VehicleDto, b: VehicleDto) => {
+      const priorityA = Number(a.outboundPriority) || 0;
+      const priorityB = Number(b.outboundPriority) || 0;
+      if (priorityA <= 0 && priorityB <= 0) return 0;
+      if (priorityA <= 0) return 1;
+      if (priorityB <= 0) return -1;
+      return priorityA - priorityB;
+    };
+
     return cars
       .filter((c) => {
-        let okF = true;
-        if (filter === "noFinancing") okF = !c.financingPlans?.length;
-        else if (filter === "noPromos") okF = linkedPromoCountForVehicle(c.id, promotions) === 0;
-        else if (filter !== "all") okF = c.status === filter;
+        const matchesStatus = statusFilters.length === 0 || statusFilters.includes(c.status);
+        const matchesFinancing = !extraFilters.includes("noFinancing") || !c.financingPlans?.length;
+        const matchesPromos = !extraFilters.includes("noPromos") || linkedPromoCountForVehicle(c.id, promotions) === 0;
         const okQ = !q || `${c.brand} ${c.model}`.toLowerCase().includes(q.toLowerCase());
-        return okF && okQ;
+        return matchesStatus && matchesFinancing && matchesPromos && okQ;
       })
       .sort((a, b) => {
-        const priorityA = Number(a.outboundPriority) || 0;
-        const priorityB = Number(b.outboundPriority) || 0;
-        if (priorityA <= 0 && priorityB <= 0) return 0;
-        if (priorityA <= 0) return 1;
-        if (priorityB <= 0) return -1;
-        return priorityA - priorityB;
+        if (sortKey === "priceAsc") return a.price - b.price;
+        if (sortKey === "priceDesc") return b.price - a.price;
+        if (sortKey === "yearDesc") return b.year - a.year;
+        if (sortKey === "brandAsc") return `${a.brand} ${a.model}`.localeCompare(`${b.brand} ${b.model}`, "es");
+        return byPriority(a, b);
       });
-  }, [cars, filter, q, promotions]);
+  }, [cars, statusFilters, extraFilters, sortKey, q, promotions]);
 
   const isFormValid =
     Boolean(form.brand && form.model && form.year && form.price && form.transmission && form.engine && form.color);
+  const isWizard = !editingId;
+  const stepReady =
+    vehicleStep === 0
+      ? Boolean(form.brand && form.model && form.year && form.price)
+      : vehicleStep === 1
+        ? Boolean(form.color && form.transmission && form.engine)
+        : true;
+  const fieldLayout = isWizard ? "space-y-3" : "grid grid-cols-2 gap-3";
 
   const editingVehicle = useMemo(
     () => (editingId ? cars.find((car) => car.id === editingId) ?? null : null),
@@ -341,6 +391,11 @@ export default function ConfigProductos() {
     if (!element) return;
     element.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [focusedVehicleId, list.length]);
+
+  useEffect(() => {
+    if (!searchOpen) return;
+    searchInputRef.current?.focus();
+  }, [searchOpen]);
 
   const [selectedFilePreviews, setSelectedFilePreviews] = useState<string[]>([]);
 
@@ -371,6 +426,7 @@ export default function ConfigProductos() {
     setVehicleFormError("");
     setDeleteOpen(false);
     setDeleteError("");
+    setVehicleStep(0);
   };
 
   const togglePlanForVehicle = async (vehicleId: string, planId: string, selected: boolean) => {
@@ -432,6 +488,7 @@ export default function ConfigProductos() {
       outboundPriority: String(car.outboundPriority ?? 0),
     });
     setVehicleFormError("");
+    setVehicleStep(0);
     setCreateOpen(true);
   };
 
@@ -534,42 +591,77 @@ export default function ConfigProductos() {
   };
 
   return (
-    <>
-      <ScreenHeader
-        title="Productos"
-        subtitle={`${cars.length} autos en catálogo`}
-        back
-        action={
-          <Dialog
-            open={createOpen}
-            onOpenChange={(open) => {
-              setCreateOpen(open);
-              if (!open) setVehicleFormError("");
-            }}
-          >
-            <DialogTrigger asChild>
-              <Button
-                size="sm"
-                className="rounded-full h-9 px-3 shadow-green"
-                onClick={resetVehicleForm}
-              >
-                <Plus className="w-4 h-4" /> Auto
-              </Button>
-            </DialogTrigger>
+    <div className="relative h-full overflow-hidden">
+      <Dialog
+        open={createOpen}
+        onOpenChange={(open) => {
+          setCreateOpen(open);
+          if (!open) {
+            setVehicleFormError("");
+            setVehicleStep(0);
+          }
+        }}
+      >
+        <div className="h-full overflow-y-auto scrollbar-hide">
+          <div className="sticky top-0 z-20 bg-background/95 backdrop-blur">
+            <ScreenHeader
+              embedded
+              title="Productos"
+              subtitle={`${cars.length} autos en catálogo`}
+              back
+            />
             <DialogContent className="max-w-md p-0 gap-0 max-h-[92vh] flex flex-col overflow-hidden">
-              <DialogHeader className="px-5 pt-5 pb-4 border-b shrink-0 text-left">
+              <DialogHeader className="px-5 pt-5 pb-4 border-b shrink-0 text-center sm:text-center">
                 <DialogTitle>{editingId ? "Editar auto" : "Nuevo auto"}</DialogTitle>
-                <DialogDescription>
-                  {editingId
-                    ? "Actualiza los datos del vehículo en tu catálogo."
-                    : "Completa la información para publicar el vehículo."}
-                </DialogDescription>
+                {isWizard ? (
+                  <div className="flex items-center gap-1 pt-3" aria-label={`Paso ${vehicleStep + 1} de 4: ${WIZARD_STEPS[vehicleStep]}`}>
+                    {WIZARD_STEPS.map((label, index) => {
+                      const active = index === vehicleStep;
+                      const done = index < vehicleStep;
+                      return (
+                        <div key={label} className="flex min-w-0 items-center gap-1">
+                          <span
+                            className={cn(
+                              "grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-bold",
+                              active
+                                ? "bg-primary text-primary-foreground"
+                                : done
+                                  ? "bg-primary/15 text-primary-dark"
+                                  : "bg-muted text-muted-foreground"
+                            )}
+                          >
+                            {index + 1}
+                          </span>
+                          {active ? (
+                            <span className="truncate text-xs font-semibold text-foreground">{label}</span>
+                          ) : null}
+                          {index < WIZARD_STEPS.length - 1 ? (
+                            <ChevronRight className={cn("h-3.5 w-3.5 shrink-0", done ? "text-primary" : "text-muted-foreground/60")} />
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <DialogDescription>Actualiza los datos del vehículo en tu catálogo.</DialogDescription>
+                )}
               </DialogHeader>
 
-              <form onSubmit={saveVehicle} className="flex flex-col flex-1 min-h-0">
+              <form
+                onSubmit={(event) => {
+                  if (isWizard && vehicleStep < WIZARD_STEPS.length - 1) {
+                    event.preventDefault();
+                    if (stepReady) setVehicleStep((step) => step + 1);
+                    return;
+                  }
+                  saveVehicle(event);
+                }}
+                className="flex flex-col flex-1 min-h-0"
+              >
                 <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+                  {(isWizard ? vehicleStep === 0 : true) ? (
                   <FormSection title="Identificación" description="Marca, modelo y precio de lista.">
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className={fieldLayout}>
                       <div className="space-y-1.5">
                         <Label htmlFor="brand">Marca *</Label>
                         <Input
@@ -613,11 +705,13 @@ export default function ConfigProductos() {
                       </div>
                     </div>
                   </FormSection>
+                  ) : null}
 
-                  <Separator />
+                  {editingId ? <Separator /> : null}
 
+                  {(isWizard ? vehicleStep === 1 : true) ? (
                   <FormSection title="Especificaciones" description="Detalles técnicos visibles para el cliente.">
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className={fieldLayout}>
                       <div className="space-y-1.5">
                         <Label htmlFor="km">Kilometraje</Label>
                         <Input
@@ -656,7 +750,7 @@ export default function ConfigProductos() {
                         />
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className={fieldLayout}>
                       <div className="space-y-1.5">
                         <Label>Emoji</Label>
                         <Select value={form.image} onValueChange={(value) => setForm((s) => ({ ...s, image: value }))}>
@@ -706,9 +800,11 @@ export default function ConfigProductos() {
                       </Select>
                     </div>
                   </FormSection>
+                  ) : null}
 
-                  <Separator />
+                  {editingId ? <Separator /> : null}
 
+                  {(isWizard ? vehicleStep === 2 : true) ? (
                   <FormSection title="Medios" description="Imágenes y ficha técnica del vehículo.">
                     <FilePickerZone
                       label="Imágenes"
@@ -826,9 +922,11 @@ export default function ConfigProductos() {
                       />
                     )}
                   </FormSection>
+                  ) : null}
 
-                  <Separator />
+                  {editingId ? <Separator /> : null}
 
+                  {(isWizard ? vehicleStep === 3 : true) ? (
                   <FormSection title="Información adicional" description="Opcional · visible para el asesor y el bot.">
                     <div className="space-y-2">
                       {metadataRows.length === 0 ? (
@@ -888,72 +986,192 @@ export default function ConfigProductos() {
                       </div>
                     ) : null}
                   </FormSection>
+                  ) : null}
                 </div>
 
                 <div className="shrink-0 border-t bg-muted/20 px-5 py-4 space-y-2">
-                  <Button type="submit" className="w-full" disabled={creating || deleting || !isFormValid}>
-                    {creating ? "Guardando…" : editingId ? "Guardar cambios" : "Crear auto"}
-                  </Button>
-                  {!isFormValid ? (
+                  {isWizard ? (
+                    <div className="flex gap-2">
+                      {vehicleStep > 0 ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-11"
+                          disabled={creating || deleting}
+                          onClick={() => setVehicleStep((step) => step - 1)}
+                        >
+                          Atrás
+                        </Button>
+                      ) : null}
+                      {vehicleStep < WIZARD_STEPS.length - 1 ? (
+                        <Button
+                          type="button"
+                          className="h-11 flex-1"
+                          disabled={!stepReady}
+                          onClick={() => setVehicleStep((step) => step + 1)}
+                        >
+                          Siguiente
+                        </Button>
+                      ) : (
+                        <Button type="submit" className="h-11 flex-1" disabled={creating || deleting || !isFormValid}>
+                          {creating ? "Guardando…" : "Crear auto"}
+                        </Button>
+                      )}
+                    </div>
+                  ) : (
+                    <Button type="submit" className="w-full" disabled={creating || deleting || !isFormValid}>
+                      {creating ? "Guardando…" : "Guardar cambios"}
+                    </Button>
+                  )}
+                  {(isWizard ? vehicleStep < 2 && !stepReady : !isFormValid) ? (
                     <p className="text-[11px] text-center text-muted-foreground">Completa los campos marcados con *</p>
                   ) : null}
                   <FormErrorAlert title="No se pudo guardar el vehículo" message={vehicleFormError} />
                 </div>
               </form>
             </DialogContent>
-          </Dialog>
-        }
-      />
 
-      <div className="px-4 py-3 space-y-3 sticky top-[65px] bg-background/95 backdrop-blur z-10 border-b border-border">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar marca o modelo…"
-            className="w-full h-11 pl-10 pr-10 rounded-xl bg-muted text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          />
-          {q ? (
-            <button
-              type="button"
-              onClick={() => setQ("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-muted-foreground hover:text-foreground hover:bg-background/80"
-              aria-label="Limpiar búsqueda"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          ) : null}
-        </div>
-        <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4 pb-0.5">
-          {filters.map((f) => (
-            <button
-              key={f.key}
-              type="button"
-              onClick={() => setFilter(f.key)}
-              className={cn(
-                "inline-flex items-center gap-1.5 px-3.5 h-8 rounded-full text-xs font-semibold whitespace-nowrap transition-colors border",
-                filter === f.key
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-card text-muted-foreground border-border hover:text-foreground"
-              )}
-            >
-              {f.label}
-              <span
-                className={cn(
-                  "tabular-nums rounded-full px-1.5 py-px text-[10px] font-bold",
-                  filter === f.key ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-muted-foreground"
-                )}
+            <div className="border-b border-border">
+        <div className="flex items-center gap-2 px-4 py-3">
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex h-9 items-center gap-1.5 rounded-full border border-primary bg-primary px-3 text-xs font-semibold text-primary-foreground transition-transform active:scale-[0.98] data-[state=open]:[&_.chip-chevron]:rotate-180"
               >
-                {filterCounts[f.key]}
-              </span>
-            </button>
-          ))}
+                <SlidersHorizontal className="h-4 w-4" />
+                Filtros
+                {activeFilterCount > 0 ? (
+                  <span className="tabular-nums rounded-full bg-primary-foreground/20 px-1.5 py-px text-[10px] font-bold">
+                    {activeFilterCount}
+                  </span>
+                ) : null}
+                <ChevronDown className="chip-chevron h-3.5 w-3.5 opacity-80 transition-transform" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-64 rounded-2xl p-2">
+              <p className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Estado</p>
+              {statusFilterOptions.map((option) => {
+                const selected = statusFilters.includes(option.key);
+                return (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => toggleStatusFilter(option.key)}
+                    className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-sm hover:bg-muted"
+                  >
+                    <span
+                      className={cn(
+                        "grid h-4 w-4 place-items-center rounded-sm border",
+                        selected ? "border-primary bg-primary text-primary-foreground" : "border-border"
+                      )}
+                    >
+                      {selected ? <Check className="h-3 w-3" /> : null}
+                    </span>
+                    <span className="flex-1">{option.label}</span>
+                    <span className="tabular-nums text-xs text-muted-foreground">{filterCounts[option.key]}</span>
+                  </button>
+                );
+              })}
+              <div className="my-1 h-px bg-border" />
+              {extraFilterOptions.map((option) => {
+                const selected = extraFilters.includes(option.key);
+                return (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => toggleExtraFilter(option.key)}
+                    className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-sm hover:bg-muted"
+                  >
+                    <span
+                      className={cn(
+                        "grid h-4 w-4 place-items-center rounded-sm border",
+                        selected ? "border-primary bg-primary text-primary-foreground" : "border-border"
+                      )}
+                    >
+                      {selected ? <Check className="h-3 w-3" /> : null}
+                    </span>
+                    <span className="flex-1">{option.label}</span>
+                    <span className="tabular-nums text-xs text-muted-foreground">{filterCounts[option.key]}</span>
+                  </button>
+                );
+              })}
+            </PopoverContent>
+          </Popover>
+
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-card px-3 text-xs font-semibold text-foreground shadow-soft transition-transform active:scale-[0.98] data-[state=open]:[&_.chip-chevron]:rotate-180"
+              >
+                <ArrowUpDown className="h-4 w-4 text-primary-dark" />
+                Ordenar
+                {sortKey !== "priority" ? <span className="h-1.5 w-1.5 rounded-full bg-primary" /> : null}
+                <ChevronDown className="chip-chevron h-3.5 w-3.5 text-muted-foreground transition-transform" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-64 rounded-2xl p-2">
+              {sortOptions.map((option) => {
+                const selected = sortKey === option.key;
+                return (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => setSortKey(option.key)}
+                    className={cn(
+                      "flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left text-sm hover:bg-muted",
+                      selected && "bg-accent text-accent-foreground"
+                    )}
+                  >
+                    <option.icon className={cn("h-4 w-4 shrink-0", selected ? "text-primary-dark" : "text-muted-foreground")} />
+                    <span className="flex-1">{option.label}</span>
+                    {selected ? <Check className="h-4 w-4 text-primary-dark" /> : null}
+                  </button>
+                );
+              })}
+            </PopoverContent>
+          </Popover>
+
+          <button
+            type="button"
+            onClick={() => setSearchOpen(true)}
+            className="relative ml-auto grid place-items-center text-muted-foreground"
+            aria-label="Buscar"
+            aria-expanded={searchOpen}
+          >
+            <Search className="h-6 w-6" />
+            {q ? <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-primary" /> : null}
+          </button>
         </div>
-      </div>
+
+        {searchOpen ? (
+          <div className="border-t border-border bg-white/70 px-4 py-3 backdrop-blur-md">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                ref={searchInputRef}
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Buscar marca o modelo…"
+                className="h-11 w-full rounded-xl border border-border bg-card pl-10 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              <button
+                type="button"
+                onClick={() => setSearchOpen(false)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                aria-label="Cerrar búsqueda"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        ) : null}
+            </div>
+          </div>
 
       {isLoading ? (
-        <div className="px-4 py-4 grid grid-cols-2 gap-3">
+        <div className="px-4 py-4 grid grid-cols-1 gap-4">
           {Array.from({ length: 4 }).map((_, index) => (
             <div key={index} className="rounded-2xl border border-border overflow-hidden">
               <Skeleton className="aspect-[4/3] w-full rounded-none" />
@@ -973,13 +1191,13 @@ export default function ConfigProductos() {
           </div>
           <p className="font-semibold text-sm">Sin vehículos</p>
           <p className="text-xs text-muted-foreground mt-1 max-w-[240px] mx-auto">
-            {q || filter !== "all"
+            {q || activeFilterCount > 0
               ? "No hay resultados con ese filtro. Prueba otra búsqueda."
-              : "Agrega tu primer auto con el botón de arriba."}
+              : "Agrega tu primer auto con el botón +."}
           </p>
         </div>
       ) : (
-        <div className="px-4 py-4 grid grid-cols-2 gap-3 pb-6">
+        <div className="px-4 py-4 grid grid-cols-1 gap-4 pb-24">
           {list.map((c) => {
             const linkedPromoCount = linkedPromoCountForVehicle(c.id, promotions);
             const hasFinancing = Boolean(c.financingPlans?.length);
@@ -1018,28 +1236,28 @@ export default function ConfigProductos() {
                     onClick={() => startEditVehicle(c)}
                     aria-label={`Editar ${c.brand} ${c.model}`}
                   >
-                    <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wide leading-none truncate">
+                    <p className="text-xs uppercase font-bold text-muted-foreground tracking-wide leading-none truncate">
                       {c.brand}
                     </p>
-                    <p className="font-bold text-sm leading-snug line-clamp-2">{c.model}</p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="font-bold text-base leading-snug line-clamp-2">{c.model}</p>
+                    <p className="text-sm text-muted-foreground">
                       {c.year} · {c.km.toLocaleString("es-MX")} km
                     </p>
-                    <p className="font-extrabold text-primary-dark text-base tabular-nums tracking-tight mt-2">
+                    <p className="font-extrabold text-primary-dark text-xl tabular-nums tracking-tight mt-2">
                       {formatPrice(c.price)}
                     </p>
                   </button>
 
                   <div className="flex flex-wrap gap-1 mt-2">
                     {(c.outboundPriority ?? 0) > 0 ? (
-                      <span className="inline-flex items-center gap-0.5 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                      <span className="inline-flex items-center gap-0.5 rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
                         <Gauge className="w-3 h-3 shrink-0" />
                         P{c.outboundPriority}
                       </span>
                     ) : null}
                     <span
                       className={cn(
-                        "inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-medium",
+                        "inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-xs font-medium",
                         hasFinancing ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"
                       )}
                     >
@@ -1048,7 +1266,7 @@ export default function ConfigProductos() {
                     </span>
                     <span
                       className={cn(
-                        "inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-medium",
+                        "inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-xs font-medium",
                         linkedPromoCount > 0 ? "bg-warning/10 text-warning" : "bg-muted text-muted-foreground"
                       )}
                     >
@@ -1058,13 +1276,13 @@ export default function ConfigProductos() {
                   </div>
 
                   <div className="mt-auto pt-2.5 space-y-1.5">
-                    <Button size="sm" variant="secondary" className="h-8 w-full rounded-lg text-xs" onClick={() => startEditVehicle(c)}>
+                    <Button size="sm" variant="secondary" className="h-10 w-full rounded-lg text-sm" onClick={() => startEditVehicle(c)}>
                       <Pencil className="w-3.5 h-3.5 mr-1" /> Editar
                     </Button>
                     <div className="grid grid-cols-2 gap-1.5">
                       <Dialog>
                         <DialogTrigger asChild>
-                          <Button size="sm" variant="outline" className="h-8 w-full rounded-lg text-[11px] px-2">
+                          <Button size="sm" variant="outline" className="h-10 w-full rounded-lg text-sm px-2">
                             <span className="inline-flex items-center gap-1">
                               <Tag className="w-3.5 h-3.5 shrink-0" />
                               Promos
@@ -1121,7 +1339,7 @@ export default function ConfigProductos() {
 
                       <Dialog>
                         <DialogTrigger asChild>
-                          <Button size="sm" variant="outline" className="h-8 w-full rounded-lg text-[11px] px-2">
+                          <Button size="sm" variant="outline" className="h-10 w-full rounded-lg text-sm px-2">
                             <span className="inline-flex items-center gap-1">
                               <Landmark className="w-3.5 h-3.5 shrink-0" />
                               Planes
@@ -1210,6 +1428,18 @@ export default function ConfigProductos() {
           </div>
         </DialogContent>
       </Dialog>
-    </>
+        </div>
+        <DialogTrigger asChild>
+          <button
+            type="button"
+            aria-label="Agregar auto"
+            onClick={resetVehicleForm}
+            className="absolute bottom-4 right-4 z-20 grid h-14 w-14 place-items-center rounded-full bg-primary text-primary-foreground shadow-green transition-transform active:scale-95"
+          >
+            <Plus className="h-6 w-6" />
+          </button>
+        </DialogTrigger>
+      </Dialog>
+    </div>
   );
 }

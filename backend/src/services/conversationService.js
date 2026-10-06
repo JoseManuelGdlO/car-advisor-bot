@@ -16,7 +16,7 @@ import {
   resolveWhatsappConnectIntegrationById,
 } from "./integrationResolverService.js";
 import { sendInstagramImageMessage, sendInstagramTextMessage } from "./metaInstagramClient.js";
-import { sendWhatsappImage, sendWhatsappText } from "./metaWhatsappClient.js";
+import { sendWhatsappImage, sendWhatsappTemplate, sendWhatsappText } from "./metaWhatsappClient.js";
 import { setBotSessionDisabled } from "./botEngineClient.js";
 import { sendPushToOwner } from "./pushService.js";
 import { runWithWcToken } from "./wcAuthCache.js";
@@ -447,6 +447,52 @@ export const sendConversationTextMessage = async ({
     text: normalizedText,
     phone: recipient,
     from: senderRole,
+  });
+};
+
+export const sendConversationTemplateMessage = async ({
+  ownerUserId,
+  conversationId,
+  templateName,
+  language,
+  persistText,
+}) => {
+  const conversation = await getOwnedConversation({ ownerUserId, conversationId });
+  const context = await getConversationContext({ ownerUserId, conversationId });
+  const channel = String(conversation.channel || "web").toLowerCase();
+  const recipient = String(context?.externalUserId || conversation.client?.phone || "").trim();
+  if (!recipient) throw new ApiError(400, "Conversation recipient is not available");
+
+  if (channel !== "whatsapp") {
+    throw new ApiError(400, "Las plantillas HSM solo aplican a WhatsApp Cloud API.");
+  }
+  if (!context?.channelIntegrationId) {
+    throw new ApiError(400, "Conversation is missing WhatsApp integration context");
+  }
+  const integration = await ChannelIntegration.findByPk(context.channelIntegrationId);
+  if (integration?.provider !== "meta") {
+    throw new ApiError(400, "Las plantillas HSM solo aplican a WhatsApp Cloud API.");
+  }
+
+  const { credentials } = await resolveMetaWhatsappIntegrationById({
+    ownerUserId,
+    integrationId: integration.id,
+  });
+  await sendWhatsappTemplate({
+    phoneNumberId: credentials.phoneNumberId,
+    accessToken: credentials.accessToken,
+    to: recipient,
+    name: templateName,
+    language,
+  });
+
+  return persistOutboundMessage({
+    ownerUserId,
+    conversationId,
+    channel,
+    text: persistText,
+    phone: recipient,
+    from: "assistant",
   });
 };
 

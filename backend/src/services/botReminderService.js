@@ -1,13 +1,15 @@
 import { Op } from "sequelize";
 import { env } from "../config/env.js";
 import { sequelize } from "../config/database.js";
-import { BotSetting, ClientLead, Conversation, Message } from "../models/index.js";
+import { BotSetting, ChannelConversationContext, ChannelIntegration, ClientLead, Conversation, Message } from "../models/index.js";
 import { isWithinBotSchedule, toBotSettingsDto } from "../utils/botSettings.js";
-import { sendConversationTextMessage } from "./conversationService.js";
+import { sendConversationTemplateMessage, sendConversationTextMessage } from "./conversationService.js";
 import { isPhoneBlacklisted } from "./phoneBlacklistService.js";
+import { getFollowupTemplate, isFollowupTemplateApproved } from "./whatsappFollowupTemplateService.js";
 
 const BOT_LAST_MESSAGE_FROM = ["bot", "assistant"];
 const SUPPORTED_CHANNELS = ["whatsapp", "instagram"];
+const CUSTOMER_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 let intervalTimer = null;
 let bootTimer = null;
@@ -21,6 +23,35 @@ export const buildReminderOutboundText = ({ reminderMessage, lastBotText }) => {
   if (!reminder || reminder === lastBot) return lastBot;
   return `${reminder}\n\n${lastBot}`;
 };
+
+export function isWhatsappCustomerWindowOpen(lastClientAt, now = Date.now()) {
+  if (!lastClientAt) return false;
+  return now - new Date(lastClientAt).getTime() < CUSTOMER_WINDOW_MS;
+}
+
+export const findLastClientMessageAt = async (conversationId) => {
+  const row = await Message.findOne({
+    where: { conversationId, from: "client" },
+    order: [["createdAt", "DESC"]],
+  });
+  return row?.createdAt ?? null;
+};
+
+export async function getApprovedFollowupForOwner(ownerUserId) {
+  return getFollowupTemplate({ ownerUserId });
+}
+
+export async function defaultResolveWhatsappProvider(conversation) {
+  const context = await ChannelConversationContext.findOne({
+    where: { ownerUserId: conversation.ownerUserId, conversationId: conversation.id },
+    order: [["updatedAt", "DESC"]],
+  });
+  if (!context?.channelIntegrationId) return null;
+  const integration = await ChannelIntegration.findByPk(context.channelIntegrationId);
+  const provider = integration?.provider;
+  if (provider == null || provider === "") return null;
+  return String(provider);
+}
 
 const resolveDisplayPhone = (conversation) => {
   const client = conversation.client;
@@ -40,6 +71,10 @@ export const processConversationReminder = async ({
   conversation,
   reminderMessage,
   sendTextMessage = sendConversationTextMessage,
+  sendTemplateMessage = sendConversationTemplateMessage,
+  loadFollowupTemplate = getApprovedFollowupForOwner,
+  getLastClientAt = findLastClientMessageAt,
+  resolveWhatsappProvider = defaultResolveWhatsappProvider,
 }) => {
   const channel = String(conversation.channel || "").toLowerCase();
   if (!SUPPORTED_CHANNELS.includes(channel)) return;
@@ -65,6 +100,34 @@ export const processConversationReminder = async ({
     lastBotText: latest.text,
   });
   if (!outboundText) return;
+
+  if (channel === "whatsapp") {
+    const lastClientAt = await getLastClientAt(conversation.id);
+    if (!isWhatsappCustomerWindowOpen(lastClientAt)) {
+      const followup = await loadFollowupTemplate(conversation.ownerUserId);
+      const provider = followup?.metaConnected
+        ? await resolveWhatsappProvider(conversation)
+        : null;
+      if (followup?.metaConnected && provider === "meta") {
+        const tpl = followup.template;
+        if (!isFollowupTemplateApproved(tpl)) {
+          console.warn(
+            `[bot-reminder] skip HSM (template not approved) conversation=${conversation.id}`
+          );
+          return;
+        }
+        await sendTemplateMessage({
+          ownerUserId: conversation.ownerUserId,
+          conversationId: conversation.id,
+          templateName: tpl.name,
+          language: tpl.language,
+          persistText: tpl.body || reminderMessage,
+        });
+        await conversation.update({ lastReminderAt: new Date() });
+        return;
+      }
+    }
+  }
 
   try {
     await sendTextMessage({

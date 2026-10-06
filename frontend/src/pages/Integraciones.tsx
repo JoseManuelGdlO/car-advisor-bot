@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Capacitor } from "@capacitor/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FlaskConical, MessageCircle, Unplug } from "lucide-react";
 import { ScreenHeader } from "@/components/ScreenHeader";
@@ -19,7 +20,14 @@ import { useAuth } from "@/context/AuthContext";
 import { integrationsApi } from "@/services/integrations";
 import { launchEmbeddedSignup, loadFacebookSdk } from "@/lib/meta-embedded-signup";
 import {
+  closeSignupBrowser,
+  openSignupBrowser,
+  runNativeWhatsappSignup,
+  subscribeNativeSignupWake,
+} from "@/lib/whatsappSignupBridge";
+import {
   isWhatsAppMetaConnected,
+  metaSignupHint,
   selectWhatsAppMetaIntegration,
   whatsAppMetaDisplayPhone,
 } from "@/lib/whatsappMeta";
@@ -45,6 +53,13 @@ export default function Integraciones() {
     queryFn: () => integrationsApi.getWhatsAppMetaStatus(token!),
     enabled: Boolean(token),
   });
+
+  const { data: metaConfig } = useQuery({
+    queryKey: ["whatsapp-meta-signup-config"],
+    queryFn: () => integrationsApi.getMetaSignupConfig(token!),
+    enabled: Boolean(token),
+  });
+  const signupHint = metaSignupHint(metaConfig?.configured);
 
   const integration = selectWhatsAppMetaIntegration(integrations);
   const connected = isWhatsAppMetaConnected(integration);
@@ -74,8 +89,41 @@ export default function Integraciones() {
     onError: (error) => toast.error(normalizeApiError(error, "No se pudo enviar la prueba.").formError),
   });
 
+  const connectMetaNative = async () => {
+    if (!token) return;
+    setConnecting(true);
+    try {
+      const session = await integrationsApi.createMetaSignupTicket(token);
+      const status = await runNativeWhatsappSignup({
+        signupUrl: session.signupUrl,
+        fetchStatus: () => integrationsApi.getMetaSignupTicketStatus(token, session.ticket),
+        openBrowser: openSignupBrowser,
+        closeBrowser: closeSignupBrowser,
+        subscribeWake: subscribeNativeSignupWake,
+      });
+      if (status.status === "completed") {
+        await refreshWhatsApp();
+        toast.success(status.message || "WhatsApp conectado.");
+        return;
+      }
+      if (status.status === "cancelled") {
+        toast.message(status.message || "Se canceló la conexión de WhatsApp.");
+        return;
+      }
+      toast.error(status.message || "No se pudo conectar WhatsApp.");
+    } catch (error) {
+      toast.error(normalizeApiError(error, "No se pudo conectar WhatsApp.").formError);
+    } finally {
+      setConnecting(false);
+    }
+  };
+
   const connectMeta = async () => {
     if (!token) return;
+    if (Capacitor.isNativePlatform()) {
+      await connectMetaNative();
+      return;
+    }
     setConnecting(true);
     try {
       const config = await integrationsApi.getMetaSignupConfig(token);
@@ -163,12 +211,15 @@ export default function Integraciones() {
             <Button
               type="button"
               className="w-full"
-              disabled={connecting || !token}
+              disabled={connecting || !token || metaConfig?.configured === false}
               onClick={() => void connectMeta()}
             >
-              {connecting ? "Conectando..." : "Conectar WhatsApp"}
+              {connecting ? "Conectando..." : "Conectar con Facebook"}
             </Button>
           )}
+          {signupHint ? (
+            <p className="text-xs text-muted-foreground">{signupHint}</p>
+          ) : null}
         </div>
 
         {connected ? (

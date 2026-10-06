@@ -9,11 +9,13 @@ interface PhoneFrameProps {
   children: ReactNode;
 }
 
-const HIDE_NAV_PREFIXES = ["/login", "/forgot-password", "/reset-password"];
+const HIDE_NAV_PREFIXES = ["/login", "/registro", "/forgot-password", "/reset-password"];
 
 export const PhoneFrame = ({ children }: PhoneFrameProps) => {
   const { pathname } = useLocation();
+  const onWelcome = pathname === "/";
   const showNav =
+    !onWelcome &&
     !HIDE_NAV_PREFIXES.some((p) => pathname.startsWith(p)) &&
     !pathname.startsWith("/chat/") &&
     !isLegalPublicPath(pathname);
@@ -21,9 +23,17 @@ export const PhoneFrame = ({ children }: PhoneFrameProps) => {
 
   if (isNativeApp) {
     return (
-      <div className="min-h-screen w-full bg-background">
-        <div className={`h-screen w-full flex flex-col pt-safe ${showNav ? "pb-[calc(72px+var(--safe-area-bottom))]" : "pb-safe"}`}>
-          <div className="flex-1 overflow-y-auto scrollbar-hide">{children}</div>
+      <div className="relative min-h-screen w-full bg-background">
+        <div className="h-screen w-full flex flex-col pt-safe">
+          <div
+            className={
+              showNav
+                ? "flex-1 min-h-0 overflow-y-auto scrollbar-hide pb-[calc(5.5rem+var(--safe-area-bottom))]"
+                : "flex-1 min-h-0 overflow-y-auto scrollbar-hide pb-safe"
+            }
+          >
+            {children}
+          </div>
         </div>
         {showNav && <BottomNav />}
       </div>
@@ -51,7 +61,9 @@ export const PhoneFrame = ({ children }: PhoneFrameProps) => {
         <div className="hidden lg:block absolute top-0 left-1/2 -translate-x-1/2 w-32 h-7 bg-foreground/90 rounded-b-2xl z-50" />
 
         {/* Status bar (desktop only) */}
-        <div className="hidden lg:flex absolute top-0 left-0 right-0 h-7 px-8 items-center justify-between text-[11px] font-semibold text-foreground z-40">
+        <div
+          className={`hidden lg:flex absolute top-0 left-0 right-0 h-7 px-8 items-center justify-between text-[11px] font-semibold z-40 ${onWelcome ? "text-white" : "text-foreground"}`}
+        >
           <span>9:41</span>
           <div className="flex items-center gap-1 ml-auto pl-32">
             <Signal className="w-3 h-3" />
@@ -61,8 +73,16 @@ export const PhoneFrame = ({ children }: PhoneFrameProps) => {
         </div>
 
         {/* Screen content */}
-        <div className={`h-full w-full flex flex-col pt-safe lg:pt-7 ${showNav ? "pb-[calc(72px+var(--safe-area-bottom))]" : "pb-safe"}`}>
-          <div className="flex-1 overflow-y-auto scrollbar-hide">{children}</div>
+        <div className="h-full w-full flex flex-col pt-safe lg:pt-7">
+          <div
+            className={
+              showNav
+                ? "flex-1 min-h-0 overflow-y-auto scrollbar-hide pb-[calc(5.5rem+var(--safe-area-bottom))]"
+                : "flex-1 min-h-0 overflow-y-auto scrollbar-hide pb-safe"
+            }
+          >
+            {children}
+          </div>
         </div>
 
         {/* Bottom nav */}

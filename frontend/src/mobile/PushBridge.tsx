@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
+import { parseWhatsappSignupReturnUrl, WHATSAPP_SIGNUP_RETURN_EVENT, closeSignupBrowser } from "@/lib/whatsappSignupBridge";
 import { PushNotifications, Token, ActionPerformed, PushNotificationSchema } from "@capacitor/push-notifications";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -111,6 +112,11 @@ export function PushBridge() {
       .catch(() => undefined);
 
     const urlHandle = CapacitorApp.addListener("appUrlOpen", ({ url }) => {
+      if (parseWhatsappSignupReturnUrl(url)) {
+        void closeSignupBrowser().catch(() => undefined);
+        window.dispatchEvent(new CustomEvent(WHATSAPP_SIGNUP_RETURN_EVENT));
+        return;
+      }
       const conversationId = parseConversationIdFromUrl(url);
       openConversation(conversationId);
     });

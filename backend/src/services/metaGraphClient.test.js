@@ -2,9 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { env } from "../config/env.js";
 import {
+  createMessageTemplate,
   exchangeEmbeddedSignupCode,
   graphRequest,
   ensurePlatformCanManageWaba,
+  initiateCoexistenceSync,
+  inspectGraphToken,
+  updateMessageTemplate,
 } from "./metaGraphClient.js";
 import { ApiError } from "../utils/errors.js";
 
@@ -106,4 +110,147 @@ test("ensurePlatformCanManageWaba no lanza si el share OBO falla", async () => {
   assert.equal(result.skipped, false);
   assert.equal(result.shared, false);
   assert.equal(result.assigned, false);
+});
+
+test("createMessageTemplate POST /{wabaId}/message_templates con el payload y el token del caller", async () => {
+  env.meta.graphApiVersion = "v21.0";
+  env.meta.accessToken = "platform-token";
+
+  const payload = {
+    name: "cab_sg_abcd1234",
+    language: "es_MX",
+    category: "MARKETING",
+    components: [{ type: "BODY", text: "Hola, ¿sigues interesado?" }],
+  };
+
+  let calledUrl;
+  let calledMethod;
+  let calledHeaders;
+  let calledBody;
+  global.fetch = async (url, options) => {
+    calledUrl = String(url);
+    calledMethod = options?.method;
+    calledHeaders = options?.headers || {};
+    calledBody = JSON.parse(String(options?.body || "{}"));
+    return { ok: true, status: 200, text: async () => JSON.stringify({ id: "tmpl-1" }) };
+  };
+
+  const result = await createMessageTemplate({
+    wabaId: "waba-123",
+    token: "dealer-token",
+    payload,
+  });
+
+  assert.match(calledUrl, /^https:\/\/graph\.facebook\.com\/v21\.0\/waba-123\/message_templates/);
+  assert.equal(calledMethod, "POST");
+  assert.equal(calledHeaders.Authorization, "Bearer dealer-token");
+  assert.deepEqual(calledBody, payload);
+  assert.equal(result.id, "tmpl-1");
+});
+
+test("updateMessageTemplate POST /{templateId} con el payload y el token del caller", async () => {
+  env.meta.graphApiVersion = "v21.0";
+  env.meta.accessToken = "platform-token";
+
+  const payload = {
+    language: "es_MX",
+    category: "MARKETING",
+    components: [{ type: "BODY", text: "Cuerpo actualizado" }],
+  };
+
+  let calledUrl;
+  let calledMethod;
+  let calledHeaders;
+  let calledBody;
+  global.fetch = async (url, options) => {
+    calledUrl = String(url);
+    calledMethod = options?.method;
+    calledHeaders = options?.headers || {};
+    calledBody = JSON.parse(String(options?.body || "{}"));
+    return { ok: true, status: 200, text: async () => JSON.stringify({ success: true }) };
+  };
+
+  const result = await updateMessageTemplate({
+    templateId: "graph-template-99",
+    token: "dealer-token",
+    payload,
+  });
+
+  assert.match(calledUrl, /^https:\/\/graph\.facebook\.com\/v21\.0\/graph-template-99(?:\?|$)/);
+  assert.doesNotMatch(calledUrl, /message_templates/);
+  assert.equal(calledMethod, "POST");
+  assert.equal(calledHeaders.Authorization, "Bearer dealer-token");
+  assert.deepEqual(calledBody, payload);
+  assert.equal(result.success, true);
+});
+
+test("inspectGraphToken llama debug_token con el app token y resume el data", async () => {
+  env.meta.appId = "app-id";
+  env.meta.appSecret = "app-secret";
+  env.meta.graphApiVersion = "v21.0";
+
+  let requestedUrl;
+  let requestedHeaders;
+  global.fetch = async (url, options) => {
+    requestedUrl = String(url);
+    requestedHeaders = options?.headers || {};
+    return {
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          data: {
+            type: "USER",
+            is_valid: true,
+            expires_at: 1800000000,
+            data_access_expires_at: 1800000001,
+            scopes: ["whatsapp_business_management"],
+            granular_scopes: [{ target_ids: ["waba_1", "waba_1"] }],
+          },
+        }),
+    };
+  };
+
+  const result = await inspectGraphToken("EAA_USER");
+  const parsed = new URL(requestedUrl);
+  assert.equal(parsed.pathname, "/v21.0/debug_token");
+  assert.equal(parsed.searchParams.get("input_token"), "EAA_USER");
+  assert.equal(requestedHeaders.Authorization, "Bearer app-id|app-secret");
+  assert.equal(result.type, "USER");
+  assert.equal(result.isValid, true);
+  assert.equal(result.expiresAt, 1800000000);
+  assert.equal(result.dataAccessExpiresAt, 1800000001);
+  assert.deepEqual(result.scopes, ["whatsapp_business_management"]);
+  assert.deepEqual(result.targetIds, ["waba_1"]);
+});
+
+test("initiateCoexistenceSync hace POST smb_app_data con sync_type", async () => {
+  env.meta.graphApiVersion = "v21.0";
+
+  let calledUrl;
+  let calledMethod;
+  let calledHeaders;
+  let calledBody;
+  global.fetch = async (url, options) => {
+    calledUrl = String(url);
+    calledMethod = options?.method;
+    calledHeaders = options?.headers || {};
+    calledBody = JSON.parse(String(options?.body || "{}"));
+    return { ok: true, status: 200, text: async () => JSON.stringify({ success: true }) };
+  };
+
+  const result = await initiateCoexistenceSync({
+    phoneNumberId: "pn_1",
+    token: "dealer-token",
+    syncType: "smb_app_state_sync",
+  });
+
+  assert.equal(calledUrl, "https://graph.facebook.com/v21.0/pn_1/smb_app_data");
+  assert.equal(calledMethod, "POST");
+  assert.equal(calledHeaders.Authorization, "Bearer dealer-token");
+  assert.deepEqual(calledBody, {
+    messaging_product: "whatsapp",
+    sync_type: "smb_app_state_sync",
+  });
+  assert.equal(result.success, true);
 });
