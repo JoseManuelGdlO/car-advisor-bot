@@ -138,6 +138,39 @@ test("el segundo complete no vuelve a canjear", async () => {
   assert.equal(calls, 1);
 });
 
+test("complete sin wabaId igual canjea el código", async () => {
+  const ticket = "ticket-plain";
+  const row = {
+    id: "row-1",
+    userId: "owner-9",
+    status: "pending",
+    usedAt: null,
+    expiresAt: new Date(Date.now() + 60_000),
+    update: async (patch) => {
+      Object.assign(row, patch);
+    },
+  };
+  MetaSignupTicket.findOne = async () => row;
+  MetaSignupTicket.update = async (patch) => {
+    if (row.usedAt) return [0];
+    Object.assign(row, patch);
+    return [1];
+  };
+  let received;
+  const result = await completeMetaSignupTicket(
+    { ticket, code: "AUTH_CODE" },
+    {
+      completeEmbeddedSignup: async (args) => {
+        received = args;
+      },
+    },
+  );
+  assert.equal(result.status, "completed");
+  assert.equal(received.code, "AUTH_CODE");
+  assert.equal(received.wabaId, "");
+  assert.equal(received.ownerUserId, "owner-9");
+});
+
 test("cancel no llama a Graph", async () => {
   const ticket = "ticket-plain";
   const row = {

@@ -115,8 +115,7 @@ export async function completeEmbeddedSignup({
   }
   const exchangeCode = String(code || "").trim();
   if (!exchangeCode) throw new ApiError(400, "Falta el código de Embedded Signup.");
-  const resolvedWabaId = String(wabaId || "").trim();
-  if (!resolvedWabaId) throw new ApiError(400, "Meta no devolvió el WABA ID. Completa de nuevo el flujo.");
+  let resolvedWabaId = String(wabaId || "").trim();
 
   const coexistenceByEvent = String(event || "").toUpperCase() === "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING";
   logInfo("embedded signup: intercambiando código", {
@@ -135,8 +134,9 @@ export async function completeEmbeddedSignup({
     ...(env.meta.debugGraphToken ? { tokenPreview: described.preview } : {}),
   });
 
+  let inspection = null;
   try {
-    const inspection = await inspectGraphToken(accessToken);
+    inspection = await inspectGraphToken(accessToken);
     logInfo("embedded signup: token inspeccionado", {
       ownerUserId,
       type: inspection.type,
@@ -157,6 +157,16 @@ export async function completeEmbeddedSignup({
       ownerUserId,
       message: error.message,
     });
+  }
+
+  if (!resolvedWabaId) {
+    const ids = Array.isArray(inspection?.targetIds)
+      ? inspection.targetIds.map((id) => String(id || "").trim()).filter(Boolean)
+      : [];
+    if (ids.length === 1) resolvedWabaId = ids[0];
+  }
+  if (!resolvedWabaId) {
+    throw new ApiError(400, "Meta no devolvió el WABA ID. Completa de nuevo el flujo.");
   }
 
   await subscribeWabaApp(resolvedWabaId, accessToken);

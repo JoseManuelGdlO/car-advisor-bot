@@ -96,15 +96,6 @@ export async function completeMetaSignupTicket(input = {}, deps = {}) {
     return { ok: true, status: "cancelled", message: SIGNUP_TICKET_CANCEL_MESSAGE };
   }
 
-  if (!wabaId) {
-    const claimed = await claimTicket(row, {
-      status: "failed",
-      errorMessage: SIGNUP_TICKET_WABA_MESSAGE,
-    });
-    if (!claimed) throw new ApiError(409, SIGNUP_TICKET_USED_MESSAGE);
-    throw new ApiError(400, SIGNUP_TICKET_WABA_MESSAGE);
-  }
-
   const claimed = await claimTicket(row, {});
   if (!claimed) throw new ApiError(409, SIGNUP_TICKET_USED_MESSAGE);
 

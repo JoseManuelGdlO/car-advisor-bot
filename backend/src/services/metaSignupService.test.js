@@ -52,7 +52,7 @@ test("publicMetaSignupConfig configured es true solo con appId, configId y appSe
   assert.equal(JSON.stringify(config).includes("app-secret"), false);
 });
 
-test("completeEmbeddedSignup 400 si falta wabaId y no intercambia el código", async () => {
+test("completeEmbeddedSignup 400 si falta wabaId y el token no trae uno", async () => {
   env.meta.appId = "app-id";
   env.meta.configId = "cfg-id";
   env.meta.appSecret = "app-secret";
@@ -63,6 +63,13 @@ test("completeEmbeddedSignup 400 si falta wabaId y no intercambia el código", a
       exchangeCalled = true;
       return { ok: true, status: 200, text: async () => JSON.stringify({ access_token: "EAA_TOKEN" }) };
     }
+    if (String(url).includes("debug_token")) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ data: { type: "USER", is_valid: true, granular_scopes: [] } }),
+      };
+    }
     return { ok: true, status: 200, text: async () => "{}" };
   };
 
@@ -71,9 +78,81 @@ test("completeEmbeddedSignup 400 si falta wabaId y no intercambia el código", a
     (err) =>
       err instanceof ApiError &&
       err.status === 400 &&
-      err.message === "Meta no devolvió el WABA ID. Completa de nuevo el flujo."
+      err.message === "Meta no devolvió el WABA ID. Completa de nuevo el flujo.",
   );
-  assert.equal(exchangeCalled, false);
+  assert.equal(exchangeCalled, true);
+});
+
+test("completeEmbeddedSignup sin wabaId usa el único target id del token", async () => {
+  env.meta.appId = "app-id";
+  env.meta.configId = "cfg-id";
+  env.meta.appSecret = "app-secret";
+  env.meta.accessToken = "";
+
+  global.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes("oauth/access_token")) {
+      return { ok: true, status: 200, text: async () => JSON.stringify({ access_token: "EAA_TOKEN" }) };
+    }
+    if (u.includes("debug_token")) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            data: {
+              type: "USER",
+              is_valid: true,
+              granular_scopes: [
+                { scope: "whatsapp_business_management", target_ids: ["waba_from_token"] },
+                { scope: "whatsapp_business_messaging", target_ids: ["waba_from_token"] },
+              ],
+            },
+          }),
+      };
+    }
+    if (u.includes("/subscribed_apps")) {
+      return { ok: true, status: 200, text: async () => JSON.stringify({ success: true }) };
+    }
+    if (u.includes("/phone_numbers")) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            data: [{ id: "pn_1", display_phone_number: "+52 618 123 4567", platform_type: "CLOUD_API" }],
+          }),
+      };
+    }
+    if (u.includes("/pn_1")) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({ id: "pn_1", display_phone_number: "+52 618 123 4567", platform_type: "CLOUD_API" }),
+      };
+    }
+    return { ok: true, status: 200, text: async () => "{}" };
+  };
+
+  ChannelIntegration.findAll = async () => [];
+  ChannelIntegration.findOne = async () => null;
+  let created;
+  ChannelIntegration.create = async (data) => {
+    created = { id: "int_meta", ...data, update: async (patch) => Object.assign(created, patch) };
+    return created;
+  };
+  ChannelCredential.update = async () => [1];
+  ChannelCredential.create = async (data) => ({ id: "cred_meta", ...data });
+
+  const result = await completeEmbeddedSignup({
+    ownerUserId: "owner-1",
+    code: "AUTH_CODE",
+    ensureFollowupDefault: async () => ({ created: false }),
+  });
+
+  assert.equal(created.wabaId, "waba_from_token");
+  assert.equal(result.provider, "meta");
 });
 
 test("completeEmbeddedSignup intercambia el código y guarda ChannelIntegration", async () => {

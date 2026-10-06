@@ -52,9 +52,20 @@ app.use(
 );
 // Activos estáticos para recursos del bot/autobot.
 app.use("/uploads/autobot", express.static(path.resolve(process.cwd(), "autobot")));
+morgan.token("safe-url", (req) => {
+  const raw = req.originalUrl || req.url || "";
+  try {
+    const url = new URL(raw, "http://localhost");
+    if (url.searchParams.has("code")) url.searchParams.set("code", "[redacted]");
+    const search = url.searchParams.toString();
+    return search ? `${url.pathname}?${search}` : url.pathname;
+  } catch {
+    return String(raw).replace(/([?&]code=)[^&]*/g, "$1[redacted]");
+  }
+});
 app.use(
   morgan(
-    "[:date[iso]] :method :url :status :res[content-length] - :response-time ms :remote-addr"
+    "[:date[iso]] :method :safe-url :status :res[content-length] - :response-time ms :remote-addr"
   )
 );
 // Throttling de rutas de autenticación para reducir brute force.

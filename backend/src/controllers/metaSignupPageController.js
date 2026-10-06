@@ -1,10 +1,47 @@
 import { publicMetaSignupConfig } from "../services/metaSignupService.js";
 import {
   SIGNUP_APP_SCHEME,
+  SIGNUP_TICKET_TTL_MS,
   cancelMetaSignupTicket,
   completeMetaSignupTicket,
   previewSignupTicket,
 } from "../services/metaSignupTicketService.js";
+
+export const SIGNUP_TICKET_COOKIE = "meta_signup_ticket";
+
+export function readSignupTicketCookie(header) {
+  const raw = String(header || "");
+  for (const part of raw.split(";")) {
+    const trimmed = part.trim();
+    const eq = trimmed.indexOf("=");
+    if (eq <= 0) continue;
+    if (trimmed.slice(0, eq) !== SIGNUP_TICKET_COOKIE) continue;
+    try {
+      return decodeURIComponent(trimmed.slice(eq + 1)).trim();
+    } catch {
+      return "";
+    }
+  }
+  return "";
+}
+
+function requestIsHttps(req) {
+  if (req.secure === true) return true;
+  const proto = String(req.headers?.["x-forwarded-proto"] || "").split(",")[0].trim().toLowerCase();
+  return proto === "https";
+}
+
+function ticketCookie(ticket, { secure = false, clear = false } = {}) {
+  const parts = [
+    `${SIGNUP_TICKET_COOKIE}=${clear ? "" : encodeURIComponent(ticket)}`,
+    "HttpOnly",
+    "SameSite=Lax",
+    "Path=/whatsapp-signup",
+    `Max-Age=${clear ? 0 : Math.floor(SIGNUP_TICKET_TTL_MS / 1000)}`,
+  ];
+  if (secure) parts.push("Secure");
+  return parts.join("; ");
+}
 
 export const SIGNUP_PAGE_CSP = [
   "default-src 'self'",
@@ -78,18 +115,25 @@ const SIGNUP_CLIENT_SCRIPT = `
   }
 
   function finish(response) {
-    if (finished) return;
-    finished = true;
-    launchEl.disabled = true;
     var code = response && response.authResponse ? String(response.authResponse.code || "").trim() : "";
     waitForSession().then(function (current) {
+      if (finished) return;
       var eventName = current && current.event ? String(current.event) : "";
-      if (!code || eventName.toUpperCase() === "CANCEL") {
+      if (eventName.toUpperCase() === "CANCEL") {
+        finished = true;
+        launchEl.disabled = true;
         statusEl.textContent = "Conexión cancelada.";
         return postJson("/whatsapp-signup/cancel", { ticket: config.ticket }).then(function () {
           returnToApp("cancel");
         });
       }
+      if (!code) {
+        launchEl.disabled = false;
+        statusEl.textContent = "Termina en Facebook y pulsa Finalizar. Esta página volverá a la app sola.";
+        return;
+      }
+      finished = true;
+      launchEl.disabled = true;
       statusEl.textContent = "Conectando WhatsApp…";
       return postJson("/whatsapp-signup/complete", {
         ticket: config.ticket,
@@ -187,6 +231,26 @@ function pageShell({ title, body }) {
 </html>`;
 }
 
+export function renderSignupResultHtml(result) {
+  const allowed = result === "success" || result === "cancel" || result === "error" ? result : "error";
+  const url = `${SIGNUP_APP_SCHEME}://whatsapp-signup?result=${allowed}`;
+  const title =
+    allowed === "success" ? "WhatsApp conectado" : allowed === "cancel" ? "Conexión cancelada" : "No se pudo conectar";
+  const message =
+    allowed === "success"
+      ? "Listo. Volviendo a la app…"
+      : allowed === "cancel"
+        ? "Conexión cancelada."
+        : "No se pudo conectar WhatsApp.";
+  return pageShell({
+    title,
+    body: `<h1>${escapeHtml(title)}</h1>
+    <p id="status">${escapeHtml(message)}</p>
+    <a id="return-link" class="return" href="${url}">Volver a la app</a>
+    <script>window.location.replace(${JSON.stringify(url)});</script>`,
+  });
+}
+
 export function renderSignupErrorHtml(message) {
   return pageShell({
     title: "Conectar WhatsApp",
@@ -222,8 +286,37 @@ export async function getWhatsappSignupPage(req, res, next, deps = {}) {
     applySignupDocumentHeaders(res);
     const preview = deps.previewSignupTicket || previewSignupTicket;
     const loadConfig = deps.publicMetaSignupConfig || publicMetaSignupConfig;
-    const ticket = String(req.query?.ticket || "").trim();
-    const valid = await preview(ticket);
+    const complete = deps.completeMetaSignupTicket || completeMetaSignupTicket;
+    const cancel = deps.cancelMetaSignupTicket || cancelMetaSignupTicket;
+    const secure = requestIsHttps(req);
+    const code = String(req.query?.code || "").trim();
+    const oauthError = String(req.query?.error || "").trim();
+    const queryTicket = String(req.query?.ticket || "").trim();
+    const cookieTicket = readSignupTicketCookie(req.headers?.cookie);
+
+    if (code || oauthError) {
+      res.setHeader("Set-Cookie", ticketCookie("", { secure, clear: true }));
+      if (!cookieTicket) {
+        res.status(400).send(renderSignupErrorHtml("Este enlace de conexión no es válido o ya venció."));
+        return;
+      }
+      if (!code) {
+        await cancel(cookieTicket).catch(() => undefined);
+        res.status(200).send(renderSignupResultHtml("cancel"));
+        return;
+      }
+      try {
+        const result = await complete({ ticket: cookieTicket, code });
+        const kind = result?.status === "completed" ? "success" : result?.status === "cancelled" ? "cancel" : "error";
+        res.status(200).send(renderSignupResultHtml(kind));
+      } catch {
+        res.status(200).send(renderSignupResultHtml("error"));
+      }
+      return;
+    }
+
+    const ticket = queryTicket || cookieTicket;
+    const valid = ticket ? await preview(ticket) : null;
     if (!valid) {
       res.status(400).send(renderSignupErrorHtml("Este enlace de conexión no es válido o ya venció."));
       return;
@@ -231,6 +324,13 @@ export async function getWhatsappSignupPage(req, res, next, deps = {}) {
     const config = loadConfig();
     if (!config.configured) {
       res.status(503).send(renderSignupErrorHtml("Embedded Signup no está configurado en el servidor."));
+      return;
+    }
+    if (queryTicket) {
+      res.setHeader("Set-Cookie", ticketCookie(ticket, { secure }));
+      res.status(302);
+      res.setHeader("Location", "/whatsapp-signup");
+      res.send("");
       return;
     }
     res.status(200).send(renderSignupPageHtml({ ticket, config }));

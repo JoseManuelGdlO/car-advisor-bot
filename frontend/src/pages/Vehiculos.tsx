@@ -67,37 +67,39 @@ export default function Vehiculos() {
   const counts = [cars.length, financingPlans.length, activePromos];
 
   return (
-    <div className="h-full min-h-0 flex flex-col">
+    <div className="flex h-full min-h-0 flex-col">
       <ScreenHeader title="Vehículos" subtitle="Catálogo, financiamiento y promociones" variant="primary" />
 
-      <div className="flex-1 min-h-0 grid grid-rows-3 gap-3 px-4 py-4">
-        {sections.map((s, i) => (
-          <button
-            key={s.to}
-            type="button"
-            onClick={() => navigate(s.to)}
-            className={`h-full min-h-0 w-full rounded-2xl ${s.shell} p-3 text-left flex flex-col gap-3 active:scale-[0.99] transition-transform`}
-          >
-            <div className="flex items-center gap-2 px-0.5">
-              <div className={`w-9 h-9 rounded-xl grid place-items-center ${s.chip}`}>
-                <s.icon className="w-5 h-5" />
+      <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pb-2 pt-3">
+        {sections.map((s, i) => {
+          const Icon = s.icon;
+          return (
+            <button
+              key={s.to}
+              type="button"
+              onClick={() => navigate(s.to)}
+              className={`flex w-full flex-1 flex-col rounded-2xl p-3 text-left transition-transform active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${s.shell}`}
+            >
+              <div className="flex shrink-0 items-center gap-2 px-0.5">
+                <div className={`grid h-9 w-9 place-items-center rounded-xl ${s.chip}`}>
+                  <Icon className="h-5 w-5" />
+                </div>
+                <span className={`text-sm font-semibold ${s.accent}`}>{s.kicker}</span>
+                <ChevronRight className={`ml-auto h-4 w-4 shrink-0 opacity-70 ${s.accent}`} />
               </div>
-              <span className={`text-sm font-semibold ${s.accent}`}>{s.kicker}</span>
-              <ChevronRight className={`w-4 h-4 ml-auto shrink-0 ${s.accent} opacity-70`} />
-            </div>
 
-            <div className="flex-1 min-h-0 bg-card rounded-2xl px-4 py-3.5 shadow-card flex flex-col">
-              <p className="text-sm font-bold text-foreground leading-snug">{s.title}</p>
-              <div className="my-2.5 h-px bg-border" />
-              <p className="text-xs text-muted-foreground leading-snug">{s.desc}</p>
-            </div>
+              <div className="mt-3 shrink-0 rounded-2xl bg-card px-4 py-3.5 shadow-card">
+                <p className="text-sm font-bold leading-snug text-foreground">{s.title}</p>
+                <p className="mt-1 text-xs leading-snug text-muted-foreground">{s.desc}</p>
+              </div>
 
-            <div className="px-1 pb-0.5">
-              <p className="text-2xl font-bold text-foreground leading-none">{counts[i]}</p>
-              <p className={`text-xs mt-1 ${s.accent}`}>{s.metric}</p>
-            </div>
-          </button>
-        ))}
+              <div className="mt-auto shrink-0 px-1 pb-0.5 pt-3">
+                <p className="text-2xl font-bold leading-none text-foreground tabular-nums">{counts[i]}</p>
+                <p className={`mt-1 text-xs ${s.accent}`}>{s.metric}</p>
+              </div>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
