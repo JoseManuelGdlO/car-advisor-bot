@@ -1,4 +1,5 @@
 import { publicMetaSignupConfig } from "../services/metaSignupService.js";
+import { embeddedSignupRedirectUri } from "../utils/publicUrl.js";
 import {
   SIGNUP_APP_SCHEME,
   SIGNUP_TICKET_TTL_MS,
@@ -62,7 +63,7 @@ const SIGNUP_CLIENT_SCRIPT = `
   var started = false;
 
   function facebookDialogUrl() {
-    var redirectUri = window.location.origin + "/whatsapp-signup";
+    var redirectUri = config.redirectUri || (window.location.origin + "/whatsapp-signup");
     var extras = JSON.stringify({
       setup: {},
       featureType: config.featureType,
@@ -158,7 +159,7 @@ export function renderSignupErrorHtml(message) {
   });
 }
 
-export function renderSignupPageHtml({ ticket, config }) {
+export function renderSignupPageHtml({ ticket, config, redirectUri }) {
   const payload = JSON.stringify({
     ticket,
     appId: config.appId,
@@ -167,6 +168,7 @@ export function renderSignupPageHtml({ ticket, config }) {
     featureType: config.featureType,
     sessionInfoVersion: config.sessionInfoVersion || "3",
     scheme: SIGNUP_APP_SCHEME,
+    redirectUri: String(redirectUri || "").trim(),
   }).replace(/</g, "\\u003c");
 
   return pageShell({
@@ -234,7 +236,7 @@ export async function getWhatsappSignupPage(req, res, next, deps = {}) {
       res.send("");
       return;
     }
-    res.status(200).send(renderSignupPageHtml({ ticket, config }));
+    res.status(200).send(renderSignupPageHtml({ ticket, config, redirectUri: embeddedSignupRedirectUri() }));
   } catch (err) {
     next(err);
   }

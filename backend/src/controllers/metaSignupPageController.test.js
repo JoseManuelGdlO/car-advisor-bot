@@ -104,6 +104,31 @@ test("GET con ticket válido redirige a la URL fija y guarda el ticket en cookie
   assert.equal(String(res.body).includes("connect.facebook.net"), false);
 });
 
+test("GET sin query incluye en la página el mismo redirect_uri del canje", async () => {
+  const previous = process.env.BACKEND_PUBLIC_URL;
+  process.env.BACKEND_PUBLIC_URL = "https://prueba-autobot.vvggha.easypanel.host/";
+  env.meta.appId = "app-id";
+  env.meta.configId = "cfg-id";
+  env.meta.appSecret = "super-secret-value";
+  const res = mockRes();
+  try {
+    await getWhatsappSignupPage(
+      { query: {}, headers: { cookie: "meta_signup_ticket=ticket-1" } },
+      res,
+      throwNext,
+      {
+        previewSignupTicket: async (ticket) => (ticket === "ticket-1" ? { ok: true } : null),
+        publicMetaSignupConfig,
+      },
+    );
+  } finally {
+    if (previous == null) delete process.env.BACKEND_PUBLIC_URL;
+    else process.env.BACKEND_PUBLIC_URL = previous;
+  }
+  assert.equal(res.statusCode, 200);
+  assert.match(String(res.body), /https:\/\/prueba-autobot\.vvggha\.easypanel\.host\/whatsapp-signup/);
+});
+
 test("GET sin query usa la cookie y sirve la página de alta", async () => {
   env.meta.appId = "app-id";
   env.meta.configId = "cfg-id";

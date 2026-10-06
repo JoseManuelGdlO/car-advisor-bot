@@ -239,7 +239,7 @@ export async function ensurePlatformCanManageWaba({ wabaId, plannerAccessToken }
   return { skipped: false, shared, assigned };
 }
 
-export async function exchangeEmbeddedSignupCode(code) {
+export async function exchangeEmbeddedSignupCode(code, redirectUri) {
   const appId = String(env.meta.appId || "").trim();
   const appSecret = String(env.meta.appSecret || "").trim();
   if (!appId || !appSecret) {
@@ -252,6 +252,7 @@ export async function exchangeEmbeddedSignupCode(code) {
       client_id: appId,
       client_secret: appSecret,
       code: String(code || "").trim(),
+      redirect_uri: String(redirectUri || "").trim(),
     },
   });
   const accessToken = String(payload.access_token || "").trim();

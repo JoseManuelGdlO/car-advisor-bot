@@ -54,6 +54,25 @@ test("exchangeEmbeddedSignupCode lanza ApiError 502 si Meta no devuelve access_t
   assert.equal(parsed.searchParams.get("client_id"), "app-id");
   assert.equal(parsed.searchParams.get("client_secret"), "app-secret");
   assert.equal(parsed.searchParams.get("code"), "signup-code");
+  assert.equal(parsed.searchParams.get("redirect_uri"), null);
+});
+
+test("exchangeEmbeddedSignupCode repite el redirect_uri del diálogo", async () => {
+  env.meta.appId = "app-id";
+  env.meta.appSecret = "app-secret";
+  env.meta.graphApiVersion = "v21.0";
+
+  let requestedUrl;
+  global.fetch = async (url) => {
+    requestedUrl = String(url);
+    return { ok: true, status: 200, text: async () => JSON.stringify({ access_token: "EAA_TOKEN" }) };
+  };
+
+  await exchangeEmbeddedSignupCode("signup-code", "https://api.example.com/whatsapp-signup");
+
+  const parsed = new URL(requestedUrl);
+  assert.equal(parsed.searchParams.get("redirect_uri"), "https://api.example.com/whatsapp-signup");
+  assert.equal(parsed.searchParams.get("code"), "signup-code");
 });
 
 test("graphRequest adjunta type details y fbtraceId en el error de Graph", async () => {

@@ -23,6 +23,11 @@ const resolvePublicBaseUrl = (fallbackBase) => {
   return "";
 };
 
+export function embeddedSignupRedirectUri() {
+  const base = stripTrailingSlash(process.env.BACKEND_PUBLIC_URL);
+  return base ? `${base}/whatsapp-signup` : "";
+}
+
 export const normalizePublicImageUrl = (rawUrl, { fallbackBase } = {}) => {
   const cleaned = String(rawUrl || "").trim();
   if (!cleaned) return "";

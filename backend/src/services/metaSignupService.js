@@ -3,6 +3,7 @@ import { env } from "../config/env.js";
 import { ChannelCredential, ChannelIntegration } from "../models/index.js";
 import { decryptCredentialsPayload, encryptCredentialsPayload } from "../utils/credentialsCrypto.js";
 import { ApiError } from "../utils/errors.js";
+import { embeddedSignupRedirectUri } from "../utils/publicUrl.js";
 import {
   META_WHATSAPP_PROVIDER,
   WHATSAPP_CHANNEL,
@@ -125,7 +126,7 @@ export async function completeEmbeddedSignup({
     event: event || null,
   });
 
-  const { accessToken } = await exchangeEmbeddedSignupCode(exchangeCode);
+  const { accessToken } = await exchangeEmbeddedSignupCode(exchangeCode, embeddedSignupRedirectUri());
   const described = describeGraphToken(accessToken);
   logInfo("embedded signup: token intercambiado", {
     ownerUserId,
