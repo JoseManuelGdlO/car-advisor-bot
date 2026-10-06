@@ -319,3 +319,44 @@ export async function getPhoneNumberDetails(phoneNumberId, token) {
     },
   });
 }
+
+export async function inspectGraphToken(inputToken) {
+  const appId = String(env.meta.appId || "").trim();
+  const appSecret = String(env.meta.appSecret || "").trim();
+  if (!appId || !appSecret) {
+    throw new ApiError(500, "Faltan META_APP_ID o META_APP_SECRET en el servidor.");
+  }
+  const payload = await graphRequest({
+    method: "GET",
+    path: "debug_token",
+    token: `${appId}|${appSecret}`,
+    query: { input_token: String(inputToken || "").trim() },
+  });
+  const data = payload?.data && typeof payload.data === "object" ? payload.data : payload;
+  const granular = Array.isArray(data?.granular_scopes) ? data.granular_scopes : [];
+  const targetIds = [
+    ...new Set(
+      granular.flatMap((row) => (Array.isArray(row?.target_ids) ? row.target_ids : [])).map(String),
+    ),
+  ];
+  return {
+    type: data?.type || null,
+    isValid: data?.is_valid !== false,
+    expiresAt: data?.expires_at ?? null,
+    dataAccessExpiresAt: data?.data_access_expires_at ?? null,
+    scopes: Array.isArray(data?.scopes) ? data.scopes : [],
+    targetIds,
+  };
+}
+
+export async function initiateCoexistenceSync({ phoneNumberId, token, syncType }) {
+  return graphRequest({
+    method: "POST",
+    path: `${phoneNumberId}/smb_app_data`,
+    token,
+    body: {
+      messaging_product: "whatsapp",
+      sync_type: syncType,
+    },
+  });
+}
