@@ -14,6 +14,8 @@ import {
   exchangeEmbeddedSignupCode,
   ensurePlatformCanManageWaba,
   getPhoneNumberDetails,
+  initiateCoexistenceSync,
+  inspectGraphToken,
   listWabaPhoneNumbers,
   subscribeWabaApp,
   unsubscribeWabaApp,
@@ -133,6 +135,30 @@ export async function completeEmbeddedSignup({
     ...(env.meta.debugGraphToken ? { tokenPreview: described.preview } : {}),
   });
 
+  try {
+    const inspection = await inspectGraphToken(accessToken);
+    logInfo("embedded signup: token inspeccionado", {
+      ownerUserId,
+      type: inspection.type,
+      isValid: inspection.isValid,
+      expiresAt: inspection.expiresAt,
+      dataAccessExpiresAt: inspection.dataAccessExpiresAt,
+      targetIds: inspection.targetIds,
+    });
+    if (described.equalsPlatform || String(inspection.type || "").toUpperCase() === "SYSTEM_USER") {
+      logWarn("embedded signup: el token intercambiado no parece User Access Token del cliente", {
+        ownerUserId,
+        type: inspection.type,
+        equalsPlatform: described.equalsPlatform,
+      });
+    }
+  } catch (error) {
+    logWarn("embedded signup: no se pudo inspeccionar el token", {
+      ownerUserId,
+      message: error.message,
+    });
+  }
+
   await subscribeWabaApp(resolvedWabaId, accessToken);
   logInfo("embedded signup: WABA suscrita a webhooks", { ownerUserId, wabaId: resolvedWabaId });
   await ensurePlatformCanManageWaba({
@@ -186,6 +212,25 @@ export async function completeEmbeddedSignup({
     integrationId: integration.id,
     payload: credentials,
   });
+
+  if (coexistenceEnabled) {
+    try {
+      await initiateCoexistenceSync({
+        phoneNumberId: credentials.phoneNumberId,
+        token: accessToken,
+        syncType: "smb_app_state_sync",
+      });
+      logInfo("embedded signup: sync de contactos iniciado", {
+        phoneNumberId: credentials.phoneNumberId,
+      });
+    } catch (error) {
+      logWarn("embedded signup: sync de coexistence falló", {
+        phoneNumberId: credentials.phoneNumberId,
+        message: error.message,
+        code: error.meta?.code || null,
+      });
+    }
+  }
 
   logInfo("embedded signup: conexión guardada", {
     ownerUserId,

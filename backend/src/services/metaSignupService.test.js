@@ -173,14 +173,38 @@ test("completeEmbeddedSignup intercambia el código y guarda ChannelIntegration"
   });
 });
 
-function mockGraphSignupFetch() {
-  global.fetch = async (url) => {
+function mockGraphSignupFetch({ smbStatus = 200, debugStatus = 200, onBizApp = true } = {}) {
+  const requested = [];
+  global.fetch = async (url, opts) => {
     const u = String(url);
+    requested.push({ url: u, method: opts?.method || "GET", body: opts?.body || null });
     if (u.includes("oauth/access_token")) {
       return { ok: true, status: 200, text: async () => JSON.stringify({ access_token: "EAA_TOKEN" }) };
     }
+    if (u.includes("debug_token")) {
+      const ok = debugStatus >= 200 && debugStatus < 300;
+      return {
+        ok,
+        status: debugStatus,
+        text: async () =>
+          ok
+            ? JSON.stringify({ data: { type: "USER", is_valid: true, granular_scopes: [] } })
+            : JSON.stringify({ error: { message: "debug failed", code: 190 } }),
+      };
+    }
     if (u.includes("/subscribed_apps")) {
       return { ok: true, status: 200, text: async () => JSON.stringify({ success: true }) };
+    }
+    if (u.includes("/smb_app_data")) {
+      const ok = smbStatus >= 200 && smbStatus < 300;
+      return {
+        ok,
+        status: smbStatus,
+        text: async () =>
+          ok
+            ? JSON.stringify({ success: true })
+            : JSON.stringify({ error: { message: "sync failed", code: 100 } }),
+      };
     }
     if (u.includes("/phone_numbers")) {
       return {
@@ -188,7 +212,14 @@ function mockGraphSignupFetch() {
         status: 200,
         text: async () =>
           JSON.stringify({
-            data: [{ id: "pn_1", display_phone_number: "+52 1", is_on_biz_app: true, platform_type: "CLOUD_API" }],
+            data: [
+              {
+                id: "pn_1",
+                display_phone_number: "+52 1",
+                is_on_biz_app: onBizApp,
+                platform_type: onBizApp ? "CLOUD_API" : "NOT_APPLICABLE",
+              },
+            ],
           }),
       };
     }
@@ -197,11 +228,17 @@ function mockGraphSignupFetch() {
         ok: true,
         status: 200,
         text: async () =>
-          JSON.stringify({ id: "pn_1", display_phone_number: "+52 1", is_on_biz_app: true, platform_type: "CLOUD_API" }),
+          JSON.stringify({
+            id: "pn_1",
+            display_phone_number: "+52 1",
+            is_on_biz_app: onBizApp,
+            platform_type: onBizApp ? "CLOUD_API" : "NOT_APPLICABLE",
+          }),
       };
     }
     return { ok: true, status: 200, text: async () => "{}" };
   };
+  return requested;
 }
 
 test("completeEmbeddedSignup resuelve si ensureFollowupDefault lanza y no revierte credenciales", async () => {
@@ -275,6 +312,100 @@ test("completeEmbeddedSignup 409 si el número pertenece a otra cuenta", async (
       err.status === 409 &&
       err.message === "Este número de WhatsApp ya está vinculado a otra cuenta."
   );
+});
+
+function stubFreshIntegration() {
+  ChannelIntegration.findAll = async () => [];
+  ChannelIntegration.findOne = async () => null;
+  let created;
+  ChannelIntegration.create = async (data) => {
+    created = { id: "int_meta", ...data, update: async (patch) => Object.assign(created, patch) };
+    return created;
+  };
+  let credCreated;
+  ChannelCredential.update = async () => [1];
+  ChannelCredential.create = async (data) => {
+    credCreated = data;
+    return { id: "cred_meta", ...data };
+  };
+  return {
+    get created() {
+      return created;
+    },
+    get credCreated() {
+      return credCreated;
+    },
+  };
+}
+
+test("completeEmbeddedSignup con coexistencia hace POST smb_app_data y no revierte si el sync falla", async () => {
+  env.meta.appId = "app-id";
+  env.meta.configId = "cfg-id";
+  env.meta.appSecret = "app-secret";
+  env.meta.accessToken = "";
+  const requested = mockGraphSignupFetch({ smbStatus: 400 });
+  const rows = stubFreshIntegration();
+
+  const result = await completeEmbeddedSignup({
+    ownerUserId: "owner-1",
+    code: "AUTH_CODE",
+    wabaId: "waba_1",
+    event: "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING",
+    ensureFollowupDefault: async () => ({ created: true }),
+  });
+
+  const sync = requested.find((row) => row.url.includes("/smb_app_data"));
+  assert.ok(sync);
+  assert.equal(sync.method, "POST");
+  assert.deepEqual(JSON.parse(sync.body), {
+    messaging_product: "whatsapp",
+    sync_type: "smb_app_state_sync",
+  });
+  assert.equal(result.coexistenceEnabled, true);
+  assert.equal(rows.created.status, "active");
+  assert.equal(rows.credCreated.isActive, true);
+});
+
+test("completeEmbeddedSignup sin coexistencia no llama smb_app_data", async () => {
+  env.meta.appId = "app-id";
+  env.meta.configId = "cfg-id";
+  env.meta.appSecret = "app-secret";
+  env.meta.accessToken = "";
+  const requested = mockGraphSignupFetch({ onBizApp: false });
+  stubFreshIntegration();
+
+  const result = await completeEmbeddedSignup({
+    ownerUserId: "owner-1",
+    code: "AUTH_CODE",
+    wabaId: "waba_1",
+    event: "FINISH",
+    ensureFollowupDefault: async () => ({ created: true }),
+  });
+
+  assert.equal(result.coexistenceEnabled, false);
+  assert.equal(requested.some((row) => row.url.includes("/smb_app_data")), false);
+});
+
+test("completeEmbeddedSignup resuelve si debug_token falla", async () => {
+  env.meta.appId = "app-id";
+  env.meta.configId = "cfg-id";
+  env.meta.appSecret = "app-secret";
+  env.meta.accessToken = "";
+  const requested = mockGraphSignupFetch({ debugStatus: 400, onBizApp: false });
+  const rows = stubFreshIntegration();
+
+  const result = await completeEmbeddedSignup({
+    ownerUserId: "owner-1",
+    code: "AUTH_CODE",
+    wabaId: "waba_1",
+    event: "FINISH",
+    ensureFollowupDefault: async () => ({ created: true }),
+  });
+
+  assert.equal(requested.some((row) => row.url.includes("debug_token")), true);
+  assert.equal(result.provider, "meta");
+  assert.equal(rows.created.status, "active");
+  assert.equal(rows.credCreated.isActive, true);
 });
 
 test("disconnectMetaWhatsapp desactiva integración y credenciales", async () => {
