@@ -66,7 +66,20 @@ export async function handleMetaWhatsappWebhookBody(
 
   const templateResults = [];
   for (const update of templateUpdates) {
-    templateResults.push(await applyStatus(update));
+    try {
+      templateResults.push(await applyStatus(update));
+    } catch (error) {
+      logWaCloud("template status isolated", {
+        wabaId: update.wabaId,
+        name: update.name,
+        message: error?.message || String(error),
+      });
+      templateResults.push({
+        ok: false,
+        isolated: true,
+        error: error?.message || "template status failed",
+      });
+    }
   }
 
   const cache = new Map();
@@ -80,48 +93,69 @@ export async function handleMetaWhatsappWebhookBody(
       continue;
     }
 
-    let resolved = cache.get(phoneNumberId);
-    if (resolved === undefined) {
-      try {
-        resolved = await resolveByPhone({ phoneNumberId });
-      } catch (error) {
-        if (error instanceof ApiError && (error.status === 404 || error.status === 400)) {
-          logWaCloud("ingest miss (unknown phone_number_id)", { phoneNumberId });
-          resolved = null;
-        } else {
-          throw error;
-        }
-      }
-      cache.set(phoneNumberId, resolved);
-    }
-    if (!resolved) {
-      results.push({ ok: true, ignored: true, reason: "unknown_phone_number_id" });
-      continue;
-    }
-
-    const normalized = toNormalizedWhatsappCloudEvent({
-      integration: resolved.integration,
-      credentials: resolved.credentials,
-      event,
-    });
-    logWaCloud("ingest start", {
-      providerEventId: normalized.eventId,
-      integrationId: normalized.integrationId,
-    });
     try {
-      const result = await ingestEvent({
-        normalizedEvent: normalized,
-        credentials: resolved.credentials,
-      });
-      logWaCloud("ingest ok", { providerEventId: normalized.eventId, ...result });
-      results.push(result);
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 409) {
-        logWaCloud("ingest duplicate (idempotent)", { providerEventId: normalized.eventId });
-        results.push({ ok: true, duplicate: true });
+      let resolved = cache.get(phoneNumberId);
+      if (resolved === undefined) {
+        try {
+          resolved = await resolveByPhone({ phoneNumberId });
+        } catch (error) {
+          if (error instanceof ApiError && (error.status === 404 || error.status === 400)) {
+            logWaCloud("ingest miss (unknown phone_number_id)", { phoneNumberId });
+            resolved = null;
+          } else {
+            throw error;
+          }
+        }
+        cache.set(phoneNumberId, resolved);
+      }
+      if (!resolved) {
+        results.push({ ok: true, ignored: true, reason: "unknown_phone_number_id" });
         continue;
       }
-      throw error;
+
+      const normalized = toNormalizedWhatsappCloudEvent({
+        integration: resolved.integration,
+        credentials: resolved.credentials,
+        event,
+      });
+      logWaCloud("ingest start", {
+        providerEventId: normalized.eventId,
+        integrationId: normalized.integrationId,
+      });
+      try {
+        const result = await ingestEvent({
+          normalizedEvent: normalized,
+          credentials: resolved.credentials,
+        });
+        logWaCloud("ingest ok", { providerEventId: normalized.eventId, ...result });
+        results.push(result);
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 409) {
+          logWaCloud("ingest duplicate (idempotent)", { providerEventId: normalized.eventId });
+          results.push({ ok: true, duplicate: true });
+          continue;
+        }
+        logWaCloud("ingest isolated", {
+          providerEventId: normalized.eventId,
+          message: error?.message || String(error),
+        });
+        results.push({
+          ok: false,
+          isolated: true,
+          error: error?.message || "ingest failed",
+        });
+      }
+    } catch (error) {
+      logWaCloud("ingest isolated", {
+        messageId: event.messageId,
+        phoneNumberId,
+        message: error?.message || String(error),
+      });
+      results.push({
+        ok: false,
+        isolated: true,
+        error: error?.message || "ingest failed",
+      });
     }
   }
 

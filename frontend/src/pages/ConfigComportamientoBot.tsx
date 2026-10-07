@@ -350,7 +350,9 @@ export default function ConfigComportamientoBot() {
                 <span className="min-w-0">
                   <span className="block font-semibold text-sm">Recordatorio de seguimiento</span>
                   <span className="block text-xs font-normal text-muted-foreground">
-                    Si el último mensaje es del bot y no hay escalación, antepone este texto a esa pregunta tras el plazo.
+                    {metaConnected
+                      ? "Dentro de 24 h incluye la última pregunta del bot. Fuera de 24 h, solo el texto de la plantilla."
+                      : "Si el último mensaje es del bot y no hay escalación, antepone este texto a esa pregunta tras el plazo."}
                   </span>
                 </span>
               </span>

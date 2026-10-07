@@ -253,7 +253,14 @@ export const ingestWhatsappCloudEvent = async ({ normalizedEvent, credentials })
       message: error?.message,
       status: error?.status,
     });
-    await markReceipt(receipt, "failed", error?.message || "Unhandled error");
-    throw error;
+    try {
+      await markReceipt(receipt, "failed", error?.message || "Unhandled error");
+    } catch (markError) {
+      logWaCloud("receipt mark failed", {
+        providerEventId: normalizedEvent.eventId,
+        message: markError?.message,
+      });
+    }
+    return { ok: true, persisted: true, failed: true };
   }
 };

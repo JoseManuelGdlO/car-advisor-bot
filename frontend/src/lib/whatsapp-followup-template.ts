@@ -17,6 +17,9 @@ export const META_RESUBMIT_WARNING =
 export const META_FOLLOWUP_DEFAULT_BODY =
   "Hola, te escribimos de nuevo por si sigues interesado en nuestros vehículos. ¿Te puedo ayudar con algo más?";
 
+export const META_FOLLOWUP_OUTSIDE_WINDOW_NOTE =
+  "Dentro de 24 h el recordatorio se envía junto con la última pregunta del bot. Fuera de 24 h el cliente solo recibe el texto de la plantilla, sin esa pregunta.";
+
 export function shouldConfirmMetaResubmit(status: string | null | undefined) {
   return status === "APPROVED" || status === "REJECTED" || status === "PAUSED" || status === "DISABLED";
 }

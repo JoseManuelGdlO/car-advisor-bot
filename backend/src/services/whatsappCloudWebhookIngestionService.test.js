@@ -208,6 +208,32 @@ test("media no soportada responde el texto fijo y no llama al bot", async () => 
   assert.equal(graphBodies[0].text.body, UNSUPPORTED_INBOUND_OUTBOUND_REPLY);
 });
 
+test("si el pipeline falla tras persistir el recibo, no relanza y marca failed", async () => {
+  let receiptPatch = null;
+  ChannelEventReceipt.create = async (data) => ({
+    id: "receipt-fail",
+    ...data,
+    update: async (patch) => {
+      receiptPatch = patch;
+      Object.assign(data, patch);
+    },
+  });
+  Conversation.findOrCreate = async () => {
+    throw new Error("lead roto");
+  };
+
+  const result = await ingestWhatsappCloudEvent({
+    normalizedEvent: { ...baseEvent, eventId: "wamid.fail" },
+    credentials,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.persisted, true);
+  assert.equal(result.failed, true);
+  assert.equal(receiptPatch?.status, "failed");
+  assert.match(receiptPatch?.error || "", /lead roto/);
+});
+
 test("evento no inbound no envía a Graph", async () => {
   let fetchCalled = false;
   global.fetch = async () => {

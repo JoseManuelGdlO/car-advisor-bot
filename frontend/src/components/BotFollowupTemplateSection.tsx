@@ -18,6 +18,7 @@ import { normalizeApiError } from "@/lib/formErrors";
 import {
   followupBodyError,
   META_FOLLOWUP_DEFAULT_BODY,
+  META_FOLLOWUP_OUTSIDE_WINDOW_NOTE,
   META_RESUBMIT_TITLE,
   META_RESUBMIT_WARNING,
   META_TEMPLATE_PENDING_EDIT_HINT,
@@ -154,6 +155,7 @@ export function BotFollowupTemplateSection({
 
       {metaConnected ? (
         <div className="space-y-1.5">
+          <p className="text-xs text-muted-foreground">{META_FOLLOWUP_OUTSIDE_WINDOW_NOTE}</p>
           <label className="text-xs font-semibold text-muted-foreground" htmlFor="bot-followup-template-body">
             Cuerpo de la plantilla
           </label>

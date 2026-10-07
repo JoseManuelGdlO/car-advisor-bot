@@ -243,6 +243,77 @@ test("POST mixto (mensaje + status) procesa ambos", async () => {
   assert.deepEqual(result.results, [{ ok: true, ingested: true }]);
 });
 
+const twoMessagePayload = () => ({
+  object: "whatsapp_business_account",
+  entry: [
+    {
+      id: "WABA_ID",
+      changes: [
+        {
+          field: "messages",
+          value: {
+            messaging_product: "whatsapp",
+            metadata: { display_phone_number: "15550001234", phone_number_id: "PNID" },
+            messages: [
+              {
+                from: "5215512345678",
+                id: "wamid.FAIL",
+                timestamp: "1700000000",
+                type: "text",
+                text: { body: "uno" },
+              },
+              {
+                from: "5215512345679",
+                id: "wamid.OK",
+                timestamp: "1700000001",
+                type: "text",
+                text: { body: "dos" },
+              },
+            ],
+          },
+        },
+      ],
+    },
+  ],
+});
+
+test("un fallo de ingesta no tumba el lote y el POST responde 200", async () => {
+  env.meta.webhookEnabled = true;
+  const ingested = [];
+  const deps = {
+    resolveMetaWhatsappByPhoneNumberId: async ({ phoneNumberId }) => ({
+      integration: { id: "int-1", ownerUserId: "owner-1", phoneNumberId },
+      credentials: { phoneNumberId, accessToken: "tok" },
+    }),
+    ingestWhatsappCloudEvent: async (args) => {
+      ingested.push(args.normalizedEvent.eventId);
+      if (args.normalizedEvent.eventId === "wamid.FAIL") {
+        throw new Error("pipeline boom");
+      }
+      return { ok: true, ingested: true };
+    },
+  };
+
+  const result = await handleMetaWhatsappWebhookBody(twoMessagePayload(), deps);
+  assert.equal(result.ok, true);
+  assert.deepEqual(ingested, ["wamid.FAIL", "wamid.OK"]);
+  assert.equal(result.processed, 2);
+  assert.equal(result.results[0].ok, false);
+  assert.equal(result.results[0].isolated, true);
+  assert.equal(result.results[1].ok, true);
+
+  ingested.length = 0;
+  const res = mockRes();
+  let nextCalled = false;
+  await postMetaWhatsappWebhook({ body: twoMessagePayload() }, res, () => {
+    nextCalled = true;
+  }, deps);
+  assert.equal(nextCalled, false);
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.ok, true);
+  assert.deepEqual(ingested, ["wamid.FAIL", "wamid.OK"]);
+});
+
 test("POST sin mensajes ni template status sigue ignored", async () => {
   env.meta.webhookEnabled = true;
   const res = mockRes();

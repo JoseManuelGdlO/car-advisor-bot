@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   followupBodyError,
+  META_FOLLOWUP_OUTSIDE_WINDOW_NOTE,
   META_RESUBMIT_TITLE,
   META_RESUBMIT_WARNING,
   META_TEMPLATE_PENDING_EDIT_HINT,
@@ -55,6 +56,14 @@ describe("metaTemplateStatusHint", () => {
   it("explica que PENDING no sirve fuera de 24 h", () => {
     expect(metaTemplateStatusHint("PENDING")).toBe(
       "En revisión de Meta. No se puede usar en recordatorios fuera de 24 h hasta que la aprueben.",
+    );
+  });
+});
+
+describe("ventana de 24 h", () => {
+  it("explica que fuera de 24 h no viaja la última pregunta", () => {
+    expect(META_FOLLOWUP_OUTSIDE_WINDOW_NOTE).toBe(
+      "Dentro de 24 h el recordatorio se envía junto con la última pregunta del bot. Fuera de 24 h el cliente solo recibe el texto de la plantilla, sin esa pregunta.",
     );
   });
 });
