@@ -1604,3 +1604,131 @@ def generate_grounded_answer(
             temperature=0.35,
         )
         return safe_fallback
+
+
+SHEET_TEXT_MAX_CHARS = 12_000
+
+_EMPTY_VEHICLE_SHEET: dict[str, Any] = {
+    "brand": None,
+    "model": None,
+    "year": None,
+    "price": None,
+    "km": None,
+    "transmission": None,
+    "engine": None,
+    "color": None,
+    "description": None,
+    "metadata": {},
+}
+
+
+def _empty_vehicle_sheet() -> dict[str, Any]:
+    sheet = dict(_EMPTY_VEHICLE_SHEET)
+    sheet["metadata"] = {}
+    return sheet
+
+
+def _optional_sheet_text(value: Any) -> str | None:
+    if value is None or isinstance(value, (int, float, bool)):
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _optional_sheet_int(value: Any) -> int | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return int(round(float(value)))
+    digits = re.sub(r"\D", "", str(value))
+    if not digits:
+        return None
+    try:
+        return int(digits)
+    except ValueError:
+        return None
+
+
+def _price_is_grounded(price: int, source: str) -> bool:
+    if price <= 0:
+        return False
+    return str(price) in re.sub(r"\D", "", source)
+
+
+def _sanitize_sheet_metadata(raw: Any) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        return {}
+    cleaned: dict[str, Any] = {}
+    for key, value in raw.items():
+        label = str(key or "").strip()
+        if not label or value is None:
+            continue
+        if isinstance(value, bool):
+            cleaned[label] = value
+            continue
+        if isinstance(value, (int, float)):
+            cleaned[label] = value
+            continue
+        if isinstance(value, str):
+            text = value.strip()
+            if text:
+                cleaned[label] = text
+            continue
+        if isinstance(value, list):
+            parts = [str(item).strip() for item in value if item is not None and str(item).strip()]
+            if parts:
+                cleaned[label] = ", ".join(parts)
+    return cleaned
+
+
+def _build_vehicle_sheet_prompt(sheet_text: str) -> str:
+    return (
+        "Extrae los datos de esta ficha técnica de un vehículo.\n"
+        "Responde SOLO con un JSON objeto y estas claves: "
+        "brand, model, year, price, km, transmission, engine, color, description, metadata.\n"
+        "Reglas:\n"
+        "- Si un dato no aparece en el texto, usa null.\n"
+        "- No inventes el precio ni completes datos que no estén escritos.\n"
+        "- price, year y km son enteros sin símbolos, o null.\n"
+        "- metadata es un objeto plano con datos extra (versión, pasajeros, dimensiones, rendimiento). Sin anidar.\n"
+        "- description es un resumen corto basado solo en el texto, o null.\n\n"
+        f"TEXTO:\n{sheet_text}"
+    )
+
+
+def parse_vehicle_sheet_text(sheet_text: str) -> dict[str, Any]:
+    """Estructura el texto de una ficha técnica. No llama al modelo si el texto está vacío."""
+
+    source = str(sheet_text or "").strip()
+    if not source:
+        return _empty_vehicle_sheet()
+
+    clipped = source[:SHEET_TEXT_MAX_CHARS]
+    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
+    llm = ChatOpenAI(model=model_name, temperature=0)
+    parsed = _parse_json_object_from_llm(str(llm.invoke(_build_vehicle_sheet_prompt(clipped)).content or ""))
+    if not parsed:
+        raise ValueError("El modelo no devolvió JSON de la ficha.")
+
+    year = _optional_sheet_int(parsed.get("year"))
+    if year is not None and not 1900 <= year <= 2100:
+        year = None
+    price = _optional_sheet_int(parsed.get("price"))
+    if price is None or not _price_is_grounded(price, clipped):
+        price = None
+    km = _optional_sheet_int(parsed.get("km"))
+    if km is not None and km < 0:
+        km = None
+
+    return {
+        "brand": _optional_sheet_text(parsed.get("brand")),
+        "model": _optional_sheet_text(parsed.get("model")),
+        "year": year,
+        "price": price,
+        "km": km,
+        "transmission": _optional_sheet_text(parsed.get("transmission")),
+        "engine": _optional_sheet_text(parsed.get("engine")),
+        "color": _optional_sheet_text(parsed.get("color")),
+        "description": _optional_sheet_text(parsed.get("description")),
+        "metadata": _sanitize_sheet_metadata(parsed.get("metadata")),
+    }

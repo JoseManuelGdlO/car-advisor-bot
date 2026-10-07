@@ -1,5 +1,7 @@
 import { FinancingPlan, Promotion, Vehicle, VehicleFinancingPlan } from "../models/index.js";
 import { Op } from "sequelize";
+import { parseVehicleSheet } from "../services/botEngineClient.js";
+import { extractPdfText, normalizeVehicleSheet } from "../services/vehicleSheetParse.js";
 import { ApiError } from "../utils/errors.js";
 import { resolveRequestOwner } from "../utils/resolveRequestOwner.js";
 
@@ -138,4 +140,31 @@ export const uploadVehicleImages = async (req, res) => {
 export const uploadVehicleTechnicalSheet = async (req, res, next) => {
   if (!req.file) return next(new ApiError(400, "Se requiere un archivo PDF."));
   return res.status(201).json({ technicalSheetUrl: `/uploads/autobot/${req.file.filename}` });
+};
+
+const SCANNED_PDF_MESSAGE = "El PDF parece escaneado y no tiene texto. Llena los datos a mano.";
+
+export const technicalSheetParseDeps = {
+  extractPdfText,
+  parseVehicleSheet,
+};
+
+export const parseVehicleTechnicalSheet = async (req, res, next) => {
+  if (!req.file?.buffer?.length) return next(new ApiError(400, "Se requiere un archivo PDF."));
+  let text = "";
+  try {
+    text = await technicalSheetParseDeps.extractPdfText(req.file.buffer);
+  } catch (error) {
+    console.error("[technical-sheet] no se pudo extraer texto", error?.message || error);
+    return next(new ApiError(422, "No se pudo leer el PDF. Llena los datos a mano."));
+  }
+  if (!String(text || "").trim()) {
+    return next(new ApiError(422, SCANNED_PDF_MESSAGE));
+  }
+  try {
+    const parsed = await technicalSheetParseDeps.parseVehicleSheet(String(text));
+    return res.json(normalizeVehicleSheet(parsed));
+  } catch (error) {
+    return next(error instanceof ApiError ? error : new ApiError(502, "No se pudo leer la ficha técnica."));
+  }
 };

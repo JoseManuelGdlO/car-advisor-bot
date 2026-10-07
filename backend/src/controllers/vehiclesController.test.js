@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Op } from "sequelize";
-import { getVehiclesByFilters, uploadVehicleTechnicalSheet } from "./vehiclesController.js";
+import {
+  getVehiclesByFilters,
+  parseVehicleTechnicalSheet,
+  technicalSheetParseDeps,
+  uploadVehicleTechnicalSheet,
+} from "./vehiclesController.js";
 import { Vehicle } from "../models/index.js";
 import { ApiError } from "../utils/errors.js";
 
@@ -102,4 +107,53 @@ test("uploadVehicleTechnicalSheet responde 400 sin archivo", async () => {
   assert.ok(captured instanceof ApiError);
   assert.equal(captured.status, 400);
   assert.equal(captured.message, "Se requiere un archivo PDF.");
+});
+
+test("parseVehicleTechnicalSheet responde 422 cuando el PDF no tiene texto", async () => {
+  const originalExtract = technicalSheetParseDeps.extractPdfText;
+  technicalSheetParseDeps.extractPdfText = async () => "   ";
+  let captured = null;
+  try {
+    await parseVehicleTechnicalSheet(
+      { file: { buffer: Buffer.from("pdf") } },
+      createRes(),
+      (err) => {
+        captured = err;
+      }
+    );
+  } finally {
+    technicalSheetParseDeps.extractPdfText = originalExtract;
+  }
+  assert.ok(captured instanceof ApiError);
+  assert.equal(captured.status, 422);
+  assert.match(captured.message, /escaneado/);
+});
+
+test("parseVehicleTechnicalSheet normaliza la respuesta del bot", async () => {
+  const originalExtract = technicalSheetParseDeps.extractPdfText;
+  const originalParse = technicalSheetParseDeps.parseVehicleSheet;
+  technicalSheetParseDeps.extractPdfText = async () => "Marca Nissan";
+  technicalSheetParseDeps.parseVehicleSheet = async () => ({
+    brand: "N".repeat(90),
+    model: "Versa",
+    year: 2024,
+    price: 0,
+    km: null,
+    transmission: "CVT",
+    engine: "1.6L",
+    color: "Gris",
+  });
+  const res = createRes();
+  try {
+    await parseVehicleTechnicalSheet({ file: { buffer: Buffer.from("pdf") } }, res, (err) => {
+      throw err;
+    });
+  } finally {
+    technicalSheetParseDeps.extractPdfText = originalExtract;
+    technicalSheetParseDeps.parseVehicleSheet = originalParse;
+  }
+  assert.equal(res.payload.brand.length, 80);
+  assert.equal(res.payload.model, "Versa");
+  assert.equal(res.payload.price, null);
+  assert.equal(res.payload.km, 0);
 });

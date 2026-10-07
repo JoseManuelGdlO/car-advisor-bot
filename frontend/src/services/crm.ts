@@ -113,6 +113,22 @@ export const crmApi = {
     formData.append("technicalSheet", file);
     return apiRequestFormData<{ technicalSheetUrl: string }>("/vehicles/technical-sheet/upload", formData, token);
   },
+  parseVehicleTechnicalSheet: async (token: string, file: File) => {
+    const formData = new FormData();
+    formData.append("technicalSheet", file);
+    return apiRequestFormData<{
+      brand: string;
+      model: string;
+      year: number | null;
+      price: number | null;
+      km: number;
+      transmission: string;
+      engine: string;
+      color: string;
+      description: string;
+      metadata: Record<string, string | number | boolean>;
+    }>("/vehicles/technical-sheet/parse", formData, token);
+  },
   getFaqs: (token: string) => apiRequest<FaqDto[]>("/faqs", "GET", undefined, token),
   createFaq: (token: string, payload: { question: string; answer: string }) => apiRequest("/faqs", "POST", payload, token),
   updateFaq: (token: string, id: string, payload: { question: string; answer: string }) =>

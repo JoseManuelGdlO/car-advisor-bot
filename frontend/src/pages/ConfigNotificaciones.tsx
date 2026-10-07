@@ -201,14 +201,6 @@ export default function ConfigNotificaciones() {
             Las preferencias se guardan, pero el sistema bloquea el envío hasta que actives las notificaciones en ajustes.
           </p>
         ) : null}
-
-        <button
-          type="button"
-          className="text-xs text-primary-dark underline px-1"
-          onClick={() => navigate("/perfil")}
-        >
-          Volver al perfil
-        </button>
       </div>
     </>
   );

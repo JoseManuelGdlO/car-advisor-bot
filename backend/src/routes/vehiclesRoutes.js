@@ -11,6 +11,7 @@ import {
   getVehiclesByFilters,
   listVehicles,
   updateVehicle,
+  parseVehicleTechnicalSheet,
   uploadVehicleImages,
   uploadVehicleTechnicalSheet,
 } from "../controllers/vehiclesController.js";
@@ -29,15 +30,21 @@ const storage = multer.diskStorage({
   },
 });
 const upload = multer({ storage });
+const pdfFileFilter = (_req, file, cb) => {
+  const ext = path.extname(file.originalname || "").toLowerCase();
+  const ok = file.mimetype === "application/pdf" || ext === ".pdf";
+  if (ok) return cb(null, true);
+  return cb(new Error("Solo se permiten archivos PDF."));
+};
 const pdfUpload = multer({
   storage,
   limits: { fileSize: PDF_MAX_BYTES, files: 1 },
-  fileFilter: (_req, file, cb) => {
-    const ext = path.extname(file.originalname || "").toLowerCase();
-    const ok = file.mimetype === "application/pdf" || ext === ".pdf";
-    if (ok) return cb(null, true);
-    return cb(new Error("Solo se permiten archivos PDF."));
-  },
+  fileFilter: pdfFileFilter,
+});
+const pdfMemoryUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: PDF_MAX_BYTES, files: 1 },
+  fileFilter: pdfFileFilter,
 });
 
 vehiclesRoutes.get("/vehicles", requireUserOrServiceAuth, listVehicles);
@@ -53,4 +60,10 @@ vehiclesRoutes.post(
   requireUserAuth,
   pdfUpload.single("technicalSheet"),
   uploadVehicleTechnicalSheet
+);
+vehiclesRoutes.post(
+  "/vehicles/technical-sheet/parse",
+  requireUserAuth,
+  pdfMemoryUpload.single("technicalSheet"),
+  parseVehicleTechnicalSheet
 );

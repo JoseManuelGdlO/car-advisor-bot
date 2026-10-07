@@ -21,6 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 
 from src.graph import build_graph
+from src.services.llm_responses import parse_vehicle_sheet_text
 from src.context.tenant_context import reset_owner_user_id, set_owner_user_id
 from src.utils.state_helpers import clear_onboarding_turn_flags
 from src.utils.ad_campaign_shortcut import apply_ad_campaign_shortcut
@@ -538,6 +539,39 @@ def reset_session(payload: ResetRequest) -> ResetResponse:
     except Exception as exc:
         logger.exception("Error procesando /reset")
         raise HTTPException(status_code=500, detail="Error interno al reiniciar sesion.") from exc
+
+
+class ParseVehicleSheetRequest(BaseModel):
+    """Texto ya extraído de un PDF de ficha técnica."""
+
+    text: str = Field(default="", max_length=80_000)
+
+
+class ParseVehicleSheetResponse(BaseModel):
+    """Campos de catálogo leídos de la ficha. Null si no aparecen en el texto."""
+
+    brand: str | None = None
+    model: str | None = None
+    year: int | None = None
+    price: int | None = None
+    km: int | None = None
+    transmission: str | None = None
+    engine: str | None = None
+    color: str | None = None
+    description: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+@app.post("/parse-vehicle-sheet", response_model=ParseVehicleSheetResponse)
+def parse_vehicle_sheet(payload: ParseVehicleSheetRequest) -> ParseVehicleSheetResponse:
+    """Estructura una ficha técnica con el mismo modelo que usa el bot."""
+
+    try:
+        parsed = parse_vehicle_sheet_text(payload.text)
+        return ParseVehicleSheetResponse(**parsed)
+    except Exception as exc:
+        logger.exception("Error procesando /parse-vehicle-sheet")
+        raise HTTPException(status_code=502, detail="No se pudo leer la ficha técnica.") from exc
 
 
 @app.get("/health")

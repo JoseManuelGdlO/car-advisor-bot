@@ -309,6 +309,9 @@ export default function ConfigProductos() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [selectedTechnicalSheet, setSelectedTechnicalSheet] = useState<File | null>(null);
+  const [parsingSheet, setParsingSheet] = useState(false);
+  const technicalSheetInputRef = useRef<HTMLInputElement>(null);
+  const sheetParseRequestRef = useRef(0);
   const [technicalSheetUrl, setTechnicalSheetUrl] = useState("");
   const [technicalSheetPreviewUrl, setTechnicalSheetPreviewUrl] = useState("");
   const [priceFocused, setPriceFocused] = useState(false);
@@ -414,7 +417,46 @@ export default function ConfigProductos() {
     return () => previews.forEach((url) => URL.revokeObjectURL(url));
   }, [selectedFiles]);
 
+  const loadVehicleFromTechnicalSheet = async (file: File) => {
+    if (!token) return;
+    const pdfError = validateTechnicalSheet(file);
+    if (pdfError) {
+      setVehicleFormError(pdfError);
+      return;
+    }
+    const requestId = ++sheetParseRequestRef.current;
+    setParsingSheet(true);
+    setVehicleFormError("");
+    try {
+      const parsed = await crmApi.parseVehicleTechnicalSheet(token, file);
+      if (sheetParseRequestRef.current !== requestId) return;
+      setForm((current) => ({
+        ...current,
+        ...(parsed.brand ? { brand: parsed.brand } : {}),
+        ...(parsed.model ? { model: parsed.model } : {}),
+        ...(parsed.year != null ? { year: String(parsed.year) } : {}),
+        ...(parsed.price != null ? { price: String(parsed.price) } : {}),
+        km: String(parsed.km ?? 0),
+        ...(parsed.transmission ? { transmission: parsed.transmission } : {}),
+        ...(parsed.engine ? { engine: parsed.engine } : {}),
+        ...(parsed.color ? { color: parsed.color } : {}),
+        ...(parsed.description ? { description: parsed.description } : {}),
+      }));
+      if (parsed.metadata && Object.keys(parsed.metadata).length > 0) {
+        setMetadataRows(metadataToRows(parsed.metadata));
+      }
+      setSelectedTechnicalSheet(file);
+    } catch (err) {
+      if (sheetParseRequestRef.current !== requestId) return;
+      setVehicleFormError(normalizeApiError(err, "No se pudo leer la ficha técnica.").formError);
+    } finally {
+      if (sheetParseRequestRef.current === requestId) setParsingSheet(false);
+    }
+  };
+
   const resetVehicleForm = () => {
+    sheetParseRequestRef.current += 1;
+    setParsingSheet(false);
     setEditingId(null);
     setSelectedFiles([]);
     setImageUrls([]);
@@ -597,6 +639,8 @@ export default function ConfigProductos() {
         onOpenChange={(open) => {
           setCreateOpen(open);
           if (!open) {
+            sheetParseRequestRef.current += 1;
+            setParsingSheet(false);
             setVehicleFormError("");
             setVehicleStep(0);
           }
@@ -649,6 +693,10 @@ export default function ConfigProductos() {
 
               <form
                 onSubmit={(event) => {
+                  if (parsingSheet) {
+                    event.preventDefault();
+                    return;
+                  }
                   if (isWizard && vehicleStep < WIZARD_STEPS.length - 1) {
                     event.preventDefault();
                     if (stepReady) setVehicleStep((step) => step + 1);
@@ -660,6 +708,35 @@ export default function ConfigProductos() {
               >
                 <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
                   {(isWizard ? vehicleStep === 0 : true) ? (
+                  <>
+                  {isWizard ? (
+                    <div className="space-y-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full"
+                        disabled={parsingSheet}
+                        onClick={() => technicalSheetInputRef.current?.click()}
+                      >
+                        <FileText className="w-4 h-4 mr-2" />
+                        {parsingSheet ? "Leyendo ficha…" : "Cargar desde ficha técnica"}
+                      </Button>
+                      <p className="text-[11px] text-center text-muted-foreground">
+                        Sube un PDF para rellenar los datos. Revisa el precio antes de guardar.
+                      </p>
+                      <input
+                        ref={technicalSheetInputRef}
+                        type="file"
+                        className="sr-only"
+                        accept="application/pdf,.pdf"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          event.target.value = "";
+                          if (file) void loadVehicleFromTechnicalSheet(file);
+                        }}
+                      />
+                    </div>
+                  ) : null}
                   <FormSection title="Identificación" description="Marca, modelo y precio de lista.">
                     <div className={fieldLayout}>
                       <div className="space-y-1.5">
@@ -705,6 +782,7 @@ export default function ConfigProductos() {
                       </div>
                     </div>
                   </FormSection>
+                  </>
                   ) : null}
 
                   {editingId ? <Separator /> : null}
@@ -1007,13 +1085,13 @@ export default function ConfigProductos() {
                         <Button
                           type="button"
                           className="h-11 flex-1"
-                          disabled={!stepReady}
+                          disabled={!stepReady || parsingSheet}
                           onClick={() => setVehicleStep((step) => step + 1)}
                         >
                           Siguiente
                         </Button>
                       ) : (
-                        <Button type="submit" className="h-11 flex-1" disabled={creating || deleting || !isFormValid}>
+                        <Button type="submit" className="h-11 flex-1" disabled={creating || deleting || parsingSheet || !isFormValid}>
                           {creating ? "Guardando…" : "Crear auto"}
                         </Button>
                       )}

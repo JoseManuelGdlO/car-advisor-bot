@@ -148,3 +148,24 @@ export const runBotChat = async ({ userId, platform, message, ownerUserId, conve
   // Contrato de salida uniforme para WhatsApp Connect ingestion.
   return normalizedMessages;
 };
+
+export const parseVehicleSheet = async (text) => {
+  const base = botEngineBaseUrl();
+  if (!base) throw new ApiError(500, "BOT_ENGINE_URL is not configured");
+  const response = await fetch(`${base}/parse-vehicle-sheet`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: String(text || "") }),
+  }).catch(() => {
+    throw new ApiError(502, "No se pudo leer la ficha técnica.");
+  });
+  const raw = await response.text();
+  if (!response.ok) {
+    throw new ApiError(response.status >= 500 ? 502 : response.status, "No se pudo leer la ficha técnica.");
+  }
+  try {
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    throw new ApiError(502, "No se pudo leer la ficha técnica.");
+  }
+};

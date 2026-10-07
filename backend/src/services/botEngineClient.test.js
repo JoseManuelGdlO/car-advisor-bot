@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { runBotChat } from "./botEngineClient.js";
+import { parseVehicleSheet, runBotChat } from "./botEngineClient.js";
+import { ApiError } from "../utils/errors.js";
 import { env } from "../config/env.js";
 
 const originalFetch = global.fetch;
@@ -85,4 +86,42 @@ test("runBotChat incluye ad_context solo cuando isAd=true", async () => {
     adContext: null,
   });
   assert.equal(capturedBody.ad_context, undefined);
+});
+
+test("parseVehicleSheet envía el texto y devuelve el JSON del bot", async () => {
+  env.bot.engineUrl = "https://bot.example";
+  let capturedUrl = "";
+  let capturedBody = null;
+
+  global.fetch = async (url, options) => {
+    capturedUrl = String(url);
+    capturedBody = JSON.parse(String(options?.body || "{}"));
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ brand: "Nissan", price: null, km: 0 }),
+    };
+  };
+
+  const parsed = await parseVehicleSheet("Marca Nissan");
+  assert.equal(capturedUrl, "https://bot.example/parse-vehicle-sheet");
+  assert.equal(capturedBody.text, "Marca Nissan");
+  assert.equal(parsed.brand, "Nissan");
+  assert.equal(parsed.price, null);
+});
+
+test("parseVehicleSheet convierte un fallo del motor en error de lectura", async () => {
+  env.bot.engineUrl = "https://bot.example";
+  global.fetch = async () => ({
+    ok: false,
+    status: 502,
+    text: async () => JSON.stringify({ detail: "fail" }),
+  });
+
+  await assert.rejects(() => parseVehicleSheet("texto"), (error) => {
+    assert.ok(error instanceof ApiError);
+    assert.equal(error.status, 502);
+    assert.equal(error.message, "No se pudo leer la ficha técnica.");
+    return true;
+  });
 });
