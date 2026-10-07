@@ -2,16 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   LogOut,
-  Bell,
-  HelpCircle,
-  Shield,
   ChevronRight,
   Building2,
   Link2,
-  Settings,
-  Clock3,
   Save,
-  Car,
   AlertTriangle,
   MessageCircle,
 } from "lucide-react";
@@ -617,99 +611,6 @@ export default function Perfil() {
           </div>
         </button>
 
-        <ul className="bg-card rounded-2xl shadow-card border border-border overflow-hidden">
-          <li>
-            <button
-              type="button"
-              onClick={() => navigate("/config")}
-              className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-muted/40"
-            >
-              <div className="w-9 h-9 rounded-xl bg-primary/10 grid place-items-center text-primary">
-                <Settings className="w-4 h-4" />
-              </div>
-              <span className="flex-1 text-sm font-medium">
-                Configuración del bot
-              </span>
-              <ChevronRight className="w-4 h-4 text-muted-foreground" />
-            </button>
-          </li>
-          <li className="border-t border-border">
-            <button
-              type="button"
-              onClick={() => navigate("/config/bot")}
-              className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-muted/40"
-            >
-              <div className="w-9 h-9 rounded-xl bg-accent grid place-items-center text-accent-foreground">
-                <Clock3 className="w-4 h-4" />
-              </div>
-              <span className="flex-1 text-sm font-medium">
-                Horario del bot
-              </span>
-              <ChevronRight className="w-4 h-4 text-muted-foreground" />
-            </button>
-          </li>
-          <li className="border-t border-border">
-            <button
-              type="button"
-              onClick={() => navigate("/vehiculos")}
-              className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-muted/40"
-            >
-              <div className="w-9 h-9 rounded-xl bg-primary/10 grid place-items-center text-primary-dark">
-                <Car className="w-4 h-4" />
-              </div>
-              <span className="flex-1 text-sm font-medium">
-                Vehículos y ventas
-              </span>
-              <ChevronRight className="w-4 h-4 text-muted-foreground" />
-            </button>
-          </li>
-          <li className="border-t border-border">
-            <button
-              type="button"
-              onClick={() => navigate("/perfil/notificaciones")}
-              className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-muted/40"
-            >
-              <div className="w-9 h-9 rounded-xl bg-warning/10 grid place-items-center text-warning">
-                <Bell className="w-4 h-4" />
-              </div>
-              <span className="flex-1 text-sm font-medium">Notificaciones</span>
-              <ChevronRight className="w-4 h-4 text-muted-foreground" />
-            </button>
-          </li>
-          <li className="border-t border-border">
-            <button
-              type="button"
-              onClick={() => navigate("/config")}
-              className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-muted/40"
-            >
-              <div className="w-9 h-9 rounded-xl bg-info/10 grid place-items-center text-info">
-                <HelpCircle className="w-4 h-4" />
-              </div>
-              <span className="flex-1 text-sm font-medium">
-                Ayuda y soporte
-              </span>
-              <ChevronRight className="w-4 h-4 text-muted-foreground" />
-            </button>
-          </li>
-          <li className="border-t border-border">
-            <button
-              type="button"
-              onClick={() => navigate("/privacidad")}
-              className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-muted/40"
-            >
-              <div className="w-9 h-9 rounded-xl bg-success/10 grid place-items-center text-success">
-                <Shield className="w-4 h-4" />
-              </div>
-              <span className="flex-1 min-w-0">
-                <span className="block text-sm font-medium">Privacidad</span>
-                <span className="block text-xs text-muted-foreground">
-                  Recopilación y uso de datos
-                </span>
-              </span>
-              <ChevronRight className="w-4 h-4 text-muted-foreground" />
-            </button>
-          </li>
-        </ul>
         <button
           type="button"
           onClick={async () => {

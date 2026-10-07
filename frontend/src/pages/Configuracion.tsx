@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { HelpCircle, ChevronRight, Bot, Zap, Clock3, Ban } from "lucide-react";
+import { HelpCircle, ChevronRight, Bot, Clock3, Ban, Bell, Shield } from "lucide-react";
 import { BotBlacklistDialog } from "@/components/BotBlacklistDialog";
 import { useAuth } from "@/context/AuthContext";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -11,25 +11,20 @@ const sections = [
     to: "/config/faqs",
     icon: HelpCircle,
     title: "Preguntas frecuentes",
-    desc: "Respuestas automáticas del bot",
     color: "bg-info/10 text-info",
-    countLabel: (n: number) => `${n} preguntas`,
+    subtitle: (n: number) => (n === 1 ? "1 pregunta" : `${n} preguntas`),
   },
   {
     to: "/config/bot",
     icon: Clock3,
     title: "Horario del bot",
-    desc: "Disponibilidad y zona horaria",
-    color: "bg-secondary text-secondary-foreground",
-    countLabel: () => "Configura horarios por día",
+    color: "bg-accent text-primary-dark",
   },
   {
     to: "/config/comportamiento-bot",
     icon: Bot,
     title: "Comportamiento del bot",
-    desc: "Tono, emojis y estilo comercial",
-    color: "bg-primary/10 text-primary-dark",
-    countLabel: () => "Personaliza su personalidad",
+    color: "bg-accent text-primary-dark",
   },
 ];
 
@@ -84,56 +79,71 @@ export default function Configuracion() {
           />
         </div>
 
-        {/* Sections */}
-        <div className="space-y-3">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground px-1">Bot</h2>
+        <div className="space-y-2.5">
           {sections.map((s, i) => (
             <button
               key={s.to}
+              type="button"
               onClick={() => navigate(s.to)}
-              className="w-full bg-card rounded-2xl p-4 shadow-card border border-border flex items-center gap-3 text-left hover:bg-muted/40 transition-colors"
+              className="flex w-full items-center gap-3 rounded-2xl bg-card px-4 py-3.5 text-left shadow-card transition-colors hover:bg-muted/40 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <div className={`w-12 h-12 rounded-2xl grid place-items-center ${s.color}`}>
-                <s.icon className="w-6 h-6" />
+              <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${s.color}`}>
+                <s.icon className="h-4 w-4" />
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm">{s.title}</p>
-                <p className="text-xs text-muted-foreground">{s.desc}</p>
-                <p className="text-[11px] text-primary-dark font-semibold mt-0.5">{s.countLabel(counts[i])}</p>
-              </div>
-              <ChevronRight className="w-5 h-5 text-muted-foreground shrink-0" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium">{s.title}</span>
+                {s.subtitle ? (
+                  <span className="mt-0.5 block text-xs text-muted-foreground">{s.subtitle(counts[i])}</span>
+                ) : null}
+              </span>
+              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
             </button>
           ))}
 
           <BotBlacklistDialog>
             <button
               type="button"
-              className="w-full bg-card rounded-2xl p-4 shadow-card border border-border flex items-center gap-3 text-left hover:bg-muted/40 transition-colors"
+              className="flex w-full items-center gap-3 rounded-2xl bg-card px-4 py-3.5 text-left shadow-card transition-colors hover:bg-muted/40 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <div className="w-12 h-12 rounded-2xl grid place-items-center bg-destructive/10 text-destructive">
-                <Ban className="w-6 h-6" />
+              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-destructive/10 text-destructive">
+                <Ban className="h-4 w-4" />
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm">Lista negra</p>
-                <p className="text-xs text-muted-foreground">Teléfonos de WhatsApp bloqueados</p>
-                <p className="text-[11px] text-primary-dark font-semibold mt-0.5">
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium">Lista negra</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">
                   {blacklist.length === 1 ? "1 número bloqueado" : `${blacklist.length} números bloqueados`}
-                </p>
-              </div>
-              <ChevronRight className="w-5 h-5 text-muted-foreground shrink-0" />
+                </span>
+              </span>
+              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
             </button>
           </BotBlacklistDialog>
-        </div>
 
-        {/* AI tip */}
-        <div className="rounded-2xl p-4 bg-gradient-primary text-primary-foreground shadow-green flex items-start gap-3">
-          <Zap className="w-5 h-5 shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-bold">Consejo</p>
-            <p className="text-xs opacity-90 mt-0.5">
-              Mantén las FAQs al día y ajusta el horario y el tono del bot para que coincida con tu negocio.
-            </p>
-          </div>
+          <button
+            type="button"
+            onClick={() => navigate("/perfil/notificaciones")}
+            className="flex w-full items-center gap-3 rounded-2xl bg-card px-4 py-3.5 text-left shadow-card transition-colors hover:bg-muted/40 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-warning/15 text-warning">
+              <Bell className="h-4 w-4" />
+            </div>
+            <span className="min-w-0 flex-1 text-sm font-medium">Notificaciones</span>
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => navigate("/privacidad")}
+            className="flex w-full items-center gap-3 rounded-2xl bg-card px-4 py-3.5 text-left shadow-card transition-colors hover:bg-muted/40 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent text-primary-dark">
+              <Shield className="h-4 w-4" />
+            </div>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium">Privacidad</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">Recopilación y uso de datos</span>
+            </span>
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+          </button>
         </div>
       </div>
     </>

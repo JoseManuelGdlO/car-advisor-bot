@@ -7,6 +7,7 @@ import type {
   ConversationMessageDto,
   DashboardKpisDto,
   FinancingPlanDto,
+  FaqDto,
   FinancingRequirementDto,
   TopProductsResponseDto,
 } from "./crm.dto";
@@ -20,6 +21,7 @@ export type {
   ConversationMessageDto,
   DashboardKpisDto,
   FinancingPlanDto,
+  FaqDto,
   FinancingRequirementDto,
   PromotionDto,
   TopProductDto,
@@ -111,7 +113,7 @@ export const crmApi = {
     formData.append("technicalSheet", file);
     return apiRequestFormData<{ technicalSheetUrl: string }>("/vehicles/technical-sheet/upload", formData, token);
   },
-  getFaqs: (token: string) => apiRequest("/faqs", "GET", undefined, token),
+  getFaqs: (token: string) => apiRequest<FaqDto[]>("/faqs", "GET", undefined, token),
   createFaq: (token: string, payload: { question: string; answer: string }) => apiRequest("/faqs", "POST", payload, token),
   updateFaq: (token: string, id: string, payload: { question: string; answer: string }) =>
     apiRequest(`/faqs/${id}`, "PATCH", payload, token),

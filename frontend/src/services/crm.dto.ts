@@ -156,3 +156,9 @@ export type ConversationDto = {
   isHumanControlled?: boolean;
   messages?: ConversationMessageDto[];
 };
+
+export type FaqDto = {
+  id: string;
+  question: string;
+  answer: string;
+};
