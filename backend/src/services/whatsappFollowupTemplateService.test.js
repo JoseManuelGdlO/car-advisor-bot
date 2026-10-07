@@ -99,6 +99,28 @@ test("getFollowupTemplate indica metaConnected false sin integración", async ()
   assert.deepEqual(result, { metaConnected: false, template: null });
 });
 
+test("getFollowupTemplate consulta Graph si la fila sigue PENDING", async () => {
+  const row = makeRow({ status: "PENDING" });
+  const restore = stubMethod(WhatsappMessageTemplate, "findAll", async () => [row]);
+
+  try {
+    const result = await getFollowupTemplate({
+      ownerUserId: OWNER_ID,
+      findActiveIntegration: async () => ({ id: "int-1", wabaId: WABA_ID }),
+      resolveIntegration: async () => ({ credentials: { accessToken: DEALER_TOKEN } }),
+      getTemplateOnMeta: async ({ templateId, token }) => {
+        assert.equal(templateId, "meta-tpl-1");
+        assert.equal(token, DEALER_TOKEN);
+        return { id: templateId, status: "APPROVED" };
+      },
+    });
+    assert.equal(row.status, "APPROVED");
+    assert.equal(result.template.status, "APPROVED");
+  } finally {
+    restore();
+  }
+});
+
 test("getFollowupTemplate serializa la plantilla activa del WABA", async () => {
   const approved = makeRow({ status: "APPROVED" });
   const restore = stubMethod(WhatsappMessageTemplate, "findAll", async () => [
@@ -211,24 +233,102 @@ test("applyTemplateStatusUpdate no lanza si la plantilla es desconocida", async 
   }
 });
 
-test("ensureFollowupDefaultTemplate no llama Graph si ya hay fila no REJECTED", async () => {
+test("ensureFollowupDefaultTemplate no crea si la fila local ya tiene id y el WABA no lista otra", async () => {
   const existing = makeRow({ status: "PENDING", isWabaDefault: true });
   const restore = stubMethod(WhatsappMessageTemplate, "findAll", async () => [existing]);
-  let graphCalls = 0;
+  let createCalls = 0;
+  let listCalls = 0;
 
   try {
     const result = await ensureFollowupDefaultTemplate({
       ownerUserId: OWNER_ID,
       wabaId: WABA_ID,
       accessToken: DEALER_TOKEN,
+      listOnMeta: async () => {
+        listCalls += 1;
+        return [];
+      },
       createOnMeta: async () => {
-        graphCalls += 1;
+        createCalls += 1;
         return { id: "should-not-run" };
       },
     });
     assert.equal(result.created, false);
     assert.equal(result.template, existing);
-    assert.equal(graphCalls, 0);
+    assert.equal(listCalls, 1);
+    assert.equal(createCalls, 0);
+  } finally {
+    restore();
+  }
+});
+
+test("ensureFollowupDefaultTemplate reutiliza la plantilla de seguimiento que ya está en el WABA", async () => {
+  const restores = [
+    stubMethod(WhatsappMessageTemplate, "findAll", async () => []),
+    stubMethod(WhatsappMessageTemplate, "findOne", async () => null),
+    stubMethod(BotSetting, "findOne", async () => null),
+  ];
+  let created = null;
+  restores.push(
+    stubMethod(WhatsappMessageTemplate, "create", async (payload) => {
+      created = makeRow(payload);
+      return created;
+    }),
+  );
+  let createCalls = 0;
+
+  try {
+    const result = await ensureFollowupDefaultTemplate({
+      ownerUserId: OWNER_ID,
+      wabaId: WABA_ID,
+      accessToken: DEALER_TOKEN,
+      listOnMeta: async ({ wabaId, token }) => {
+        assert.equal(wabaId, WABA_ID);
+        assert.equal(token, DEALER_TOKEN);
+        return [
+          {
+            id: "meta-existing",
+            name: "cab_sg_deadbeef",
+            status: "APPROVED",
+            language: TEMPLATE_LANGUAGE,
+            category: TEMPLATE_CATEGORY,
+            components: [{ type: "BODY", text: "Hola, seguimos en contacto." }],
+          },
+        ];
+      },
+      createOnMeta: async () => {
+        createCalls += 1;
+        return { id: "should-not-run" };
+      },
+    });
+    assert.equal(createCalls, 0);
+    assert.equal(result.created, false);
+    assert.equal(result.reused, true);
+    assert.equal(created.metaTemplateId, "meta-existing");
+    assert.equal(created.name, "cab_sg_deadbeef");
+    assert.equal(created.status, "APPROVED");
+    assert.equal(created.purpose, TEMPLATE_PURPOSE_FOLLOWUP);
+  } finally {
+    restores.forEach((restore) => restore());
+  }
+});
+
+test("ensureFollowupDefaultTemplate lanza si no hay fila local y listar el WABA falla", async () => {
+  const restore = stubMethod(WhatsappMessageTemplate, "findAll", async () => []);
+  try {
+    await assert.rejects(
+      () =>
+        ensureFollowupDefaultTemplate({
+          ownerUserId: OWNER_ID,
+          wabaId: WABA_ID,
+          accessToken: DEALER_TOKEN,
+          listOnMeta: async () => {
+            throw new ApiError(502, "No se pudo contactar la API de Meta.");
+          },
+          createOnMeta: async () => ({ id: "should-not-run" }),
+        }),
+      (err) => err instanceof ApiError && err.status === 502,
+    );
   } finally {
     restore();
   }
@@ -253,6 +353,7 @@ test("ensureFollowupDefaultTemplate crea default PENDING isWabaDefault purpose=f
       ownerUserId: OWNER_ID,
       wabaId: WABA_ID,
       accessToken: DEALER_TOKEN,
+      listOnMeta: async () => [],
       createOnMeta: async ({ wabaId, token, payload }) => {
         assert.equal(wabaId, WABA_ID);
         assert.equal(token, DEALER_TOKEN);
@@ -289,6 +390,7 @@ test("ensureFollowupDefaultTemplate reintenta con otro name si Graph reporta dup
       ownerUserId: OWNER_ID,
       wabaId: WABA_ID,
       accessToken: DEALER_TOKEN,
+      listOnMeta: async () => [],
       createOnMeta: async ({ payload }) => {
         names.push(payload.name);
         if (names.length === 1) {

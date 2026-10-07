@@ -71,6 +71,14 @@ export default function Integraciones() {
     await queryClient.invalidateQueries({ queryKey: ["whatsapp-meta-status"] });
   };
 
+  const notifyWhatsappConnected = (message?: string | null, followupTemplateError?: string | null) => {
+    if (followupTemplateError) {
+      toast.warning(message || followupTemplateError);
+      return;
+    }
+    toast.success(message || "WhatsApp conectado.");
+  };
+
   const disconnectMutation = useMutation({
     mutationFn: () => integrationsApi.disconnectMetaWhatsapp(token!),
     onSuccess: async () => {
@@ -103,7 +111,7 @@ export default function Integraciones() {
       });
       if (status.status === "completed") {
         await refreshWhatsApp();
-        toast.success(status.message || "WhatsApp conectado.");
+        notifyWhatsappConnected(status.message, status.followupTemplateError);
         return;
       }
       if (status.status === "cancelled") {
@@ -137,7 +145,7 @@ export default function Integraciones() {
         featureType: config.featureType,
         sessionInfoVersion: config.sessionInfoVersion,
       });
-      await integrationsApi.completeMetaSignup(token, {
+      const connectedIntegration = await integrationsApi.completeMetaSignup(token, {
         code,
         wabaId: session?.wabaId ?? null,
         phoneNumberId: session?.phoneNumberId ?? null,
@@ -145,7 +153,12 @@ export default function Integraciones() {
         event: session?.event ?? null,
       });
       await refreshWhatsApp();
-      toast.success("WhatsApp conectado.");
+      notifyWhatsappConnected(
+        connectedIntegration.followupTemplateError
+          ? `WhatsApp conectado. ${connectedIntegration.followupTemplateError}`
+          : "WhatsApp conectado.",
+        connectedIntegration.followupTemplateError,
+      );
     } catch (error) {
       toast.error(normalizeApiError(error, "No se pudo conectar WhatsApp.").formError);
     } finally {

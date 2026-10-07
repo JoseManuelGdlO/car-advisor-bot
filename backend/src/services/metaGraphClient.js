@@ -202,16 +202,7 @@ export async function ensurePlatformCanManageWaba({ wabaId } = {}) {
 
   let assigned = false;
   try {
-    let systemUserId = String(env.meta.systemUserId || "").trim();
-    if (!systemUserId) {
-      const me = await graphRequest({
-        method: "GET",
-        path: "me",
-        token: platformToken,
-        query: { fields: "id" },
-      });
-      systemUserId = String(me.id || "").trim();
-    }
+    const systemUserId = await resolveSystemUserId(platformToken);
     if (systemUserId) {
       await assignSystemUserToWaba({ wabaId: waba, systemUserId, token: platformToken });
       assigned = true;
@@ -235,6 +226,90 @@ export async function ensurePlatformCanManageWaba({ wabaId } = {}) {
     });
   }
   return { skipped: false, shared, assigned };
+}
+
+async function resolveSystemUserId(platformToken) {
+  const configured = String(env.meta.systemUserId || "").trim();
+  let appScoped = "";
+  try {
+    const inspection = await inspectGraphToken(platformToken);
+    appScoped = String(inspection.userId || "").trim();
+  } catch (error) {
+    logWarn("OBO: debug_token no devolvió el system user", { message: error.message });
+  }
+  if (appScoped) {
+    if (configured && configured !== appScoped) {
+      logWarn("OBO: META_SYSTEM_USER_ID no es el user_id de la app; assigned_users usará debug_token", {
+        configured,
+        appScopedUserId: appScoped,
+      });
+    }
+    return appScoped;
+  }
+  if (configured) return configured;
+  const me = await graphRequest({
+    method: "GET",
+    path: "me",
+    token: platformToken,
+    query: { fields: "id" },
+  });
+  return String(me.id || "").trim();
+}
+
+export const WHATSAPP_APP_WEBHOOK_FIELDS = ["messages", "message_template_status_update"];
+
+function webhookCallbackUrl() {
+  const base = String(process.env.BACKEND_PUBLIC_URL || "").trim().replace(/\/+$/, "");
+  return base ? `${base}/webhooks/meta/whatsapp` : "";
+}
+
+function subscriptionFieldNames(row) {
+  const fields = Array.isArray(row?.fields) ? row.fields : [];
+  return fields.map((field) => String(field?.name || field || "").trim()).filter(Boolean);
+}
+
+export async function ensureWhatsappAppWebhookFields() {
+  const appId = String(env.meta.appId || "").trim();
+  const appSecret = String(env.meta.appSecret || "").trim();
+  if (!appId || !appSecret) return { updated: false, reason: "missing_app" };
+
+  const token = `${appId}|${appSecret}`;
+  const current = await graphRequest({
+    method: "GET",
+    path: `${appId}/subscriptions`,
+    token,
+  });
+  const rows = Array.isArray(current?.data) ? current.data : [];
+  const waba = rows.find((row) => row?.object === "whatsapp_business_account") || null;
+  const existing = subscriptionFieldNames(waba);
+  const fields = [...new Set([...existing, ...WHATSAPP_APP_WEBHOOK_FIELDS])];
+  const missing = WHATSAPP_APP_WEBHOOK_FIELDS.filter((name) => !existing.includes(name));
+  if (waba && missing.length === 0) return { updated: false, fields };
+
+  const callbackUrl = String(waba?.callback_url || webhookCallbackUrl()).trim();
+  const verifyToken = String(env.meta.webhookVerifyToken || "").trim();
+  if (!callbackUrl || !verifyToken) {
+    logWarn("No se suscribió message_template_status_update: falta callback o verify token", {
+      hasCallback: Boolean(callbackUrl),
+      hasVerifyToken: Boolean(verifyToken),
+    });
+    return { updated: false, reason: "missing_callback" };
+  }
+
+  await graphRequest({
+    method: "POST",
+    path: `${appId}/subscriptions`,
+    token,
+    body: {
+      object: "whatsapp_business_account",
+      callback_url: callbackUrl,
+      verify_token: verifyToken,
+      fields: fields.join(","),
+      include_values: true,
+    },
+  });
+  logInfo("App suscrita a webhooks de WhatsApp", { fields });
+  return { updated: true, fields };
 }
 
 export async function exchangeEmbeddedSignupCode(code, redirectUri) {
@@ -263,6 +338,14 @@ export async function exchangeEmbeddedSignupCode(code, redirectUri) {
 }
 
 export async function subscribeWabaApp(wabaId, token) {
+  try {
+    await ensureWhatsappAppWebhookFields();
+  } catch (error) {
+    logWarn("No se pudo suscribir message_template_status_update en la app", {
+      message: error.message,
+      code: error.meta?.code ?? null,
+    });
+  }
   return graphRequest({
     method: "POST",
     path: `${wabaId}/subscribed_apps`,
@@ -276,6 +359,34 @@ export async function createMessageTemplate({ wabaId, token, payload }) {
     path: `${wabaId}/message_templates`,
     token,
     body: payload,
+  });
+}
+
+export async function listMessageTemplates({ wabaId, token } = {}) {
+  const rows = [];
+  let path = `${String(wabaId || "").trim()}/message_templates`;
+  let query = {
+    fields: "id,name,status,language,category,rejected_reason,components",
+    limit: "100",
+  };
+  for (let page = 0; page < 5; page += 1) {
+    const payload = await graphRequest({ method: "GET", path, token, query });
+    if (Array.isArray(payload.data)) rows.push(...payload.data);
+    const next = payload?.paging?.next;
+    if (!next) break;
+    const nextUrl = new URL(next);
+    path = nextUrl.pathname.replace(/^\/v[^/]+\//, "");
+    query = Object.fromEntries(nextUrl.searchParams.entries());
+  }
+  return rows;
+}
+
+export async function getMessageTemplate({ templateId, token } = {}) {
+  return graphRequest({
+    method: "GET",
+    path: String(templateId || "").trim(),
+    token,
+    query: { fields: "id,name,status,language,category,rejected_reason,components" },
   });
 }
 
@@ -344,6 +455,7 @@ export async function inspectGraphToken(inputToken) {
     expiresAt: data?.expires_at ?? null,
     dataAccessExpiresAt: data?.data_access_expires_at ?? null,
     scopes: Array.isArray(data?.scopes) ? data.scopes : [],
+    userId: data?.user_id == null || data.user_id === "" ? null : String(data.user_id),
     targetIds,
   };
 }

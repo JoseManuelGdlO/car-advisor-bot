@@ -105,6 +105,42 @@ test("completeMetaSignupTicket canjea con el owner del ticket y no devuelve el t
   assert.equal(JSON.stringify(result).includes("AUTH_CODE"), false);
 });
 
+test("completeMetaSignupTicket conserva la conexión y avisa si falló la plantilla", async () => {
+  const ticket = "ticket-plain";
+  const row = {
+    id: "row-1",
+    userId: "owner-9",
+    status: "pending",
+    usedAt: null,
+    expiresAt: new Date(Date.now() + 60_000),
+    errorMessage: null,
+    update: async (patch) => {
+      Object.assign(row, patch);
+    },
+  };
+  MetaSignupTicket.findOne = async () => row;
+  MetaSignupTicket.update = async (patch) => {
+    Object.assign(row, patch);
+    return [1];
+  };
+
+  const result = await completeMetaSignupTicket(
+    { ticket, code: "AUTH_CODE", wabaId: "waba-1", event: "FINISH" },
+    {
+      completeEmbeddedSignup: async () => ({
+        followupTemplateError: "No se pudo dejar lista la plantilla de seguimiento.",
+      }),
+    },
+  );
+
+  assert.equal(result.status, "completed");
+  assert.equal(result.followupTemplateError, "No se pudo dejar lista la plantilla de seguimiento.");
+  assert.match(result.message, /WhatsApp conectado/);
+  assert.match(result.message, /plantilla de seguimiento/);
+  assert.equal(row.status, "completed");
+  assert.equal(row.errorMessage, result.followupTemplateError);
+});
+
 test("el segundo complete no vuelve a canjear", async () => {
   const ticket = "ticket-plain";
   const row = {

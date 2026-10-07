@@ -101,7 +101,7 @@ export async function completeMetaSignupTicket(input = {}, deps = {}) {
 
   const complete = deps.completeEmbeddedSignup || completeEmbeddedSignupDefault;
   try {
-    await complete({
+    const signup = await complete({
       ownerUserId: row.userId,
       code,
       wabaId,
@@ -109,8 +109,9 @@ export async function completeMetaSignupTicket(input = {}, deps = {}) {
       businessId: input.businessId ? String(input.businessId) : null,
       event: event || null,
     });
-    await row.update({ status: "completed", errorMessage: null });
-    return { ok: true, status: "completed", message: SIGNUP_TICKET_SUCCESS_MESSAGE };
+    const followupTemplateError = String(signup?.followupTemplateError || "").trim() || null;
+    await row.update({ status: "completed", errorMessage: followupTemplateError });
+    return { ok: true, ...completedSignupFields(followupTemplateError) };
   } catch (error) {
     const message = publicErrorMessage(error);
     await row.update({ status: "failed", errorMessage: message });
@@ -131,11 +132,20 @@ export async function previewSignupTicket(ticket) {
   return { ok: true };
 }
 
+function completedSignupFields(followupTemplateError) {
+  const warning = String(followupTemplateError || "").trim() || null;
+  return {
+    status: "completed",
+    message: warning ? `${SIGNUP_TICKET_SUCCESS_MESSAGE} ${warning}` : SIGNUP_TICKET_SUCCESS_MESSAGE,
+    followupTemplateError: warning,
+  };
+}
+
 export function signupTicketStatusPayload(row, now = new Date()) {
   if (row.status === "pending" && !row.usedAt && new Date(row.expiresAt).getTime() <= now.getTime()) {
     return { status: "failed", message: SIGNUP_TICKET_EXPIRED_MESSAGE };
   }
-  if (row.status === "completed") return { status: "completed", message: SIGNUP_TICKET_SUCCESS_MESSAGE };
+  if (row.status === "completed") return completedSignupFields(row.errorMessage);
   if (row.status === "cancelled") return { status: "cancelled", message: SIGNUP_TICKET_CANCEL_MESSAGE };
   if (row.status === "failed") {
     return { status: "failed", message: row.errorMessage || SIGNUP_TICKET_FAILED_MESSAGE };

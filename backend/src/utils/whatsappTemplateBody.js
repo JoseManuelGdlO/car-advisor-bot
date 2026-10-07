@@ -34,6 +34,12 @@ export function bodyTextFromComponents(components) {
   return String(body?.text || "").trim();
 }
 
+export const FOLLOWUP_TEMPLATE_NAME_PREFIX = "cab_sg_";
+
+export function isFollowupTemplateName(name) {
+  return String(name || "").startsWith(FOLLOWUP_TEMPLATE_NAME_PREFIX);
+}
+
 export function generateFollowupTemplateName() {
-  return `cab_sg_${crypto.randomBytes(4).toString("hex")}`;
+  return `${FOLLOWUP_TEMPLATE_NAME_PREFIX}${crypto.randomBytes(4).toString("hex")}`;
 }

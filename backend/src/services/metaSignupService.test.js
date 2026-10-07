@@ -320,7 +320,7 @@ function mockGraphSignupFetch({ smbStatus = 200, debugStatus = 200, onBizApp = t
   return requested;
 }
 
-test("completeEmbeddedSignup resuelve si ensureFollowupDefault lanza y no revierte credenciales", async () => {
+test("completeEmbeddedSignup devuelve el fallo de plantilla y no revierte credenciales", async () => {
   env.meta.appId = "app-id";
   env.meta.configId = "cfg-id";
   env.meta.appSecret = "app-secret";
@@ -366,7 +366,10 @@ test("completeEmbeddedSignup resuelve si ensureFollowupDefault lanza y no revier
   assert.equal(ensureCalled, true);
   assert.equal(result.provider, "meta");
   assert.equal(result.coexistenceEnabled, true);
+  assert.match(result.followupTemplateError, /plantilla de seguimiento/);
+  assert.match(result.followupTemplateError, /Graph down/);
   assert.equal(created.status, "active");
+  assert.equal(created.lastError, result.followupTemplateError);
   assert.equal(credCreated.isActive, true);
   assert.equal(credUpdateAfterCreate, false);
 });

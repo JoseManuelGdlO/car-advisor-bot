@@ -248,14 +248,23 @@ export async function completeEmbeddedSignup({
     coexistenceEnabled,
   });
 
+  let followupTemplateError = null;
   try {
     await ensureFollowupDefault({ ownerUserId, wabaId: resolvedWabaId, accessToken });
   } catch (error) {
+    followupTemplateError = followupTemplateFailureMessage(error);
     logWarn("embedded signup: no se pudo crear la plantilla de seguimiento", {
       ownerUserId,
       wabaId: resolvedWabaId,
       message: error.message,
     });
+    try {
+      await integration.update({ lastError: followupTemplateError });
+    } catch (updateError) {
+      logWarn("embedded signup: no se pudo guardar el aviso de plantilla", {
+        message: updateError.message,
+      });
+    }
   }
 
   return {
@@ -263,7 +272,19 @@ export async function completeEmbeddedSignup({
     displayPhoneNumber,
     coexistenceEnabled,
     provider: META_WHATSAPP_PROVIDER,
+    followupTemplateError,
   };
+}
+
+function followupTemplateFailureMessage(error) {
+  const detail = String(error?.message || "")
+    .replace(/EAA[A-Za-z0-9]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const base = "No se pudo dejar lista la plantilla de seguimiento.";
+  if (!detail) return base;
+  if (detail.includes("plantilla de seguimiento")) return detail.slice(0, 300);
+  return `${base} ${detail}`.slice(0, 300);
 }
 
 export async function disconnectMetaWhatsapp({ ownerUserId }) {

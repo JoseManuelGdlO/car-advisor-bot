@@ -8,6 +8,8 @@ import {
   ensurePlatformCanManageWaba,
   initiateCoexistenceSync,
   inspectGraphToken,
+  listMessageTemplates,
+  subscribeWabaApp,
   updateMessageTemplate,
 } from "./metaGraphClient.js";
 import { ApiError } from "../utils/errors.js";
@@ -233,6 +235,7 @@ test("inspectGraphToken llama debug_token con el app token y resume el data", as
             expires_at: 1800000000,
             data_access_expires_at: 1800000001,
             scopes: ["whatsapp_business_management"],
+            user_id: "122107787031477352",
             granular_scopes: [{ target_ids: ["waba_1", "waba_1"] }],
           },
         }),
@@ -249,7 +252,115 @@ test("inspectGraphToken llama debug_token con el app token y resume el data", as
   assert.equal(result.expiresAt, 1800000000);
   assert.equal(result.dataAccessExpiresAt, 1800000001);
   assert.deepEqual(result.scopes, ["whatsapp_business_management"]);
+  assert.equal(result.userId, "122107787031477352");
   assert.deepEqual(result.targetIds, ["waba_1"]);
+});
+
+test("ensurePlatformCanManageWaba asigna el user_id de debug_token y no el ID configurado", async () => {
+  env.meta.accessToken = "platform-token";
+  env.meta.businessId = "";
+  env.meta.systemUserId = "61594320585005";
+  env.meta.appId = "app-id";
+  env.meta.appSecret = "app-secret";
+  env.meta.graphApiVersion = "v21.0";
+
+  const calls = [];
+  global.fetch = async (url) => {
+    const requested = String(url);
+    calls.push(requested);
+    if (requested.includes("debug_token")) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            data: { type: "SYSTEM_USER", is_valid: true, user_id: "122107787031477352", granular_scopes: [] },
+          }),
+      };
+    }
+    return { ok: true, status: 200, text: async () => JSON.stringify({ success: true }) };
+  };
+
+  const result = await ensurePlatformCanManageWaba({ wabaId: "waba-1" });
+  const assign = calls.find((url) => url.includes("/assigned_users"));
+  assert.ok(assign);
+  const parsed = new URL(assign);
+  assert.equal(parsed.searchParams.get("user"), "122107787031477352");
+  assert.equal(parsed.searchParams.get("user") === "61594320585005", false);
+  assert.equal(result.assigned, true);
+});
+
+test("subscribeWabaApp suscribe message_template_status_update junto con messages", async () => {
+  env.meta.appId = "app-id";
+  env.meta.appSecret = "app-secret";
+  env.meta.graphApiVersion = "v21.0";
+  env.meta.webhookVerifyToken = "verify-me";
+  const previousPublicUrl = process.env.BACKEND_PUBLIC_URL;
+  process.env.BACKEND_PUBLIC_URL = "https://api.example.com";
+
+  const calls = [];
+  global.fetch = async (url, options) => {
+    calls.push({
+      url: String(url),
+      method: options?.method || "GET",
+      body: options?.body ? JSON.parse(String(options.body)) : null,
+    });
+    if (String(url).includes("/subscriptions") && (options?.method || "GET") === "GET") {
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            data: [
+              {
+                object: "whatsapp_business_account",
+                callback_url: "https://api.example.com/webhooks/meta/whatsapp",
+                fields: [{ name: "messages" }],
+              },
+            ],
+          }),
+      };
+    }
+    return { ok: true, status: 200, text: async () => JSON.stringify({ success: true }) };
+  };
+
+  try {
+    await subscribeWabaApp("waba-1", "dealer-token");
+
+    const appSub = calls.find((row) => row.url.includes("/app-id/subscriptions") && row.method === "POST");
+    assert.ok(appSub);
+    assert.equal(appSub.body.object, "whatsapp_business_account");
+    assert.equal(appSub.body.callback_url, "https://api.example.com/webhooks/meta/whatsapp");
+    assert.match(appSub.body.fields, /messages/);
+    assert.match(appSub.body.fields, /message_template_status_update/);
+    const wabaSub = calls.find((row) => row.url.includes("/waba-1/subscribed_apps"));
+    assert.equal(wabaSub?.method, "POST");
+  } finally {
+    if (previousPublicUrl == null) delete process.env.BACKEND_PUBLIC_URL;
+    else process.env.BACKEND_PUBLIC_URL = previousPublicUrl;
+  }
+});
+
+test("listMessageTemplates lee las plantillas del WABA", async () => {
+  env.meta.graphApiVersion = "v21.0";
+  let requestedUrl;
+  global.fetch = async (url) => {
+    requestedUrl = String(url);
+    return {
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          data: [{ id: "tmpl-1", name: "cab_sg_abcd1234", status: "APPROVED", language: "es_MX" }],
+        }),
+    };
+  };
+
+  const rows = await listMessageTemplates({ wabaId: "waba-1", token: "dealer-token" });
+  const parsed = new URL(requestedUrl);
+  assert.equal(parsed.pathname, "/v21.0/waba-1/message_templates");
+  assert.match(parsed.searchParams.get("fields") || "", /status/);
+  assert.equal(rows[0].name, "cab_sg_abcd1234");
 });
 
 test("initiateCoexistenceSync hace POST smb_app_data con sync_type", async () => {

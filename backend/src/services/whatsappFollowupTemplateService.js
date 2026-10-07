@@ -11,13 +11,26 @@ import {
   bodyTextFromComponents,
   buildTextOnlyBodyComponents,
   generateFollowupTemplateName,
+  isFollowupTemplateName,
 } from "../utils/whatsappTemplateBody.js";
 import {
   META_WHATSAPP_PROVIDER,
   WHATSAPP_CHANNEL,
   resolveMetaWhatsappIntegrationById,
 } from "./integrationResolverService.js";
-import { createMessageTemplate, updateMessageTemplate } from "./metaGraphClient.js";
+import {
+  createMessageTemplate,
+  getMessageTemplate,
+  listMessageTemplates,
+  updateMessageTemplate,
+} from "./metaGraphClient.js";
+
+const quietTest = process.env.NODE_ENV === "test" || Boolean(process.env.NODE_TEST_CONTEXT);
+
+function logWarn(message, fields) {
+  if (quietTest) return;
+  console.warn(`[wa-template] ${message}`, fields ?? "");
+}
 
 const TEMPLATE_STATUS_EVENTS = new Set(["PENDING", "APPROVED", "REJECTED", "PAUSED", "DISABLED"]);
 
@@ -197,15 +210,105 @@ export async function applyTemplateStatusUpdate(update = {}) {
   };
 }
 
+const REMOTE_STATUS_RANK = { APPROVED: 0, PENDING: 1, PAUSED: 2, DISABLED: 3 };
+
+function componentsFromRemote(remote) {
+  const list = Array.isArray(remote?.components) ? remote.components : [];
+  const text = bodyTextFromComponents(list);
+  if (!text) return buildTextOnlyBodyComponents(META_FOLLOWUP_DEFAULT_BODY);
+  try {
+    return buildTextOnlyBodyComponents(text);
+  } catch {
+    return list;
+  }
+}
+
+function pickRemoteFollowup(templates) {
+  const language = templateLanguage();
+  const matches = (Array.isArray(templates) ? templates : []).filter((row) => {
+    if (!isFollowupTemplateName(row?.name)) return false;
+    const status = mapTemplateStatusEvent(row?.status);
+    if (!status || status === "REJECTED") return false;
+    const lang = String(row?.language || "").trim();
+    return !lang || lang === language;
+  });
+  matches.sort(
+    (a, b) =>
+      (REMOTE_STATUS_RANK[mapTemplateStatusEvent(a.status)] ?? 9) -
+      (REMOTE_STATUS_RANK[mapTemplateStatusEvent(b.status)] ?? 9),
+  );
+  return matches[0] || null;
+}
+
+async function upsertFollowupFromRemote({ ownerUserId, wabaId, remote, localRows }) {
+  const status = mapTemplateStatusEvent(remote.status) || "PENDING";
+  const patch = {
+    ownerUserId,
+    metaTemplateId: String(remote.id || "").trim() || null,
+    name: String(remote.name || "").trim(),
+    displayName: META_FOLLOWUP_DISPLAY_NAME,
+    language: String(remote.language || templateLanguage()).trim() || templateLanguage(),
+    category: String(remote.category || TEMPLATE_CATEGORY).trim() || TEMPLATE_CATEGORY,
+    components: componentsFromRemote(remote),
+    status,
+    rejectedReason: status === "REJECTED" ? remote.rejected_reason || null : null,
+    lastStatusAt: new Date(),
+    purpose: TEMPLATE_PURPOSE_FOLLOWUP,
+    isWabaDefault: true,
+  };
+  const existing =
+    localRows.find((row) => row.name === patch.name) ||
+    (await WhatsappMessageTemplate.findOne({ where: { wabaId, name: patch.name } }));
+  if (existing) {
+    await existing.update(patch);
+    return existing;
+  }
+  return WhatsappMessageTemplate.create({ wabaId, ...patch });
+}
+
+async function syncPendingTemplateFromGraph(row, { accessToken, getTemplateOnMeta }) {
+  if (String(row?.status || "").toUpperCase() !== "PENDING") return row;
+  const templateId = String(row?.metaTemplateId || "").trim();
+  if (!templateId || !accessToken) return row;
+  try {
+    const remote = await getTemplateOnMeta({ templateId, token: accessToken });
+    const status = mapTemplateStatusEvent(remote?.status);
+    if (!status || status === "PENDING") return row;
+    await row.update({
+      status,
+      rejectedReason: status === "REJECTED" ? remote.rejected_reason || null : null,
+      lastStatusAt: new Date(),
+    });
+  } catch (error) {
+    logWarn("No se pudo consultar el estado de la plantilla", {
+      templateId,
+      message: error.message,
+    });
+  }
+  return row;
+}
+
 export async function getFollowupTemplate({
   ownerUserId,
   findActiveIntegration = defaultFindActiveIntegration,
+  resolveIntegration = resolveMetaWhatsappIntegrationById,
+  getTemplateOnMeta = getMessageTemplate,
 } = {}) {
   const integration = await findActiveIntegration(ownerUserId);
   if (!integration) return { metaConnected: false, template: null };
   const wabaId = String(integration.wabaId || "").trim();
   const rows = await findFollowupRows({ ownerUserId, wabaId });
-  return { metaConnected: true, template: serializeFollowupTemplate(pickFollowupRow(rows)) };
+  const row = pickFollowupRow(rows);
+  if (row && String(row.status || "").toUpperCase() === "PENDING" && row.metaTemplateId) {
+    try {
+      const resolved = await resolveIntegration({ ownerUserId, integrationId: integration.id });
+      const accessToken = String(resolved?.credentials?.accessToken || "").trim();
+      await syncPendingTemplateFromGraph(row, { accessToken, getTemplateOnMeta });
+    } catch (error) {
+      logWarn("No se pudo leer el token para consultar la plantilla", { message: error.message });
+    }
+  }
+  return { metaConnected: true, template: serializeFollowupTemplate(row) };
 }
 
 export async function ensureFollowupDefaultTemplate({
@@ -213,9 +316,41 @@ export async function ensureFollowupDefaultTemplate({
   wabaId,
   accessToken,
   createOnMeta = createMessageTemplate,
+  listOnMeta = listMessageTemplates,
 } = {}) {
-  const existing = await findActiveFollowup({ ownerUserId, wabaId });
-  if (existing) return { created: false, template: existing };
+  const localRows = await findFollowupRows({ ownerUserId, wabaId });
+  let remoteTemplates;
+  try {
+    remoteTemplates = await listOnMeta({ wabaId, token: accessToken });
+  } catch (error) {
+    const local = localRows.find((row) => !isRejected(row) && row.metaTemplateId);
+    if (local) return { created: false, template: local };
+    throw error;
+  }
+
+  const remote = pickRemoteFollowup(remoteTemplates);
+  if (remote) {
+    const template = await upsertFollowupFromRemote({ ownerUserId, wabaId, remote, localRows });
+    const body = bodyTextFromComponents(template.components);
+    if (body) await syncReminderMessage(ownerUserId, body);
+    return { created: false, reused: true, template };
+  }
+
+  const local = localRows.find((row) => !isRejected(row) && row.metaTemplateId);
+  if (local) {
+    const match = remoteTemplates.find((row) => String(row.id) === String(local.metaTemplateId));
+    const matchStatus = match ? mapTemplateStatusEvent(match.status) : null;
+    if (match && matchStatus && matchStatus !== "REJECTED") {
+      const template = await upsertFollowupFromRemote({
+        ownerUserId,
+        wabaId,
+        remote: match,
+        localRows,
+      });
+      return { created: false, reused: true, template };
+    }
+    if (!match) return { created: false, template: local };
+  }
 
   const body = META_FOLLOWUP_DEFAULT_BODY;
   const meta = await createTemplateOnMeta({

@@ -16,6 +16,7 @@ export type IntegrationDto = {
   phoneNumberId?: string | null;
   displayPhoneNumber?: string | null;
   coexistenceEnabled?: boolean;
+  followupTemplateError?: string | null;
 };
 
 export type MetaSignupConfigDto = {
@@ -36,6 +37,7 @@ export type MetaSignupTicketDto = {
 export type MetaSignupTicketStatusDto = {
   status: "pending" | "completed" | "failed" | "cancelled";
   message: string;
+  followupTemplateError?: string | null;
 };
 
 export type WhatsAppMetaStatusDto = {

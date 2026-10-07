@@ -64,7 +64,11 @@ export const postMetaEmbeddedSignup = async (req, res, next) => {
       businessId: req.body?.businessId || req.body?.business_id,
       event: req.body?.event,
     });
-    return res.status(201).json(await integrationDto(result.integration));
+    const dto = await integrationDto(result.integration);
+    return res.status(201).json({
+      ...dto,
+      followupTemplateError: result.followupTemplateError || null,
+    });
   } catch (err) {
     return next(err);
   }
