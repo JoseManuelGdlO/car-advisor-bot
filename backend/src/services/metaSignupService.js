@@ -172,10 +172,7 @@ export async function completeEmbeddedSignup({
 
   await subscribeWabaApp(resolvedWabaId, accessToken);
   logInfo("embedded signup: WABA suscrita a webhooks", { ownerUserId, wabaId: resolvedWabaId });
-  await ensurePlatformCanManageWaba({
-    wabaId: resolvedWabaId,
-    plannerAccessToken: accessToken,
-  });
+  await ensurePlatformCanManageWaba({ wabaId: resolvedWabaId });
 
   const phones = await listWabaPhoneNumbers(resolvedWabaId, accessToken);
   let phone = pickPhoneFromList(phones, phoneNumberId);

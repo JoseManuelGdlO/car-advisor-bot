@@ -115,16 +115,25 @@ test("ensurePlatformCanManageWaba no lanza si el share OBO falla", async () => {
   env.meta.systemUserId = "sys-1";
   env.meta.graphApiVersion = "v21.0";
 
-  global.fetch = async () => ({
-    ok: false,
-    status: 400,
-    text: async () => JSON.stringify({ error: { message: "permission denied", code: 10 } }),
-  });
+  const authorizations = [];
+  global.fetch = async (url, options) => {
+    authorizations.push({
+      url: String(url),
+      authorization: options?.headers?.Authorization || "",
+    });
+    return {
+      ok: false,
+      status: 400,
+      text: async () => JSON.stringify({ error: { message: "permission denied", code: 10 } }),
+    };
+  };
 
-  const result = await ensurePlatformCanManageWaba({
-    wabaId: "waba-1",
-    plannerAccessToken: "planner-token",
-  });
+  const result = await ensurePlatformCanManageWaba({ wabaId: "waba-1" });
+
+  const share = authorizations.find((row) => row.url.includes("/client_whatsapp_business_accounts"));
+  const assign = authorizations.find((row) => row.url.includes("/assigned_users"));
+  assert.equal(share?.authorization, "Bearer platform-token");
+  assert.equal(assign?.authorization, "Bearer platform-token");
 
   assert.equal(result.skipped, false);
   assert.equal(result.shared, false);

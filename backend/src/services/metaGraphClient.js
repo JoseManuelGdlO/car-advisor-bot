@@ -165,7 +165,7 @@ export async function assignSystemUserToWaba({ wabaId, systemUserId, token } = {
   });
 }
 
-export async function ensurePlatformCanManageWaba({ wabaId, plannerAccessToken } = {}) {
+export async function ensurePlatformCanManageWaba({ wabaId } = {}) {
   const platformToken = String(env.meta.accessToken || "").trim();
   if (!platformToken) {
     return { skipped: true, reason: "no_platform_token", shared: false, assigned: false };
@@ -176,11 +176,10 @@ export async function ensurePlatformCanManageWaba({ wabaId, plannerAccessToken }
   }
 
   const businessId = String(env.meta.businessId || "").trim();
-  const shareToken = String(plannerAccessToken || platformToken).trim();
   let shared = false;
   if (businessId) {
     try {
-      await shareClientWhatsappBusinessAccount({ wabaId: waba, businessId, token: shareToken });
+      await shareClientWhatsappBusinessAccount({ wabaId: waba, businessId, token: platformToken });
       shared = true;
       logInfo("OBO: WABA vinculado al portafolio", { wabaId: waba, businessId });
     } catch (error) {
@@ -214,8 +213,7 @@ export async function ensurePlatformCanManageWaba({ wabaId, plannerAccessToken }
       systemUserId = String(me.id || "").trim();
     }
     if (systemUserId) {
-      const assignToken = String(plannerAccessToken || "").trim() || platformToken;
-      await assignSystemUserToWaba({ wabaId: waba, systemUserId, token: assignToken });
+      await assignSystemUserToWaba({ wabaId: waba, systemUserId, token: platformToken });
       assigned = true;
       logInfo("OBO: system user asignado al WABA", { wabaId: waba, systemUserId });
     }
