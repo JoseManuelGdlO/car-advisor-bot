@@ -39,6 +39,12 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       BACKEND_PUBLIC_URL: ${BACKEND_PUBLIC_URL:-}
       BACKEND_SERVICE_TOKEN: ${BACKEND_SERVICE_TOKEN:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
     volumes:
       # Persist images/PDFs across redeploys (EasyPanel COMPOSE uses this file from Git).
       - autobot-uploads:/app/autobot
