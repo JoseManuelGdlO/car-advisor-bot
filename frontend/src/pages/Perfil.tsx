@@ -61,8 +61,6 @@ const PROFILE_KNOWN_FIELDS = [
   "defaultPlatform",
   "calendarSchedulingUrl",
   "tradeName",
-  "legalName",
-  "taxId",
   "businessPhone",
   "businessEmail",
   "website",
@@ -71,7 +69,6 @@ const PROFILE_KNOWN_FIELDS = [
   "state",
   "country",
   "description",
-  "logoUrl",
 ] as const;
 
 export default function Perfil() {
@@ -159,10 +156,7 @@ export default function Perfil() {
           calendarSchedulingUrl,
         },
         business: {
-          ...bizForm,
           tradeName: bizForm.tradeName?.trim() || null,
-          legalName: bizForm.legalName?.trim() || null,
-          taxId: bizForm.taxId?.trim() || null,
           businessPhone: bizForm.businessPhone?.trim() || null,
           businessEmail: bizForm.businessEmail?.trim() || null,
           website: bizForm.website?.trim() || null,
@@ -171,7 +165,6 @@ export default function Perfil() {
           state: bizForm.state?.trim() || null,
           country: bizForm.country?.trim() || null,
           description: bizForm.description?.trim() || null,
-          logoUrl: bizForm.logoUrl?.trim() || null,
         },
       });
     },
@@ -444,28 +437,6 @@ export default function Perfil() {
                 />
                 <FieldErrorText error={profileFieldErrors.tradeName} />
                 <Input
-                  placeholder="Razón social"
-                  value={bizForm.legalName || ""}
-                  onChange={(e) =>
-                    setBizForm((s) => ({ ...s, legalName: e.target.value }))
-                  }
-                  className={cn(
-                    profileFieldErrors.legalName && "border-destructive",
-                  )}
-                />
-                <FieldErrorText error={profileFieldErrors.legalName} />
-                <Input
-                  placeholder="NIT / ID fiscal"
-                  value={bizForm.taxId || ""}
-                  onChange={(e) =>
-                    setBizForm((s) => ({ ...s, taxId: e.target.value }))
-                  }
-                  className={cn(
-                    profileFieldErrors.taxId && "border-destructive",
-                  )}
-                />
-                <FieldErrorText error={profileFieldErrors.taxId} />
-                <Input
                   placeholder="Teléfono del negocio"
                   value={bizForm.businessPhone || ""}
                   onChange={(e) =>
@@ -560,17 +531,6 @@ export default function Perfil() {
                   )}
                 />
                 <FieldErrorText error={profileFieldErrors.description} />
-                <Input
-                  placeholder="URL del logo"
-                  value={bizForm.logoUrl || ""}
-                  onChange={(e) =>
-                    setBizForm((s) => ({ ...s, logoUrl: e.target.value }))
-                  }
-                  className={cn(
-                    profileFieldErrors.logoUrl && "border-destructive",
-                  )}
-                />
-                <FieldErrorText error={profileFieldErrors.logoUrl} />
                 {businessDirty ? renderSaveProfileButton() : null}
               </div>
             </AccordionContent>
