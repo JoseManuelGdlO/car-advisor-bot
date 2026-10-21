@@ -9,9 +9,11 @@ import { debounceAndFlush } from "./messageDebounceBuffer.js";
 import { isPhoneBlacklisted } from "./phoneBlacklistService.js";
 import { formatCampaignCrmMessage } from "../utils/campaignCrmMessage.js";
 import {
+  markWhatsappMessageRead,
   sendWhatsappDocument,
   sendWhatsappImage,
   sendWhatsappText,
+  sendWhatsappTypingIndicator,
 } from "./metaWhatsappClient.js";
 
 /** CRM: resumen cuando el usuario envía solo media/adjuntos (sin invocar el bot). */
@@ -74,6 +76,29 @@ const persistAssistantReply = async ({ normalizedEvent, message }) => {
     customerInfo: {},
     financingSelection: {},
   });
+};
+
+const inboundMessageId = (normalizedEvent) =>
+  String(normalizedEvent?.messageId || normalizedEvent?.eventId || "").trim();
+
+/** Marca leído o “escribiendo…”. Si Graph falla, la respuesta del bot sigue. */
+const signalWhatsappPresence = async ({ credentials, messageId, mode }) => {
+  const id = String(messageId || "").trim();
+  if (!id) return;
+  const phoneNumberId = credentials?.phoneNumberId;
+  const accessToken = credentials?.accessToken;
+  try {
+    if (mode === "typing") {
+      await sendWhatsappTypingIndicator({ phoneNumberId, accessToken, messageId: id });
+      return;
+    }
+    await markWhatsappMessageRead({ phoneNumberId, accessToken, messageId: id });
+  } catch (error) {
+    logWaCloud("presence signal failed", {
+      mode: mode === "typing" ? "typing" : "read",
+      message: error?.message,
+    });
+  }
 };
 
 const sendCloudOutbound = async ({ credentials, to, type, text, imageUrl, documentUrl, fileName, caption }) => {
@@ -173,7 +198,11 @@ export const ingestWhatsappCloudEvent = async ({ normalizedEvent, credentials })
       return { ok: true, suppressed: true, conversationId: conversationResult.conversationId };
     }
 
+    const presenceMessageId = inboundMessageId(normalizedEvent);
+    await signalWhatsappPresence({ credentials, messageId: presenceMessageId, mode: "read" });
+
     if (unsupportedMediaOnly) {
+      await signalWhatsappPresence({ credentials, messageId: presenceMessageId, mode: "typing" });
       const replyText = UNSUPPORTED_INBOUND_OUTBOUND_REPLY;
       await persistAssistantReply({ normalizedEvent, message: replyText });
       logWaCloud("pipeline: send outbound", {
@@ -194,15 +223,17 @@ export const ingestWhatsappCloudEvent = async ({ normalizedEvent, credentials })
       key: `${normalizedEvent.ownerUserId}:whatsapp:${normalizedEvent.externalUserId}`,
       message: incomingMessage,
       adContext: normalizedEvent.adContext,
-      flush: ({ message, adContext }) =>
-        runBotChat({
+      flush: async ({ message, adContext }) => {
+        await signalWhatsappPresence({ credentials, messageId: presenceMessageId, mode: "typing" });
+        return runBotChat({
           userId: normalizedEvent.externalUserId,
           platform: "whatsapp",
           message,
           ownerUserId: normalizedEvent.ownerUserId,
           conversationId: conversationResult.conversationId,
           adContext,
-        }),
+        });
+      },
     });
 
     if (!isFlushLeader) {

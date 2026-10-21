@@ -94,6 +94,39 @@ export const sendWhatsappWithRetry = async (fn, { maxAttempts = 3, baseDelayMs =
   }
 };
 
+const requireMessageId = (messageId) => {
+  const id = String(messageId || "").trim();
+  if (!id) throw new ApiError(400, "El id del mensaje de WhatsApp es obligatorio.");
+  return id;
+};
+
+export const markWhatsappMessageRead = async ({ phoneNumberId, accessToken, messageId }) => {
+  const id = requireMessageId(messageId);
+  return graphSend({
+    phoneNumberId,
+    accessToken,
+    body: {
+      messaging_product: "whatsapp",
+      status: "read",
+      message_id: id,
+    },
+  });
+};
+
+export const sendWhatsappTypingIndicator = async ({ phoneNumberId, accessToken, messageId }) => {
+  const id = requireMessageId(messageId);
+  return graphSend({
+    phoneNumberId,
+    accessToken,
+    body: {
+      messaging_product: "whatsapp",
+      status: "read",
+      message_id: id,
+      typing_indicator: { type: "text" },
+    },
+  });
+};
+
 export const sendWhatsappText = async ({ phoneNumberId, accessToken, to, text }) => {
   const phone = requirePhone(to);
   const bodyText = String(text || "").trim();

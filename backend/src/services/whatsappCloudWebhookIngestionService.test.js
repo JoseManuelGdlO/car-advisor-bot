@@ -158,7 +158,7 @@ test("texto inbound dispara sendWhatsappText (Graph POST /messages)", async () =
   };
 
   const result = await ingestWhatsappCloudEvent({
-    normalizedEvent: { ...baseEvent, eventId: "wamid.text" },
+    normalizedEvent: { ...baseEvent, eventId: "wamid.text", messageId: "wamid.text" },
     credentials,
   });
 
@@ -166,11 +166,16 @@ test("texto inbound dispara sendWhatsappText (Graph POST /messages)", async () =
   assert.equal(result.repliesSent, 1);
   assert.equal(botCalls.length, 1);
   assert.equal(botCalls[0].message, "Hola");
-  assert.equal(graphBodies.length, 1);
-  assert.equal(graphBodies[0].messaging_product, "whatsapp");
-  assert.equal(graphBodies[0].to, "525512345678");
-  assert.equal(graphBodies[0].type, "text");
-  assert.equal(graphBodies[0].text.body, "Hola bot");
+  assert.equal(graphBodies.length, 3);
+  assert.equal(graphBodies[0].status, "read");
+  assert.equal(graphBodies[0].message_id, "wamid.text");
+  assert.equal(graphBodies[0].typing_indicator, undefined);
+  assert.deepEqual(graphBodies[1].typing_indicator, { type: "text" });
+  assert.equal(graphBodies[1].message_id, "wamid.text");
+  assert.equal(graphBodies[2].messaging_product, "whatsapp");
+  assert.equal(graphBodies[2].to, "525512345678");
+  assert.equal(graphBodies[2].type, "text");
+  assert.equal(graphBodies[2].text.body, "Hola bot");
 });
 
 test("media no soportada responde el texto fijo y no llama al bot", async () => {
@@ -193,6 +198,7 @@ test("media no soportada responde el texto fijo y no llama al bot", async () => 
     normalizedEvent: {
       ...baseEvent,
       eventId: "wamid.media",
+      messageId: "wamid.media",
       text: "",
       unsupportedMediaOnly: true,
     },
@@ -203,9 +209,12 @@ test("media no soportada responde el texto fijo y no llama al bot", async () => 
   assert.equal(result.unsupportedMediaOnly, true);
   assert.equal(result.repliesSent, 1);
   assert.equal(botCalled, false);
-  assert.equal(graphBodies.length, 1);
-  assert.equal(graphBodies[0].type, "text");
-  assert.equal(graphBodies[0].text.body, UNSUPPORTED_INBOUND_OUTBOUND_REPLY);
+  assert.equal(graphBodies.length, 3);
+  assert.equal(graphBodies[0].status, "read");
+  assert.equal(graphBodies[0].message_id, "wamid.media");
+  assert.deepEqual(graphBodies[1].typing_indicator, { type: "text" });
+  assert.equal(graphBodies[2].type, "text");
+  assert.equal(graphBodies[2].text.body, UNSUPPORTED_INBOUND_OUTBOUND_REPLY);
 });
 
 test("si el pipeline falla tras persistir el recibo, no relanza y marca failed", async () => {
@@ -232,6 +241,67 @@ test("si el pipeline falla tras persistir el recibo, no relanza y marca failed",
   assert.equal(result.failed, true);
   assert.equal(receiptPatch?.status, "failed");
   assert.match(receiptPatch?.error || "", /lead roto/);
+});
+
+test("si read o typing fallan, el texto del bot igual se envía", async () => {
+  const graphBodies = [];
+  global.fetch = async (url, options) => {
+    const u = String(url);
+    if (u.includes("/chat")) {
+      return { ok: true, status: 200, text: async () => JSON.stringify({ reply: "sigo aquí" }) };
+    }
+    if (u.includes("graph.facebook.com")) {
+      const body = JSON.parse(String(options?.body || "{}"));
+      graphBodies.push(body);
+      if (body.status === "read") {
+        return {
+          ok: false,
+          status: 400,
+          text: async () => JSON.stringify({ error: { message: "presence rejected", code: 100 } }),
+        };
+      }
+      return { ok: true, status: 200, text: async () => JSON.stringify({ messages: [{ id: "wamid.out" }] }) };
+    }
+    throw new Error(`unexpected fetch ${u}`);
+  };
+
+  const result = await ingestWhatsappCloudEvent({
+    normalizedEvent: { ...baseEvent, eventId: "wamid.presence-fail", messageId: "wamid.presence-fail" },
+    credentials,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.failed, undefined);
+  assert.equal(result.repliesSent, 1);
+  assert.equal(graphBodies.filter((body) => body.status === "read" && !body.typing_indicator).length, 1);
+  assert.equal(graphBodies.filter((body) => body.typing_indicator?.type === "text").length, 1);
+  assert.equal(graphBodies.at(-1).text.body, "sigo aquí");
+});
+
+test("sin respuesta automática no marca read ni typing", async () => {
+  Conversation.findOrCreate = async () => {
+    const conv = {
+      id: "conv-human",
+      isHumanControlled: true,
+      lastMessage: "",
+      lastTime: null,
+      update: async (patch) => Object.assign(conv, patch),
+    };
+    return [conv, false];
+  };
+  let fetchCalled = false;
+  global.fetch = async () => {
+    fetchCalled = true;
+    return { ok: true, status: 200, text: async () => "{}" };
+  };
+
+  const result = await ingestWhatsappCloudEvent({
+    normalizedEvent: { ...baseEvent, eventId: "wamid.human" },
+    credentials,
+  });
+
+  assert.equal(result.suppressed, true);
+  assert.equal(fetchCalled, false);
 });
 
 test("evento no inbound no envía a Graph", async () => {

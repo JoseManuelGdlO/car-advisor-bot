@@ -3,10 +3,12 @@ import assert from "node:assert/strict";
 import { env } from "../config/env.js";
 import { ApiError } from "../utils/errors.js";
 import {
+  markWhatsappMessageRead,
   sendWhatsappDocument,
   sendWhatsappImage,
   sendWhatsappTemplate,
   sendWhatsappText,
+  sendWhatsappTypingIndicator,
   sendWhatsappWithRetry,
 } from "./metaWhatsappClient.js";
 
@@ -268,6 +270,60 @@ test("sendWhatsappTemplate POST type=template sin components", async () => {
   });
   assert.equal("components" in calledBody, false);
   assert.equal("components" in calledBody.template, false);
+});
+
+test("markWhatsappMessageRead POST status read con el wamid inbound", async () => {
+  env.meta.graphApiVersion = "v21.0";
+  let calledUrl;
+  let calledBody;
+  global.fetch = async (url, options) => {
+    calledUrl = String(url);
+    calledBody = JSON.parse(String(options?.body || "{}"));
+    return okResponse({ success: true });
+  };
+
+  await markWhatsappMessageRead({
+    phoneNumberId: "PNID",
+    accessToken: "tok",
+    messageId: "wamid.INBOUND",
+  });
+
+  assert.match(calledUrl, /graph\.facebook\.com\/v21\.0\/PNID\/messages/);
+  assert.equal(calledBody.messaging_product, "whatsapp");
+  assert.equal(calledBody.status, "read");
+  assert.equal(calledBody.message_id, "wamid.INBOUND");
+  assert.equal(calledBody.typing_indicator, undefined);
+  assert.equal(calledBody.to, undefined);
+});
+
+test("sendWhatsappTypingIndicator POST read más typing_indicator text", async () => {
+  let calledBody;
+  global.fetch = async (_url, options) => {
+    calledBody = JSON.parse(String(options?.body || "{}"));
+    return okResponse({ success: true });
+  };
+
+  await sendWhatsappTypingIndicator({
+    phoneNumberId: "PNID",
+    accessToken: "tok",
+    messageId: "wamid.INBOUND",
+  });
+
+  assert.equal(calledBody.messaging_product, "whatsapp");
+  assert.equal(calledBody.status, "read");
+  assert.equal(calledBody.message_id, "wamid.INBOUND");
+  assert.deepEqual(calledBody.typing_indicator, { type: "text" });
+});
+
+test("read y typing exigen messageId", async () => {
+  await assert.rejects(
+    () => markWhatsappMessageRead({ phoneNumberId: "PNID", accessToken: "tok", messageId: "  " }),
+    (err) => err instanceof ApiError && err.status === 400
+  );
+  await assert.rejects(
+    () => sendWhatsappTypingIndicator({ phoneNumberId: "PNID", accessToken: "tok", messageId: "" }),
+    (err) => err instanceof ApiError && err.status === 400
+  );
 });
 
 test("sendWhatsappTemplate exige name y to con ApiError 400 en español", async () => {
