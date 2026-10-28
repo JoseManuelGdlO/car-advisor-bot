@@ -12,6 +12,10 @@ const CHAT_OWNERS = [
     id: "748dab00-e01e-4f82-a658-848cf630197e",
     label: "Delsy",
   },
+  {
+    id:"863e8baf-f326-4dff-a173-d1af7fec6191",
+    label: "Suzuki Laguna"
+  }
 ];
 
 // Incrementa cuando cambien ids o labels en CHAT_OWNERS para invalidar selección en caché.
