@@ -420,6 +420,21 @@ export async function listWabaPhoneNumbers(wabaId, token) {
   return Array.isArray(payload.data) ? payload.data : [];
 }
 
+export async function listOwnedWabaIds({ businessId, token } = {}) {
+  const id = String(businessId || "").trim();
+  const access = String(token || "").trim();
+  if (!id || !access) return [];
+  const payload = await graphRequest({
+    method: "GET",
+    path: `${id}/owned_whatsapp_business_accounts`,
+    token: access,
+    query: { fields: "id", limit: "200" },
+  });
+  return (Array.isArray(payload.data) ? payload.data : [])
+    .map((row) => String(row?.id || "").trim())
+    .filter(Boolean);
+}
+
 export async function getPhoneNumberDetails(phoneNumberId, token) {
   return graphRequest({
     method: "GET",

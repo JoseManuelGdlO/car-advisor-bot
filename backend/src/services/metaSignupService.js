@@ -17,6 +17,7 @@ import {
   getPhoneNumberDetails,
   initiateCoexistenceSync,
   inspectGraphToken,
+  listOwnedWabaIds,
   listWabaPhoneNumbers,
   subscribeWabaApp,
   unsubscribeWabaApp,
@@ -74,11 +75,27 @@ async function listPhonesByTargetId(targetIds, accessToken) {
   return found;
 }
 
+function onboardedAtMs(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    if (value <= 0) return null;
+    return value < 1e12 ? value * 1000 : value;
+  }
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  if (/^\d+$/.test(text)) {
+    const n = Number(text);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    return n < 1e12 ? n * 1000 : n;
+  }
+  const ms = Date.parse(text);
+  return Number.isFinite(ms) ? ms : null;
+}
+
 function latestOnboardedAt(phones) {
   let latest = null;
   for (const phone of phones) {
-    const ms = Date.parse(phone?.last_onboarded_time);
-    if (!Number.isFinite(ms)) continue;
+    const ms = onboardedAtMs(phone?.last_onboarded_time);
+    if (ms == null) continue;
     if (latest == null || ms > latest) latest = ms;
   }
   return latest;
@@ -108,6 +125,42 @@ function chooseWabaFromPhoneLists(found, phoneNumberId) {
   }
   if (!bestId || tie) return "";
   return bestId;
+}
+
+async function readPartnerOwnedWabaIds() {
+  const businessId = String(env.meta.businessId || "").trim();
+  const token = String(env.meta.accessToken || "").trim();
+  if (!businessId || !token) return new Set();
+  try {
+    return new Set(await listOwnedWabaIds({ businessId, token }));
+  } catch (error) {
+    logWarn("embedded signup: no se pudieron leer los WABA propios del portafolio", {
+      message: error.message,
+    });
+    return new Set();
+  }
+}
+
+async function resolveAmbiguousWaba({ found, phoneNumberId }) {
+  const preferred = String(phoneNumberId || "").trim();
+  if (preferred) {
+    const matches = found.filter((row) => row.phones.some((phone) => String(phone.id) === preferred));
+    if (matches.length === 1) return { wabaId: matches[0].id, reason: "phoneNumberId" };
+  }
+  if (found.length === 1) return { wabaId: found[0].id, reason: "unico" };
+  if (!found.length) return { wabaId: "", reason: "" };
+
+  let pool = found;
+  const owned = await readPartnerOwnedWabaIds();
+  if (owned.size) {
+    const clients = found.filter((row) => !owned.has(row.id));
+    if (clients.length === 1) return { wabaId: clients[0].id, reason: "cliente" };
+    if (clients.length > 1) pool = clients;
+  }
+
+  const byTime = chooseWabaFromPhoneLists(pool, "");
+  if (byTime) return { wabaId: byTime, reason: "fecha" };
+  return { wabaId: "", reason: "" };
 }
 
 function describeWabaCandidates(found) {
@@ -231,13 +284,15 @@ export async function completeEmbeddedSignup({
       resolvedWabaId = ids[0];
     } else if (ids.length > 1) {
       const found = await listPhonesByTargetId(ids, accessToken);
-      const candidates = describeWabaCandidates(found);
+      const candidates = JSON.stringify(describeWabaCandidates(found));
       logInfo("embedded signup: números encontrados por target id", { ownerUserId, candidates });
-      resolvedWabaId = chooseWabaFromPhoneLists(found, phoneNumberId);
+      const picked = await resolveAmbiguousWaba({ found, phoneNumberId });
+      resolvedWabaId = picked.wabaId;
       if (resolvedWabaId) {
         logInfo("embedded signup: WABA resuelto entre varios target ids", {
           ownerUserId,
           wabaId: resolvedWabaId,
+          reason: picked.reason,
           candidates,
         });
       } else if (found.length > 1) {
