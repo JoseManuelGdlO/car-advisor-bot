@@ -413,7 +413,8 @@ export async function listWabaPhoneNumbers(wabaId, token) {
     path: `${wabaId}/phone_numbers`,
     token,
     query: {
-      fields: "id,display_phone_number,verified_name,quality_rating,is_on_biz_app,platform_type",
+      fields:
+        "id,display_phone_number,verified_name,quality_rating,is_on_biz_app,platform_type,last_onboarded_time",
     },
   });
   return Array.isArray(payload.data) ? payload.data : [];

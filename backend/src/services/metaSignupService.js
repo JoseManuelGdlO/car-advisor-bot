@@ -74,6 +74,16 @@ async function listPhonesByTargetId(targetIds, accessToken) {
   return found;
 }
 
+function latestOnboardedAt(phones) {
+  let latest = null;
+  for (const phone of phones) {
+    const ms = Date.parse(phone?.last_onboarded_time);
+    if (!Number.isFinite(ms)) continue;
+    if (latest == null || ms > latest) latest = ms;
+  }
+  return latest;
+}
+
 function chooseWabaFromPhoneLists(found, phoneNumberId) {
   const preferred = String(phoneNumberId || "").trim();
   if (preferred) {
@@ -81,7 +91,34 @@ function chooseWabaFromPhoneLists(found, phoneNumberId) {
     if (matches.length === 1) return matches[0].id;
   }
   if (found.length === 1) return found[0].id;
-  return "";
+
+  let bestId = "";
+  let bestAt = null;
+  let tie = false;
+  for (const row of found) {
+    const at = latestOnboardedAt(row.phones);
+    if (at == null) continue;
+    if (bestAt == null || at > bestAt) {
+      bestAt = at;
+      bestId = row.id;
+      tie = false;
+    } else if (at === bestAt && row.id !== bestId) {
+      tie = true;
+    }
+  }
+  if (!bestId || tie) return "";
+  return bestId;
+}
+
+function describeWabaCandidates(found) {
+  return found.map((row) => ({
+    wabaId: row.id,
+    phones: row.phones.map((phone) => ({
+      id: phone?.id == null ? null : String(phone.id),
+      displayPhoneNumber: phone?.display_phone_number || null,
+      lastOnboardedTime: phone?.last_onboarded_time || null,
+    })),
+  }));
 }
 
 async function upsertMetaIntegration({ ownerUserId, wabaId, phoneNumberId, displayPhoneNumber, coexistenceEnabled }) {
@@ -194,12 +231,19 @@ export async function completeEmbeddedSignup({
       resolvedWabaId = ids[0];
     } else if (ids.length > 1) {
       const found = await listPhonesByTargetId(ids, accessToken);
+      const candidates = describeWabaCandidates(found);
+      logInfo("embedded signup: números encontrados por target id", { ownerUserId, candidates });
       resolvedWabaId = chooseWabaFromPhoneLists(found, phoneNumberId);
       if (resolvedWabaId) {
         logInfo("embedded signup: WABA resuelto entre varios target ids", {
           ownerUserId,
           wabaId: resolvedWabaId,
-          candidates: ids,
+          candidates,
+        });
+      } else if (found.length > 1) {
+        logWarn("embedded signup: varios WABA con números y no hay uno claramente más reciente", {
+          ownerUserId,
+          candidates,
         });
       }
     }
