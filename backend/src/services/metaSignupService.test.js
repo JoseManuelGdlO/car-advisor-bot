@@ -668,6 +668,119 @@ test("completeEmbeddedSignup sin fecha elige el número que sigue en la app de W
   assert.equal(created.coexistenceEnabled, true);
 });
 
+test("completeEmbeddedSignup sin fecha elige el número que aún no tiene calificación", async () => {
+  env.meta.appId = "app-id";
+  env.meta.configId = "cfg-id";
+  env.meta.appSecret = "app-secret";
+  env.meta.accessToken = "platform-token";
+  env.meta.businessId = "biz-intelekia";
+
+  global.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes("oauth/access_token")) {
+      return { ok: true, status: 200, text: async () => JSON.stringify({ access_token: "EAA_TOKEN" }) };
+    }
+    if (u.includes("debug_token")) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            data: {
+              type: "SYSTEM_USER",
+              is_valid: true,
+              granular_scopes: [
+                { scope: "whatsapp_business_management", target_ids: ["1704339514009532", "1300797345181712"] },
+              ],
+            },
+          }),
+      };
+    }
+    if (u.includes("owned_whatsapp_business_accounts")) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({ data: [{ id: "1914660209494591" }, { id: "1671004564272181" }, { id: "2318580138553381" }] }),
+      };
+    }
+    if (u.includes("1300797345181712/phone_numbers")) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            data: [
+              {
+                id: "854807567712136",
+                display_phone_number: "+52 1 612 200 6803",
+                verified_name: "Suzuki La Paz",
+                quality_rating: "GREEN",
+                is_on_biz_app: true,
+                platform_type: "CLOUD_API",
+              },
+            ],
+          }),
+      };
+    }
+    if (u.includes("1704339514009532/phone_numbers")) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            data: [
+              {
+                id: "1166184433254184",
+                display_phone_number: "+52 1 624 184 7941",
+                verified_name: "Jkb",
+                quality_rating: "UNKNOWN",
+                is_on_biz_app: true,
+                platform_type: "CLOUD_API",
+              },
+            ],
+          }),
+      };
+    }
+    if (u.includes("/subscribed_apps")) {
+      return { ok: true, status: 200, text: async () => JSON.stringify({ success: true }) };
+    }
+    if (u.includes("1166184433254184")) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            id: "1166184433254184",
+            display_phone_number: "+52 1 624 184 7941",
+            is_on_biz_app: true,
+            platform_type: "CLOUD_API",
+          }),
+      };
+    }
+    return { ok: true, status: 200, text: async () => "{}" };
+  };
+
+  ChannelIntegration.findAll = async () => [];
+  ChannelIntegration.findOne = async () => null;
+  let created;
+  ChannelIntegration.create = async (data) => {
+    created = { id: "int_meta", ...data, update: async (patch) => Object.assign(created, patch) };
+    return created;
+  };
+  ChannelCredential.update = async () => [1];
+  ChannelCredential.create = async (data) => ({ id: "cred_meta", ...data });
+
+  await completeEmbeddedSignup({
+    ownerUserId: "owner-1",
+    code: "AUTH_CODE",
+    ensureFollowupDefault: async () => ({ created: false }),
+  });
+
+  assert.equal(created.wabaId, "1704339514009532");
+  assert.equal(created.phoneNumberId, "1166184433254184");
+});
+
 test("completeEmbeddedSignup 400 si varios target ids tienen números y no hay phoneNumberId", async () => {
   env.meta.appId = "app-id";
   env.meta.configId = "cfg-id";

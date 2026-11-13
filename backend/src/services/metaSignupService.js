@@ -172,7 +172,23 @@ async function resolveAmbiguousWaba({ found, phoneNumberId, ownerUserId }) {
 
   const onBusinessApp = pool.filter((row) => row.phones.some(isBusinessAppCloudPhone));
   if (onBusinessApp.length === 1) return { wabaId: onBusinessApp[0].id, reason: "app-de-negocio" };
+
+  const unrated = chooseUnratedWaba(pool);
+  if (unrated) return { wabaId: unrated, reason: "sin-calificacion" };
   return { wabaId: "", reason: "" };
+}
+
+const RATED_QUALITY = new Set(["GREEN", "YELLOW", "RED"]);
+
+function chooseUnratedWaba(found) {
+  const unrated = found.filter((row) =>
+    row.phones.every((phone) => !RATED_QUALITY.has(String(phone?.quality_rating || "").toUpperCase())),
+  );
+  const rated = found.filter((row) =>
+    row.phones.some((phone) => RATED_QUALITY.has(String(phone?.quality_rating || "").toUpperCase())),
+  );
+  if (unrated.length === 1 && rated.length >= 1) return unrated[0].id;
+  return "";
 }
 
 function describeWabaCandidates(found) {
