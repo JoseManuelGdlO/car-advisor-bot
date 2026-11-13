@@ -155,6 +155,221 @@ test("completeEmbeddedSignup sin wabaId usa el único target id del token", asyn
   assert.equal(result.provider, "meta");
 });
 
+test("completeEmbeddedSignup sin wabaId elige el único target id que lista números", async () => {
+  env.meta.appId = "app-id";
+  env.meta.configId = "cfg-id";
+  env.meta.appSecret = "app-secret";
+  env.meta.accessToken = "";
+
+  const probed = [];
+  global.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes("oauth/access_token")) {
+      return { ok: true, status: 200, text: async () => JSON.stringify({ access_token: "EAA_TOKEN" }) };
+    }
+    if (u.includes("debug_token")) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            data: {
+              type: "SYSTEM_USER",
+              is_valid: true,
+              granular_scopes: [
+                { scope: "whatsapp_business_management", target_ids: ["1300797345181712", "1704339514009532"] },
+              ],
+            },
+          }),
+      };
+    }
+    if (u.includes("/phone_numbers")) {
+      probed.push(u);
+      if (u.includes("1704339514009532/phone_numbers")) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              data: [{ id: "1166184433254184", display_phone_number: "+52 1 624 184 7941" }],
+            }),
+        };
+      }
+      return {
+        ok: false,
+        status: 400,
+        text: async () => JSON.stringify({ error: { message: "Unsupported get request.", code: 100 } }),
+      };
+    }
+    if (u.includes("/subscribed_apps")) {
+      return { ok: true, status: 200, text: async () => JSON.stringify({ success: true }) };
+    }
+    if (u.includes("1166184433254184")) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({ id: "1166184433254184", display_phone_number: "+52 1 624 184 7941" }),
+      };
+    }
+    return { ok: true, status: 200, text: async () => "{}" };
+  };
+
+  ChannelIntegration.findAll = async () => [];
+  ChannelIntegration.findOne = async () => null;
+  let created;
+  ChannelIntegration.create = async (data) => {
+    created = { id: "int_meta", ...data, update: async (patch) => Object.assign(created, patch) };
+    return created;
+  };
+  ChannelCredential.update = async () => [1];
+  ChannelCredential.create = async (data) => ({ id: "cred_meta", ...data });
+
+  await completeEmbeddedSignup({
+    ownerUserId: "owner-1",
+    code: "AUTH_CODE",
+    ensureFollowupDefault: async () => ({ created: false }),
+  });
+
+  assert.equal(created.wabaId, "1704339514009532");
+  assert.equal(created.phoneNumberId, "1166184433254184");
+  assert.ok(probed.some((url) => url.includes("1704339514009532/phone_numbers")));
+  assert.ok(probed.some((url) => url.includes("1300797345181712/phone_numbers")));
+});
+
+test("completeEmbeddedSignup sin wabaId usa el target id que contiene el phoneNumberId", async () => {
+  env.meta.appId = "app-id";
+  env.meta.configId = "cfg-id";
+  env.meta.appSecret = "app-secret";
+  env.meta.accessToken = "";
+
+  global.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes("oauth/access_token")) {
+      return { ok: true, status: 200, text: async () => JSON.stringify({ access_token: "EAA_TOKEN" }) };
+    }
+    if (u.includes("debug_token")) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            data: {
+              type: "SYSTEM_USER",
+              is_valid: true,
+              granular_scopes: [
+                { scope: "whatsapp_business_management", target_ids: ["waba_a", "waba_b"] },
+              ],
+            },
+          }),
+      };
+    }
+    if (u.includes("waba_a/phone_numbers")) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ data: [{ id: "pn_a", display_phone_number: "+52 1" }] }),
+      };
+    }
+    if (u.includes("waba_b/phone_numbers")) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ data: [{ id: "pn_b", display_phone_number: "+52 2" }] }),
+      };
+    }
+    if (u.includes("/subscribed_apps")) {
+      return { ok: true, status: 200, text: async () => JSON.stringify({ success: true }) };
+    }
+    if (u.includes("pn_b")) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ id: "pn_b", display_phone_number: "+52 2" }),
+      };
+    }
+    return { ok: true, status: 200, text: async () => "{}" };
+  };
+
+  ChannelIntegration.findAll = async () => [];
+  ChannelIntegration.findOne = async () => null;
+  let created;
+  ChannelIntegration.create = async (data) => {
+    created = { id: "int_meta", ...data, update: async (patch) => Object.assign(created, patch) };
+    return created;
+  };
+  ChannelCredential.update = async () => [1];
+  ChannelCredential.create = async (data) => ({ id: "cred_meta", ...data });
+
+  await completeEmbeddedSignup({
+    ownerUserId: "owner-1",
+    code: "AUTH_CODE",
+    phoneNumberId: "pn_b",
+    ensureFollowupDefault: async () => ({ created: false }),
+  });
+
+  assert.equal(created.wabaId, "waba_b");
+  assert.equal(created.phoneNumberId, "pn_b");
+});
+
+test("completeEmbeddedSignup 400 si varios target ids tienen números y no hay phoneNumberId", async () => {
+  env.meta.appId = "app-id";
+  env.meta.configId = "cfg-id";
+  env.meta.appSecret = "app-secret";
+  env.meta.accessToken = "";
+
+  global.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes("oauth/access_token")) {
+      return { ok: true, status: 200, text: async () => JSON.stringify({ access_token: "EAA_TOKEN" }) };
+    }
+    if (u.includes("debug_token")) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            data: {
+              type: "SYSTEM_USER",
+              is_valid: true,
+              granular_scopes: [
+                { scope: "whatsapp_business_management", target_ids: ["waba_a", "waba_b"] },
+              ],
+            },
+          }),
+      };
+    }
+    if (u.includes("/phone_numbers")) {
+      const id = u.includes("waba_a") ? "pn_a" : "pn_b";
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ data: [{ id, display_phone_number: "+52" }] }),
+      };
+    }
+    return { ok: true, status: 200, text: async () => "{}" };
+  };
+
+  let created = false;
+  ChannelIntegration.create = async () => {
+    created = true;
+  };
+
+  await assert.rejects(
+    () =>
+      completeEmbeddedSignup({
+        ownerUserId: "owner-1",
+        code: "AUTH_CODE",
+        ensureFollowupDefault: async () => ({ created: false }),
+      }),
+    (err) =>
+      err instanceof ApiError &&
+      err.status === 400 &&
+      err.message === "Meta no devolvió el WABA ID. Completa de nuevo el flujo.",
+  );
+  assert.equal(created, false);
+});
+
 test("completeEmbeddedSignup intercambia el código y guarda ChannelIntegration", async () => {
   env.meta.appId = "app-id";
   env.meta.configId = "cfg-id";

@@ -58,6 +58,32 @@ function pickPhoneFromList(phones, preferredId) {
   return phones[0];
 }
 
+async function listPhonesByTargetId(targetIds, accessToken) {
+  const found = [];
+  for (const id of targetIds) {
+    try {
+      const phones = await listWabaPhoneNumbers(id, accessToken);
+      if (phones.length) found.push({ id, phones });
+    } catch (error) {
+      logWarn("embedded signup: id del token sin números de WhatsApp", {
+        targetId: id,
+        message: error.message,
+      });
+    }
+  }
+  return found;
+}
+
+function chooseWabaFromPhoneLists(found, phoneNumberId) {
+  const preferred = String(phoneNumberId || "").trim();
+  if (preferred) {
+    const matches = found.filter((row) => row.phones.some((phone) => String(phone.id) === preferred));
+    if (matches.length === 1) return matches[0].id;
+  }
+  if (found.length === 1) return found[0].id;
+  return "";
+}
+
 async function upsertMetaIntegration({ ownerUserId, wabaId, phoneNumberId, displayPhoneNumber, coexistenceEnabled }) {
   const existing = await ChannelIntegration.findOne({
     where: {
@@ -164,7 +190,19 @@ export async function completeEmbeddedSignup({
     const ids = Array.isArray(inspection?.targetIds)
       ? inspection.targetIds.map((id) => String(id || "").trim()).filter(Boolean)
       : [];
-    if (ids.length === 1) resolvedWabaId = ids[0];
+    if (ids.length === 1) {
+      resolvedWabaId = ids[0];
+    } else if (ids.length > 1) {
+      const found = await listPhonesByTargetId(ids, accessToken);
+      resolvedWabaId = chooseWabaFromPhoneLists(found, phoneNumberId);
+      if (resolvedWabaId) {
+        logInfo("embedded signup: WABA resuelto entre varios target ids", {
+          ownerUserId,
+          wabaId: resolvedWabaId,
+          candidates: ids,
+        });
+      }
+    }
   }
   if (!resolvedWabaId) {
     throw new ApiError(400, "Meta no devolvió el WABA ID. Completa de nuevo el flujo.");
