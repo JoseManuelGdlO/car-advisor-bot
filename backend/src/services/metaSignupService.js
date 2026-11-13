@@ -127,21 +127,25 @@ function chooseWabaFromPhoneLists(found, phoneNumberId) {
   return bestId;
 }
 
+function isBusinessAppCloudPhone(phone) {
+  return phone?.is_on_biz_app === true && String(phone?.platform_type || "") === "CLOUD_API";
+}
+
 async function readPartnerOwnedWabaIds() {
   const businessId = String(env.meta.businessId || "").trim();
   const token = String(env.meta.accessToken || "").trim();
-  if (!businessId || !token) return new Set();
+  if (!businessId || !token) return { ids: new Set(), skipped: "sin credenciales de portafolio" };
   try {
-    return new Set(await listOwnedWabaIds({ businessId, token }));
+    return { ids: new Set(await listOwnedWabaIds({ businessId, token })), skipped: "" };
   } catch (error) {
     logWarn("embedded signup: no se pudieron leer los WABA propios del portafolio", {
       message: error.message,
     });
-    return new Set();
+    return { ids: new Set(), skipped: error.message };
   }
 }
 
-async function resolveAmbiguousWaba({ found, phoneNumberId }) {
+async function resolveAmbiguousWaba({ found, phoneNumberId, ownerUserId }) {
   const preferred = String(phoneNumberId || "").trim();
   if (preferred) {
     const matches = found.filter((row) => row.phones.some((phone) => String(phone.id) === preferred));
@@ -152,14 +156,22 @@ async function resolveAmbiguousWaba({ found, phoneNumberId }) {
 
   let pool = found;
   const owned = await readPartnerOwnedWabaIds();
-  if (owned.size) {
-    const clients = found.filter((row) => !owned.has(row.id));
+  logInfo("embedded signup: WABA propios del portafolio", {
+    ownerUserId,
+    skipped: owned.skipped || null,
+    owned: [...owned.ids],
+  });
+  if (owned.ids.size) {
+    const clients = found.filter((row) => !owned.ids.has(row.id));
     if (clients.length === 1) return { wabaId: clients[0].id, reason: "cliente" };
     if (clients.length > 1) pool = clients;
   }
 
   const byTime = chooseWabaFromPhoneLists(pool, "");
   if (byTime) return { wabaId: byTime, reason: "fecha" };
+
+  const onBusinessApp = pool.filter((row) => row.phones.some(isBusinessAppCloudPhone));
+  if (onBusinessApp.length === 1) return { wabaId: onBusinessApp[0].id, reason: "app-de-negocio" };
   return { wabaId: "", reason: "" };
 }
 
@@ -170,6 +182,10 @@ function describeWabaCandidates(found) {
       id: phone?.id == null ? null : String(phone.id),
       displayPhoneNumber: phone?.display_phone_number || null,
       lastOnboardedTime: phone?.last_onboarded_time || null,
+      isOnBizApp: phone?.is_on_biz_app === true,
+      platformType: phone?.platform_type || null,
+      qualityRating: phone?.quality_rating || null,
+      verifiedName: phone?.verified_name || null,
     })),
   }));
 }
@@ -286,7 +302,7 @@ export async function completeEmbeddedSignup({
       const found = await listPhonesByTargetId(ids, accessToken);
       const candidates = JSON.stringify(describeWabaCandidates(found));
       logInfo("embedded signup: números encontrados por target id", { ownerUserId, candidates });
-      const picked = await resolveAmbiguousWaba({ found, phoneNumberId });
+      const picked = await resolveAmbiguousWaba({ found, phoneNumberId, ownerUserId });
       resolvedWabaId = picked.wabaId;
       if (resolvedWabaId) {
         logInfo("embedded signup: WABA resuelto entre varios target ids", {
