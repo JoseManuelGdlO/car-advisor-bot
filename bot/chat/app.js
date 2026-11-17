@@ -6,15 +6,19 @@ const CHAT_OWNERS = [
   },
   {
     id: "bab219f0-9e32-4416-a4f5-a9790bbc1499",
-    label: "Suzuki",
-  },
-  {
-    id: "748dab00-e01e-4f82-a658-848cf630197e",
-    label: "Delsy",
+    label: "Suzuki Durango",
   },
   {
     id:"863e8baf-f326-4dff-a173-d1af7fec6191",
-    label: "Suzuki Laguna"
+    label: "Suzuki Laguna",
+  },
+  {
+    id:"c9be9dea-2ceb-4254-8ba0-7a6ef25653d6",
+    label: "Suzuki la Paz",
+  },
+  {
+    id:"fd6e913a-368c-428f-8057-97d0f0c7e4bc",
+    label: "Suzuki los Cabos",
   }
 ];
 
