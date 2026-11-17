@@ -146,13 +146,26 @@ def is_test_drive_or_visit_request(
     return bool(_TEST_DRIVE_LOOSE_RE.search(normalized) or _IN_PERSON_VISIT_LOOSE_RE.search(normalized))
 
 
+_DELIVERY_PLAZO_RE = re.compile(r"plazos?\s+de\s+entrega")
+
+
+def _text_for_financing_signals(normalized: str) -> str:
+    """Quita 'plazo de entrega' para no confundirlo con plazo de credito."""
+
+    stripped = _DELIVERY_PLAZO_RE.sub(" ", normalized)
+    return re.sub(r"\s+", " ", stripped).strip()
+
+
 def is_financing_request(user_text: str, financing_signals_normalized: set[str]) -> bool:
     """Detecta preguntas de financiamiento con señales normalizadas."""
 
     normalized = normalize_user_text(user_text)
     if not normalized:
         return False
-    return any(contains_signal_phrase(normalized, signal) for signal in financing_signals_normalized)
+    financing_text = _text_for_financing_signals(normalized)
+    if not financing_text:
+        return False
+    return any(contains_signal_phrase(financing_text, signal) for signal in financing_signals_normalized)
 
 
 _AUTOMATIC_TRANSMISSION_SIGNALS: tuple[str, ...] = (

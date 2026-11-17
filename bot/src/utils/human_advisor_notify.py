@@ -87,6 +87,8 @@ def handle_human_advisor_request(
     state: clientState,
     *,
     advisor_trigger: str | None = None,
+    purchase_preferences: dict[str, str] | None = None,
+    event_message: str | None = None,
 ) -> clientState:
     """Registra evento CRM, envia push al owner (si aplica) y agrega mensaje de cierre al usuario.
 
@@ -128,18 +130,24 @@ def handle_human_advisor_request(
         bool(customer_phone),
     )
 
-    push_event_to_backend(
-        {
-            "user_id": user_id,
-            "platform": platform,
-            "message": "Cliente pidió hablar con un asesor",
-            "from": "system",
-            "selected_car": selected_car,
-            "selected_vehicle_id": str(state.get("selected_vehicle_id") or "").strip(),
-            "customer_info": customer_info,
-            "current_node": current_node,
-        }
-    )
+    event_payload: dict[str, Any] = {
+        "user_id": user_id,
+        "platform": platform,
+        "message": str(event_message or "").strip() or "Cliente pidió hablar con un asesor",
+        "from": "system",
+        "selected_car": selected_car,
+        "selected_vehicle_id": str(state.get("selected_vehicle_id") or "").strip(),
+        "customer_info": customer_info,
+        "current_node": current_node,
+    }
+    prefs = {
+        str(key): str(value).strip()
+        for key, value in (purchase_preferences or {}).items()
+        if str(value or "").strip()
+    }
+    if prefs:
+        event_payload["purchase_preferences"] = prefs
+    push_event_to_backend(event_payload)
 
     notify_ok = False
     if owner_user_id:

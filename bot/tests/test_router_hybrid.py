@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from src.nodes.router import router
+from src.utils.prompts import build_router_intent_classifier_prompt
 from tests.test_helpers import initial_state, with_user_message
 
 
@@ -66,6 +67,19 @@ class TestRouterHybrid(unittest.TestCase):
         mock_cls.assert_called_once()
         args, _kwargs = mock_cls.call_args
         self.assertEqual(args[1], "other")
+
+    def test_classifier_prompt_routes_delivery_and_price_to_catalog_not_faq(self) -> None:
+        prompt = build_router_intent_classifier_prompt(
+            "Cuál es el plazo de entrega del suzuki Jimny 2027\nPrecio por favor\nbuen dia",
+            "",
+            {},
+        )
+        self.assertIn("plazo de entrega", prompt.lower())
+        self.assertIn("precio", prompt.lower())
+        self.assertIn("VEHICLE_CATALOG", prompt)
+        delivery_rule = prompt.split("Regla importante plazo de entrega")[-1]
+        self.assertIn("FAQ no aplica a precio ni a plazo de entrega", delivery_rule)
+        self.assertIn("no para entrega del auto", delivery_rule)
 
     def test_jimny_info_question_routes_via_llm_not_faq_heuristic(self) -> None:
         state = with_user_message(

@@ -8,6 +8,7 @@ from src.services.llm_responses import classify_router_intent, generate_other_re
 from src.tools.vehicles import normalize_user_text
 from src.utils.human_advisor_notify import handle_human_advisor_request
 from src.utils.financing_advisor_notify import maybe_escalate_financing_detail
+from src.utils.lead_intake import detect_lead_intake
 from src.utils.signals import is_business_faq_question, is_greeting_only_message
 from src.utils.app_logging import get_app_logger, log_flow_trace
 from src.utils.state_helpers import (
@@ -143,10 +144,38 @@ def router(state: clientState) -> clientState:
         _debug_router("route_to_promotions", reason="promotions_context")
         return state
 
-    if state.get("onboarding_greeting_done") and is_greeting_only_message(user_text):
-        state["intent"] = "other"
-        _debug_router("route_to_other", reason="post_onboarding_greeting_skip")
-        return state
+    lead = detect_lead_intake(user_text)
+    if lead is not None:
+        info = dict(state.get("customer_info") or {})
+        for key in ("nombre", "telefono", "email"):
+            value = str(lead.get(key) or "").strip()
+            if value:
+                info[key] = value
+        state["customer_info"] = info
+        if state.get("onboarding_welcome_sent_this_turn"):
+            state["onboarding_welcome_sent_this_turn"] = False
+        state["intent"] = "human_advisor"
+        state["current_node"] = "router"
+        prefs = {
+            key: lead[key]
+            for key in ("presupuesto", "plazo_compra", "payment_type")
+            if str(lead.get(key) or "").strip()
+        }
+        _debug_router("route_human_advisor", reason="lead_intake", matched_by=lead.get("matched_by"))
+        return handle_human_advisor_request(
+            state,
+            advisor_trigger="router_lead_intake",
+            purchase_preferences=prefs,
+            event_message="Lead de formulario recibido",
+        )
+
+    if (
+        state.get("onboarding_welcome_sent_this_turn")
+        and is_greeting_only_message(user_text)
+    ):
+        return _skip_duplicate_other_after_onboarding_welcome(
+            state, reason="post_onboarding_greeting_skip"
+        )
 
     if not text:
         if state.get("onboarding_welcome_sent_this_turn"):
@@ -175,7 +204,7 @@ def router(state: clientState) -> clientState:
         return _apply_router_resolution(state, llm_intent, reason="llm_classifier")
 
     if state.get("onboarding_welcome_sent_this_turn"):
-        return _skip_duplicate_other_after_onboarding_welcome(state, reason="llm_unknown_after_onboarding_welcome")
+        state["onboarding_welcome_sent_this_turn"] = False
     state["intent"] = "other"
     message = generate_other_response(user_text, **_other_response_kwargs(state))
     _debug_router("route_to_other", reason="llm_unknown")

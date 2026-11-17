@@ -45,7 +45,7 @@ from src.utils.purchase_flow_messages import (
     contact_preference_resume_message,
     purchase_preferences_resume_message,
 )
-from src.utils.signals import is_simple_greeting
+from src.utils.signals import is_greeting_only_message, is_simple_greeting
 
 from src.utils.app_logging import get_app_logger
 
@@ -281,7 +281,11 @@ def generate_other_response(
             and not onboarding_greeting_done
         ):
             return welcome
-        if has_known_name and onboarding_greeting_done:
+        if (
+            has_known_name
+            and onboarding_greeting_done
+            and is_greeting_only_message(user_message)
+        ):
             name = str(customer_name).strip()
             return (
                 f"Hola {name}, con gusto te ayudo. "

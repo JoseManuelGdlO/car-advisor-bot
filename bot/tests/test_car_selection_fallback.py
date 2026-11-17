@@ -23,7 +23,7 @@ from src.services.car_selection_fallback import (
     user_asks_for_technical_sheet,
 )
 from src.tools.vehicles import normalize_user_text
-from src.utils.signals import CHEAPEST_PRICE_SIGNALS, TEST_DRIVE_VISIT_SIGNALS
+from src.utils.signals import CHEAPEST_PRICE_SIGNALS, FINANCING_SIGNALS, TEST_DRIVE_VISIT_SIGNALS
 
 
 class CarSelectionFallbackTests(unittest.TestCase):
@@ -92,6 +92,23 @@ class CarSelectionFallbackTests(unittest.TestCase):
         self.assertTrue(is_more_images_request("muestrame mas imagenes", self.more_images))
         self.assertTrue(is_financing_request("quiero un plan de pagos", self.financing))
         self.assertTrue(is_promotions_request("tienes promociones hoy", self.promotions))
+
+    def test_delivery_lead_time_is_not_financing(self) -> None:
+        financing = {normalize_user_text(s) for s in FINANCING_SIGNALS}
+        delivery = (
+            "Cuál es el plazo de entrega del suzuki Jimny 2027\n"
+            "precio por favor\n"
+            "Buen dia"
+        )
+        self.assertFalse(is_financing_request(delivery, financing))
+        self.assertFalse(is_financing_request("cuando es el plazo de entrega del swift", financing))
+        self.assertTrue(is_financing_request("a cuantos meses de plazo puedo financiar", financing))
+        self.assertTrue(
+            is_financing_request(
+                "plazo de entrega del jimny y tambien el financiamiento",
+                financing,
+            )
+        )
 
     def test_first_images_request_excludes_pagination_phrases(self) -> None:
         self.assertTrue(
