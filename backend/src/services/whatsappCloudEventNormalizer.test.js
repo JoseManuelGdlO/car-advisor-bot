@@ -66,7 +66,33 @@ test("mensaje de texto usa body y dígitos Graph sin JID", () => {
   assert.equal(n.isInboundMessage, true);
   assert.equal(n.unsupportedMediaOnly, false);
   assert.equal(n.displayPhone, "5215512345678");
+  assert.equal(n.profileName, null);
   assert.equal(String(n.externalUserId).includes("@s.whatsapp.net"), false);
+});
+
+test("contacts.profile.name se mapea a profileName por wa_id", () => {
+  const body = textFixture();
+  body.entry[0].changes[0].value.contacts = [
+    { profile: { name: "Luis Velarde" }, wa_id: "5215512345678" },
+    { profile: { name: "Otro" }, wa_id: "5215599999999" },
+  ];
+
+  const rows = expandWhatsappCloudInboundMessages(body);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].profileName, "Luis Velarde");
+
+  const n = toNormalizedWhatsappCloudEvent({ integration, credentials, event: rows[0] });
+  assert.equal(n.profileName, "Luis Velarde");
+});
+
+test("contacts de otro wa_id no asignan profileName", () => {
+  const body = textFixture();
+  body.entry[0].changes[0].value.contacts = [
+    { profile: { name: "Otro" }, wa_id: "5215599999999" },
+  ];
+
+  const rows = expandWhatsappCloudInboundMessages(body);
+  assert.equal(rows[0].profileName, null);
 });
 
 test("imagen/audio/documento sin texto marca unsupportedMediaOnly", () => {

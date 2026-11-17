@@ -45,7 +45,34 @@ test("resolveLeadUpsertOutcome keeps name when reactivating without customer nom
   assert.equal(outcome.patch.lastMessage, undefined);
 });
 
-test("resolveLeadUpsertOutcome uses existing visible lead", () => {
+test("resolveLeadUpsertOutcome no pisa nombre real con perfil WhatsApp al reactivar", () => {
+  const outcome = resolveLeadUpsertOutcome(
+    { status: "eliminated", name: "Luis Velarde" },
+    {
+      inboundChannel: "whatsapp",
+      customerInfo: { nombre: "Luis WA" },
+      isInboundClientMessage: true,
+      normalizedMessage: "Hola",
+    },
+  );
+  assert.equal(outcome.kind, "reactivate");
+  assert.equal(outcome.patch.name, undefined);
+});
+
+test("resolveLeadUpsertOutcome aplica perfil si el nombre reactivado es genérico", () => {
+  const outcome = resolveLeadUpsertOutcome(
+    { status: "eliminated", name: "Cliente" },
+    {
+      inboundChannel: "whatsapp",
+      customerInfo: { nombre: "Luis WA" },
+      isInboundClientMessage: true,
+      normalizedMessage: "Hola",
+    },
+  );
+  assert.equal(outcome.patch.name, "Luis WA");
+});
+
+test("resolveLeadUpsertOutcome usa existing visible lead", () => {
   const outcome = resolveLeadUpsertOutcome(
     { status: "lead", name: "Ana" },
     {

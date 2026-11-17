@@ -172,6 +172,7 @@ export const ingestWhatsappCloudEvent = async ({ normalizedEvent, credentials })
   const clientCrmMessage = unsupportedMediaOnly
     ? UNSUPPORTED_INBOUND_CRM_CLIENT_MESSAGE
     : formatCampaignCrmMessage(incomingMessage, normalizedEvent.adContext);
+  const profileName = String(normalizedEvent.profileName || "").trim();
 
   try {
     const conversationResult = await upsertConversationEvent({
@@ -182,7 +183,7 @@ export const ingestWhatsappCloudEvent = async ({ normalizedEvent, credentials })
       message: clientCrmMessage,
       from: "client",
       selectedCar: "",
-      customerInfo: {},
+      customerInfo: profileName ? { nombre: profileName } : {},
       financingSelection: {},
     });
 

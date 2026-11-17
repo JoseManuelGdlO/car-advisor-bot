@@ -50,6 +50,18 @@ const adContextFromReferral = (referral) => {
   };
 };
 
+const profileNameByWaId = (contacts) => {
+  const map = new Map();
+  if (!Array.isArray(contacts)) return map;
+  for (const contact of contacts) {
+    const waId = asGraphUserId(contact?.wa_id);
+    const name = asNullableString(contact?.profile?.name);
+    if (!waId || !name) continue;
+    map.set(waId, name);
+  }
+  return map;
+};
+
 /**
  * Expande el webhook `object: "whatsapp_business_account"` en mensajes inbound.
  * Los `statuses` (acks) no producen eventos inbound en fase 1.
@@ -63,6 +75,7 @@ const adContextFromReferral = (referral) => {
  *   timestampMs: number;
  *   unsupportedMediaOnly: boolean;
  *   adContext: null | object;
+ *   profileName: null | string;
  * }>}
  */
 export const expandWhatsappCloudInboundMessages = (body) => {
@@ -77,6 +90,7 @@ export const expandWhatsappCloudInboundMessages = (body) => {
     for (const change of changes) {
       const value = change?.value && typeof change.value === "object" ? change.value : {};
       const phoneNumberId = asTrimmed(value.metadata?.phone_number_id);
+      const namesByWaId = profileNameByWaId(value.contacts);
       const messages = Array.isArray(value.messages) ? value.messages : [];
       for (const message of messages) {
         const messageId = asTrimmed(message?.id);
@@ -97,6 +111,7 @@ export const expandWhatsappCloudInboundMessages = (body) => {
           timestampMs: toTimestampMs(message?.timestamp),
           unsupportedMediaOnly,
           adContext: adContextFromReferral(message?.referral),
+          profileName: namesByWaId.get(from) || null,
         });
       }
     }
@@ -125,6 +140,7 @@ export const toNormalizedWhatsappCloudEvent = ({ integration, credentials, event
     text: event.text,
     unsupportedMediaOnly: Boolean(event.unsupportedMediaOnly),
     adContext: event.adContext || null,
+    profileName: asNullableString(event.profileName),
     isInboundMessage: true,
   };
 };

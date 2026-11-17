@@ -164,7 +164,10 @@ export default function Conversaciones() {
         {list.map((c) => {
           const clientPhone = resolveClientDisplayPhone(c.client);
           const registeredName = hasRegisteredClientName(c.client?.name) ? String(c.client.name).trim() : null;
-          const primaryLabel = clientPhone || registeredName || String(c.client?.name || "").trim() || "Cliente";
+          const primaryLabel =
+            [registeredName, clientPhone].filter(Boolean).join(" · ") ||
+            String(c.client?.name || "").trim() ||
+            "Cliente";
           const avatarName = registeredName || clientPhone || c.client?.name;
 
           return (
@@ -192,9 +195,6 @@ export default function Conversaciones() {
                           </span>
                         ) : null}
                       </div>
-                      {registeredName && clientPhone ? (
-                        <p className="text-[14px] font-bold text-muted-foreground truncate">{registeredName}</p>
-                      ) : null}
                     </div>
                     <span className={cn("text-[10px] shrink-0", c.unread > 0 ? "text-primary font-bold" : "text-muted-foreground")}>
                       {formatDateTime(c.lastTime, timeZone)}

@@ -7,7 +7,7 @@ import re
 from src.tools.vehicles import normalize_user_text
 
 _EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
-_NAME_LINE_RE = re.compile(r"nombre\s*:\s*(.+)", re.IGNORECASE)
+_NAME_LINE_RE = re.compile(r"(?:nombre(?:\s+completo)?|full\s+name)\s*:\s*(.+)", re.IGNORECASE)
 _BUDGET_LIMIT_RE = re.compile(
     r"(menor\s+a|menos\s+de|hasta)\s+\$?\s*\d[\d.,]*",
     re.IGNORECASE,

@@ -56,6 +56,18 @@ class TestDetectLeadIntake(unittest.TestCase):
     def test_financing_alone_is_not_lead_intake(self) -> None:
         self.assertIsNone(detect_lead_intake("Quiero financiamiento"))
 
+    def test_full_name_line_extracts_nombre(self) -> None:
+        lead = detect_lead_intake(
+            "Full name: Luis Velarde\n"
+            "Phone number: 6121234567\n"
+            "Email: luis.velarde@gmail.com\n"
+            "¿Cuál es tu presupuesto aprox?: Menos de $200,000\n"
+            "¿Tiempo de compra?: 0-3 meses"
+        )
+        self.assertIsNotNone(lead)
+        assert lead is not None
+        self.assertEqual(lead.get("nombre"), "Luis Velarde")
+
 
 class TestRouterLeadIntake(unittest.TestCase):
     def test_welcome_this_turn_form_escalates_to_advisor(self) -> None:

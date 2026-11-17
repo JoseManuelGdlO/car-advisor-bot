@@ -23,9 +23,41 @@ import { runWithWcToken } from "./wcAuthCache.js";
 import { wcClient } from "./wcClient.js";
 import { isWhatsappChannelId, resolveDisplayPhone } from "../utils/whatsappIdentity.js";
 
+const GENERIC_LEAD_NAMES = new Set(["cliente", "client"]);
+
 const hasUsableCustomerInfo = (c) => {
   if (c == null || typeof c !== "object") return false;
   return Object.values(c).some((v) => v != null && String(v).trim() !== "");
+};
+
+export const isGenericLeadName = (name) => {
+  const trimmed = String(name || "").trim();
+  if (!trimmed) return true;
+  return GENERIC_LEAD_NAMES.has(trimmed.toLowerCase());
+};
+
+export const isStrongCustomerInfo = (info) => {
+  if (info == null || typeof info !== "object") return false;
+  const telefono = String(info.telefono || "").trim();
+  const email = String(info.email || "").trim();
+  return Boolean(telefono || email);
+};
+
+export const shouldApplyCustomerName = ({ currentName, customerInfo }) => {
+  const incoming = String(customerInfo?.nombre || "").trim();
+  if (!incoming) return false;
+  return isGenericLeadName(currentName) || isStrongCustomerInfo(customerInfo);
+};
+
+export const mergeCustomerInfo = (prevInfo, customerInfo) => {
+  const prev = prevInfo && typeof prevInfo === "object" ? prevInfo : {};
+  if (!hasUsableCustomerInfo(customerInfo)) return { ...prev };
+  const merged = { ...prev, ...customerInfo };
+  const prevNombre = String(prev.nombre || "").trim();
+  if (!isStrongCustomerInfo(customerInfo) && prevNombre) {
+    merged.nombre = prevNombre;
+  }
+  return merged;
 };
 
 const isNonEmptyObject = (o) => o && typeof o === "object" && Object.keys(o).length > 0;
@@ -83,7 +115,9 @@ export const resolveLeadUpsertOutcome = (
 ) => {
   if (!existing) return { kind: "create" };
   if (existing.status === ELIMINATED_LEAD_STATUS) {
-    const nameFromInfo = customerInfo?.nombre && String(customerInfo.nombre).trim();
+    const nameFromInfo = shouldApplyCustomerName({ currentName: existing.name, customerInfo })
+      ? String(customerInfo.nombre).trim()
+      : "";
     return {
       kind: "reactivate",
       patch: {
@@ -222,7 +256,7 @@ export const upsertConversationEvent = async ({
     currentNotes && typeof currentNotes === "object" && currentNotes.customer_info && typeof currentNotes.customer_info === "object"
       ? currentNotes.customer_info
       : {};
-  let mergedCustomerInfo = hasUsableCustomerInfo(customerInfo) ? { ...prevInfo, ...customerInfo } : { ...prevInfo };
+  let mergedCustomerInfo = mergeCustomerInfo(prevInfo, customerInfo);
   if (String(lead.phone) !== String(normalizedUserId)) {
     const previousPhone = String(lead.phone);
     if (previousPhone && !isWhatsappChannelId(previousPhone) && !String(mergedCustomerInfo.telefono || "").trim()) {
@@ -267,9 +301,8 @@ export const upsertConversationEvent = async ({
   if (normalizedContactMethod) leadFieldUpdates.contactMethod = normalizedContactMethod;
   if (String(lead.phone) !== String(normalizedUserId)) leadFieldUpdates.phone = normalizedUserId;
   if (resolvedDisplayPhone) leadFieldUpdates.displayPhone = resolvedDisplayPhone;
-  if (hasUsableCustomerInfo(customerInfo)) {
-    const n = String(customerInfo.nombre || "").trim();
-    if (n) leadFieldUpdates.name = n;
+  if (shouldApplyCustomerName({ currentName: lead.name, customerInfo })) {
+    leadFieldUpdates.name = String(customerInfo.nombre).trim();
   }
   await lead.update(leadFieldUpdates);
 

@@ -13,6 +13,13 @@ import { resolveClientDisplayPhone } from "@/lib/phone";
 import { formatDateTime } from "@/lib/datetime";
 import { useBotTimezone } from "@/hooks/useBotTimezone";
 
+const GENERIC_CLIENT_NAME = "cliente";
+
+const hasRegisteredClientName = (name?: string) => {
+  const trimmed = String(name || "").trim();
+  return trimmed.length > 0 && trimmed.toLowerCase() !== GENERIC_CLIENT_NAME;
+};
+
 const filters: { key: "all" | ClientStatus; label: string }[] = [
   { key: "all", label: "Todos" },
   { key: "lead", label: "Leads" },
@@ -34,7 +41,13 @@ export default function Clientes() {
     return clients.filter((c) => {
       if (c.status === "eliminated") return false;
       const matchF = filter === "all" || c.status === filter;
-      const matchQ = !q || c.name.toLowerCase().includes(q.toLowerCase()) || c.interestedIn.toLowerCase().includes(q.toLowerCase());
+      const needle = q.toLowerCase();
+      const phone = resolveClientDisplayPhone(c).toLowerCase();
+      const matchQ =
+        !q ||
+        String(c.name || "").toLowerCase().includes(needle) ||
+        String(c.interestedIn || "").toLowerCase().includes(needle) ||
+        phone.includes(needle);
       return matchF && matchQ;
     });
   }, [clients, filter, q]);
@@ -51,35 +64,42 @@ export default function Clientes() {
       />
 
       <ul className="divide-y divide-border">
-        {filtered.map((c) => (
-          <li key={c.id}>
-            <button
-              onClick={() => navigate(`/cliente/${c.id}`)}
-              className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/50 transition-colors"
-            >
-              <div className="relative">
-                <Avatar name={c.name} color={c.avatarColor} />
-                <ChannelIcon channel={c.channel} size={10} className="absolute -bottom-0.5 -right-0.5 ring-2 ring-background" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="font-semibold text-sm truncate">{c.name}</p>
-                  <span className="text-[10px] text-muted-foreground shrink-0">
-                    {formatDateTime(c.lastMessageAt, timeZone)}
-                  </span>
+        {filtered.map((c) => {
+          const clientPhone = resolveClientDisplayPhone(c);
+          const registeredName = hasRegisteredClientName(c.name) ? String(c.name).trim() : null;
+          const primaryLabel =
+            [registeredName, clientPhone].filter(Boolean).join(" · ") ||
+            String(c.name || "").trim() ||
+            "Cliente";
+          const avatarName = registeredName || clientPhone || c.name;
+
+          return (
+            <li key={c.id}>
+              <button
+                onClick={() => navigate(`/cliente/${c.id}`)}
+                className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/50 transition-colors"
+              >
+                <div className="relative">
+                  <Avatar name={avatarName} color={c.avatarColor} />
+                  <ChannelIcon channel={c.channel} size={10} className="absolute -bottom-0.5 -right-0.5 ring-2 ring-background" />
                 </div>
-                <p className="text-xs text-muted-foreground truncate">{c.interestedIn}</p>
-                {resolveClientDisplayPhone(c) ? (
-                  <p className="text-[10px] text-muted-foreground truncate">{resolveClientDisplayPhone(c)}</p>
-                ) : null}
-                <div className="mt-1.5">
-                  <StatusBadge status={c.status} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-semibold text-sm truncate">{primaryLabel}</p>
+                    <span className="text-[10px] text-muted-foreground shrink-0">
+                      {formatDateTime(c.lastMessageAt, timeZone)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground truncate">{c.interestedIn}</p>
+                  <div className="mt-1.5">
+                    <StatusBadge status={c.status} />
+                  </div>
                 </div>
-              </div>
-              <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-            </button>
-          </li>
-        ))}
+                <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+              </button>
+            </li>
+          );
+        })}
         {filtered.length === 0 && (
           <li className="px-4 py-12 text-center text-sm text-muted-foreground">Sin resultados</li>
         )}

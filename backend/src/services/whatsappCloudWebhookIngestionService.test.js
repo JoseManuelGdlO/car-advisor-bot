@@ -304,6 +304,38 @@ test("sin respuesta automática no marca read ni typing", async () => {
   assert.equal(fetchCalled, false);
 });
 
+test("inbound con profileName crea el lead con ese nombre", async () => {
+  Conversation.findOrCreate = async () => {
+    const conv = {
+      id: "conv-profile",
+      isHumanControlled: true,
+      lastMessage: "",
+      lastTime: null,
+      update: async (patch) => Object.assign(conv, patch),
+    };
+    return [conv, false];
+  };
+  let createdLead = null;
+  const innerCreate = ClientLead.create;
+  ClientLead.create = async (data) => {
+    createdLead = data;
+    return innerCreate(data);
+  };
+
+  const result = await ingestWhatsappCloudEvent({
+    normalizedEvent: {
+      ...baseEvent,
+      eventId: "wamid.profile",
+      messageId: "wamid.profile",
+      profileName: "Luis WA",
+    },
+    credentials,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(createdLead?.name, "Luis WA");
+});
+
 test("evento no inbound no envía a Graph", async () => {
   let fetchCalled = false;
   global.fetch = async () => {
