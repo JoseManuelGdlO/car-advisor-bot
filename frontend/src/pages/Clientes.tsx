@@ -14,6 +14,9 @@ import { formatDateTime } from "@/lib/datetime";
 import { useBotTimezone } from "@/hooks/useBotTimezone";
 import { useLongPress } from "@/hooks/useLongPress";
 import { AssignSellerSheet, type AssignSellerTarget } from "@/components/AssignSellerSheet";
+import { ListPagination } from "@/components/ListPagination";
+import { ListRowSkeleton } from "@/components/ListRowSkeleton";
+import { usePagedItems } from "@/hooks/usePagedItems";
 
 const GENERIC_CLIENT_NAME = "cliente";
 
@@ -89,7 +92,7 @@ export default function Clientes() {
   const { token, isAdmin } = useAuth();
   const [assignTarget, setAssignTarget] = useState<AssignSellerTarget | null>(null);
   const timeZone = useBotTimezone();
-  const { data } = useQuery({ queryKey: ["clients"], queryFn: () => crmApi.getClients(token!), enabled: Boolean(token) });
+  const { data, isLoading } = useQuery({ queryKey: ["clients"], queryFn: () => crmApi.getClients(token!), enabled: Boolean(token) });
   const clients = (data || []) as any[];
   const [filter, setFilter] = useState<"all" | ClientStatus>("all");
   const [q, setQ] = useState("");
@@ -109,6 +112,8 @@ export default function Clientes() {
     });
   }, [clients, filter, q]);
 
+  const paging = usePagedItems(filtered, `${filter}|${q}`);
+
   return (
     <>
       <ListToolbar
@@ -120,27 +125,44 @@ export default function Clientes() {
         filters={filters}
       />
 
-      <ul className="divide-y divide-border">
-        {filtered.map((c) => (
-          <ClientRow
-            key={c.id}
-            client={c}
-            timeZone={timeZone}
-            canAssign={isAdmin}
-            onOpen={() => navigate(`/cliente/${c.id}`)}
-            onAssign={() =>
-              setAssignTarget({
-                clientId: c.id,
-                clientName: String(c.name || "").trim() || resolveClientDisplayPhone(c) || "este cliente",
-                currentSellerId: c.assignedSellerUserId ?? null,
-              })
-            }
+      {isLoading ? (
+        <div aria-busy="true" aria-live="polite">
+          <span className="sr-only">Cargando clientes</span>
+          <ListRowSkeleton withBadge />
+        </div>
+      ) : (
+        <>
+          <ul className="divide-y divide-border">
+            {paging.pageItems.map((c) => (
+              <ClientRow
+                key={c.id}
+                client={c}
+                timeZone={timeZone}
+                canAssign={isAdmin}
+                onOpen={() => navigate(`/cliente/${c.id}`)}
+                onAssign={() =>
+                  setAssignTarget({
+                    clientId: c.id,
+                    clientName: String(c.name || "").trim() || resolveClientDisplayPhone(c) || "este cliente",
+                    currentSellerId: c.assignedSellerUserId ?? null,
+                  })
+                }
+              />
+            ))}
+            {filtered.length === 0 && (
+              <li className="px-4 py-12 text-center text-sm text-muted-foreground">Sin resultados</li>
+            )}
+          </ul>
+          <ListPagination
+            page={paging.page}
+            pageCount={paging.pageCount}
+            rangeStart={paging.rangeStart}
+            rangeEnd={paging.rangeEnd}
+            total={paging.total}
+            onPageChange={paging.setPage}
           />
-        ))}
-        {filtered.length === 0 && (
-          <li className="px-4 py-12 text-center text-sm text-muted-foreground">Sin resultados</li>
-        )}
-      </ul>
+        </>
+      )}
 
       <AssignSellerSheet target={assignTarget} onOpenChange={(open) => !open && setAssignTarget(null)} />
     </>

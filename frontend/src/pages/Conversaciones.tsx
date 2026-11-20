@@ -20,6 +20,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/context/AuthContext";
 import { AssignSellerSheet, type AssignSellerTarget } from "@/components/AssignSellerSheet";
+import { ListPagination } from "@/components/ListPagination";
+import { ListRowSkeleton } from "@/components/ListRowSkeleton";
+import { usePagedItems } from "@/hooks/usePagedItems";
 
 const channelFilters: { key: "all" | Channel; label: string }[] = [
   { key: "all", label: "Todos" },
@@ -104,7 +107,7 @@ export default function Conversaciones() {
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
   const timeZone = useBotTimezone();
-  const { data } = useConversationsQuery();
+  const { data, isLoading } = useConversationsQuery();
   const [assignTarget, setAssignTarget] = useState<AssignSellerTarget | null>(null);
   const conversations = (data || []) as any[];
   const [filter, setFilter] = useState<"all" | Channel>("all");
@@ -135,6 +138,8 @@ export default function Conversaciones() {
       return sortOrder === "asc" ? diff : -diff;
     });
   }, [conversations, filter, controlFilter, sortOrder, dateFilter, q, timeZone]);
+
+  const paging = usePagedItems(list, `${filter}|${q}|${controlFilter}|${sortOrder}|${dateFilter}`);
 
   const clearExtraFilters = () => {
     // setReadFilter("all");
@@ -170,93 +175,110 @@ export default function Conversaciones() {
         }
       />
 
-      <ul className="divide-y divide-border">
-        {list.map((c) => {
-          const clientPhone = resolveClientDisplayPhone(c.client);
-          const registeredName = hasRegisteredClientName(c.client?.name) ? String(c.client.name).trim() : null;
-          const primaryLabel =
-            [registeredName, clientPhone].filter(Boolean).join(" · ") ||
-            String(c.client?.name || "").trim() ||
-            "Cliente";
-          const avatarName = registeredName || clientPhone || c.client?.name;
+      {isLoading ? (
+        <div aria-busy="true" aria-live="polite">
+          <span className="sr-only">Cargando conversaciones</span>
+          <ListRowSkeleton />
+        </div>
+      ) : (
+        <>
+          <ul className="divide-y divide-border">
+            {paging.pageItems.map((c) => {
+              const clientPhone = resolveClientDisplayPhone(c.client);
+              const registeredName = hasRegisteredClientName(c.client?.name) ? String(c.client.name).trim() : null;
+              const primaryLabel =
+                [registeredName, clientPhone].filter(Boolean).join(" · ") ||
+                String(c.client?.name || "").trim() ||
+                "Cliente";
+              const avatarName = registeredName || clientPhone || c.client?.name;
 
-          return (
-            <li key={c.id} className="flex items-center hover:bg-muted/50 transition-colors">
-              <button
-                onClick={() => navigate(`/chat/${c.id}`)}
-                className={cn("flex-1 min-w-0 flex items-center gap-3 py-3 text-left", isAdmin ? "pl-4 pr-1" : "px-4")}
-              >
-                <div className="relative">
-                  <Avatar name={avatarName} color={c.client.avatarColor} />
-                  <ChannelIcon channel={c.channel} size={10} className="absolute -bottom-0.5 -right-0.5 ring-2 ring-background" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <p className="font-semibold text-sm truncate">{primaryLabel}</p>
-                        {c.isHumanControlled ? (
-                          <span
-                            className="inline-flex items-center gap-0.5 shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-warning/15 text-warning"
-                            title="Bot pausado · control humano"
-                          >
-                            <Pause className="w-2.5 h-2.5" fill="currentColor" />
-                            Pausada
+              return (
+                <li key={c.id} className="flex items-center hover:bg-muted/50 transition-colors">
+                  <button
+                    onClick={() => navigate(`/chat/${c.id}`)}
+                    className={cn("flex-1 min-w-0 flex items-center gap-3 py-3 text-left", isAdmin ? "pl-4 pr-1" : "px-4")}
+                  >
+                    <div className="relative">
+                      <Avatar name={avatarName} color={c.client.avatarColor} />
+                      <ChannelIcon channel={c.channel} size={10} className="absolute -bottom-0.5 -right-0.5 ring-2 ring-background" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <p className="font-semibold text-sm truncate">{primaryLabel}</p>
+                            {c.isHumanControlled ? (
+                              <span
+                                className="inline-flex items-center gap-0.5 shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-warning/15 text-warning"
+                                title="Bot pausado · control humano"
+                              >
+                                <Pause className="w-2.5 h-2.5" fill="currentColor" />
+                                Pausada
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                        <span className={cn("text-[10px] shrink-0", c.unread > 0 ? "text-primary font-bold" : "text-muted-foreground")}>
+                          {formatDateTime(c.lastTime, timeZone)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 mt-0.5">
+                        <p className={cn("text-xs truncate", c.unread > 0 ? "text-foreground font-medium" : "text-muted-foreground")}>
+                          {formatConversationPreview(c.lastMessage, { compactCampaign: true })}
+                        </p>
+                        {c.unread > 0 && (
+                          <span className="shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold grid place-items-center">
+                            {c.unread}
                           </span>
-                        ) : null}
+                        )}
                       </div>
                     </div>
-                    <span className={cn("text-[10px] shrink-0", c.unread > 0 ? "text-primary font-bold" : "text-muted-foreground")}>
-                      {formatDateTime(c.lastTime, timeZone)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between gap-2 mt-0.5">
-                    <p className={cn("text-xs truncate", c.unread > 0 ? "text-foreground font-medium" : "text-muted-foreground")}>
-                      {formatConversationPreview(c.lastMessage, { compactCampaign: true })}
-                    </p>
-                    {c.unread > 0 && (
-                      <span className="shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold grid place-items-center">
-                        {c.unread}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </button>
-              {isAdmin && c.client?.id ? (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      type="button"
-                      className="mr-1 min-h-11 min-w-11 shrink-0 grid place-items-center rounded-full hover:bg-muted touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      aria-label="Más opciones de la conversación"
-                    >
-                      <MoreVertical className="w-4 h-4 text-muted-foreground" />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-52">
-                    <DropdownMenuItem
-                      className="gap-2"
-                      onSelect={() =>
-                        setAssignTarget({
-                          clientId: c.client.id,
-                          clientName: registeredName || clientPhone || "este cliente",
-                          currentSellerId: c.client.assignedSellerUserId ?? null,
-                        })
-                      }
-                    >
-                      <UserCheck className="w-4 h-4" />
-                      Asignar vendedor
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              ) : null}
-            </li>
-          );
-        })}
-        {list.length === 0 && (
-          <li className="px-4 py-12 text-center text-sm text-muted-foreground">Sin resultados</li>
-        )}
-      </ul>
+                  </button>
+                  {isAdmin && c.client?.id ? (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          className="mr-1 min-h-11 min-w-11 shrink-0 grid place-items-center rounded-full hover:bg-muted touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          aria-label="Más opciones de la conversación"
+                        >
+                          <MoreVertical className="w-4 h-4 text-muted-foreground" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-52">
+                        <DropdownMenuItem
+                          className="gap-2"
+                          onSelect={() =>
+                            setAssignTarget({
+                              clientId: c.client.id,
+                              clientName: registeredName || clientPhone || "este cliente",
+                              currentSellerId: c.client.assignedSellerUserId ?? null,
+                            })
+                          }
+                        >
+                          <UserCheck className="w-4 h-4" />
+                          Asignar vendedor
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  ) : null}
+                </li>
+              );
+            })}
+            {list.length === 0 && (
+              <li className="px-4 py-12 text-center text-sm text-muted-foreground">Sin resultados</li>
+            )}
+          </ul>
+          <ListPagination
+            page={paging.page}
+            pageCount={paging.pageCount}
+            rangeStart={paging.rangeStart}
+            rangeEnd={paging.rangeEnd}
+            total={paging.total}
+            onPageChange={paging.setPage}
+          />
+        </>
+      )}
 
       <AssignSellerSheet target={assignTarget} onOpenChange={(open) => !open && setAssignTarget(null)} />
 
