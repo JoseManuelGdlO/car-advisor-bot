@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sequelize } from "../config/database.js";
 import { ClientLead, User } from "../models/index.js";
 import { ApiError } from "../utils/errors.js";
 import { hashPassword } from "../utils/auth.js";
@@ -123,17 +124,21 @@ export const updateSeller = async ({ tenantOwnerUserId, sellerId, input }) => {
 };
 
 /**
- * Baja lógica: active=false + desasigna sus leads. Nunca destruye la fila.
+ * Baja lógica: active=false y desasigna sus leads en la misma transacción.
+ * Si la segunda escritura falla, la baja se revierte y el lead no queda colgado de un vendedor inactivo.
  * @returns {{ seller: object, unassignedLeads: number }}
  */
 export const deactivateSeller = async ({ tenantOwnerUserId, sellerId }) => {
   const seller = await findTenantSellerOr404(tenantOwnerUserId, sellerId);
   if (seller.active === false) throw new ApiError(409, "El vendedor ya está dado de baja.");
-  await seller.update({ active: false });
-  const [unassignedLeads] = await ClientLead.update(
-    { assignedSellerUserId: null },
-    { where: { ownerUserId: tenantOwnerUserId, assignedSellerUserId: seller.id } },
-  );
+  const unassignedLeads = await sequelize.transaction(async (transaction) => {
+    await seller.update({ active: false }, { transaction });
+    const [count] = await ClientLead.update(
+      { assignedSellerUserId: null },
+      { where: { ownerUserId: tenantOwnerUserId, assignedSellerUserId: seller.id }, transaction },
+    );
+    return count ?? 0;
+  });
   return { seller: toSellerDto(seller, { assignedLeadsCount: 0 }), unassignedLeads };
 };
 

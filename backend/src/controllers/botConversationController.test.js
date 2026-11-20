@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ChannelConversationContext, Conversation } from "../models/index.js";
+import { ChannelConversationContext, ClientLead, Conversation } from "../models/index.js";
 import { sellerLeadAssignmentDeps } from "../services/sellerLeadAssignment.js";
 import { botResetConversationSchema, botSetControlSchema, botSetConversationControl } from "./botConversationController.js";
 
@@ -55,10 +55,6 @@ test("botSetConversationControl: al ceder control asigna vendedor en horario", a
     id: "lead-1",
     assignedSellerUserId: null,
     phone: "5511111111",
-    async update(patch) {
-      Object.assign(lead, patch);
-      return lead;
-    },
   };
   const conv = {
     id: convId,
@@ -78,6 +74,7 @@ test("botSetConversationControl: al ceder control asigna vendedor en horario", a
   const restore = stubAll([
     [Conversation, "findOne", async () => conv],
     [ChannelConversationContext, "findOne", async () => ({ externalUserId: "5511111111" })],
+    [ClientLead, "update", async () => [1]],
   ]);
   try {
     const res = { payload: null, json(value) { this.payload = value; return value; } };

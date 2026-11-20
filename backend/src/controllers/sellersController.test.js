@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import bcrypt from "bcryptjs";
+import { sequelize } from "../config/database.js";
 import { ClientLead, User } from "../models/index.js";
 import {
   createSellerHandler,
@@ -168,8 +169,17 @@ test("GET /sellers: por defecto solo activos; includeInactive=1 incluye bajas", 
 
 test("DELETE /sellers/:id: baja lógica, desasigna leads y no destruye la fila", async () => {
   const seller = makeSellerRow();
+  const tx = { id: "tx-deactivate" };
+  let sellerTx;
+  seller.update = async (patch, options) => {
+    sellerTx = options?.transaction;
+    Object.assign(seller, patch);
+    return seller;
+  };
   let leadUpdate;
   let destroyed = false;
+  const originalTransaction = sequelize.transaction.bind(sequelize);
+  sequelize.transaction = async (callback) => callback(tx);
   const restore = stubAll([
     [User, "findOne", async () => seller],
     [User, "destroy", async () => {
@@ -179,7 +189,7 @@ test("DELETE /sellers/:id: baja lógica, desasigna leads y no destruye la fila",
       ClientLead,
       "update",
       async (patch, opts) => {
-        leadUpdate = { patch, where: opts.where };
+        leadUpdate = { patch, where: opts.where, transaction: opts.transaction };
         return [4];
       },
     ],
@@ -191,9 +201,12 @@ test("DELETE /sellers/:id: baja lógica, desasigna leads y no destruye la fila",
     assert.equal(destroyed, false);
     assert.deepEqual(leadUpdate.patch, { assignedSellerUserId: null });
     assert.deepEqual(leadUpdate.where, { ownerUserId: adminId, assignedSellerUserId: sellerId });
+    assert.equal(sellerTx, tx);
+    assert.equal(leadUpdate.transaction, tx);
     assert.equal(res.payload.unassignedLeads, 4);
     assert.equal(res.payload.ok, true);
   } finally {
+    sequelize.transaction = originalTransaction;
     restore();
   }
 });

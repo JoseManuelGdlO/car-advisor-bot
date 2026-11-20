@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { ClientLead } from "../models/index.js";
 import { maybeAutoAssignLead, pickSellerForAutoAssign, sellerLeadAssignmentDeps } from "./sellerLeadAssignment.js";
 
 const TZ = "America/Mexico_City";
@@ -87,20 +88,24 @@ test("maybeAutoAssignLead: no pisa un lead que ya tiene vendedor", async () => {
 
 test("maybeAutoAssignLead: asigna al vendedor elegido y no hace nada si no hay elegibles", async () => {
   const original = { ...sellerLeadAssignmentDeps };
+  const originalUpdate = ClientLead.update;
   const available = seller({ id: "picked" });
-  const lead = {
-    assignedSellerUserId: null,
-    async update(patch) {
-      Object.assign(lead, patch);
-      return lead;
-    },
-  };
+  const lead = { id: "lead-1", assignedSellerUserId: null };
+  let captured = null;
   sellerLeadAssignmentDeps.getOrCreateBotSettings = async () => ({ timezone: TZ });
   sellerLeadAssignmentDeps.listAssignableSellers = async () => [available];
+  ClientLead.update = async (patch, options) => {
+    captured = { patch, where: options.where };
+    return [1];
+  };
   try {
     const assigned = await maybeAutoAssignLead(lead, { ownerUserId: "owner", now: mondayMorning });
     assert.equal(assigned.assignedSellerUserId, "picked");
+    assert.deepEqual(captured.patch, { assignedSellerUserId: "picked" });
+    assert.equal(captured.where.id, "lead-1");
+    assert.equal(captured.where.assignedSellerUserId, null);
   } finally {
+    ClientLead.update = originalUpdate;
     Object.assign(sellerLeadAssignmentDeps, original);
   }
 
@@ -116,6 +121,29 @@ test("maybeAutoAssignLead: asigna al vendedor elegido y no hace nada si no hay e
     const untouched = await maybeAutoAssignLead(emptyLead, { ownerUserId: "owner", now: mondayMorning });
     assert.equal(untouched.assignedSellerUserId, null);
   } finally {
+    Object.assign(sellerLeadAssignmentDeps, original);
+  }
+});
+
+test("maybeAutoAssignLead: si el update condicional no afecta filas, conserva la asignación existente", async () => {
+  const original = { ...sellerLeadAssignmentDeps };
+  const originalUpdate = ClientLead.update;
+  const lead = {
+    id: "lead-1",
+    assignedSellerUserId: null,
+    async reload() {
+      lead.assignedSellerUserId = "manual";
+      return lead;
+    },
+  };
+  sellerLeadAssignmentDeps.getOrCreateBotSettings = async () => ({ timezone: TZ });
+  sellerLeadAssignmentDeps.listAssignableSellers = async () => [seller({ id: "picked" })];
+  ClientLead.update = async () => [0];
+  try {
+    const result = await maybeAutoAssignLead(lead, { ownerUserId: "owner", now: mondayMorning });
+    assert.equal(result.assignedSellerUserId, "manual");
+  } finally {
+    ClientLead.update = originalUpdate;
     Object.assign(sellerLeadAssignmentDeps, original);
   }
 });

@@ -1,4 +1,4 @@
-import { User } from "../models/index.js";
+import { ClientLead, User } from "../models/index.js";
 import { isWithinBotSchedule } from "../utils/botSettings.js";
 import { ROLE_SELLER } from "../utils/tenantAccess.js";
 import { getOrCreateBotSettings } from "./botSettingsService.js";
@@ -44,6 +44,16 @@ export const maybeAutoAssignLead = async (lead, { ownerUserId, now } = {}) => {
     timezone: settings?.timezone || DEFAULT_TIMEZONE,
   });
   if (!picked) return lead;
-  await lead.update({ assignedSellerUserId: picked.id });
+  // WHERE assigned_seller_user_id IS NULL: dos escalaciones (o un PATCH en medio) no se pisan.
+  const [affected] = await ClientLead.update(
+    { assignedSellerUserId: picked.id },
+    { where: { id: lead.id, assignedSellerUserId: null } },
+  );
+  if (!affected) {
+    await lead.reload();
+    return lead;
+  }
+  lead.assignedSellerUserId = picked.id;
+  if (typeof lead.changed === "function") lead.changed("assignedSellerUserId", false);
   return lead;
 };

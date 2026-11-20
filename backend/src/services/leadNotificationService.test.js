@@ -316,10 +316,6 @@ test("escalación sin vendedor auto-asigna y notifica al elegido", async () => {
   const lead = {
     id: leadId,
     assignedSellerUserId: null,
-    async update(patch) {
-      Object.assign(lead, patch);
-      return lead;
-    },
   };
   const originalAssign = { ...sellerLeadAssignmentDeps };
   sellerLeadAssignmentDeps.getOrCreateBotSettings = async () => ({ timezone: "America/Mexico_City" });
@@ -329,6 +325,7 @@ test("escalación sin vendedor auto-asigna y notifica al elegido", async () => {
   const restore = stubAll([
     [Conversation, "findOne", async () => ({ id: convId, clientLeadId: leadId })],
     [ClientLead, "findOne", async () => lead],
+    [ClientLead, "update", async () => [1]],
     [User, "findOne", async () => ({ id: sellerId, active: true })],
     [User, "findByPk", async () => ({ id: adminId, notifyAssignedLeadMessages: true })],
   ]);
