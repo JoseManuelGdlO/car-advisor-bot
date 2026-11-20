@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Filter, Pause } from "lucide-react";
+import { Filter, MoreVertical, Pause, UserCheck } from "lucide-react";
 import { ListToolbar } from "@/components/ListToolbar";
 import { Avatar } from "@/components/Avatar";
 import { ChannelIcon } from "@/components/ChannelIcon";
@@ -12,6 +12,14 @@ import { useConversationsQuery } from "@/hooks/useConversationsQuery";
 import { useBotTimezone } from "@/hooks/useBotTimezone";
 import { formatDateTime, getZonedDayDifference } from "@/lib/datetime";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useAuth } from "@/context/AuthContext";
+import { AssignSellerSheet, type AssignSellerTarget } from "@/components/AssignSellerSheet";
 
 const channelFilters: { key: "all" | Channel; label: string }[] = [
   { key: "all", label: "Todos" },
@@ -94,8 +102,10 @@ const hasRegisteredClientName = (name?: string) => {
 
 export default function Conversaciones() {
   const navigate = useNavigate();
+  const { isAdmin } = useAuth();
   const timeZone = useBotTimezone();
   const { data } = useConversationsQuery();
+  const [assignTarget, setAssignTarget] = useState<AssignSellerTarget | null>(null);
   const conversations = (data || []) as any[];
   const [filter, setFilter] = useState<"all" | Channel>("all");
   const [q, setQ] = useState("");
@@ -171,10 +181,10 @@ export default function Conversaciones() {
           const avatarName = registeredName || clientPhone || c.client?.name;
 
           return (
-            <li key={c.id}>
+            <li key={c.id} className="flex items-center hover:bg-muted/50 transition-colors">
               <button
                 onClick={() => navigate(`/chat/${c.id}`)}
-                className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/50 transition-colors"
+                className={cn("flex-1 min-w-0 flex items-center gap-3 py-3 text-left", isAdmin ? "pl-4 pr-1" : "px-4")}
               >
                 <div className="relative">
                   <Avatar name={avatarName} color={c.client.avatarColor} />
@@ -212,6 +222,34 @@ export default function Conversaciones() {
                   </div>
                 </div>
               </button>
+              {isAdmin && c.client?.id ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="mr-1 min-h-11 min-w-11 shrink-0 grid place-items-center rounded-full hover:bg-muted touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      aria-label="Más opciones de la conversación"
+                    >
+                      <MoreVertical className="w-4 h-4 text-muted-foreground" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-52">
+                    <DropdownMenuItem
+                      className="gap-2"
+                      onSelect={() =>
+                        setAssignTarget({
+                          clientId: c.client.id,
+                          clientName: registeredName || clientPhone || "este cliente",
+                          currentSellerId: c.client.assignedSellerUserId ?? null,
+                        })
+                      }
+                    >
+                      <UserCheck className="w-4 h-4" />
+                      Asignar vendedor
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
             </li>
           );
         })}
@@ -219,6 +257,8 @@ export default function Conversaciones() {
           <li className="px-4 py-12 text-center text-sm text-muted-foreground">Sin resultados</li>
         )}
       </ul>
+
+      <AssignSellerSheet target={assignTarget} onOpenChange={(open) => !open && setAssignTarget(null)} />
 
       <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
         <SheetContent side="bottom" className="rounded-t-2xl max-h-[85vh] overflow-y-auto">

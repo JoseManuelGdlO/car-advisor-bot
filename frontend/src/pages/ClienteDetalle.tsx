@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { Phone, MessageCircle, Car, FileText, Landmark, Tag, Pencil, Trash2, SlidersHorizontal } from "lucide-react";
+import { Phone, MessageCircle, Car, FileText, Landmark, Tag, Pencil, Trash2, SlidersHorizontal, UserCheck } from "lucide-react";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { Avatar } from "@/components/Avatar";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -28,6 +28,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useAuth } from "@/context/AuthContext";
+import { AssignSellerSheet } from "@/components/AssignSellerSheet";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useConversationsQuery } from "@/hooks/useConversationsQuery";
 import { crmApi } from "@/services/crm";
@@ -105,8 +106,9 @@ function buildPromotionHref(promotionId?: string) {
 export default function ClienteDetalle() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { token } = useAuth();
+  const { token, isAdmin } = useAuth();
   const queryClient = useQueryClient();
+  const [assignOpen, setAssignOpen] = useState(false);
   const { data: client } = useQuery({
     queryKey: ["client", id],
     queryFn: () => crmApi.getClient(token!, id!),
@@ -258,6 +260,24 @@ export default function ClienteDetalle() {
             <Button className="h-10 rounded-xl gap-2 shadow-green" onClick={handleChat}>
               <MessageCircle className="w-4 h-4" /> Chat
             </Button>
+          </div>
+        </div>
+
+        <div className="bg-card rounded-2xl p-4 shadow-card border border-border">
+          <h3 className="text-xs font-bold uppercase text-muted-foreground tracking-wide mb-3">Vendedor</h3>
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-xl bg-accent grid place-items-center text-accent-foreground">
+              <UserCheck className="w-6 h-6" />
+            </div>
+            <p className="flex-1 min-w-0 font-semibold text-sm truncate">
+              {client.assignedSeller?.name || "Sin asignar"}
+            </p>
+            {/* Solo el admin reasigna; el vendedor ve su asignación en solo lectura. */}
+            {isAdmin ? (
+              <Button variant="outline" size="sm" className="rounded-xl" onClick={() => setAssignOpen(true)}>
+                {client.assignedSeller ? "Cambiar" : "Asignar"}
+              </Button>
+            ) : null}
           </div>
         </div>
 
@@ -440,6 +460,15 @@ export default function ClienteDetalle() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AssignSellerSheet
+        target={
+          assignOpen
+            ? { clientId: client.id, clientName: client.name, currentSellerId: client.assignedSellerUserId ?? null }
+            : null
+        }
+        onOpenChange={setAssignOpen}
+      />
     </>
   );
 }

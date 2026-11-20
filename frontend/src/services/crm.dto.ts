@@ -126,6 +126,9 @@ export type ClientDto = {
   lastMessageAt: string;
   notes: string;
   avatarColor: string;
+  /** Vendedor asignado (null = sin asignar; solo el admin ve los leads sin asignar). */
+  assignedSellerUserId?: string | null;
+  assignedSeller?: { id: string; name: string } | null;
 };
 
 export type ConversationMessageDto = {
@@ -152,6 +155,8 @@ export type ConversationDto = {
     displayPhone?: string | null;
     avatarColor?: string;
     interestedIn?: string;
+    assignedSellerUserId?: string | null;
+    assignedSeller?: { id: string; name: string } | null;
   };
   isHumanControlled?: boolean;
   messages?: ConversationMessageDto[];
