@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { ChannelConversationContext, ClientLead, Conversation, User } from "../models/index.js";
 import { computeRecipientUserIds, resolveNotificationRecipients } from "./notificationRecipients.js";
 import { leadNotificationDeps, sendPushToLeadRecipients } from "./leadNotificationService.js";
+import { sellerLeadAssignmentDeps } from "./sellerLeadAssignment.js";
 import { toAccountNotificationPreferencesDto } from "./notificationPreferences.js";
 import { getNotificationPreferences, patchNotificationPreferences } from "../controllers/accountController.js";
 
@@ -300,6 +301,67 @@ const assignedLeadStubs = (extra = []) => [
   [User, "findByPk", async () => ({ id: adminId, notifyAssignedLeadMessages: true })],
   ...extra,
 ];
+
+const allDaySchedule = () => ({
+  monday: [{ start: "00:00", end: "23:59" }],
+  tuesday: [{ start: "00:00", end: "23:59" }],
+  wednesday: [{ start: "00:00", end: "23:59" }],
+  thursday: [{ start: "00:00", end: "23:59" }],
+  friday: [{ start: "00:00", end: "23:59" }],
+  saturday: [{ start: "00:00", end: "23:59" }],
+  sunday: [{ start: "00:00", end: "23:59" }],
+});
+
+test("escalación sin vendedor auto-asigna y notifica al elegido", async () => {
+  const lead = {
+    id: leadId,
+    assignedSellerUserId: null,
+    async update(patch) {
+      Object.assign(lead, patch);
+      return lead;
+    },
+  };
+  const originalAssign = { ...sellerLeadAssignmentDeps };
+  sellerLeadAssignmentDeps.getOrCreateBotSettings = async () => ({ timezone: "America/Mexico_City" });
+  sellerLeadAssignmentDeps.listAssignableSellers = async () => [
+    { id: sellerId, active: true, autoAssignLeads: true, weeklySchedule: allDaySchedule() },
+  ];
+  const restore = stubAll([
+    [Conversation, "findOne", async () => ({ id: convId, clientLeadId: leadId })],
+    [ClientLead, "findOne", async () => lead],
+    [User, "findOne", async () => ({ id: sellerId, active: true })],
+    [User, "findByPk", async () => ({ id: adminId, notifyAssignedLeadMessages: true })],
+  ]);
+  try {
+    const sent = await runBotPush(botPayloadData("human_advisor", { conversationId: convId }));
+    assert.equal(lead.assignedSellerUserId, sellerId);
+    assert.deepEqual(sent, [adminId, sellerId]);
+  } finally {
+    restore();
+    Object.assign(sellerLeadAssignmentDeps, originalAssign);
+  }
+});
+
+test("inbound de lead sin asignar no dispara auto-asignación", async () => {
+  const originalAssign = { ...sellerLeadAssignmentDeps };
+  let listed = false;
+  sellerLeadAssignmentDeps.listAssignableSellers = async () => {
+    listed = true;
+    return [];
+  };
+  const restore = stubAll([
+    [Conversation, "findOne", async () => ({ id: convId, clientLeadId: leadId })],
+    [ClientLead, "findOne", async () => ({ id: leadId, assignedSellerUserId: null })],
+  ]);
+  try {
+    const sent = await runBotPush(botPayloadData("new_inbound_message", { conversationId: convId }));
+    assert.equal(listed, false);
+    assert.deepEqual(sent, [adminId]);
+  } finally {
+    restore();
+    Object.assign(sellerLeadAssignmentDeps, originalAssign);
+  }
+});
 
 test("contrato bot: lead_interest/human_advisor/financing con conversationId (sin teléfono) notifican vendedor + admin", async () => {
   const restore = stubAll(

@@ -3,6 +3,7 @@ import { ClientLead, User } from "../models/index.js";
 import { ApiError } from "../utils/errors.js";
 import { hashPassword } from "../utils/auth.js";
 import { ROLE_SELLER } from "../utils/tenantAccess.js";
+import { normalizeWeeklySchedule } from "../utils/botSettings.js";
 
 const nameSchema = z.string().trim().min(2).max(120);
 const emailSchema = z.string().trim().email().max(190);
@@ -33,6 +34,16 @@ export const assignmentSchema = z
   })
   .strict();
 
+export const patchSellerLeadScheduleSchema = z
+  .object({
+    autoAssignLeads: z.boolean().optional(),
+    weeklySchedule: z.unknown().optional(),
+  })
+  .strict()
+  .refine((value) => value.autoAssignLeads !== undefined || value.weeklySchedule !== undefined, {
+    message: "No hay cambios para aplicar.",
+  });
+
 export const toSellerDto = (user, { assignedLeadsCount } = {}) => ({
   id: user.id,
   name: user.name,
@@ -40,6 +51,8 @@ export const toSellerDto = (user, { assignedLeadsCount } = {}) => ({
   phone: user.phone ?? null,
   active: user.active !== false,
   role: ROLE_SELLER,
+  autoAssignLeads: user.autoAssignLeads === true,
+  weeklySchedule: normalizeWeeklySchedule(user.weeklySchedule),
   createdAt: user.createdAt ? new Date(user.createdAt).toISOString() : null,
   ...(assignedLeadsCount !== undefined ? { assignedLeadsCount } : {}),
 });
@@ -130,6 +143,16 @@ export const restoreSeller = async ({ tenantOwnerUserId, sellerId }) => {
   if (seller.active !== false) throw new ApiError(409, "El vendedor ya está activo.");
   await seller.update({ active: true });
   return toSellerDto(seller, { assignedLeadsCount: 0 });
+};
+
+export const updateSellerLeadSchedule = async ({ tenantOwnerUserId, sellerId, input }) => {
+  const seller = await findTenantSellerOr404(tenantOwnerUserId, sellerId);
+  const patch = {};
+  if (input.autoAssignLeads !== undefined) patch.autoAssignLeads = input.autoAssignLeads;
+  if (input.weeklySchedule !== undefined) patch.weeklySchedule = normalizeWeeklySchedule(input.weeklySchedule);
+  if (!Object.keys(patch).length) throw new ApiError(400, "No hay cambios para aplicar.");
+  await seller.update(patch);
+  return toSellerDto(seller, { assignedLeadsCount: await countAssignedLeads(tenantOwnerUserId, seller.id) });
 };
 
 /** Valida que el vendedor sea asignable: mismo tenant, role=seller, active=true. */

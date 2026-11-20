@@ -7,6 +7,7 @@ import {
   deleteSellerHandler,
   listSellersHandler,
   patchSellerHandler,
+  patchSellerLeadScheduleHandler,
   restoreSellerHandler,
 } from "./sellersController.js";
 import { patchClientAssignment } from "./clientsController.js";
@@ -147,6 +148,16 @@ test("GET /sellers: por defecto solo activos; includeInactive=1 incluye bajas", 
     const active = await call(listSellersHandler, { auth: adminAuth, query: {} });
     const all = await call(listSellersHandler, { auth: adminAuth, query: { includeInactive: "1" } });
     assert.equal(active.res.payload[0].assignedLeadsCount, 3);
+    assert.equal(active.res.payload[0].autoAssignLeads, false);
+    assert.deepEqual(active.res.payload[0].weeklySchedule, {
+      monday: [],
+      tuesday: [],
+      wednesday: [],
+      thursday: [],
+      friday: [],
+      saturday: [],
+      sunday: [],
+    });
     assert.equal(all.error, undefined);
   } finally {
     restore();
@@ -370,6 +381,60 @@ test("PATCH /clients/:id/assignment: rechaza vendedor inactivo (400), inexistent
   }
 });
 
+test("PATCH /sellers/:id/lead-schedule: guarda interruptor y horario semanal", async () => {
+  const seller = makeSellerRow();
+  const restore = stubAll([
+    [User, "findOne", async () => seller],
+    [ClientLead, "count", async () => 1],
+  ]);
+  try {
+    const { res, error } = await call(patchSellerLeadScheduleHandler, {
+      auth: adminAuth,
+      params: { id: sellerId },
+      body: {
+        autoAssignLeads: true,
+        weeklySchedule: {
+          monday: [{ start: "09:00", end: "18:00" }],
+          tuesday: [],
+          wednesday: [],
+          thursday: [],
+          friday: [],
+          saturday: [],
+          sunday: [],
+        },
+      },
+    });
+    assert.equal(error, undefined);
+    assert.equal(seller.autoAssignLeads, true);
+    assert.deepEqual(seller.weeklySchedule.monday, [{ start: "09:00", end: "18:00" }]);
+    assert.equal(res.payload.autoAssignLeads, true);
+    assert.deepEqual(res.payload.weeklySchedule.monday, [{ start: "09:00", end: "18:00" }]);
+  } finally {
+    restore();
+  }
+});
+
+test("PATCH /sellers/:id/lead-schedule: horario inválido 400; vendedor 403", async () => {
+  const seller = makeSellerRow();
+  const restore = stubAll([[User, "findOne", async () => seller]]);
+  try {
+    const invalid = await call(patchSellerLeadScheduleHandler, {
+      auth: adminAuth,
+      params: { id: sellerId },
+      body: { weeklySchedule: { monday: [{ start: "18:00", end: "09:00" }] } },
+    });
+    assert.equal(invalid.error?.status, 400);
+    const forbidden = await call(patchSellerLeadScheduleHandler, {
+      auth: sellerAuth,
+      params: { id: sellerId },
+      body: { autoAssignLeads: true },
+    });
+    assert.equal(forbidden.error?.status, 403);
+  } finally {
+    restore();
+  }
+});
+
 test("rutas /sellers y /clients/:id/assignment exigen admin", () => {
   const find = (router, method, path) => {
     const layer = router.stack.find((l) => l.route?.path === path && l.route.methods[method]);
@@ -383,6 +448,7 @@ test("rutas /sellers y /clients/:id/assignment exigen admin", () => {
     [sellersRoutes, "patch", "/sellers/:id"],
     [sellersRoutes, "delete", "/sellers/:id"],
     [sellersRoutes, "post", "/sellers/:id/restore"],
+    [sellersRoutes, "patch", "/sellers/:id/lead-schedule"],
     [clientsRoutes, "patch", "/clients/:id/assignment"],
   ];
   for (const [router, method, path] of checks) {

@@ -1,5 +1,5 @@
 import { FormEvent, useState } from "react";
-import { Pencil, Plus, RotateCcw, UserMinus, Users } from "lucide-react";
+import { Clock3, Pencil, Plus, RotateCcw, UserMinus, Users } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ScreenHeader } from "@/components/ScreenHeader";
@@ -15,6 +15,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { FormErrorAlert } from "@/components/FormErrorAlert";
+import { SellerLeadScheduleDialog } from "@/components/SellerLeadScheduleDialog";
+import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/context/AuthContext";
 import { normalizeApiError } from "@/lib/formErrors";
 import { cn } from "@/lib/utils";
@@ -42,6 +44,7 @@ export default function Vendedores() {
 
   const [deactivating, setDeactivating] = useState<SellerDto | null>(null);
   const [deactivateError, setDeactivateError] = useState("");
+  const [scheduleSeller, setScheduleSeller] = useState<SellerDto | null>(null);
 
   const { data: sellers = [], isLoading } = useQuery({
     queryKey: ["sellers", "all"],
@@ -97,6 +100,22 @@ export default function Vendedores() {
     },
     onError: (error) => {
       setDeactivateError(normalizeApiError(error, "No se pudo dar de baja al vendedor.").formError);
+    },
+  });
+
+  const autoAssignMutation = useMutation({
+    mutationFn: ({ seller, autoAssignLeads }: { seller: SellerDto; autoAssignLeads: boolean }) =>
+      sellersApi.updateLeadSchedule(token!, seller.id, { autoAssignLeads }),
+    onSuccess: async (_data, variables) => {
+      toast.success(
+        variables.autoAssignLeads
+          ? `Asignación automática activada para ${variables.seller.name}.`
+          : `Asignación automática desactivada para ${variables.seller.name}.`,
+      );
+      await refreshLists();
+    },
+    onError: (error) => {
+      toast.error(normalizeApiError(error, "No se pudo actualizar la asignación automática.").formError);
     },
   });
 
@@ -188,7 +207,30 @@ export default function Vendedores() {
                 ) : null}
               </div>
             </div>
+            {seller.active ? (
+              <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-muted/60 px-3 py-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold">Asignación automática</p>
+                  <p className="text-[11px] text-muted-foreground">Recibe leads cuando el bot cede el control.</p>
+                </div>
+                <Switch
+                  checked={seller.autoAssignLeads === true}
+                  onCheckedChange={(checked) => autoAssignMutation.mutate({ seller, autoAssignLeads: checked })}
+                  disabled={autoAssignMutation.isPending || !token}
+                  aria-label={`Asignación automática de ${seller.name}`}
+                />
+              </div>
+            ) : null}
             <div className="flex items-center justify-end gap-1 mt-2 -mr-1">
+              {seller.active ? (
+                <button
+                  className="text-muted-foreground hover:text-foreground p-2 rounded-lg"
+                  aria-label={`Horario de ${seller.name}`}
+                  onClick={() => setScheduleSeller(seller)}
+                >
+                  <Clock3 className="w-4 h-4" />
+                </button>
+              ) : null}
               <button
                 className="text-muted-foreground hover:text-foreground p-2 rounded-lg"
                 aria-label={`Editar ${seller.name}`}
@@ -230,6 +272,16 @@ export default function Vendedores() {
           </li>
         ) : null}
       </ul>
+
+      <SellerLeadScheduleDialog
+        seller={scheduleSeller}
+        token={token}
+        open={Boolean(scheduleSeller)}
+        onOpenChange={(next) => {
+          if (!next) setScheduleSeller(null);
+        }}
+        onSaved={refreshLists}
+      />
 
       <Dialog
         open={formOpen}

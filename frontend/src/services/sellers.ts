@@ -1,4 +1,5 @@
 import { apiRequest } from "@/lib/api";
+import type { BotWeeklyScheduleDto } from "./crm.dto";
 
 export type SellerDto = {
   id: string;
@@ -7,6 +8,8 @@ export type SellerDto = {
   phone: string | null;
   active: boolean;
   role: "seller";
+  autoAssignLeads: boolean;
+  weeklySchedule: BotWeeklyScheduleDto;
   createdAt: string | null;
   assignedLeadsCount?: number;
 };
@@ -19,6 +22,11 @@ export type CreateSellerPayload = {
 };
 
 export type UpdateSellerPayload = Partial<CreateSellerPayload>;
+
+export type SellerLeadSchedulePayload = {
+  autoAssignLeads?: boolean;
+  weeklySchedule?: BotWeeklyScheduleDto;
+};
 
 export type DeactivateSellerResponse = {
   ok: boolean;
@@ -37,6 +45,8 @@ export const sellersApi = {
     apiRequest<DeactivateSellerResponse>(`/sellers/${id}`, "DELETE", undefined, token),
   restore: (token: string, id: string) =>
     apiRequest<{ ok: boolean; seller: SellerDto }>(`/sellers/${id}/restore`, "POST", {}, token),
+  updateLeadSchedule: (token: string, id: string, payload: SellerLeadSchedulePayload) =>
+    apiRequest<SellerDto>(`/sellers/${id}/lead-schedule`, "PATCH", payload, token),
   assignClient: (token: string, clientId: string, assignedSellerUserId: string | null) =>
     apiRequest<unknown>(`/clients/${clientId}/assignment`, "PATCH", { assignedSellerUserId }, token),
 };

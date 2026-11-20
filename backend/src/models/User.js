@@ -79,5 +79,25 @@ export default function UserModel(sequelize) {
       defaultValue: true,
       field: "notify_inbound_messages",
     },
+    autoAssignLeads: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      field: "auto_assign_leads",
+    },
+    weeklySchedule: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: {
+        monday: [],
+        tuesday: [],
+        wednesday: [],
+        thursday: [],
+        friday: [],
+        saturday: [],
+        sunday: [],
+      },
+      field: "weekly_schedule",
+    },
   });
 }

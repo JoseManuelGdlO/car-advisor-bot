@@ -6,9 +6,11 @@ import {
   deactivateSeller,
   getSeller,
   listSellers,
+  patchSellerLeadScheduleSchema,
   patchSellerSchema,
   restoreSeller,
   updateSeller,
+  updateSellerLeadSchedule,
 } from "../services/sellerService.js";
 
 const isTruthyFlag = (value) => ["1", "true", "yes"].includes(String(value ?? "").trim().toLowerCase());
@@ -55,4 +57,19 @@ export const restoreSellerHandler = async (req, res) => {
   const tenantOwnerUserId = tenantForAdmin(req);
   const seller = await restoreSeller({ tenantOwnerUserId, sellerId: req.params.id });
   return res.json({ ok: true, seller });
+};
+
+export const patchSellerLeadScheduleHandler = async (req, res) => {
+  const tenantOwnerUserId = tenantForAdmin(req);
+  const parsed = patchSellerLeadScheduleSchema.safeParse(req.body || {});
+  if (!parsed.success) {
+    throw new ApiError(400, parsed.error.issues?.[0]?.message || "No hay cambios para aplicar.");
+  }
+  return res.json(
+    await updateSellerLeadSchedule({
+      tenantOwnerUserId,
+      sellerId: req.params.id,
+      input: parsed.data,
+    }),
+  );
 };

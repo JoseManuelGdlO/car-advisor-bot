@@ -2,6 +2,7 @@ import { Op } from "sequelize";
 import { ChannelConversationContext, ClientLead, Conversation, User } from "../models/index.js";
 import { appLog } from "../utils/appLogger.js";
 import { blacklistPhoneLookupValues, normalizeBlacklistPhone } from "../utils/whatsappIdentity.js";
+import { ESCALATION_AUTO_ASSIGN_KINDS, maybeAutoAssignLead } from "./sellerLeadAssignment.js";
 
 export const NEW_INBOUND_MESSAGE_KIND = "new_inbound_message";
 
@@ -111,6 +112,9 @@ export const resolveNotificationRecipients = async ({
 }) => {
   const resolvedLead =
     lead || (await findLeadForNotification({ ownerUserId, leadId, conversationId, channelUserId, customerPhone }));
+  if (resolvedLead && ESCALATION_AUTO_ASSIGN_KINDS.has(String(kind || "").trim())) {
+    await maybeAutoAssignLead(resolvedLead, { ownerUserId });
+  }
   if (!resolvedLead) {
     // Sin lead no se puede saber si hay vendedor asignado: queda solo el admin. Se deja rastro para diagnosticar.
     appLog.warn(
