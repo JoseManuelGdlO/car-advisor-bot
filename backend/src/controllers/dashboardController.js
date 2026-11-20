@@ -3,21 +3,12 @@ import { ClientLead, Conversation, OwnerNotification, Vehicle } from "../models/
 import { calcDayOverDayChangePct, utcDayBounds } from "../utils/dashboardKpis.js";
 import { buildTopProductsRanking } from "../utils/dashboardTopProducts.js";
 import { DASHBOARD_ESCALATION_KINDS } from "../services/ownerNotifications.js";
-import { isSellerAuth, leadVisibilityWhere, resolveTenantOwnerId } from "../utils/tenantAccess.js";
 
-// Scope multi-tenant por propietario (admin del tenant).
+// Scope multi-tenant por propietario autenticado.
 const ownerWhere = (userId) => ({ ownerUserId: userId });
 
-/**
- * Normaliza el alcance de leads. Acepta:
- * - string: id del tenant (compatibilidad con llamadas previas, equivale a admin).
- * - auth: `req.auth` (admin ve todo el tenant, vendedor solo sus leads asignados).
- */
-const resolveLeadScope = (scopeOrOwnerId) =>
-  typeof scopeOrOwnerId === "string" ? ownerWhere(scopeOrOwnerId) : leadVisibilityWhere(scopeOrOwnerId);
-
-const visibleLeadsWhere = (scopeOrOwnerId) => ({
-  ...resolveLeadScope(scopeOrOwnerId),
+const visibleLeadsWhere = (userId) => ({
+  ...ownerWhere(userId),
   status: { [Op.ne]: "eliminated" },
 });
 
@@ -25,38 +16,17 @@ const createdAtBetween = (start, end) => ({
   createdAt: { [Op.between]: [start, end] },
 });
 
-/**
- * Escalaciones recibidas por el usuario autenticado. Las notificaciones se guardan por
- * destinatario, así que cada rol ve solo las suyas (el admin recibe todas las del tenant;
- * el vendedor, solo las de sus leads asignados).
- */
-const escalationsBetween = (auth, start, end) => ({
-  ownerUserId: auth.userId,
+const escalationsBetween = (userId, start, end) => ({
+  ownerUserId: userId,
   kind: { [Op.in]: DASHBOARD_ESCALATION_KINDS },
   ...createdAtBetween(start, end),
 });
 
-/**
- * Conversaciones del tenant. Para un vendedor se restringe (JOIN requerido) a las de leads
- * asignados a él, igual que la bandeja de conversaciones.
- */
-export const conversationScope = (auth, extraWhere = {}) => {
-  const tenantId = resolveTenantOwnerId({ auth });
-  const query = { where: { ...ownerWhere(tenantId), ...extraWhere } };
-  if (isSellerAuth(auth)) {
-    const { assignedSellerUserId } = leadVisibilityWhere(auth);
-    query.include = [
-      { model: ClientLead, as: "client", attributes: [], where: { assignedSellerUserId }, required: true },
-    ];
-  }
-  return query;
-};
-
 /** Leads con interés textual o vehicleId para armar el ranking. */
-export const findInterestLeads = (scopeOrOwnerId) =>
+export const findInterestLeads = (userId) =>
   ClientLead.findAll({
     where: {
-      ...visibleLeadsWhere(scopeOrOwnerId),
+      ...visibleLeadsWhere(userId),
       [Op.or]: [
         {
           [Op.and]: [
@@ -71,17 +41,15 @@ export const findInterestLeads = (scopeOrOwnerId) =>
     raw: true,
   });
 
-// El catálogo es del tenant (admin), también para los vendedores.
-export const findOwnerVehicles = (tenantId) =>
+export const findOwnerVehicles = (userId) =>
   Vehicle.findAll({
-    where: ownerWhere(tenantId),
+    where: ownerWhere(userId),
     attributes: ["id", "brand", "model", "year"],
     raw: true,
   });
 
 export const getDashboard = async (req, res) => {
-  const auth = req.auth;
-  const tenantId = resolveTenantOwnerId(req);
+  const userId = req.auth.userId;
   const now = new Date();
   const todayBounds = utcDayBounds(now, 0);
   const yesterdayBounds = utcDayBounds(now, -1);
@@ -102,28 +70,29 @@ export const getDashboard = async (req, res) => {
     vehicles,
     weeklyRows,
   ] = await Promise.all([
-    Conversation.count(conversationScope(auth)),
+    Conversation.count({ where: ownerWhere(userId) }),
     ClientLead.count({
-      where: { ...visibleLeadsWhere(auth), ...createdAtBetween(todayBounds.start, todayBounds.end) },
+      where: { ...visibleLeadsWhere(userId), ...createdAtBetween(todayBounds.start, todayBounds.end) },
     }),
     ClientLead.count({
-      where: { ...visibleLeadsWhere(auth), ...createdAtBetween(yesterdayBounds.start, yesterdayBounds.end) },
+      where: { ...visibleLeadsWhere(userId), ...createdAtBetween(yesterdayBounds.start, yesterdayBounds.end) },
     }),
     OwnerNotification.count({
-      where: escalationsBetween(auth, todayBounds.start, todayBounds.end),
+      where: escalationsBetween(userId, todayBounds.start, todayBounds.end),
     }),
     OwnerNotification.count({
-      where: escalationsBetween(auth, yesterdayBounds.start, yesterdayBounds.end),
+      where: escalationsBetween(userId, yesterdayBounds.start, yesterdayBounds.end),
     }),
-    Conversation.count(conversationScope(auth, { unread: { [Op.gt]: 0 } })),
-    findInterestLeads(auth),
-    findOwnerVehicles(tenantId),
+    Conversation.count({ where: { ...ownerWhere(userId), unread: { [Op.gt]: 0 } } }),
+    findInterestLeads(userId),
+    findOwnerVehicles(userId),
     Conversation.findAll({
-      ...conversationScope(auth, {
+      where: {
+        ...ownerWhere(userId),
         createdAt: {
           [Op.between]: [weekStartUtc, todayUtcEnd],
         },
-      }),
+      },
       attributes: ["createdAt"],
       raw: true,
     }),
@@ -166,9 +135,10 @@ export const getDashboard = async (req, res) => {
 
 /** Ranking completo de autos consultados más el catálogo sin consultas (con 0). */
 export const getTopProducts = async (req, res) => {
+  const userId = req.auth.userId;
   const [interestLeads, vehicles] = await Promise.all([
-    findInterestLeads(req.auth),
-    findOwnerVehicles(resolveTenantOwnerId(req)),
+    findInterestLeads(userId),
+    findOwnerVehicles(userId),
   ]);
   return res.json({
     items: buildTopProductsRanking({

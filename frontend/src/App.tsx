@@ -69,7 +69,7 @@ const App = () => (
                 <Route path="/perfil" element={<Perfil />} />
                 <Route path="/config" element={<Configuracion />} />
               </Route>
-              <Route path="/config/faqs" element={<RequireAuth><RequireAdmin><ConfigFaqs /></RequireAdmin></RequireAuth>} />
+              <Route path="/config/faqs" element={<RequireAuth><ConfigFaqs /></RequireAuth>} />
               <Route path="/config/bot" element={<RequireAuth><RequireAdmin><ConfigBot /></RequireAdmin></RequireAuth>} />
               <Route path="/config/comportamiento-bot" element={<RequireAuth><RequireAdmin><ConfigComportamientoBot /></RequireAdmin></RequireAuth>} />
               <Route path="/vendedores" element={<RequireAuth><RequireAdmin><Vendedores /></RequireAdmin></RequireAuth>} />

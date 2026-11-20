@@ -5,6 +5,7 @@ import {
   BusinessProfile,
   ClientLead,
   Conversation,
+  Faq,
   FinancingPlan,
   Message,
   User,
@@ -13,6 +14,7 @@ import {
 import { createClient, getClient, listClients, patchClient } from "./clientsController.js";
 import { getConversationMessages, listConversations } from "./conversationsController.js";
 import { createVehicle } from "./vehiclesController.js";
+import { createFaq, deleteFaq, updateFaq } from "./faqController.js";
 import { createFinancingPlan } from "./financingController.js";
 import { getAccountProfile, patchAccountProfile, deleteAccount } from "./accountController.js";
 import { accountRoutes } from "../routes/accountRoutes.js";
@@ -187,6 +189,33 @@ test("createVehicle / createFinancingPlan usan el tenant del admin cuando crea u
   assert.equal(planData.ownerUserId, adminId);
 });
 
+test("create/update/delete FAQ de un seller escriben en el tenant del admin", async () => {
+  let created;
+  let lookedUp;
+  const restoreCreate = stub(Faq, "create", async (d) => {
+    created = d;
+    return { id: "f1", ...d };
+  });
+  const restoreFind = stub(Faq, "findOne", async (opts) => {
+    lookedUp = opts.where;
+    return {
+      update: async () => {},
+      destroy: async () => {},
+    };
+  });
+  try {
+    await call(createFaq, { auth: sellerAuth, body: { question: "¿Hay garantía?", answer: "Sí, 1 año." } });
+    await call(updateFaq, { auth: sellerAuth, params: { id: "f1" }, body: { question: "¿Hay garantía?", answer: "Sí." } });
+    await call(deleteFaq, { auth: sellerAuth, params: { id: "f1" } });
+  } finally {
+    restoreCreate();
+    restoreFind();
+  }
+  assert.equal(created.ownerUserId, adminId);
+  assert.equal(lookedUp.ownerUserId, adminId);
+  assert.equal(lookedUp.id, "f1");
+});
+
 test("getAccountProfile: seller no recibe business ni crea BusinessProfile", async () => {
   const restoreUser = stub(User, "findByPk", async () => ({
     id: sellerId,
@@ -259,12 +288,8 @@ const routeHandlers = (router, method, path) => {
   return layer.route.stack.map((l) => l.handle);
 };
 
-test("rutas de tenant (FAQs, blacklist, bot, integraciones, tokens) exigen admin", () => {
+test("rutas de tenant (blacklist, bot, integraciones, tokens) exigen admin", () => {
   const adminOnly = [
-    [faqRoutes, "get", "/faqs"],
-    [faqRoutes, "post", "/faqs"],
-    [faqRoutes, "patch", "/faqs/:id"],
-    [faqRoutes, "delete", "/faqs/:id"],
     [blacklistRoutes, "get", "/blacklist"],
     [blacklistRoutes, "post", "/blacklist"],
     [blacklistRoutes, "delete", "/blacklist/:id"],
@@ -293,8 +318,12 @@ test("rutas de tenant (FAQs, blacklist, bot, integraciones, tokens) exigen admin
   }
 });
 
-test("rutas de catálogo (vehículos, financiamiento, promos) NO exigen admin", () => {
+test("rutas de catálogo (vehículos, financiamiento, promos, FAQs) NO exigen admin", () => {
   const open = [
+    [faqRoutes, "get", "/faqs"],
+    [faqRoutes, "post", "/faqs"],
+    [faqRoutes, "patch", "/faqs/:id"],
+    [faqRoutes, "delete", "/faqs/:id"],
     [vehiclesRoutes, "post", "/vehicles"],
     [vehiclesRoutes, "patch", "/vehicles/:id"],
     [vehiclesRoutes, "delete", "/vehicles/:id"],

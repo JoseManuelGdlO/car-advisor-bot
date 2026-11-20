@@ -17,20 +17,20 @@ describe("roles", () => {
   it("marca rutas solo-admin", () => {
     for (const path of [
       "/vendedores",
-      "/config/faqs",
       "/config/bot",
       "/config/comportamiento-bot",
       "/perfil/integraciones",
     ]) {
       expect(isAdminOnlyPath(path)).toBe(true);
     }
-    for (const path of ["/config", "/perfil", "/perfil/notificaciones", "/vehiculos", "/chats", "/clientes", "/privacidad"]) {
+    for (const path of ["/config", "/config/faqs", "/perfil", "/perfil/notificaciones", "/vehiculos", "/chats", "/clientes", "/privacidad"]) {
       expect(isAdminOnlyPath(path)).toBe(false);
     }
   });
 
   it("el vendedor no accede a rutas admin pero el admin sí", () => {
     expect(canAccessPath({ role: "seller" }, "/vendedores")).toBe(false);
+    expect(canAccessPath({ role: "seller" }, "/config/faqs")).toBe(true);
     expect(canAccessPath({ role: "seller" }, "/perfil/notificaciones")).toBe(true);
     expect(canAccessPath({ role: "admin" }, "/vendedores")).toBe(true);
   });

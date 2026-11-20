@@ -11,7 +11,6 @@ export const isAdminUser = (user: RoleSource): boolean => resolveUserRole(user) 
 /** Rutas que solo puede abrir un admin (el vendedor es redirigido). */
 const ADMIN_ONLY_PREFIXES = [
   "/vendedores",
-  "/config/faqs",
   "/config/bot",
   "/config/comportamiento-bot",
   "/perfil/integraciones",
