@@ -229,14 +229,16 @@ export default function ClienteDetalle() {
             >
               <Pencil className="w-4 h-4" />
             </button>
-            <button
-              type="button"
-              onClick={() => setDeleteOpen(true)}
-              className="w-9 h-9 grid place-items-center rounded-full hover:bg-destructive/10 text-destructive touch-manipulation"
-              aria-label="Eliminar cliente"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
+            {isAdmin ? (
+              <button
+                type="button"
+                onClick={() => setDeleteOpen(true)}
+                className="w-9 h-9 grid place-items-center rounded-full hover:bg-destructive/10 text-destructive touch-manipulation"
+                aria-label="Eliminar cliente"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            ) : null}
           </div>
         }
       />

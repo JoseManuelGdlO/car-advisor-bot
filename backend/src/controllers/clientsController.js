@@ -168,6 +168,7 @@ export const patchClientAssignment = async (req, res, next) => {
 
 export const deleteClient = async (req, res, next) => {
   try {
+    assertAdmin(req.auth);
     const row = await findOwnedVisibleClientOr404(req.auth, req.params.id);
     await row.update({ status: ELIMINATED_STATUS });
     return res.json({ ok: true });
