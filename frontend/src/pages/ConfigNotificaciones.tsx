@@ -35,7 +35,7 @@ const osPermissionLabel = (status: OsPushPermissionStatus) => {
 
 export default function ConfigNotificaciones() {
   const navigate = useNavigate();
-  const { token } = useAuth();
+  const { token, isAdmin } = useAuth();
   const queryClient = useQueryClient();
   const isNative = Capacitor.isNativePlatform();
 
@@ -192,8 +192,18 @@ export default function ConfigNotificaciones() {
             checked={prefs.notifyInboundMessages}
             disabled={kindsDisabled || isLoading || saveMutation.isPending}
             onCheckedChange={(checked) => applyPatch({ notifyInboundMessages: checked })}
-            last
+            last={!isAdmin}
           />
+          {isAdmin ? (
+            <PreferenceRow
+              title="Mensajes de leads ya asignados"
+              description="Mensajes entrantes de leads que ya tienen vendedor. Las escalaciones siempre te llegan."
+              checked={prefs.notifyAssignedLeadMessages !== false}
+              disabled={kindsDisabled || isLoading || saveMutation.isPending}
+              onCheckedChange={(checked) => applyPatch({ notifyAssignedLeadMessages: checked })}
+              last
+            />
+          ) : null}
         </div>
 
         {osBlocked && prefs.pushEnabled ? (

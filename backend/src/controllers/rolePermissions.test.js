@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  BotSetting,
   BusinessProfile,
   ClientLead,
   Conversation,
@@ -200,15 +201,23 @@ test("getAccountProfile: seller no recibe business ni crea BusinessProfile", asy
   const restoreBusiness = stub(BusinessProfile, "findOrCreate", async () => {
     throw new Error("no debe crear business para vendedor");
   });
+  const botLookups = [];
+  const restoreBot = stub(BotSetting, "findOne", async (opts) => {
+    botLookups.push(opts.where);
+    return { timezone: "America/Mexico_City" };
+  });
   try {
     const { res, error } = await call(getAccountProfile, { auth: sellerAuth });
     assert.equal(error, undefined);
     assert.equal(res.payload.business, null);
+    assert.deepEqual(res.payload.tenant, { timezone: "America/Mexico_City" });
+    assert.deepEqual(botLookups[0], { ownerUserId: adminId });
     assert.equal(res.payload.user.role, "seller");
     assert.equal(res.payload.user.tenantOwnerUserId, adminId);
   } finally {
     restoreUser();
     restoreBusiness();
+    restoreBot();
   }
 });
 

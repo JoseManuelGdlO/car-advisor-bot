@@ -74,7 +74,7 @@ const PROFILE_KNOWN_FIELDS = [
 export default function Perfil() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { logout, user, token, refreshProfile } = useAuth();
+  const { logout, user, token, refreshProfile, isSeller } = useAuth();
 
   const { data: profile, isLoading: profileLoading } = useQuery({
     queryKey: ["account-profile"],
@@ -91,7 +91,8 @@ export default function Perfil() {
   const { data: integrations = [], isLoading: integrationsLoading } = useQuery({
     queryKey: ["integrations"],
     queryFn: () => integrationsApi.list(token!),
-    enabled: Boolean(token),
+    // Integraciones son del tenant: el vendedor no las consulta (403).
+    enabled: Boolean(token) && !isSeller,
   });
 
   const [userForm, setUserForm] = useState({
@@ -135,6 +136,12 @@ export default function Perfil() {
 
   const saveProfileMutation = useMutation({
     mutationFn: () => {
+      // Vendedor: solo cuenta personal. Calendario y negocio son del admin (el API responde 403).
+      if (isSeller) {
+        return accountApi.patchProfile(token!, {
+          user: { name: userForm.name.trim(), phone: userForm.phone.trim() || null },
+        });
+      }
       const calendarSchedulingUrl = (
         userForm.calendarSchedulingUrl || savedCalendarUrl
       ).trim();
@@ -264,7 +271,9 @@ export default function Perfil() {
           />
           <h2 className="font-bold text-lg mt-3">{user?.name || "Usuario"}</h2>
           <p className="text-xs text-muted-foreground">{user?.email}</p>
-          {bizForm.tradeName ? (
+          {isSeller ? (
+            <p className="text-xs font-semibold text-primary-dark mt-1">Vendedor</p>
+          ) : bizForm.tradeName ? (
             <p className="text-xs font-semibold text-primary-dark mt-1">
               {bizForm.tradeName}
             </p>
@@ -314,6 +323,8 @@ export default function Perfil() {
                   aria-invalid={Boolean(profileFieldErrors.phone)}
                 />
                 <FieldErrorText error={profileFieldErrors.phone} />
+                {!isSeller ? (
+                  <>
                 <div className="flex items-center justify-between gap-2 pt-1">
                   <Label className="text-xs">
                     Link de calendario de Google
@@ -397,8 +408,11 @@ export default function Perfil() {
                     </Button>
                   </div>
                 )}
+                  </>
+                ) : null}
                 {userDirty ? renderSaveProfileButton() : null}
               </div>
+              {!isSeller ? (
               <div className="pt-2 space-y-2">
                 <DeleteAccount
                   deleteDialogOpen={deleteDialogOpen}
@@ -410,9 +424,11 @@ export default function Perfil() {
                   deleteAccountMutation={deleteAccountMutation}
                 />
               </div>
+              ) : null}
             </AccordionContent>
           </AccordionItem>
 
+          {!isSeller ? (
           <AccordionItem
             value="negocio"
             className="border-0 bg-card rounded-2xl px-4 shadow-card border border-border"
@@ -535,8 +551,10 @@ export default function Perfil() {
               </div>
             </AccordionContent>
           </AccordionItem>
+          ) : null}
         </Accordion>
 
+        {!isSeller ? (
         <button
           type="button"
           onClick={() => navigate("/perfil/integraciones")}
@@ -570,6 +588,7 @@ export default function Perfil() {
             </div>
           </div>
         </button>
+        ) : null}
 
         <button
           type="button"

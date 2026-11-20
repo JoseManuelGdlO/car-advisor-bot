@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { BusinessProfile, User } from "../models/index.js";
+import { BotSetting, BusinessProfile, User } from "../models/index.js";
 import { ApiError } from "../utils/errors.js";
 import { toBusinessProfileDto } from "../utils/businessProfile.js";
 import { calendarSchedulingUrlSchema } from "../utils/calendarUrl.js";
@@ -32,6 +32,12 @@ const userPatchSchema = z
   })
   .strict();
 
+// Zona horaria del tenant (bot settings del admin): los vendedores la necesitan para mostrar horas.
+const loadTenantDto = async (tenantOwnerUserId) => {
+  const row = await BotSetting.findOne({ where: { ownerUserId: tenantOwnerUserId }, attributes: ["timezone"] });
+  return { timezone: row?.timezone || null };
+};
+
 const toProfileUserDto = (user) => ({
   ...toUserSessionDto(user),
   phone: user.phone,
@@ -45,8 +51,9 @@ export const getAccountProfile = async (req, res, next) => {
     const user = await User.findByPk(req.auth.userId);
     if (!user) throw new ApiError(404, "User not found");
     // Vendedor: solo cuenta personal; el perfil de negocio/calendario es del tenant (admin).
+    const tenant = await loadTenantDto(req.auth.tenantOwnerUserId || user.id);
     if (isSellerAuth(req.auth)) {
-      return res.json({ user: toProfileUserDto(user), business: null });
+      return res.json({ user: toProfileUserDto(user), business: null, tenant });
     }
     const [business] = await BusinessProfile.findOrCreate({
       where: { ownerUserId: user.id },
@@ -55,6 +62,7 @@ export const getAccountProfile = async (req, res, next) => {
     return res.json({
       user: toProfileUserDto(user),
       business: toBusinessProfileDto(business),
+      tenant,
     });
   } catch (err) {
     return next(err);
