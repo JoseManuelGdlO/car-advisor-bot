@@ -20,7 +20,8 @@ export function resolveRequestOwner(req, { bodyField, queryField } = {}) {
   const explicit = String(fromBody ?? fromQuery ?? "").trim();
 
   if (req.auth?.type === "user") {
-    return req.auth.userId;
+    // Vendedores operan sobre el tenant del admin, nunca sobre su propio id.
+    return req.auth.tenantOwnerUserId || req.auth.userId;
   }
 
   if (req.auth?.type === "service" && req.auth?.scope === "tenant") {

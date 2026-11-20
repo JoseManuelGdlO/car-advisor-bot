@@ -12,6 +12,11 @@ export default function ClientLeadModel(sequelize) {
       allowNull: false,
       field: "owner_user_id",
     },
+    assignedSellerUserId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      field: "assigned_seller_user_id",
+    },
     name: {
       type: DataTypes.STRING(120),
       allowNull: false,

@@ -48,6 +48,8 @@ export const getAccountProfile = async (req, res, next) => {
         phone: user.phone,
         defaultPlatform: user.defaultPlatform,
         calendarSchedulingUrl: user.calendarSchedulingUrl,
+        role: user.role || "admin",
+        tenantOwnerUserId: user.role === "seller" ? user.tenantOwnerUserId : user.id,
       },
       business: toBusinessProfileDto(business),
     });
@@ -108,6 +110,8 @@ export const patchAccountProfile = async (req, res, next) => {
         phone: user.phone,
         defaultPlatform: user.defaultPlatform,
         calendarSchedulingUrl: user.calendarSchedulingUrl,
+        role: user.role || "admin",
+        tenantOwnerUserId: user.role === "seller" ? user.tenantOwnerUserId : user.id,
       },
       business: toBusinessProfileDto(business),
     });

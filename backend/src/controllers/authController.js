@@ -3,6 +3,7 @@ import { User, ServiceToken } from "../models/index.js";
 import { ApiError } from "../utils/errors.js";
 import { comparePassword, hashPassword, randomToken, sha256, signUserJwt } from "../utils/auth.js";
 import { calendarSchedulingUrlSchema, DEFAULT_CALENDAR_SCHEDULING_URL } from "../utils/calendarUrl.js";
+import { buildUserAuth, resolveTenantOwnerId, toUserSessionDto } from "../utils/tenantAccess.js";
 import { requestPasswordReset, resetPasswordWithCode } from "../services/passwordResetService.js";
 
 const loginSchema = z.object({
@@ -34,9 +35,12 @@ export const register = async (req, res, next) => {
       email,
       name,
       passwordHash: await hashPassword(password),
+      // El registro público siempre crea admin; los vendedores los crea un admin.
+      role: "admin",
+      tenantOwnerUserId: null,
       calendarSchedulingUrl: calendarSchedulingUrl || DEFAULT_CALENDAR_SCHEDULING_URL,
     });
-    return res.status(201).json({ id: user.id, email: user.email, name: user.name });
+    return res.status(201).json({ id: user.id, email: user.email, name: user.name, role: user.role });
   } catch (err) {
     return next(err);
   }
@@ -50,8 +54,17 @@ export const login = async (req, res, next) => {
     if (!user) throw new ApiError(401, "Credenciales incorrectas.");
     const ok = await comparePassword(password, user.passwordHash);
     if (!ok) throw new ApiError(401, "Credenciales incorrectas.");
-    const token = signUserJwt({ sub: user.id, email: user.email, type: "user" });
-    return res.json({ token, user: { id: user.id, email: user.email, name: user.name } });
+    // Vendedores dados de baja (active=false) no pueden iniciar sesión.
+    if (!user.active) throw new ApiError(401, "Credenciales incorrectas.");
+    const session = buildUserAuth(user);
+    const token = signUserJwt({
+      sub: user.id,
+      email: user.email,
+      type: "user",
+      role: session.role,
+      tenantOwnerUserId: session.tenantOwnerUserId,
+    });
+    return res.json({ token, user: toUserSessionDto(user) });
   } catch (err) {
     return next(err);
   }
@@ -63,7 +76,7 @@ export const createServiceToken = async (req, res, next) => {
     const { name } = z.object({ name: z.string().min(2).max(120) }).parse(req.body);
     const raw = randomToken();
     const item = await ServiceToken.create({
-      ownerUserId: req.auth.userId,
+      ownerUserId: resolveTenantOwnerId(req),
       name,
       tokenHash: sha256(raw),
       scopes: ["bot:write"],
@@ -77,7 +90,7 @@ export const createServiceToken = async (req, res, next) => {
 export const revokeServiceToken = async (req, res, next) => {
   try {
     // Revocación lógica: marca `revokedAt` sin borrar histórico.
-    const item = await ServiceToken.findOne({ where: { id: req.params.id, ownerUserId: req.auth.userId } });
+    const item = await ServiceToken.findOne({ where: { id: req.params.id, ownerUserId: resolveTenantOwnerId(req) } });
     if (!item) throw new ApiError(404, "Token not found");
     await item.update({ revokedAt: new Date() });
     return res.json({ ok: true });
@@ -90,7 +103,7 @@ export const listServiceTokens = async (req, res, next) => {
   try {
     // Lista metadatos de tokens del usuario autenticado (sin exponer token plano).
     const rows = await ServiceToken.findAll({
-      where: { ownerUserId: req.auth.userId },
+      where: { ownerUserId: resolveTenantOwnerId(req) },
       attributes: ["id", "name", "scopes", "revokedAt", "lastUsedAt", "createdAt"],
       order: [["createdAt", "DESC"]],
     });

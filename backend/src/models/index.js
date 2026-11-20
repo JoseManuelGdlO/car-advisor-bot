@@ -237,6 +237,14 @@ ChannelConversationContext.belongsTo(ChannelIntegration, {
   onUpdate: "CASCADE",
 });
 
+// Vendedor asignado al lead (sin constraint DB: se valida en app, igual que owner_user_id).
+ClientLead.belongsTo(User, {
+  foreignKey: { name: "assignedSellerUserId", field: "assigned_seller_user_id", allowNull: true },
+  targetKey: "id",
+  as: "assignedSeller",
+  constraints: false,
+});
+
 ClientLead.hasMany(Conversation, {
   foreignKey: { name: "clientLeadId", field: "client_lead_id", allowNull: false },
   sourceKey: "id",

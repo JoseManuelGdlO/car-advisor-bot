@@ -32,10 +32,28 @@ export default function UserModel(sequelize) {
       type: DataTypes.BOOLEAN,
       defaultValue: true,
     },
+    // Nullable: los vendedores no tienen URL propia (el bot lee la del admin).
     calendarSchedulingUrl: {
       type: DataTypes.STRING(500),
-      allowNull: false,
+      allowNull: true,
       field: "calendar_scheduling_url",
+    },
+    role: {
+      type: DataTypes.ENUM("admin", "seller"),
+      allowNull: false,
+      defaultValue: "admin",
+    },
+    // NULL para admin; obligatorio (id del admin) para seller.
+    tenantOwnerUserId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      field: "tenant_owner_user_id",
+    },
+    notifyAssignedLeadMessages: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: true,
+      field: "notify_assigned_lead_messages",
     },
     pushEnabled: {
       type: DataTypes.BOOLEAN,
