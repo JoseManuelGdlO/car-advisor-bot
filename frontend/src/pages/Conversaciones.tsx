@@ -6,7 +6,7 @@ import { Avatar } from "@/components/Avatar";
 import { ChannelIcon } from "@/components/ChannelIcon";
 import { Channel } from "@/data/mockData";
 import { cn } from "@/lib/utils";
-import { normalizePhoneDigits, resolveClientDisplayPhone } from "@/lib/phone";
+import { formatClientPhoneForDisplay, normalizePhoneDigits, resolveClientDisplayPhone } from "@/lib/phone";
 import { formatConversationPreview } from "@/lib/crmEventLabels";
 import { useConversationsQuery } from "@/hooks/useConversationsQuery";
 import { useBotTimezone } from "@/hooks/useBotTimezone";
@@ -184,45 +184,55 @@ export default function Conversaciones() {
         <>
           <ul className="divide-y divide-border">
             {paging.pageItems.map((c) => {
-              const clientPhone = resolveClientDisplayPhone(c.client);
+              const clientPhone = formatClientPhoneForDisplay(resolveClientDisplayPhone(c.client));
               const registeredName = hasRegisteredClientName(c.client?.name) ? String(c.client.name).trim() : null;
-              const primaryLabel =
-                [registeredName, clientPhone].filter(Boolean).join(" · ") ||
-                String(c.client?.name || "").trim() ||
-                "Cliente";
+              const displayName = registeredName || clientPhone || String(c.client?.name || "").trim() || "Cliente";
+              const nameIsPhone = !registeredName && Boolean(clientPhone);
+              const showPhoneUnderName = Boolean(registeredName && clientPhone);
+              const sellerName = (c.client?.assignedSeller?.name as string | undefined)?.trim() || "";
               const avatarName = registeredName || clientPhone || c.client?.name;
 
               return (
-                <li key={c.id} className="flex items-center hover:bg-muted/50 transition-colors">
+                <li key={c.id} className="flex items-start hover:bg-muted/50 transition-colors">
                   <button
                     onClick={() => navigate(`/chat/${c.id}`)}
-                    className={cn("flex-1 min-w-0 flex items-center gap-3 py-3 text-left", isAdmin ? "pl-4 pr-1" : "px-4")}
+                    className={cn("flex-1 min-w-0 flex items-start gap-3 py-3 text-left", isAdmin ? "pl-4 pr-1" : "px-4")}
                   >
-                    <div className="relative">
+                    <div className="relative mt-0.5">
                       <Avatar name={avatarName} color={c.client.avatarColor} />
                       <ChannelIcon channel={c.channel} size={10} className="absolute -bottom-0.5 -right-0.5 ring-2 ring-background" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <p className="font-semibold text-sm truncate">{primaryLabel}</p>
-                            {c.isHumanControlled ? (
-                              <span
-                                className="inline-flex items-center gap-0.5 shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-warning/15 text-warning"
-                                title="Bot pausado · control humano"
-                              >
-                                <Pause className="w-2.5 h-2.5" fill="currentColor" />
-                                Pausada
-                              </span>
-                            ) : null}
-                          </div>
-                        </div>
-                        <span className={cn("text-[10px] shrink-0", c.unread > 0 ? "text-primary font-bold" : "text-muted-foreground")}>
+                        <p
+                          className={cn(
+                            "min-w-0 flex-1 truncate text-sm",
+                            nameIsPhone ? "font-mono font-medium tracking-tight" : "font-semibold",
+                          )}
+                        >
+                          {displayName}
+                        </p>
+                        <span className={cn("text-[10px] shrink-0 pt-0.5 whitespace-nowrap", c.unread > 0 ? "text-primary font-bold" : "text-muted-foreground")}>
                           {formatDateTime(c.lastTime, timeZone)}
                         </span>
                       </div>
-                      <div className="flex items-center justify-between gap-2 mt-0.5">
+                      {showPhoneUnderName || c.isHumanControlled ? (
+                        <div className="mt-0.5 flex min-w-0 items-center gap-2">
+                          {showPhoneUnderName ? (
+                            <p className="min-w-0 truncate font-mono text-xs tracking-tight text-muted-foreground">{clientPhone}</p>
+                          ) : null}
+                          {c.isHumanControlled ? (
+                            <span
+                              className="inline-flex items-center gap-0.5 shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-warning/15 text-warning"
+                              title="Bot pausado · control humano"
+                            >
+                              <Pause className="w-2.5 h-2.5" fill="currentColor" />
+                              Pausada
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      <div className="flex items-center justify-between gap-2 mt-1">
                         <p className={cn("text-xs truncate", c.unread > 0 ? "text-foreground font-medium" : "text-muted-foreground")}>
                           {formatConversationPreview(c.lastMessage, { compactCampaign: true })}
                         </p>
@@ -234,33 +244,46 @@ export default function Conversaciones() {
                       </div>
                     </div>
                   </button>
-                  {isAdmin && c.client?.id ? (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          type="button"
-                          className="mr-1 min-h-11 min-w-11 shrink-0 grid place-items-center rounded-full hover:bg-muted touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          aria-label="Más opciones de la conversación"
-                        >
-                          <MoreVertical className="w-4 h-4 text-muted-foreground" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-52">
-                        <DropdownMenuItem
-                          className="gap-2"
-                          onSelect={() =>
-                            setAssignTarget({
-                              clientId: c.client.id,
-                              clientName: registeredName || clientPhone || "este cliente",
-                              currentSellerId: c.client.assignedSellerUserId ?? null,
-                            })
-                          }
-                        >
-                          <UserCheck className="w-4 h-4" />
-                          Asignar vendedor
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                  {isAdmin ? (
+                    <div className="flex w-[5.5rem] shrink-0 flex-col items-center pt-1 pr-1 pb-2">
+                      {c.client?.id ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              className="min-h-11 min-w-11 shrink-0 grid place-items-center rounded-full hover:bg-muted touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              aria-label="Más opciones de la conversación"
+                            >
+                              <MoreVertical className="w-4 h-4 text-muted-foreground" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-52">
+                            <DropdownMenuItem
+                              className="gap-2"
+                              onSelect={() =>
+                                setAssignTarget({
+                                  clientId: c.client.id,
+                                  clientName: registeredName || clientPhone || "este cliente",
+                                  currentSellerId: c.client.assignedSellerUserId ?? null,
+                                })
+                              }
+                            >
+                              <UserCheck className="w-4 h-4" />
+                              Asignar vendedor
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      ) : (
+                        <span className="h-11 w-11 shrink-0" />
+                      )}
+                      <span
+                        className="mt-0.5 inline-flex max-w-full items-center gap-0.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium leading-tight text-muted-foreground"
+                        title={sellerName || "Sin asignar"}
+                      >
+                        <UserCheck className="w-2.5 h-2.5 shrink-0" />
+                        <span className="truncate">{sellerName || "Sin asignar"}</span>
+                      </span>
+                    </div>
                   ) : null}
                 </li>
               );

@@ -9,7 +9,7 @@ import { ClientStatus } from "@/data/mockData";
 import { useAuth } from "@/context/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 import { crmApi } from "@/services/crm";
-import { resolveClientDisplayPhone } from "@/lib/phone";
+import { formatClientPhoneForDisplay, resolveClientDisplayPhone } from "@/lib/phone";
 import { formatDateTime } from "@/lib/datetime";
 import { useBotTimezone } from "@/hooks/useBotTimezone";
 import { useLongPress } from "@/hooks/useLongPress";
@@ -47,10 +47,10 @@ type ClientRowProps = {
 function ClientRow({ client: c, timeZone, canAssign, onOpen, onAssign }: ClientRowProps) {
   // Long-press (solo admin) abre el sheet "Asignar vendedor"; un toque corto abre la ficha.
   const longPress = useLongPress(onAssign, { enabled: canAssign });
-  const clientPhone = resolveClientDisplayPhone(c);
+  const clientPhone = formatClientPhoneForDisplay(resolveClientDisplayPhone(c));
   const registeredName = hasRegisteredClientName(c.name) ? String(c.name).trim() : null;
-  const primaryLabel =
-    [registeredName, clientPhone].filter(Boolean).join(" · ") || String(c.name || "").trim() || "Cliente";
+  const displayName = registeredName || clientPhone || String(c.name || "").trim() || "Cliente";
+  const showPhoneUnderName = Boolean(registeredName && clientPhone);
   const avatarName = registeredName || clientPhone || c.name;
   const sellerName = c.assignedSeller?.name as string | undefined;
 
@@ -67,9 +67,12 @@ function ClientRow({ client: c, timeZone, canAssign, onOpen, onAssign }: ClientR
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2">
-            <p className="font-semibold text-sm truncate">{primaryLabel}</p>
-            <span className="text-[10px] text-muted-foreground shrink-0">{formatDateTime(c.lastMessageAt, timeZone)}</span>
+            <p className="min-w-0 flex-1 truncate text-sm font-semibold">{displayName}</p>
+            <span className="shrink-0 whitespace-nowrap text-[10px] text-muted-foreground">{formatDateTime(c.lastMessageAt, timeZone)}</span>
           </div>
+          {showPhoneUnderName ? (
+            <p className="truncate font-mono text-xs tracking-tight text-muted-foreground">{clientPhone}</p>
+          ) : null}
           <p className="text-xs text-muted-foreground truncate">{c.interestedIn}</p>
           <div className="mt-1.5 flex items-center gap-2">
             <StatusBadge status={c.status} />

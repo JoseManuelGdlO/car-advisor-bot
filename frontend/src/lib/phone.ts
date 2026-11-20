@@ -30,6 +30,17 @@ export function resolveClientDisplayPhone(client?: { displayPhone?: string | nul
   return String(client?.displayPhone || "").trim();
 }
 
+/** Quita el prefijo legado 521 de WhatsApp MX solo para mostrarlo. */
+export function formatClientPhoneForDisplay(phone: string | undefined | null): string {
+  const raw = String(phone || "").trim();
+  if (!raw) return "";
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === MEXICO_WHATSAPP_MAX_DIGITS && digits.startsWith(MEXICO_WHATSAPP_PREFIX)) {
+    return digits.slice(MEXICO_WHATSAPP_PREFIX.length);
+  }
+  return raw;
+}
+
 export function buildTelHref(phone: string | undefined): string | null {
   if (!phone?.trim()) return null;
   const compact = phone.replace(/\s/g, "");
