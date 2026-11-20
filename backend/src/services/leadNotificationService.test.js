@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ClientLead, Conversation, User } from "../models/index.js";
+import { ChannelConversationContext, ClientLead, Conversation, User } from "../models/index.js";
 import { computeRecipientUserIds, resolveNotificationRecipients } from "./notificationRecipients.js";
 import { leadNotificationDeps, sendPushToLeadRecipients } from "./leadNotificationService.js";
 import { toAccountNotificationPreferencesDto } from "./notificationPreferences.js";
@@ -264,6 +264,120 @@ test("preferencias de notificación: admin lee/edita notifyAssignedLeadMessages;
     });
     assert.equal(sellerOwn.error, undefined);
   } finally {
+    restore();
+  }
+});
+
+// --- Contrato del payload real del bot (`notify_advisor` -> POST /bot/push-notify) ---
+const botPayloadData = (kind, extra = {}) => ({
+  notification_kind: kind,
+  selected_car: "Mazda 3",
+  customer_name: "",
+  customer_phone: "",
+  customer_email: "",
+  financing_selection: "{}",
+  promotion_selection: "{}",
+  ...extra,
+});
+
+const runBotPush = async (data) => {
+  const original = { ...leadNotificationDeps };
+  const sent = [];
+  leadNotificationDeps.sendPushToOwner = async (args) => {
+    sent.push(args.ownerUserId);
+    return { sentCount: 1, failedCount: 0, deactivatedCount: 0 };
+  };
+  try {
+    await sendPushToLeadRecipients({ ownerUserId: adminId, title: "t", body: "b", data });
+    return sent;
+  } finally {
+    Object.assign(leadNotificationDeps, original);
+  }
+};
+
+const assignedLeadStubs = (extra = []) => [
+  [User, "findOne", async () => ({ id: sellerId, active: true })],
+  [User, "findByPk", async () => ({ id: adminId, notifyAssignedLeadMessages: true })],
+  ...extra,
+];
+
+test("contrato bot: lead_interest/human_advisor/financing con conversationId (sin teléfono) notifican vendedor + admin", async () => {
+  const restore = stubAll(
+    assignedLeadStubs([
+      [Conversation, "findOne", async () => ({ id: convId, clientLeadId: leadId })],
+      [ClientLead, "findOne", async () => ({ id: leadId, assignedSellerUserId: sellerId })],
+    ]),
+  );
+  try {
+    for (const kind of ["lead_interest", "human_advisor", "financing_detail_help"]) {
+      const sent = await runBotPush(botPayloadData(kind, { conversationId: convId }));
+      assert.deepEqual(sent, [adminId, sellerId], kind);
+    }
+  } finally {
+    restore();
+  }
+});
+
+test("contrato bot: sin conversationId, channelUserId resuelve el lead por el contexto del canal", async () => {
+  const contextLookups = [];
+  const restore = stubAll(
+    assignedLeadStubs([
+      [
+        ChannelConversationContext,
+        "findOne",
+        async (opts) => {
+          contextLookups.push(opts.where);
+          return { id: "ctx", conversationId: convId, clientLeadId: leadId };
+        },
+      ],
+      [ClientLead, "findOne", async () => ({ id: leadId, assignedSellerUserId: sellerId })],
+    ]),
+  );
+  try {
+    const sent = await runBotPush(botPayloadData("lead_interest", { channelUserId: "5215512345678" }));
+    assert.deepEqual(sent, [adminId, sellerId]);
+    assert.deepEqual(contextLookups[0], { ownerUserId: adminId, externalUserId: "5215512345678" });
+  } finally {
+    restore();
+  }
+});
+
+test("contrato bot: channelUserId sin contexto cae al teléfono del lead (ClientLead.phone)", async () => {
+  const restore = stubAll(
+    assignedLeadStubs([
+      [ChannelConversationContext, "findOne", async () => null],
+      [ClientLead, "findOne", async () => ({ id: leadId, assignedSellerUserId: sellerId })],
+    ]),
+  );
+  try {
+    const sent = await runBotPush(botPayloadData("human_advisor", { channelUserId: "5215512345678" }));
+    assert.deepEqual(sent, [adminId, sellerId]);
+  } finally {
+    restore();
+  }
+});
+
+test("resolveNotificationRecipients: lead no resuelto => solo admin y se registra warn", async () => {
+  const { appLog } = await import("../utils/appLogger.js");
+  const originalWarn = appLog.warn;
+  const warnings = [];
+  appLog.warn = (tag, line) => warnings.push([tag, line]);
+  const restore = stubAll([
+    [ChannelConversationContext, "findOne", async () => null],
+    [ClientLead, "findOne", async () => null],
+  ]);
+  try {
+    const result = await resolveNotificationRecipients({
+      ownerUserId: adminId,
+      kind: "lead_interest",
+      channelUserId: "desconocido",
+    });
+    assert.deepEqual(result.recipientUserIds, [adminId]);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0][1], /lead not resolved/);
+    assert.match(warnings[0][1], /hasChannelUserId=true/);
+  } finally {
+    appLog.warn = originalWarn;
     restore();
   }
 });

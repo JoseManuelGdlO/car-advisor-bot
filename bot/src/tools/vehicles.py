@@ -867,8 +867,12 @@ def notify_advisor(
     push_body: str | None = None,
     notification_kind: str = "lead_interest",
     conversation_id: str | None = None,
+    channel_user_id: str | None = None,
 ) -> bool:
     """Envia push al owner via backend API `/bot/push-notify`.
+
+    `conversation_id` y `channel_user_id` (id externo del canal, p. ej. telefono WhatsApp)
+    permiten al backend ubicar el lead y notificar tambien al vendedor asignado.
 
     Por defecto notifica un lead de vehiculo. Con push_title y push_body se puede
     personalizar el mensaje (p. ej. solicitud de asesor humano).
@@ -910,6 +914,9 @@ def notify_advisor(
     normalized_conversation_id = str(conversation_id or "").strip()
     if normalized_conversation_id:
         payload["data"]["conversationId"] = normalized_conversation_id
+    normalized_channel_user_id = str(channel_user_id or "").strip()
+    if normalized_channel_user_id:
+        payload["data"]["channelUserId"] = normalized_channel_user_id
     headers = {
         **_vehicles_api_headers(),
         "Content-Type": "application/json",

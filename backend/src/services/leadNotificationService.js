@@ -17,6 +17,7 @@ export const sendPushToLeadRecipients = async ({
   lead = null,
   leadId,
   conversationId,
+  channelUserId,
   customerPhone,
   title,
   body,
@@ -31,6 +32,7 @@ export const sendPushToLeadRecipients = async ({
       lead,
       leadId,
       conversationId: conversationId ?? data?.conversationId ?? data?.conversation_id,
+      channelUserId: channelUserId ?? data?.channelUserId ?? data?.channel_user_id,
       customerPhone: customerPhone ?? data?.customer_phone,
     });
     recipientUserIds = resolved.recipientUserIds;
