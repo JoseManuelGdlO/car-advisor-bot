@@ -6,7 +6,10 @@ export type AccountUserDto = {
   name: string;
   phone: string | null;
   defaultPlatform: string | null;
-  calendarSchedulingUrl: string;
+  /** null para vendedores (el calendario es del admin). */
+  calendarSchedulingUrl: string | null;
+  role?: "admin" | "seller";
+  tenantOwnerUserId?: string | null;
 };
 
 export type BusinessProfileDto = {
@@ -26,7 +29,9 @@ export type BusinessProfileDto = {
 
 export type AccountProfileResponse = {
   user: AccountUserDto;
+  /** null para vendedores. */
   business: BusinessProfileDto | null;
+  tenant?: { timezone: string | null };
 };
 
 export type NotificationPreferencesDto = {
@@ -34,12 +39,28 @@ export type NotificationPreferencesDto = {
   notifyLeadInterest: boolean;
   notifyEscalations: boolean;
   notifyInboundMessages: boolean;
+  /** Solo admin: recibir mensajes de leads ya asignados a un vendedor. */
+  notifyAssignedLeadMessages?: boolean;
 };
 
 export const accountApi = {
   getProfile: (token: string, options?: ApiRequestOptions) =>
     apiRequest<AccountProfileResponse>("/account/profile", "GET", undefined, token, options),
-  patchProfile: (token: string, body: { user?: Partial<Pick<AccountUserDto, "name" | "phone" | "defaultPlatform" | "calendarSchedulingUrl">>; business?: Partial<BusinessProfileDto> }) =>
+  patchProfile: (
+    token: string,
+    body: {
+      user?: {
+        name?: string;
+        phone?: string | null;
+        email?: string;
+        password?: string;
+        currentPassword?: string;
+        defaultPlatform?: string | null;
+        calendarSchedulingUrl?: string;
+      };
+      business?: Partial<BusinessProfileDto>;
+    },
+  ) =>
     apiRequest<AccountProfileResponse>("/account/profile", "PATCH", body, token),
   getNotificationPreferences: (token: string) =>
     apiRequest<NotificationPreferencesDto>("/account/notification-preferences", "GET", undefined, token),

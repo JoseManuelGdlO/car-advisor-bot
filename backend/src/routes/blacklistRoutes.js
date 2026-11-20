@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireUserAuth } from "../middlewares/auth.js";
+import { requireAdmin, requireUserAuth } from "../middlewares/auth.js";
 import {
   createBlacklistEntry,
   deleteBlacklistEntry,
@@ -8,6 +8,6 @@ import {
 
 export const blacklistRoutes = Router();
 
-blacklistRoutes.get("/blacklist", requireUserAuth, listBlacklist);
-blacklistRoutes.post("/blacklist", requireUserAuth, createBlacklistEntry);
-blacklistRoutes.delete("/blacklist/:id", requireUserAuth, deleteBlacklistEntry);
+blacklistRoutes.get("/blacklist", requireUserAuth, requireAdmin, listBlacklist);
+blacklistRoutes.post("/blacklist", requireUserAuth, requireAdmin, createBlacklistEntry);
+blacklistRoutes.delete("/blacklist/:id", requireUserAuth, requireAdmin, deleteBlacklistEntry);

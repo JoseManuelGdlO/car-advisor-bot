@@ -221,7 +221,7 @@ export const normalizeBotSettingsPayload = (payload) => {
 
 export const toBotSettingsDto = (row) => ({
   isEnabled: Boolean(row?.isEnabled ?? true),
-  timezone: validateTimezone(row?.timezone || "America/Bogota"),
+  timezone: validateTimezone(row?.timezone || "America/Mexico_City"),
   weeklySchedule: normalizeWeeklySchedule(row?.weeklySchedule),
   tone: BOT_TONES.includes(row?.tone) ? row.tone : "cercano",
   emojiStyle: BOT_EMOJI_STYLES.includes(row?.emojiStyle) ? row.emojiStyle : "pocos",
@@ -267,7 +267,7 @@ const getNowParts = (timezone, date = new Date()) => {
 
 export const isWithinBotSchedule = (settings, date = new Date()) => {
   if (!settings?.isEnabled) return false;
-  const timezone = settings.timezone || "America/Bogota";
+  const timezone = settings.timezone || "America/Mexico_City";
   const weeklySchedule = normalizeWeeklySchedule(settings.weeklySchedule);
   const { weekdayRaw, minutes } = getNowParts(timezone, date);
   const day = SCHEDULE_DAYS.includes(weekdayRaw) ? weekdayRaw : Object.keys(DAY_INDEX_BY_NAME).find((key) => key === weekdayRaw) || "monday";

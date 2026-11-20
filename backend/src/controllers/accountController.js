@@ -1,9 +1,11 @@
 import { z } from "zod";
-import { BusinessProfile, User } from "../models/index.js";
+import { BotSetting, BusinessProfile, User } from "../models/index.js";
 import { ApiError } from "../utils/errors.js";
 import { toBusinessProfileDto } from "../utils/businessProfile.js";
 import { calendarSchedulingUrlSchema } from "../utils/calendarUrl.js";
-import { toNotificationPreferencesDto } from "../services/notificationPreferences.js";
+import { toAccountNotificationPreferencesDto } from "../services/notificationPreferences.js";
+import { comparePassword, hashPassword } from "../utils/auth.js";
+import { assertAdmin, isAdminAuth, isSellerAuth, toUserSessionDto } from "../utils/tenantAccess.js";
 
 const businessPatchSchema = z
   .object({
@@ -26,30 +28,45 @@ const userPatchSchema = z
   .object({
     name: z.string().min(2).max(120).optional(),
     phone: z.string().max(32).optional().nullable(),
+    email: z.string().trim().email().max(190).optional(),
+    password: z.string().min(6).max(200).optional(),
+    currentPassword: z.string().min(1).max(200).optional(),
     defaultPlatform: z.enum(["whatsapp", "facebook", "telegram", "web", "api", "instagram"]).optional().nullable(),
     calendarSchedulingUrl: calendarSchedulingUrlSchema.optional(),
   })
   .strict();
+
+// Zona horaria del tenant (bot settings del admin): los vendedores la necesitan para mostrar horas.
+const loadTenantDto = async (tenantOwnerUserId) => {
+  const row = await BotSetting.findOne({ where: { ownerUserId: tenantOwnerUserId }, attributes: ["timezone"] });
+  return { timezone: row?.timezone || null };
+};
+
+const toProfileUserDto = (user) => ({
+  ...toUserSessionDto(user),
+  phone: user.phone,
+  defaultPlatform: user.defaultPlatform,
+  calendarSchedulingUrl: user.calendarSchedulingUrl,
+});
 
 export const getAccountProfile = async (req, res, next) => {
   try {
     // Obtiene perfil de usuario + business profile (creándolo si no existe).
     const user = await User.findByPk(req.auth.userId);
     if (!user) throw new ApiError(404, "User not found");
+    // Vendedor: solo cuenta personal; el perfil de negocio/calendario es del tenant (admin).
+    const tenant = await loadTenantDto(req.auth.tenantOwnerUserId || user.id);
+    if (isSellerAuth(req.auth)) {
+      return res.json({ user: toProfileUserDto(user), business: null, tenant });
+    }
     const [business] = await BusinessProfile.findOrCreate({
       where: { ownerUserId: user.id },
       defaults: { ownerUserId: user.id },
     });
     return res.json({
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        phone: user.phone,
-        defaultPlatform: user.defaultPlatform,
-        calendarSchedulingUrl: user.calendarSchedulingUrl,
-      },
+      user: toProfileUserDto(user),
       business: toBusinessProfileDto(business),
+      tenant,
     });
   } catch (err) {
     return next(err);
@@ -66,14 +83,46 @@ export const patchAccountProfile = async (req, res, next) => {
     const businessPatch = businessPatchSchema.safeParse(req.body?.business || {});
     if (!businessPatch.success) throw businessPatch.error;
 
+    if (isSellerAuth(req.auth)) {
+      const touchesTenantData =
+        userPatch.data.calendarSchedulingUrl !== undefined || Object.keys(businessPatch.data).length > 0;
+      if (touchesTenantData) {
+        throw new ApiError(403, "Solo el administrador puede editar el negocio o el calendario.");
+      }
+    }
+
     const u = userPatch.data;
+    const nextEmail = u.email?.trim();
+    const emailChanged = nextEmail !== undefined && nextEmail !== user.email;
+    const passwordChange = u.password !== undefined;
+    if (emailChanged || passwordChange) {
+      // 400, no 401: un 401 con Bearer cierra la sesión en el cliente.
+      if (!u.currentPassword) {
+        throw new ApiError(400, "Escribe tu contraseña actual para cambiar el correo o la contraseña.");
+      }
+      const passwordOk = await comparePassword(u.currentPassword, user.passwordHash || "");
+      if (!passwordOk) throw new ApiError(400, "La contraseña actual no es correcta.");
+    }
+    if (emailChanged) {
+      const existing = await User.findOne({ where: { email: nextEmail } });
+      if (existing && existing.id !== user.id) {
+        throw new ApiError(409, "Ya existe una cuenta con este correo.");
+      }
+    }
     if (Object.keys(u).length) {
       await user.update({
         ...(u.name !== undefined ? { name: u.name } : {}),
         ...(u.phone !== undefined ? { phone: u.phone || null } : {}),
+        ...(emailChanged ? { email: nextEmail } : {}),
+        ...(passwordChange ? { passwordHash: await hashPassword(u.password) } : {}),
         ...(u.defaultPlatform !== undefined ? { defaultPlatform: u.defaultPlatform || null } : {}),
         ...(u.calendarSchedulingUrl !== undefined ? { calendarSchedulingUrl: u.calendarSchedulingUrl } : {}),
       });
+    }
+
+    if (isSellerAuth(req.auth)) {
+      await user.reload();
+      return res.json({ user: toProfileUserDto(user), business: null });
     }
 
     const [business] = await BusinessProfile.findOrCreate({
@@ -101,14 +150,7 @@ export const patchAccountProfile = async (req, res, next) => {
     await user.reload();
     await business.reload();
     return res.json({
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        phone: user.phone,
-        defaultPlatform: user.defaultPlatform,
-        calendarSchedulingUrl: user.calendarSchedulingUrl,
-      },
+      user: toProfileUserDto(user),
       business: toBusinessProfileDto(business),
     });
   } catch (err) {
@@ -122,16 +164,25 @@ const notificationPreferencesPatchSchema = z
     notifyLeadInterest: z.boolean().optional(),
     notifyEscalations: z.boolean().optional(),
     notifyInboundMessages: z.boolean().optional(),
+    // Solo admin: recibir mensajes inbound de leads ya asignados a un vendedor.
+    notifyAssignedLeadMessages: z.boolean().optional(),
   })
   .strict();
 
+const NOTIFICATION_PREFERENCE_ATTRIBUTES = [
+  "id",
+  "pushEnabled",
+  "notifyLeadInterest",
+  "notifyEscalations",
+  "notifyInboundMessages",
+  "notifyAssignedLeadMessages",
+];
+
 export const getNotificationPreferences = async (req, res, next) => {
   try {
-    const user = await User.findByPk(req.auth.userId, {
-      attributes: ["id", "pushEnabled", "notifyLeadInterest", "notifyEscalations", "notifyInboundMessages"],
-    });
+    const user = await User.findByPk(req.auth.userId, { attributes: NOTIFICATION_PREFERENCE_ATTRIBUTES });
     if (!user) throw new ApiError(404, "User not found");
-    return res.json(toNotificationPreferencesDto(user));
+    return res.json(toAccountNotificationPreferencesDto(user, { isAdmin: isAdminAuth(req.auth) }));
   } catch (err) {
     return next(err);
   }
@@ -146,19 +197,23 @@ export const patchNotificationPreferences = async (req, res, next) => {
     if (!parsed.success) throw parsed.error;
 
     const patch = parsed.data;
+    if (patch.notifyAssignedLeadMessages !== undefined && !isAdminAuth(req.auth)) {
+      throw new ApiError(403, "Solo el administrador puede cambiar esta preferencia.");
+    }
     if (Object.keys(patch).length) {
       await user.update({
         ...(patch.pushEnabled !== undefined ? { pushEnabled: patch.pushEnabled } : {}),
         ...(patch.notifyLeadInterest !== undefined ? { notifyLeadInterest: patch.notifyLeadInterest } : {}),
         ...(patch.notifyEscalations !== undefined ? { notifyEscalations: patch.notifyEscalations } : {}),
         ...(patch.notifyInboundMessages !== undefined ? { notifyInboundMessages: patch.notifyInboundMessages } : {}),
+        ...(patch.notifyAssignedLeadMessages !== undefined
+          ? { notifyAssignedLeadMessages: patch.notifyAssignedLeadMessages }
+          : {}),
       });
     }
 
-    await user.reload({
-      attributes: ["id", "pushEnabled", "notifyLeadInterest", "notifyEscalations", "notifyInboundMessages"],
-    });
-    return res.json(toNotificationPreferencesDto(user));
+    await user.reload({ attributes: NOTIFICATION_PREFERENCE_ATTRIBUTES });
+    return res.json(toAccountNotificationPreferencesDto(user, { isAdmin: isAdminAuth(req.auth) }));
   } catch (err) {
     return next(err);
   }
@@ -173,6 +228,8 @@ const deleteAccountSchema = z
 export const deleteAccount = async (req, res, next) => {
   try {
     // Eliminación de cuenta con confirmación explícita para prevenir borrados accidentales.
+    // Solo el admin puede eliminar el tenant (los vendedores se dan de baja desde /api/sellers).
+    assertAdmin(req.auth);
     const { confirmText } = deleteAccountSchema.parse(req.body || {});
     if (confirmText.toUpperCase() !== "ELIMINAR") {
       throw new ApiError(400, "Debes escribir ELIMINAR para confirmar.");
@@ -181,6 +238,8 @@ export const deleteAccount = async (req, res, next) => {
     const user = await User.findByPk(req.auth.userId);
     if (!user) throw new ApiError(404, "User not found");
 
+    // Los vendedores dependen del tenant: se eliminan junto con el admin.
+    await User.destroy({ where: { tenantOwnerUserId: user.id, role: "seller" } });
     await user.destroy();
     return res.status(204).send();
   } catch (err) {

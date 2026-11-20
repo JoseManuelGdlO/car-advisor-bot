@@ -5,6 +5,7 @@ import { env } from "../config/env.js";
 import { ChannelConversationContext, ClientLead, Conversation } from "../models/index.js";
 import { setBotSessionDisabled } from "../services/botEngineClient.js";
 import { releaseBotControlForExternalUser, clearLeadCommercialAssociationsForExternalUser, upsertConversationEvent } from "../services/conversationService.js";
+import { maybeAutoAssignLead } from "../services/sellerLeadAssignment.js";
 import { appLog } from "../utils/appLogger.js";
 import { resolveRequestOwner } from "../utils/resolveRequestOwner.js";
 
@@ -199,6 +200,10 @@ export const botSetConversationControl = async (req, res) => {
     handoffAt: isHumanControlled ? new Date() : null,
     handoffByUserId: isHumanControlled ? req.auth.userId : null,
   });
+
+  if (isHumanControlled && conv.client) {
+    await maybeAutoAssignLead(conv.client, { ownerUserId });
+  }
 
   const context = await ChannelConversationContext.findOne({
     where: { ownerUserId, conversationId: conv.id },

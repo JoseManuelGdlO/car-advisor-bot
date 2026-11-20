@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Phone, MoreVertical, Send, Bot, Smile, Paperclip, User, Copy } from "lucide-react";
+import { ArrowLeft, Phone, MoreVertical, Send, Bot, Smile, Paperclip, User, Copy, UserCheck } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
 import { ChannelIcon } from "@/components/ChannelIcon";
 import type { Channel } from "@/data/mockData";
@@ -23,6 +23,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { AssignSellerSheet, type AssignSellerTarget } from "@/components/AssignSellerSheet";
 
 const QUICK_EMOJIS = ["😀", "👍", "🙏", "✅", "🚗", "💰", "📍", "⏰"];
 
@@ -33,6 +34,8 @@ type ChatClient = {
   displayPhone?: string | null;
   avatarColor?: string;
   interestedIn?: string;
+  assignedSellerUserId?: string | null;
+  assignedSeller?: { id: string; name: string } | null;
 };
 
 type ConversationWithClient = {
@@ -81,9 +84,10 @@ function normalizeConversationChannel(value: string): Channel {
 export default function ChatDetalle() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { token } = useAuth();
+  const { token, isAdmin } = useAuth();
   const queryClient = useQueryClient();
   const timeZone = useBotTimezone();
+  const [assignTarget, setAssignTarget] = useState<AssignSellerTarget | null>(null);
   const { data: conversations } = useConversationsQuery();
   const conv = (conversations as ConversationWithClient[] | undefined)?.find((c) => c.id === id);
   const { data: messages } = useConversationMessagesQuery(id);
@@ -292,8 +296,24 @@ export default function ChatDetalle() {
               <Copy className="w-4 h-4" />
               Copiar teléfono
             </DropdownMenuItem>
+            {isAdmin ? (
+              <DropdownMenuItem
+                className="gap-2"
+                onSelect={() =>
+                  setAssignTarget({
+                    clientId: client.id,
+                    clientName: client.name,
+                    currentSellerId: client.assignedSellerUserId ?? null,
+                  })
+                }
+              >
+                <UserCheck className="w-4 h-4" />
+                Asignar vendedor
+              </DropdownMenuItem>
+            ) : null}
           </DropdownMenuContent>
         </DropdownMenu>
+        <AssignSellerSheet target={assignTarget} onOpenChange={(open) => !open && setAssignTarget(null)} />
       </header>
 
       {/* Bot-active banner */}

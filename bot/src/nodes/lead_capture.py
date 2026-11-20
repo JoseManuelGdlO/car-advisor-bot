@@ -202,6 +202,8 @@ def _notify_and_persist(
             owner_user_id=owner_user_id,
             financing_selection=financing_selection or None,
             promotion_selection=promotion_selection or None,
+            conversation_id=str(state.get("conversation_id") or "").strip() or None,
+            channel_user_id=str(user_id or "").strip() or None,
             push_title=_push_title_for_contact_method(resolved_method),
             push_body=_push_body_for_contact_method(
                 resolved_method,

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireUserAuth } from "../middlewares/auth.js";
+import { requireAdmin, requireUserAuth } from "../middlewares/auth.js";
 import {
   deleteAccount,
   getAccountProfile,
@@ -36,34 +36,37 @@ accountRoutes.get("/account/profile", requireUserAuth, getAccountProfile);
 accountRoutes.patch("/account/profile", requireUserAuth, patchAccountProfile);
 accountRoutes.get("/account/notification-preferences", requireUserAuth, getNotificationPreferences);
 accountRoutes.patch("/account/notification-preferences", requireUserAuth, patchNotificationPreferences);
-accountRoutes.delete("/account", requireUserAuth, deleteAccount);
+accountRoutes.delete("/account", requireUserAuth, requireAdmin, deleteAccount);
 
-accountRoutes.get("/integrations", requireUserAuth, listIntegrations);
-accountRoutes.post("/integrations", requireUserAuth, createIntegration);
-accountRoutes.patch("/integrations/:id", requireUserAuth, patchIntegration);
-accountRoutes.delete("/integrations/:id", requireUserAuth, deleteIntegration);
-accountRoutes.post("/integrations/:id/credentials", requireUserAuth, postIntegrationCredentials);
-accountRoutes.post("/integrations/:id/test", requireUserAuth, postIntegrationTest);
+accountRoutes.get("/integrations", requireUserAuth, requireAdmin, listIntegrations);
+accountRoutes.post("/integrations", requireUserAuth, requireAdmin, createIntegration);
+accountRoutes.patch("/integrations/:id", requireUserAuth, requireAdmin, patchIntegration);
+accountRoutes.delete("/integrations/:id", requireUserAuth, requireAdmin, deleteIntegration);
+accountRoutes.post("/integrations/:id/credentials", requireUserAuth, requireAdmin, postIntegrationCredentials);
+accountRoutes.post("/integrations/:id/test", requireUserAuth, requireAdmin, postIntegrationTest);
 
-accountRoutes.get("/integrations/whatsapp/meta/config", requireUserAuth, getMetaSignupConfig);
-accountRoutes.post("/integrations/whatsapp/meta/signup-ticket", requireUserAuth, postMetaSignupTicket);
-accountRoutes.get("/integrations/whatsapp/meta/signup-ticket", requireUserAuth, getMetaSignupTicket);
-accountRoutes.post("/integrations/whatsapp/meta/signup", requireUserAuth, postMetaEmbeddedSignup);
-accountRoutes.post("/integrations/whatsapp/meta/disconnect", requireUserAuth, postMetaDisconnect);
+accountRoutes.get("/integrations/whatsapp/meta/config", requireUserAuth, requireAdmin, getMetaSignupConfig);
+accountRoutes.post("/integrations/whatsapp/meta/signup-ticket", requireUserAuth, requireAdmin, postMetaSignupTicket);
+accountRoutes.get("/integrations/whatsapp/meta/signup-ticket", requireUserAuth, requireAdmin, getMetaSignupTicket);
+accountRoutes.post("/integrations/whatsapp/meta/signup", requireUserAuth, requireAdmin, postMetaEmbeddedSignup);
+accountRoutes.post("/integrations/whatsapp/meta/disconnect", requireUserAuth, requireAdmin, postMetaDisconnect);
 accountRoutes.get(
   "/integrations/whatsapp/meta/templates/followup",
   requireUserAuth,
+  requireAdmin,
   getFollowupTemplateHandler
 );
 accountRoutes.post(
   "/integrations/whatsapp/meta/templates/followup",
   requireUserAuth,
+  requireAdmin,
   postFollowupTemplateHandler
 );
 accountRoutes.put(
   "/integrations/whatsapp/meta/templates/followup",
   requireUserAuth,
+  requireAdmin,
   putFollowupTemplateHandler
 );
-accountRoutes.get("/internal/whatsapp/meta/status", requireUserAuth, getWhatsappMetaStatus);
-accountRoutes.post("/internal/whatsapp/send-test", requireUserAuth, postMetaWhatsappSendTest);
+accountRoutes.get("/internal/whatsapp/meta/status", requireUserAuth, requireAdmin, getWhatsappMetaStatus);
+accountRoutes.post("/internal/whatsapp/send-test", requireUserAuth, requireAdmin, postMetaWhatsappSendTest);

@@ -3,7 +3,7 @@ import { normalizeWeeklySchedule } from "../utils/botSettings.js";
 
 export const DEFAULT_BOT_SETTINGS = {
   isEnabled: true,
-  timezone: "America/Bogota",
+  timezone: "America/Mexico_City",
   tone: "cercano",
   emojiStyle: "pocos",
   salesProactivity: "medio",

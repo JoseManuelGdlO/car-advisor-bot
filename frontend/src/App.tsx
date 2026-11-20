@@ -30,6 +30,8 @@ import EliminarDatos from "./pages/EliminarDatos.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import { AuthProvider } from "@/context/AuthContext";
 import { RequireAuth } from "@/components/RequireAuth";
+import { RequireAdmin } from "@/components/RequireAdmin";
+import Vendedores from "./pages/Vendedores.tsx";
 import { GuestOnly } from "@/components/GuestOnly";
 import { PushBridge } from "@/mobile/PushBridge";
 import { DelayedQueryLoadingOverlay } from "@/components/DelayedQueryLoadingOverlay";
@@ -68,8 +70,9 @@ const App = () => (
                 <Route path="/config" element={<Configuracion />} />
               </Route>
               <Route path="/config/faqs" element={<RequireAuth><ConfigFaqs /></RequireAuth>} />
-              <Route path="/config/bot" element={<RequireAuth><ConfigBot /></RequireAuth>} />
-              <Route path="/config/comportamiento-bot" element={<RequireAuth><ConfigComportamientoBot /></RequireAuth>} />
+              <Route path="/config/bot" element={<RequireAuth><RequireAdmin><ConfigBot /></RequireAdmin></RequireAuth>} />
+              <Route path="/config/comportamiento-bot" element={<RequireAuth><RequireAdmin><ConfigComportamientoBot /></RequireAdmin></RequireAuth>} />
+              <Route path="/vendedores" element={<RequireAuth><RequireAdmin><Vendedores /></RequireAdmin></RequireAuth>} />
               <Route path="/vehiculos" element={<RequireAuth><Vehiculos /></RequireAuth>} />
               <Route path="/vehiculos/productos" element={<RequireAuth><ConfigProductos /></RequireAuth>} />
               <Route path="/vehiculos/financiamiento" element={<RequireAuth><ConfigFinanciamiento /></RequireAuth>} />
@@ -77,7 +80,7 @@ const App = () => (
               <Route path="/config/productos" element={<RequireAuth><Navigate to="/vehiculos/productos" replace /></RequireAuth>} />
               <Route path="/config/financiamiento" element={<RequireAuth><Navigate to="/vehiculos/financiamiento" replace /></RequireAuth>} />
               <Route path="/config/promociones" element={<RequireAuth><Navigate to="/vehiculos/promociones" replace /></RequireAuth>} />
-              <Route path="/perfil/integraciones" element={<RequireAuth><Integraciones /></RequireAuth>} />
+              <Route path="/perfil/integraciones" element={<RequireAuth><RequireAdmin><Integraciones /></RequireAdmin></RequireAuth>} />
               <Route path="/perfil/notificaciones" element={<RequireAuth><ConfigNotificaciones /></RequireAuth>} />
               <Route path="*" element={<NotFound />} />
             </Routes>

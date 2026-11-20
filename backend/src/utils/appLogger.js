@@ -29,6 +29,16 @@ export const appLog = {
   },
 
   /**
+   * Advertencias que deben verse en producción (no se emiten bajo `NODE_ENV=test`).
+   * @param {string} tag
+   * @param {string} line
+   */
+  warn(tag, line) {
+    if (quietTest) return;
+    console.warn(`[${tag}] ${line}`);
+  },
+
+  /**
    * Emite solo si `LOG_LEVEL=debug`. Campos como `conversationId`, `user_id`, etc.
    * @param {string} tag
    * @param {Record<string, unknown>} fields

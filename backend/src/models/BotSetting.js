@@ -22,7 +22,7 @@ export default function BotSettingModel(sequelize) {
     timezone: {
       type: DataTypes.STRING(120),
       allowNull: false,
-      defaultValue: "America/Bogota",
+      defaultValue: "America/Mexico_City",
     },
     weeklySchedule: {
       type: DataTypes.JSON,

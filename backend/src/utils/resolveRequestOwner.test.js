@@ -70,3 +70,12 @@ test("resolveRequestOwner accepts query owner for platform service", () => {
   };
   assert.equal(resolveRequestOwner(req, { queryField: "ownerUserId" }), ownerB);
 });
+
+test("resolveRequestOwner devuelve el tenant del admin cuando el JWT es de un seller", () => {
+  const req = {
+    auth: { type: "user", userId: ownerB, role: "seller", tenantOwnerUserId: ownerA },
+    body: {},
+    query: {},
+  };
+  assert.equal(resolveRequestOwner(req, { queryField: "ownerUserId" }), ownerA);
+});

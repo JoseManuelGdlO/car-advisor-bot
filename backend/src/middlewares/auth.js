@@ -2,6 +2,7 @@ import { verifyJwt } from "../utils/auth.js";
 import { ApiError } from "../utils/errors.js";
 import { User } from "../models/index.js";
 import { resolveServiceAuth } from "../utils/serviceTokenAuth.js";
+import { buildUserAuth, isAdminAuth } from "../utils/tenantAccess.js";
 
 // Extrae token Authorization: Bearer <token>.
 const getBearer = (header = "") => header.replace(/^Bearer\s+/i, "").trim();
@@ -16,7 +17,7 @@ export const requireUserAuth = async (req, _res, next) => {
     const user = await User.findByPk(payload.sub);
     if (!user || !user.active) throw new ApiError(401, "Invalid user");
     // 3) inyecta contexto auth para capas posteriores.
-    req.auth = { type: "user", userId: user.id, email: user.email };
+    req.auth = buildUserAuth(user);
     return next();
   } catch (_err) {
     return next(new ApiError(401, "Unauthorized"));
@@ -49,7 +50,7 @@ export const requireUserOrServiceAuth = async (req, res, next) => {
     const payload = verifyJwt(token);
     const user = await User.findByPk(payload.sub);
     if (user && user.active) {
-      req.auth = { type: "user", userId: user.id, email: user.email };
+      req.auth = buildUserAuth(user);
       return next();
     }
   } catch (_err) {
@@ -65,4 +66,18 @@ export const requireUserOrServiceAuth = async (req, res, next) => {
     if (err instanceof ApiError) return next(err);
     return next(new ApiError(401, "Unauthorized"));
   }
+};
+
+// Gate: solo admin del tenant (los vendedores reciben 403). Debe ir después de requireUserAuth.
+export const requireAdmin = (req, _res, next) => {
+  if (!isAdminAuth(req.auth)) {
+    return next(new ApiError(403, "Solo el administrador puede realizar esta acción."));
+  }
+  return next();
+};
+
+// Gate para rutas compartidas con el bot: admin de usuario o cualquier service token.
+export const requireAdminOrService = (req, _res, next) => {
+  if (req.auth?.type === "service" || isAdminAuth(req.auth)) return next();
+  return next(new ApiError(403, "Solo el administrador puede realizar esta acción."));
 };

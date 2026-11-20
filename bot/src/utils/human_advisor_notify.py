@@ -162,6 +162,8 @@ def handle_human_advisor_request(
                     push_title=push_title,
                     push_body=push_body,
                     notification_kind="human_advisor",
+                    conversation_id=str(state.get("conversation_id") or "").strip() or None,
+                    channel_user_id=user_id if user_id != "lead" else None,
                 )
             )
         except Exception:

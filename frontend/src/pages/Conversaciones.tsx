@@ -1,17 +1,28 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Filter, Pause } from "lucide-react";
+import { Filter, MoreVertical, Pause, UserCheck } from "lucide-react";
 import { ListToolbar } from "@/components/ListToolbar";
 import { Avatar } from "@/components/Avatar";
 import { ChannelIcon } from "@/components/ChannelIcon";
 import { Channel } from "@/data/mockData";
 import { cn } from "@/lib/utils";
-import { normalizePhoneDigits, resolveClientDisplayPhone } from "@/lib/phone";
+import { formatClientPhoneForDisplay, normalizePhoneDigits, resolveClientDisplayPhone } from "@/lib/phone";
 import { formatConversationPreview } from "@/lib/crmEventLabels";
 import { useConversationsQuery } from "@/hooks/useConversationsQuery";
 import { useBotTimezone } from "@/hooks/useBotTimezone";
 import { formatDateTime, getZonedDayDifference } from "@/lib/datetime";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useAuth } from "@/context/AuthContext";
+import { AssignSellerSheet, type AssignSellerTarget } from "@/components/AssignSellerSheet";
+import { ListPagination } from "@/components/ListPagination";
+import { ListRowSkeleton } from "@/components/ListRowSkeleton";
+import { usePagedItems } from "@/hooks/usePagedItems";
 
 const channelFilters: { key: "all" | Channel; label: string }[] = [
   { key: "all", label: "Todos" },
@@ -94,8 +105,10 @@ const hasRegisteredClientName = (name?: string) => {
 
 export default function Conversaciones() {
   const navigate = useNavigate();
+  const { isAdmin } = useAuth();
   const timeZone = useBotTimezone();
-  const { data } = useConversationsQuery();
+  const { data, isLoading } = useConversationsQuery();
+  const [assignTarget, setAssignTarget] = useState<AssignSellerTarget | null>(null);
   const conversations = (data || []) as any[];
   const [filter, setFilter] = useState<"all" | Channel>("all");
   const [q, setQ] = useState("");
@@ -125,6 +138,8 @@ export default function Conversaciones() {
       return sortOrder === "asc" ? diff : -diff;
     });
   }, [conversations, filter, controlFilter, sortOrder, dateFilter, q, timeZone]);
+
+  const paging = usePagedItems(list, `${filter}|${q}|${controlFilter}|${sortOrder}|${dateFilter}`);
 
   const clearExtraFilters = () => {
     // setReadFilter("all");
@@ -160,65 +175,135 @@ export default function Conversaciones() {
         }
       />
 
-      <ul className="divide-y divide-border">
-        {list.map((c) => {
-          const clientPhone = resolveClientDisplayPhone(c.client);
-          const registeredName = hasRegisteredClientName(c.client?.name) ? String(c.client.name).trim() : null;
-          const primaryLabel =
-            [registeredName, clientPhone].filter(Boolean).join(" · ") ||
-            String(c.client?.name || "").trim() ||
-            "Cliente";
-          const avatarName = registeredName || clientPhone || c.client?.name;
+      {isLoading ? (
+        <div aria-busy="true" aria-live="polite">
+          <span className="sr-only">Cargando conversaciones</span>
+          <ListRowSkeleton />
+        </div>
+      ) : (
+        <>
+          <ul className="divide-y divide-border">
+            {paging.pageItems.map((c) => {
+              const clientPhone = formatClientPhoneForDisplay(resolveClientDisplayPhone(c.client));
+              const registeredName = hasRegisteredClientName(c.client?.name) ? String(c.client.name).trim() : null;
+              const displayName = registeredName || clientPhone || String(c.client?.name || "").trim() || "Cliente";
+              const nameIsPhone = !registeredName && Boolean(clientPhone);
+              const showPhoneUnderName = Boolean(registeredName && clientPhone);
+              const sellerName = (c.client?.assignedSeller?.name as string | undefined)?.trim() || "";
+              const avatarName = registeredName || clientPhone || c.client?.name;
 
-          return (
-            <li key={c.id}>
-              <button
-                onClick={() => navigate(`/chat/${c.id}`)}
-                className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/50 transition-colors"
-              >
-                <div className="relative">
-                  <Avatar name={avatarName} color={c.client.avatarColor} />
-                  <ChannelIcon channel={c.channel} size={10} className="absolute -bottom-0.5 -right-0.5 ring-2 ring-background" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <p className="font-semibold text-sm truncate">{primaryLabel}</p>
-                        {c.isHumanControlled ? (
-                          <span
-                            className="inline-flex items-center gap-0.5 shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-warning/15 text-warning"
-                            title="Bot pausado · control humano"
-                          >
-                            <Pause className="w-2.5 h-2.5" fill="currentColor" />
-                            Pausada
+              return (
+                <li key={c.id} className="flex items-start hover:bg-muted/50 transition-colors">
+                  <button
+                    onClick={() => navigate(`/chat/${c.id}`)}
+                    className={cn("flex-1 min-w-0 flex items-start gap-3 py-3 text-left", isAdmin ? "pl-4 pr-1" : "px-4")}
+                  >
+                    <div className="relative mt-0.5">
+                      <Avatar name={avatarName} color={c.client.avatarColor} />
+                      <ChannelIcon channel={c.channel} size={10} className="absolute -bottom-0.5 -right-0.5 ring-2 ring-background" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <p
+                          className={cn(
+                            "min-w-0 flex-1 truncate text-sm",
+                            nameIsPhone ? "font-mono font-medium tracking-tight" : "font-semibold",
+                          )}
+                        >
+                          {displayName}
+                        </p>
+                        <span className={cn("text-[10px] shrink-0 pt-0.5 whitespace-nowrap", c.unread > 0 ? "text-primary font-bold" : "text-muted-foreground")}>
+                          {formatDateTime(c.lastTime, timeZone)}
+                        </span>
+                      </div>
+                      {showPhoneUnderName || c.isHumanControlled ? (
+                        <div className="mt-0.5 flex min-w-0 items-center gap-2">
+                          {showPhoneUnderName ? (
+                            <p className="min-w-0 truncate font-mono text-xs tracking-tight text-muted-foreground">{clientPhone}</p>
+                          ) : null}
+                          {c.isHumanControlled ? (
+                            <span
+                              className="inline-flex items-center gap-0.5 shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-warning/15 text-warning"
+                              title="Bot pausado · control humano"
+                            >
+                              <Pause className="w-2.5 h-2.5" fill="currentColor" />
+                              Pausada
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      <div className="flex items-center justify-between gap-2 mt-1">
+                        <p className={cn("text-xs truncate", c.unread > 0 ? "text-foreground font-medium" : "text-muted-foreground")}>
+                          {formatConversationPreview(c.lastMessage, { compactCampaign: true })}
+                        </p>
+                        {c.unread > 0 && (
+                          <span className="shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold grid place-items-center">
+                            {c.unread}
                           </span>
-                        ) : null}
+                        )}
                       </div>
                     </div>
-                    <span className={cn("text-[10px] shrink-0", c.unread > 0 ? "text-primary font-bold" : "text-muted-foreground")}>
-                      {formatDateTime(c.lastTime, timeZone)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between gap-2 mt-0.5">
-                    <p className={cn("text-xs truncate", c.unread > 0 ? "text-foreground font-medium" : "text-muted-foreground")}>
-                      {formatConversationPreview(c.lastMessage, { compactCampaign: true })}
-                    </p>
-                    {c.unread > 0 && (
-                      <span className="shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold grid place-items-center">
-                        {c.unread}
+                  </button>
+                  {isAdmin ? (
+                    <div className="flex w-[5.5rem] shrink-0 flex-col items-center pt-1 pr-1 pb-2">
+                      {c.client?.id ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              className="min-h-11 min-w-11 shrink-0 grid place-items-center rounded-full hover:bg-muted touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              aria-label="Más opciones de la conversación"
+                            >
+                              <MoreVertical className="w-4 h-4 text-muted-foreground" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-52">
+                            <DropdownMenuItem
+                              className="gap-2"
+                              onSelect={() =>
+                                setAssignTarget({
+                                  clientId: c.client.id,
+                                  clientName: registeredName || clientPhone || "este cliente",
+                                  currentSellerId: c.client.assignedSellerUserId ?? null,
+                                })
+                              }
+                            >
+                              <UserCheck className="w-4 h-4" />
+                              Asignar vendedor
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      ) : (
+                        <span className="h-11 w-11 shrink-0" />
+                      )}
+                      <span
+                        className="mt-0.5 inline-flex max-w-full items-center gap-0.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium leading-tight text-muted-foreground"
+                        title={sellerName || "Sin asignar"}
+                      >
+                        <UserCheck className="w-2.5 h-2.5 shrink-0" />
+                        <span className="truncate">{sellerName || "Sin asignar"}</span>
                       </span>
-                    )}
-                  </div>
-                </div>
-              </button>
-            </li>
-          );
-        })}
-        {list.length === 0 && (
-          <li className="px-4 py-12 text-center text-sm text-muted-foreground">Sin resultados</li>
-        )}
-      </ul>
+                    </div>
+                  ) : null}
+                </li>
+              );
+            })}
+            {list.length === 0 && (
+              <li className="px-4 py-12 text-center text-sm text-muted-foreground">Sin resultados</li>
+            )}
+          </ul>
+          <ListPagination
+            page={paging.page}
+            pageCount={paging.pageCount}
+            rangeStart={paging.rangeStart}
+            rangeEnd={paging.rangeEnd}
+            total={paging.total}
+            onPageChange={paging.setPage}
+          />
+        </>
+      )}
+
+      <AssignSellerSheet target={assignTarget} onOpenChange={(open) => !open && setAssignTarget(null)} />
 
       <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
         <SheetContent side="bottom" className="rounded-t-2xl max-h-[85vh] overflow-y-auto">

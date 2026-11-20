@@ -5,6 +5,7 @@ import { apiRequest, setUnauthorizedHandler } from "@/lib/api";
 import { accountApi } from "@/services/account";
 import { pushApi } from "@/services/push";
 import { DEVICE_TOKEN_KEY } from "@/mobile/pushRegistration";
+import { isAdminUser, isSellerUser, type UserRole } from "@/lib/roles";
 
 export type AuthUser = {
   id: string;
@@ -12,7 +13,12 @@ export type AuthUser = {
   name: string;
   phone?: string | null;
   defaultPlatform?: string | null;
-  calendarSchedulingUrl?: string;
+  calendarSchedulingUrl?: string | null;
+  /** Ausente en sesiones antiguas: se interpreta como admin. */
+  role?: UserRole;
+  tenantOwnerUserId?: string | null;
+  /** Zona horaria del tenant (los vendedores no pueden leer bot settings). */
+  tenantTimezone?: string | null;
 };
 
 type ClearSessionOptions = {
@@ -23,6 +29,8 @@ type ClearSessionOptions = {
 type AuthContextType = {
   token: string | null;
   user: AuthUser | null;
+  isAdmin: boolean;
+  isSeller: boolean;
   authReady: boolean;
   login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   register: (name: string, email: string, password: string, calendarSchedulingUrl?: string) => Promise<void>;
@@ -65,6 +73,9 @@ const profileToAuthUser = (profile: Awaited<ReturnType<typeof accountApi.getProf
   phone: profile.user.phone,
   defaultPlatform: profile.user.defaultPlatform,
   calendarSchedulingUrl: profile.user.calendarSchedulingUrl,
+  role: profile.user.role ?? "admin",
+  tenantOwnerUserId: profile.user.tenantOwnerUserId ?? null,
+  tenantTimezone: profile.tenant?.timezone ?? null,
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -174,6 +185,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     () => ({
       token,
       user,
+      isAdmin: isAdminUser(user),
+      isSeller: isSellerUser(user),
       authReady,
       async login(email, password, remember = true) {
         const res = await apiRequest<{ token: string; user: AuthUser }>("/auth/login", "POST", { email, password });

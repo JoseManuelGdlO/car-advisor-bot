@@ -437,6 +437,7 @@ def handle_financing_detail_escalation(
                     push_body=push_body,
                     notification_kind="financing_detail_help",
                     conversation_id=conversation_id,
+                    channel_user_id=user_id if user_id != "lead" else None,
                 )
             )
         except Exception:

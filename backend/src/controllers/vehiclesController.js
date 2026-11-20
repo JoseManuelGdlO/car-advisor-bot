@@ -4,6 +4,7 @@ import { parseVehicleSheet } from "../services/botEngineClient.js";
 import { extractPdfText, normalizeVehicleSheet } from "../services/vehicleSheetParse.js";
 import { ApiError } from "../utils/errors.js";
 import { resolveRequestOwner } from "../utils/resolveRequestOwner.js";
+import { resolveTenantOwnerId } from "../utils/tenantAccess.js";
 
 // Scope multi-tenant por propietario autenticado.
 const ownerWhere = (userId) => ({ ownerUserId: userId });
@@ -23,18 +24,18 @@ export const listVehicles = async (req, res) =>
   );
 
 // Crea vehículo nuevo dentro del tenant actual.
-export const createVehicle = async (req, res) => res.status(201).json(await Vehicle.create({ ...req.body, ownerUserId: req.auth.userId }));
+export const createVehicle = async (req, res) => res.status(201).json(await Vehicle.create({ ...req.body, ownerUserId: resolveTenantOwnerId(req) }));
 
 export const updateVehicle = async (req, res, next) => {
   // Edita vehículo existente validando ownership.
-  const row = await Vehicle.findOne({ where: { id: req.params.id, ...ownerWhere(req.auth.userId) } });
+  const row = await Vehicle.findOne({ where: { id: req.params.id, ...ownerWhere(resolveTenantOwnerId(req)) } });
   if (!row) return next(new ApiError(404, "Vehicle not found"));
   await row.update(req.body);
   return res.json(row);
 };
 
 export const deleteVehicle = async (req, res, next) => {
-  const userId = req.auth.userId;
+  const userId = resolveTenantOwnerId(req);
   const vehicleId = String(req.params.id || "").trim();
   const row = await Vehicle.findOne({ where: { id: vehicleId, ...ownerWhere(userId) } });
   if (!row) return next(new ApiError(404, "Vehicle not found"));

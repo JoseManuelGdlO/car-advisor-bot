@@ -55,9 +55,16 @@ const emptyBusiness: BusinessProfileDto = {
   logoUrl: null,
 };
 
+const PASSWORD_MISMATCH_ERROR = "Las contraseñas no coinciden.";
+const CURRENT_PASSWORD_REQUIRED_ERROR = "Escribe tu contraseña actual para confirmar el cambio.";
+
 const PROFILE_KNOWN_FIELDS = [
   "name",
   "phone",
+  "email",
+  "password",
+  "passwordConfirm",
+  "currentPassword",
   "defaultPlatform",
   "calendarSchedulingUrl",
   "tradeName",
@@ -74,7 +81,7 @@ const PROFILE_KNOWN_FIELDS = [
 export default function Perfil() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { logout, user, token, refreshProfile } = useAuth();
+  const { logout, user, token, refreshProfile, isSeller } = useAuth();
 
   const { data: profile, isLoading: profileLoading } = useQuery({
     queryKey: ["account-profile"],
@@ -91,12 +98,17 @@ export default function Perfil() {
   const { data: integrations = [], isLoading: integrationsLoading } = useQuery({
     queryKey: ["integrations"],
     queryFn: () => integrationsApi.list(token!),
-    enabled: Boolean(token),
+    // Integraciones son del tenant: el vendedor no las consulta (403).
+    enabled: Boolean(token) && !isSeller,
   });
 
   const [userForm, setUserForm] = useState({
     name: "",
     phone: "",
+    email: "",
+    password: "",
+    passwordConfirm: "",
+    currentPassword: "",
     defaultPlatform: "",
     calendarSchedulingUrl: "",
   });
@@ -121,6 +133,10 @@ export default function Perfil() {
     setUserForm({
       name: profile.user.name || "",
       phone: profile.user.phone || "",
+      email: profile.user.email || "",
+      password: "",
+      passwordConfirm: "",
+      currentPassword: "",
       defaultPlatform: profile.user.defaultPlatform || "",
       calendarSchedulingUrl: profile.user.calendarSchedulingUrl || "",
     });
@@ -135,6 +151,27 @@ export default function Perfil() {
 
   const saveProfileMutation = useMutation({
     mutationFn: () => {
+      // Vendedor: cuenta personal, correo y contraseña. Calendario y negocio son del admin (el API responde 403).
+      if (isSeller) {
+        const email = userForm.email.trim();
+        const emailChanged = email !== (profile?.user.email || "");
+        const password = userForm.password;
+        if (password !== userForm.passwordConfirm) {
+          throw new Error(PASSWORD_MISMATCH_ERROR);
+        }
+        if ((emailChanged || password) && !userForm.currentPassword) {
+          throw new Error(CURRENT_PASSWORD_REQUIRED_ERROR);
+        }
+        return accountApi.patchProfile(token!, {
+          user: {
+            name: userForm.name.trim(),
+            phone: userForm.phone.trim() || null,
+            email,
+            ...(password ? { password, currentPassword: userForm.currentPassword } : {}),
+            ...(emailChanged && !password ? { currentPassword: userForm.currentPassword } : {}),
+          },
+        });
+      }
       const calendarSchedulingUrl = (
         userForm.calendarSchedulingUrl || savedCalendarUrl
       ).trim();
@@ -176,12 +213,19 @@ export default function Perfil() {
       await refreshProfile();
     },
     onError: (error) => {
-      if (
-        error instanceof Error &&
-        error.message === GOOGLE_CALENDAR_URL_ERROR
-      ) {
+      if (error instanceof Error && error.message === GOOGLE_CALENDAR_URL_ERROR) {
         setProfileFormError("");
         setProfileFieldErrors({ calendarSchedulingUrl: error.message });
+        return;
+      }
+      if (error instanceof Error && error.message === PASSWORD_MISMATCH_ERROR) {
+        setProfileFormError("");
+        setProfileFieldErrors({ passwordConfirm: error.message });
+        return;
+      }
+      if (error instanceof Error && error.message === CURRENT_PASSWORD_REQUIRED_ERROR) {
+        setProfileFormError("");
+        setProfileFieldErrors({ currentPassword: error.message });
         return;
       }
       const { formError, fieldErrors } = normalizeApiError(
@@ -224,7 +268,13 @@ export default function Perfil() {
     const calendarValue = (
       userForm.calendarSchedulingUrl || savedCalendarUrl
     ).trim();
+    const credentialsDirty =
+      isSeller &&
+      (profile.user.email !== userForm.email.trim() ||
+        userForm.password.length > 0 ||
+        userForm.passwordConfirm.length > 0);
     const userDirty =
+      credentialsDirty ||
       profile.user.name !== userForm.name.trim() ||
       (profile.user.phone || "") !== (userForm.phone.trim() || "") ||
       (profile.user.defaultPlatform || "") !==
@@ -234,7 +284,7 @@ export default function Perfil() {
       JSON.stringify(profile.business || {}) !==
       JSON.stringify({ ...emptyBusiness, ...bizForm });
     return { userDirty, businessDirty };
-  }, [profile, userForm, bizForm, savedCalendarUrl]);
+  }, [profile, userForm, bizForm, savedCalendarUrl, isSeller]);
 
   const renderSaveProfileButton = () => (
     <div className="pt-2 space-y-2">
@@ -264,7 +314,9 @@ export default function Perfil() {
           />
           <h2 className="font-bold text-lg mt-3">{user?.name || "Usuario"}</h2>
           <p className="text-xs text-muted-foreground">{user?.email}</p>
-          {bizForm.tradeName ? (
+          {isSeller ? (
+            <p className="text-xs font-semibold text-primary-dark mt-1">Vendedor</p>
+          ) : bizForm.tradeName ? (
             <p className="text-xs font-semibold text-primary-dark mt-1">
               {bizForm.tradeName}
             </p>
@@ -314,6 +366,68 @@ export default function Perfil() {
                   aria-invalid={Boolean(profileFieldErrors.phone)}
                 />
                 <FieldErrorText error={profileFieldErrors.phone} />
+                {isSeller ? (
+                  <>
+                    <Label className="text-xs">Correo</Label>
+                    <Input
+                      type="email"
+                      autoComplete="email"
+                      value={userForm.email}
+                      onChange={(e) => setUserForm((s) => ({ ...s, email: e.target.value }))}
+                      className={cn(
+                        profileFieldErrors.email && "border-destructive focus-visible:ring-destructive",
+                      )}
+                      aria-invalid={Boolean(profileFieldErrors.email)}
+                    />
+                    <FieldErrorText error={profileFieldErrors.email} />
+                    <Label className="text-xs">Nueva contraseña</Label>
+                    <Input
+                      type="password"
+                      autoComplete="new-password"
+                      value={userForm.password}
+                      placeholder="Déjala vacía si no quieres cambiarla"
+                      onChange={(e) => setUserForm((s) => ({ ...s, password: e.target.value }))}
+                      className={cn(
+                        profileFieldErrors.password && "border-destructive focus-visible:ring-destructive",
+                      )}
+                      aria-invalid={Boolean(profileFieldErrors.password)}
+                    />
+                    <FieldErrorText error={profileFieldErrors.password} />
+                    <Label className="text-xs">Confirmar contraseña</Label>
+                    <Input
+                      type="password"
+                      autoComplete="new-password"
+                      value={userForm.passwordConfirm}
+                      onChange={(e) => setUserForm((s) => ({ ...s, passwordConfirm: e.target.value }))}
+                      className={cn(
+                        profileFieldErrors.passwordConfirm && "border-destructive focus-visible:ring-destructive",
+                      )}
+                      aria-invalid={Boolean(profileFieldErrors.passwordConfirm)}
+                    />
+                    <FieldErrorText error={profileFieldErrors.passwordConfirm} />
+                    {userForm.email.trim() !== (profile?.user.email || "") || userForm.password ? (
+                      <>
+                        <Label className="text-xs">Contraseña actual</Label>
+                        <Input
+                          type="password"
+                          autoComplete="current-password"
+                          value={userForm.currentPassword}
+                          onChange={(e) => setUserForm((s) => ({ ...s, currentPassword: e.target.value }))}
+                          className={cn(
+                            profileFieldErrors.currentPassword && "border-destructive focus-visible:ring-destructive",
+                          )}
+                          aria-invalid={Boolean(profileFieldErrors.currentPassword)}
+                        />
+                        <p className="text-[11px] text-muted-foreground">
+                          Hace falta para confirmar que eres tú.
+                        </p>
+                        <FieldErrorText error={profileFieldErrors.currentPassword} />
+                      </>
+                    ) : null}
+                  </>
+                ) : null}
+                {!isSeller ? (
+                  <>
                 <div className="flex items-center justify-between gap-2 pt-1">
                   <Label className="text-xs">
                     Link de calendario de Google
@@ -397,8 +511,11 @@ export default function Perfil() {
                     </Button>
                   </div>
                 )}
+                  </>
+                ) : null}
                 {userDirty ? renderSaveProfileButton() : null}
               </div>
+              {!isSeller ? (
               <div className="pt-2 space-y-2">
                 <DeleteAccount
                   deleteDialogOpen={deleteDialogOpen}
@@ -410,9 +527,11 @@ export default function Perfil() {
                   deleteAccountMutation={deleteAccountMutation}
                 />
               </div>
+              ) : null}
             </AccordionContent>
           </AccordionItem>
 
+          {!isSeller ? (
           <AccordionItem
             value="negocio"
             className="border-0 bg-card rounded-2xl px-4 shadow-card border border-border"
@@ -535,8 +654,10 @@ export default function Perfil() {
               </div>
             </AccordionContent>
           </AccordionItem>
+          ) : null}
         </Accordion>
 
+        {!isSeller ? (
         <button
           type="button"
           onClick={() => navigate("/perfil/integraciones")}
@@ -570,6 +691,7 @@ export default function Perfil() {
             </div>
           </div>
         </button>
+        ) : null}
 
         <button
           type="button"
