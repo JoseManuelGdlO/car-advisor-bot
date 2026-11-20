@@ -20,6 +20,7 @@ const FIELD_LABELS = {
   name: "nombre",
   email: "correo electrónico",
   password: "contraseña",
+  currentPassword: "contraseña actual",
   phone: "teléfono",
   tradeName: "nombre comercial",
   legalName: "razón social",

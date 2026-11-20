@@ -52,6 +52,9 @@ export const accountApi = {
       user?: {
         name?: string;
         phone?: string | null;
+        email?: string;
+        password?: string;
+        currentPassword?: string;
         defaultPlatform?: string | null;
         calendarSchedulingUrl?: string;
       };

@@ -4,6 +4,7 @@ import { ApiError } from "../utils/errors.js";
 import { toBusinessProfileDto } from "../utils/businessProfile.js";
 import { calendarSchedulingUrlSchema } from "../utils/calendarUrl.js";
 import { toAccountNotificationPreferencesDto } from "../services/notificationPreferences.js";
+import { comparePassword, hashPassword } from "../utils/auth.js";
 import { assertAdmin, isAdminAuth, isSellerAuth, toUserSessionDto } from "../utils/tenantAccess.js";
 
 const businessPatchSchema = z
@@ -27,6 +28,9 @@ const userPatchSchema = z
   .object({
     name: z.string().min(2).max(120).optional(),
     phone: z.string().max(32).optional().nullable(),
+    email: z.string().trim().email().max(190).optional(),
+    password: z.string().min(6).max(200).optional(),
+    currentPassword: z.string().min(1).max(200).optional(),
     defaultPlatform: z.enum(["whatsapp", "facebook", "telegram", "web", "api", "instagram"]).optional().nullable(),
     calendarSchedulingUrl: calendarSchedulingUrlSchema.optional(),
   })
@@ -88,10 +92,29 @@ export const patchAccountProfile = async (req, res, next) => {
     }
 
     const u = userPatch.data;
+    const nextEmail = u.email?.trim();
+    const emailChanged = nextEmail !== undefined && nextEmail !== user.email;
+    const passwordChange = u.password !== undefined;
+    if (emailChanged || passwordChange) {
+      // 400, no 401: un 401 con Bearer cierra la sesión en el cliente.
+      if (!u.currentPassword) {
+        throw new ApiError(400, "Escribe tu contraseña actual para cambiar el correo o la contraseña.");
+      }
+      const passwordOk = await comparePassword(u.currentPassword, user.passwordHash || "");
+      if (!passwordOk) throw new ApiError(400, "La contraseña actual no es correcta.");
+    }
+    if (emailChanged) {
+      const existing = await User.findOne({ where: { email: nextEmail } });
+      if (existing && existing.id !== user.id) {
+        throw new ApiError(409, "Ya existe una cuenta con este correo.");
+      }
+    }
     if (Object.keys(u).length) {
       await user.update({
         ...(u.name !== undefined ? { name: u.name } : {}),
         ...(u.phone !== undefined ? { phone: u.phone || null } : {}),
+        ...(emailChanged ? { email: nextEmail } : {}),
+        ...(passwordChange ? { passwordHash: await hashPassword(u.password) } : {}),
         ...(u.defaultPlatform !== undefined ? { defaultPlatform: u.defaultPlatform || null } : {}),
         ...(u.calendarSchedulingUrl !== undefined ? { calendarSchedulingUrl: u.calendarSchedulingUrl } : {}),
       });

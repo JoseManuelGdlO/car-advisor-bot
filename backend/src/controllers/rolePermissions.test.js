@@ -27,6 +27,7 @@ import { vehiclesRoutes } from "../routes/vehiclesRoutes.js";
 import { financingRoutes } from "../routes/financingRoutes.js";
 import { promotionRoutes } from "../routes/promotionRoutes.js";
 import { requireAdmin, requireAdminOrService } from "../middlewares/auth.js";
+import { comparePassword, hashPassword } from "../utils/auth.js";
 
 const adminId = "550e8400-e29b-41d4-a716-446655440000";
 const sellerId = "550e8400-e29b-41d4-a716-446655440001";
@@ -274,6 +275,87 @@ test("patchAccountProfile: seller no puede cambiar calendario ni negocio (403)",
     assert.equal(own.res.payload.business, null);
   } finally {
     restoreUser();
+  }
+});
+
+test("patchAccountProfile: seller cambia correo y contraseña solo con la contraseña actual", async () => {
+  const passwordHash = await hashPassword("actual1");
+  let updated;
+  const user = {
+    id: sellerId,
+    email: "s@x.com",
+    name: "Sol",
+    phone: null,
+    defaultPlatform: null,
+    calendarSchedulingUrl: null,
+    role: "seller",
+    tenantOwnerUserId: adminId,
+    passwordHash,
+    update: async (patch) => {
+      updated = patch;
+      Object.assign(user, patch);
+    },
+    reload: async () => {},
+  };
+  const restoreUser = stub(User, "findByPk", async () => user);
+  const restoreFind = stub(User, "findOne", async () => null);
+  try {
+    const missing = await call(patchAccountProfile, {
+      auth: sellerAuth,
+      body: { user: { email: "nueva@x.com" } },
+    });
+    assert.equal(missing.error?.status, 400);
+    assert.equal(updated, undefined);
+
+    const wrong = await call(patchAccountProfile, {
+      auth: sellerAuth,
+      body: { user: { email: "nueva@x.com", currentPassword: "no-es" } },
+    });
+    assert.equal(wrong.error?.status, 400);
+    assert.equal(updated, undefined);
+
+    const ok = await call(patchAccountProfile, {
+      auth: sellerAuth,
+      body: { user: { email: "nueva@x.com", password: "nueva123", currentPassword: "actual1" } },
+    });
+    assert.equal(ok.error, undefined);
+    assert.equal(updated.email, "nueva@x.com");
+    assert.notEqual(updated.passwordHash, "nueva123");
+    assert.equal(await comparePassword("nueva123", updated.passwordHash), true);
+    assert.equal(updated.currentPassword, undefined);
+    assert.equal(ok.res.payload.user.email, "nueva@x.com");
+    assert.equal(ok.res.payload.business, null);
+  } finally {
+    restoreUser();
+    restoreFind();
+  }
+});
+
+test("patchAccountProfile: correo ya usado responde 409", async () => {
+  const passwordHash = await hashPassword("actual1");
+  const user = {
+    id: sellerId,
+    email: "s@x.com",
+    name: "Sol",
+    role: "seller",
+    tenantOwnerUserId: adminId,
+    passwordHash,
+    update: async () => {
+      throw new Error("no debe guardar un correo duplicado");
+    },
+    reload: async () => {},
+  };
+  const restoreUser = stub(User, "findByPk", async () => user);
+  const restoreFind = stub(User, "findOne", async () => ({ id: "otro-usuario", email: "nueva@x.com" }));
+  try {
+    const { error } = await call(patchAccountProfile, {
+      auth: sellerAuth,
+      body: { user: { email: "nueva@x.com", currentPassword: "actual1" } },
+    });
+    assert.equal(error?.status, 409);
+  } finally {
+    restoreUser();
+    restoreFind();
   }
 });
 
