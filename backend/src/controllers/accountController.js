@@ -3,8 +3,8 @@ import { BusinessProfile, User } from "../models/index.js";
 import { ApiError } from "../utils/errors.js";
 import { toBusinessProfileDto } from "../utils/businessProfile.js";
 import { calendarSchedulingUrlSchema } from "../utils/calendarUrl.js";
-import { toNotificationPreferencesDto } from "../services/notificationPreferences.js";
-import { assertAdmin, isSellerAuth, toUserSessionDto } from "../utils/tenantAccess.js";
+import { toAccountNotificationPreferencesDto } from "../services/notificationPreferences.js";
+import { assertAdmin, isAdminAuth, isSellerAuth, toUserSessionDto } from "../utils/tenantAccess.js";
 
 const businessPatchSchema = z
   .object({
@@ -133,16 +133,25 @@ const notificationPreferencesPatchSchema = z
     notifyLeadInterest: z.boolean().optional(),
     notifyEscalations: z.boolean().optional(),
     notifyInboundMessages: z.boolean().optional(),
+    // Solo admin: recibir mensajes inbound de leads ya asignados a un vendedor.
+    notifyAssignedLeadMessages: z.boolean().optional(),
   })
   .strict();
 
+const NOTIFICATION_PREFERENCE_ATTRIBUTES = [
+  "id",
+  "pushEnabled",
+  "notifyLeadInterest",
+  "notifyEscalations",
+  "notifyInboundMessages",
+  "notifyAssignedLeadMessages",
+];
+
 export const getNotificationPreferences = async (req, res, next) => {
   try {
-    const user = await User.findByPk(req.auth.userId, {
-      attributes: ["id", "pushEnabled", "notifyLeadInterest", "notifyEscalations", "notifyInboundMessages"],
-    });
+    const user = await User.findByPk(req.auth.userId, { attributes: NOTIFICATION_PREFERENCE_ATTRIBUTES });
     if (!user) throw new ApiError(404, "User not found");
-    return res.json(toNotificationPreferencesDto(user));
+    return res.json(toAccountNotificationPreferencesDto(user, { isAdmin: isAdminAuth(req.auth) }));
   } catch (err) {
     return next(err);
   }
@@ -157,19 +166,23 @@ export const patchNotificationPreferences = async (req, res, next) => {
     if (!parsed.success) throw parsed.error;
 
     const patch = parsed.data;
+    if (patch.notifyAssignedLeadMessages !== undefined && !isAdminAuth(req.auth)) {
+      throw new ApiError(403, "Solo el administrador puede cambiar esta preferencia.");
+    }
     if (Object.keys(patch).length) {
       await user.update({
         ...(patch.pushEnabled !== undefined ? { pushEnabled: patch.pushEnabled } : {}),
         ...(patch.notifyLeadInterest !== undefined ? { notifyLeadInterest: patch.notifyLeadInterest } : {}),
         ...(patch.notifyEscalations !== undefined ? { notifyEscalations: patch.notifyEscalations } : {}),
         ...(patch.notifyInboundMessages !== undefined ? { notifyInboundMessages: patch.notifyInboundMessages } : {}),
+        ...(patch.notifyAssignedLeadMessages !== undefined
+          ? { notifyAssignedLeadMessages: patch.notifyAssignedLeadMessages }
+          : {}),
       });
     }
 
-    await user.reload({
-      attributes: ["id", "pushEnabled", "notifyLeadInterest", "notifyEscalations", "notifyInboundMessages"],
-    });
-    return res.json(toNotificationPreferencesDto(user));
+    await user.reload({ attributes: NOTIFICATION_PREFERENCE_ATTRIBUTES });
+    return res.json(toAccountNotificationPreferencesDto(user, { isAdmin: isAdminAuth(req.auth) }));
   } catch (err) {
     return next(err);
   }

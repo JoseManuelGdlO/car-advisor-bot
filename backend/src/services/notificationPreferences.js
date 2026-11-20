@@ -17,6 +17,15 @@ export const toNotificationPreferencesDto = (user) => ({
 });
 
 /**
+ * DTO de preferencias para la cuenta. `notifyAssignedLeadMessages` solo existe para admin
+ * (permite dejar de recibir mensajes inbound de leads ya asignados a un vendedor).
+ */
+export const toAccountNotificationPreferencesDto = (user, { isAdmin = false } = {}) => ({
+  ...toNotificationPreferencesDto(user),
+  ...(isAdmin ? { notifyAssignedLeadMessages: user?.notifyAssignedLeadMessages !== false } : {}),
+});
+
+/**
  * Decide si un push debe enviarse según prefs del owner y el kind.
  * Kinds desconocidos/vacíos solo respetan el master.
  *

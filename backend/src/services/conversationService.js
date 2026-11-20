@@ -18,7 +18,7 @@ import {
 import { sendInstagramImageMessage, sendInstagramTextMessage } from "./metaInstagramClient.js";
 import { sendWhatsappImage, sendWhatsappTemplate, sendWhatsappText } from "./metaWhatsappClient.js";
 import { setBotSessionDisabled } from "./botEngineClient.js";
-import { sendPushToOwner } from "./pushService.js";
+import { sendPushToLeadRecipients } from "./leadNotificationService.js";
 import { runWithWcToken } from "./wcAuthCache.js";
 import { wcClient } from "./wcClient.js";
 import { isWhatsappChannelId, resolveDisplayPhone } from "../utils/whatsappIdentity.js";
@@ -339,8 +339,9 @@ export const upsertConversationEvent = async ({
   if (isInboundClientMessage) {
     try {
       const pushPhone = String(lead.displayPhone || resolvedDisplayPhone || "Cliente").trim() || "Cliente";
-      await sendPushToOwner({
+      await sendPushToLeadRecipients({
         ownerUserId,
+        lead,
         title: `${pushPhone} mandó un mensaje`,
         body: `${lead.name || "Cliente"}: ${normalizedMessage.slice(0, 140)}`,
         data: {

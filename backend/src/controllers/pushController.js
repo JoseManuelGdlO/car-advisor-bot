@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { deactivatePushDevice, sendPushToOwner, upsertPushDevice } from "../services/pushService.js";
+import { sendPushToLeadRecipients } from "../services/leadNotificationService.js";
 import { ApiError } from "../utils/errors.js";
 import { appLog } from "../utils/appLogger.js";
 
@@ -103,7 +104,8 @@ export const botPushNotify = async (req, res, next) => {
     // Endpoint machine-to-machine usado por el bot para notificaciones al owner.
     const payload = botPushNotifySchema.parse(req.body);
     ensureServiceTokenOwnsTarget(req, payload.owner_user_id);
-    const result = await sendPushToOwner({
+    // Si el lead tiene vendedor asignado, el aviso va a vendedor + admin (según preferencias).
+    const result = await sendPushToLeadRecipients({
       ownerUserId: payload.owner_user_id,
       title: payload.title,
       body: payload.body,
