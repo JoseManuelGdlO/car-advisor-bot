@@ -1,7 +1,8 @@
 import { Op } from "sequelize";
 import { z } from "zod";
-import { ClientLead } from "../models/index.js";
+import { ClientLead, User } from "../models/index.js";
 import { ApiError } from "../utils/errors.js";
+import { assertAdmin, leadVisibilityWhere, resolveTenantOwnerId } from "../utils/tenantAccess.js";
 import { isWhatsappChannelId, normalizeDisplayPhone } from "../utils/whatsappIdentity.js";
 
 const ELIMINATED_STATUS = "eliminated";
@@ -29,12 +30,18 @@ export const createClientSchema = z
   })
   .strict();
 
-const ownerWhere = (userId) => ({ ownerUserId: userId });
-
-export const visibleClientsWhere = (userId) => ({
-  ...ownerWhere(userId),
+// Admin: todos los leads del tenant. Vendedor: solo los asignados a él.
+export const visibleClientsWhere = (auth) => ({
+  ...leadVisibilityWhere(auth),
   status: { [Op.ne]: ELIMINATED_STATUS },
 });
+
+export const assignedSellerInclude = {
+  model: User,
+  as: "assignedSeller",
+  attributes: ["id", "name"],
+  required: false,
+};
 
 export const resolveCreateClientOutcome = (existing, body) => {
   if (!existing) return { kind: "create" };
@@ -56,9 +63,10 @@ export const resolveCreateClientOutcome = (existing, body) => {
   return { kind: "conflict" };
 };
 
-const findOwnedVisibleClientOr404 = async (userId, id) => {
+const findOwnedVisibleClientOr404 = async (auth, id) => {
   const row = await ClientLead.findOne({
-    where: { id, ...visibleClientsWhere(userId) },
+    where: { id, ...visibleClientsWhere(auth) },
+    include: [assignedSellerInclude],
   });
   if (!row) throw new ApiError(404, "Client not found");
   return row;
@@ -66,7 +74,8 @@ const findOwnedVisibleClientOr404 = async (userId, id) => {
 
 export const listClients = async (req, res) => {
   const rows = await ClientLead.findAll({
-    where: visibleClientsWhere(req.auth.userId),
+    where: visibleClientsWhere(req.auth),
+    include: [assignedSellerInclude],
     order: [["updatedAt", "DESC"]],
   });
   return res.json(rows);
@@ -74,7 +83,7 @@ export const listClients = async (req, res) => {
 
 export const getClient = async (req, res, next) => {
   try {
-    const row = await findOwnedVisibleClientOr404(req.auth.userId, req.params.id);
+    const row = await findOwnedVisibleClientOr404(req.auth, req.params.id);
     return res.json(row);
   } catch (err) {
     return next(err);
@@ -83,9 +92,12 @@ export const getClient = async (req, res, next) => {
 
 export const createClient = async (req, res, next) => {
   try {
+    // Los leads nacen sin asignar y solo el admin los ve/asigna: el vendedor no crea leads.
+    assertAdmin(req.auth);
+    const tenantOwnerUserId = resolveTenantOwnerId(req);
     const body = createClientSchema.parse(req.body);
     const existing = await ClientLead.findOne({
-      where: { ownerUserId: req.auth.userId, phone: body.phone },
+      where: { ownerUserId: tenantOwnerUserId, phone: body.phone },
     });
     const outcome = resolveCreateClientOutcome(existing, body);
     if (outcome.kind === "conflict") {
@@ -96,7 +108,7 @@ export const createClient = async (req, res, next) => {
       return res.status(201).json(existing);
     }
     const row = await ClientLead.create({
-      ownerUserId: req.auth.userId,
+      ownerUserId: tenantOwnerUserId,
       name: body.name,
       phone: body.phone,
       displayPhone: normalizeDisplayPhone(body.phone) ?? body.phone,
@@ -114,7 +126,7 @@ export const createClient = async (req, res, next) => {
 
 export const patchClient = async (req, res, next) => {
   try {
-    const row = await findOwnedVisibleClientOr404(req.auth.userId, req.params.id);
+    const row = await findOwnedVisibleClientOr404(req.auth, req.params.id);
     const body = patchClientSchema.parse(req.body || {});
     const updates = {
       name: body.name,
@@ -137,7 +149,7 @@ export const patchClient = async (req, res, next) => {
 
 export const deleteClient = async (req, res, next) => {
   try {
-    const row = await findOwnedVisibleClientOr404(req.auth.userId, req.params.id);
+    const row = await findOwnedVisibleClientOr404(req.auth, req.params.id);
     await row.update({ status: ELIMINATED_STATUS });
     return res.json({ ok: true });
   } catch (err) {

@@ -1,19 +1,42 @@
 import { z } from "zod";
-import { ChannelConversationContext, ClientLead, Conversation, Message } from "../models/index.js";
+import { ChannelConversationContext, ClientLead, Conversation, Message, User } from "../models/index.js";
 import { ApiError } from "../utils/errors.js";
 import { setBotSessionDisabled } from "../services/botEngineClient.js";
 import { sendConversationAttachmentMessage, sendConversationTextMessage } from "../services/conversationService.js";
 import { normalizeInboundChannel } from "../utils/integrationChannel.js";
 import { normalizePublicImageUrl } from "../utils/publicUrl.js";
+import { isSellerAuth, leadVisibilityWhere, resolveTenantOwnerId } from "../utils/tenantAccess.js";
 
-// Scope multi-tenant por propietario autenticado.
+// Scope multi-tenant: siempre el tenant (admin), nunca el id del vendedor.
 const ownerWhere = (userId) => ({ ownerUserId: userId });
+
+/**
+ * Include del lead de la conversación. Para vendedores restringe a leads asignados a él
+ * (required => la conversación no aparece si el lead no es suyo).
+ */
+export const conversationClientInclude = (auth) => {
+  const include = [{ model: User, as: "assignedSeller", attributes: ["id", "name"], required: false }];
+  if (isSellerAuth(auth)) {
+    const { assignedSellerUserId } = leadVisibilityWhere(auth);
+    return { model: ClientLead, as: "client", where: { assignedSellerUserId }, required: true, include };
+  }
+  return { model: ClientLead, as: "client", include };
+};
+
+const findVisibleConversationOr404 = async (req, conversationId) => {
+  const conv = await Conversation.findOne({
+    where: { id: conversationId, ...ownerWhere(resolveTenantOwnerId(req)) },
+    include: [conversationClientInclude(req.auth)],
+  });
+  if (!conv) throw new ApiError(404, "Conversation not found");
+  return conv;
+};
 
 export const listConversations = async (req, res) => {
   // Lista conversaciones con datos del lead asociado para render de bandeja.
   const rows = await Conversation.findAll({
-    where: ownerWhere(req.auth.userId),
-    include: [{ model: ClientLead, as: "client" }],
+    where: ownerWhere(resolveTenantOwnerId(req)),
+    include: [conversationClientInclude(req.auth)],
     order: [["updatedAt", "DESC"]],
   });
   return res.json(rows);
@@ -21,9 +44,11 @@ export const listConversations = async (req, res) => {
 
 export const getConversationMessages = async (req, res) => {
   // Retorna timeline de mensajes ordenada cronológicamente.
-  const conv = await Conversation.findOne({ where: { id: req.params.id, ...ownerWhere(req.auth.userId) } });
-  if (!conv) throw new ApiError(404, "Conversation not found");
-  const messages = await Message.findAll({ where: { ownerUserId: req.auth.userId, conversationId: conv.id }, order: [["createdAt", "ASC"]] });
+  const conv = await findVisibleConversationOr404(req, req.params.id);
+  const messages = await Message.findAll({
+    where: { ownerUserId: conv.ownerUserId, conversationId: conv.id },
+    order: [["createdAt", "ASC"]],
+  });
   return res.json(messages);
 };
 
@@ -33,8 +58,9 @@ export const sendMessageSchema = z.object({
 
 export const sendConversationMessage = async (req, res) => {
   const { text } = sendMessageSchema.parse(req.body || {});
+  await findVisibleConversationOr404(req, req.params.id);
   const message = await sendConversationTextMessage({
-    ownerUserId: req.auth.userId,
+    ownerUserId: resolveTenantOwnerId(req),
     conversationId: req.params.id,
     text,
   });
@@ -47,11 +73,7 @@ export const setControlSchema = z.object({
 
 export const setConversationControl = async (req, res) => {
   const { isHumanControlled } = setControlSchema.parse(req.body || {});
-  const conv = await Conversation.findOne({
-    where: { id: req.params.id, ...ownerWhere(req.auth.userId) },
-    include: [{ model: ClientLead, as: "client" }],
-  });
-  if (!conv) throw new ApiError(404, "Conversation not found");
+  const conv = await findVisibleConversationOr404(req, req.params.id);
   await conv.update({
     isHumanControlled,
     handoffAt: isHumanControlled ? new Date() : null,
@@ -59,7 +81,7 @@ export const setConversationControl = async (req, res) => {
   });
 
   const context = await ChannelConversationContext.findOne({
-    where: { ownerUserId: req.auth.userId, conversationId: conv.id },
+    where: { ownerUserId: conv.ownerUserId, conversationId: conv.id },
     order: [["updatedAt", "DESC"]],
   });
   const userId = String(context?.externalUserId || conv.client?.phone || "").trim();
@@ -84,8 +106,9 @@ export const sendConversationAttachment = async (req, res) => {
   if (!host) throw new ApiError(400, "Unable to build attachment URL");
   const fallbackBase = `${protocol}://${host}`;
   const imageUrl = normalizePublicImageUrl(`/uploads/autobot/${file.filename}`, { fallbackBase });
+  await findVisibleConversationOr404(req, req.params.id);
   const message = await sendConversationAttachmentMessage({
-    ownerUserId: req.auth.userId,
+    ownerUserId: resolveTenantOwnerId(req),
     conversationId: req.params.id,
     imageUrl,
     caption,

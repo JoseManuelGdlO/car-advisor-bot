@@ -4,6 +4,7 @@ import { ApiError } from "../utils/errors.js";
 import { toBusinessProfileDto } from "../utils/businessProfile.js";
 import { calendarSchedulingUrlSchema } from "../utils/calendarUrl.js";
 import { toNotificationPreferencesDto } from "../services/notificationPreferences.js";
+import { assertAdmin, isSellerAuth, toUserSessionDto } from "../utils/tenantAccess.js";
 
 const businessPatchSchema = z
   .object({
@@ -31,26 +32,28 @@ const userPatchSchema = z
   })
   .strict();
 
+const toProfileUserDto = (user) => ({
+  ...toUserSessionDto(user),
+  phone: user.phone,
+  defaultPlatform: user.defaultPlatform,
+  calendarSchedulingUrl: user.calendarSchedulingUrl,
+});
+
 export const getAccountProfile = async (req, res, next) => {
   try {
     // Obtiene perfil de usuario + business profile (creándolo si no existe).
     const user = await User.findByPk(req.auth.userId);
     if (!user) throw new ApiError(404, "User not found");
+    // Vendedor: solo cuenta personal; el perfil de negocio/calendario es del tenant (admin).
+    if (isSellerAuth(req.auth)) {
+      return res.json({ user: toProfileUserDto(user), business: null });
+    }
     const [business] = await BusinessProfile.findOrCreate({
       where: { ownerUserId: user.id },
       defaults: { ownerUserId: user.id },
     });
     return res.json({
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        phone: user.phone,
-        defaultPlatform: user.defaultPlatform,
-        calendarSchedulingUrl: user.calendarSchedulingUrl,
-        role: user.role || "admin",
-        tenantOwnerUserId: user.role === "seller" ? user.tenantOwnerUserId : user.id,
-      },
+      user: toProfileUserDto(user),
       business: toBusinessProfileDto(business),
     });
   } catch (err) {
@@ -68,6 +71,14 @@ export const patchAccountProfile = async (req, res, next) => {
     const businessPatch = businessPatchSchema.safeParse(req.body?.business || {});
     if (!businessPatch.success) throw businessPatch.error;
 
+    if (isSellerAuth(req.auth)) {
+      const touchesTenantData =
+        userPatch.data.calendarSchedulingUrl !== undefined || Object.keys(businessPatch.data).length > 0;
+      if (touchesTenantData) {
+        throw new ApiError(403, "Solo el administrador puede editar el negocio o el calendario.");
+      }
+    }
+
     const u = userPatch.data;
     if (Object.keys(u).length) {
       await user.update({
@@ -76,6 +87,11 @@ export const patchAccountProfile = async (req, res, next) => {
         ...(u.defaultPlatform !== undefined ? { defaultPlatform: u.defaultPlatform || null } : {}),
         ...(u.calendarSchedulingUrl !== undefined ? { calendarSchedulingUrl: u.calendarSchedulingUrl } : {}),
       });
+    }
+
+    if (isSellerAuth(req.auth)) {
+      await user.reload();
+      return res.json({ user: toProfileUserDto(user), business: null });
     }
 
     const [business] = await BusinessProfile.findOrCreate({
@@ -103,16 +119,7 @@ export const patchAccountProfile = async (req, res, next) => {
     await user.reload();
     await business.reload();
     return res.json({
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        phone: user.phone,
-        defaultPlatform: user.defaultPlatform,
-        calendarSchedulingUrl: user.calendarSchedulingUrl,
-        role: user.role || "admin",
-        tenantOwnerUserId: user.role === "seller" ? user.tenantOwnerUserId : user.id,
-      },
+      user: toProfileUserDto(user),
       business: toBusinessProfileDto(business),
     });
   } catch (err) {
@@ -177,6 +184,8 @@ const deleteAccountSchema = z
 export const deleteAccount = async (req, res, next) => {
   try {
     // Eliminación de cuenta con confirmación explícita para prevenir borrados accidentales.
+    // Solo el admin puede eliminar el tenant (los vendedores se dan de baja desde /api/sellers).
+    assertAdmin(req.auth);
     const { confirmText } = deleteAccountSchema.parse(req.body || {});
     if (confirmText.toUpperCase() !== "ELIMINAR") {
       throw new ApiError(400, "Debes escribir ELIMINAR para confirmar.");
@@ -185,6 +194,8 @@ export const deleteAccount = async (req, res, next) => {
     const user = await User.findByPk(req.auth.userId);
     if (!user) throw new ApiError(404, "User not found");
 
+    // Los vendedores dependen del tenant: se eliminan junto con el admin.
+    await User.destroy({ where: { tenantOwnerUserId: user.id, role: "seller" } });
     await user.destroy();
     return res.status(204).send();
   } catch (err) {
