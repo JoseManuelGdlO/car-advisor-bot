@@ -3,6 +3,7 @@ import { z } from "zod";
 import { ClientLead, User } from "../models/index.js";
 import { ApiError } from "../utils/errors.js";
 import { assertAdmin, leadVisibilityWhere, resolveTenantOwnerId } from "../utils/tenantAccess.js";
+import { assignmentSchema, resolveAssignableSeller } from "../services/sellerService.js";
 import { isWhatsappChannelId, normalizeDisplayPhone } from "../utils/whatsappIdentity.js";
 
 const ELIMINATED_STATUS = "eliminated";
@@ -142,6 +143,24 @@ export const patchClient = async (req, res, next) => {
     }
     await row.update(updates);
     return res.json(row);
+  } catch (err) {
+    return next(err);
+  }
+};
+
+export const patchClientAssignment = async (req, res, next) => {
+  try {
+    assertAdmin(req.auth);
+    const tenantOwnerUserId = resolveTenantOwnerId(req);
+    const { assignedSellerUserId } = assignmentSchema.parse(req.body || {});
+    const row = await findOwnedVisibleClientOr404(req.auth, req.params.id);
+    if (assignedSellerUserId) {
+      // Mismo tenant, role=seller y active=true.
+      await resolveAssignableSeller(tenantOwnerUserId, assignedSellerUserId);
+    }
+    await row.update({ assignedSellerUserId: assignedSellerUserId ?? null });
+    const updated = await ClientLead.findOne({ where: { id: row.id }, include: [assignedSellerInclude] });
+    return res.json(updated);
   } catch (err) {
     return next(err);
   }
